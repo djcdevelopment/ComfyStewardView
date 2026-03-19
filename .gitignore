@@ -1,1 +1,4 @@
-ComfyEra14.db
+### workspace artifacts ###
+# ignore exported world data that we will keep locally
+*.db
+*.fwl*
