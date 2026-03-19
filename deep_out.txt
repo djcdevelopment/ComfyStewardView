@@ -1,0 +1,213 @@
+=== DEAD ZDOs ===
+  count: 0
+
+=== SIGN TEXTS ===
+  Total sign ZDOs: 221348
+  Blank/arrow: 140260
+  Unique non-blank texts: 34835
+  Top 30 most-used sign texts:
+    1355x  <size=30><#000>?
+     665x  <size=50><#000>?
+     628x  <color=black>...
+     583x  ...
+     480x  <size=720><#008B8B50>?
+     480x  <size=105><voffset=-135.4><indent=-151><line-height=74.77><rotate=90><#008B8B30>?<size=100><#008B8B00>?<size=105><#008B8B30>?\n<size=109><voffset=85.265><indent=-320.3><line-height=96.77><rotate=90><#008B8B30>?<voffset=119.86><indent=-340.6><size=75.05><#008B8B30>?<size=109><indent=-320.3><voffset=128.700><#008B8B30>?
+     456x  <color=#FF4F00><size=500>?
+     280x  <voffset=-2420><indent=0><rotate=><size=1520><line-height=0><color=black><br>?
+     241x  <voffset=8><size=14><#345>?</color></size></voffset>
+     241x  <voffset=5><size=3><line-height=3><#345>Stay warm, Ranger!</color></line-height></size></voffset>
+     240x  Beekeeping
+     240x  HIGH WARDEN
+     240x  Cold Case
+     240x  Defrost
+     240x  SCOUT
+     240x  Wolf Tracks
+     240x  TRAILBLAZER
+     240x  The Helper
+     240x  <#000><size=6><line-height=2.5><indent=74><rotate=-90>T\nU\nR\nN\n-\nI\nN\nS</rotate></size></line-height></indent></color>
+     240x  God-Firs
+     240x  if you load the wrong file:
+     240x  /undoload
+     240x  WARDEN
+     240x  <#ffffff><indent=260><voffset=-1><size=10><line-height=6><rotate=-90><#00FFFF>Troll
+     240x  <#ffffff><indent=290><size=10><line-height=6><rotate=-90><#00FFFF>L12
+     240x  <size=240><color=#0FF0FF1F><indent=-200><voffset=10>?
+     240x  <size=30><color=#0FF0FF2F><indent=-210><voffset=-10>?
+     240x  <size=220><color=#0FF0FF3F><indent=-390>?
+     240x  ??????? ???? ?????? ?? ? ?????Q??? ??? ???? ??? ?????Q??? ???'? ???? ?? ???? ?? ??? ???? ?? ????? ? ??? ?????? ?? ??????????? ??? ?????Q??? ?? ??? ???? ??? ?????? ????
+     240x  ?????? ?? ???? ?????????
+
+=== ITEM STANDS ===
+  Total item stand ZDOs: 378406
+  Top 40 displayed items:
+    13640x  CapeLinen
+     1562x  DragonTear
+     1476x  TrophySurtling
+     1394x  Flametal
+     1174x  Iron
+     1131x  GreydwarfEye
+      881x  MushroomMagecap
+      808x  MushroomYellow
+      773x  CryptKey
+      766x  BlackMetal
+      752x  Tankard
+      712x  SerpentScale
+      702x  Thunderstone
+      542x  Ruby
+      534x  Chain
+      512x  HelmetDverger
+      505x  GemstoneRed
+      505x  Tankard_dvergr
+      470x  SurtlingCore
+      437x  WolfClaw
+      415x  GemstoneGreen
+      412x  Lantern
+      406x  TrophySkeletonHildir
+      374x  FlametalOre
+      373x  GemstoneBlue
+      355x  SwordIronFire
+      341x  DvergrKey
+      341x  TrophyDeer
+      324x  MushroomBlue
+      314x  Thistle
+      306x  Raspberry
+      306x  TankardAnniversary
+      302x  Copper
+      290x  Mushroom
+      282x  Hammer
+      269x  BombSiege
+      268x  TrophyFader
+      265x  ChickenEgg
+      260x  MisthareSupreme
+      255x  MeatPlatter
+
+=== CREATURE CENSUS ===
+  Total creature ZDOs: 52627
+  By type:
+    15862x  Seagal
+     4956x  Skeleton
+     3993x  Deer
+     3885x  Leech
+     3482x  Greydwarf
+     3282x  Crow
+     2491x  Draugr
+     1879x  Surtling
+     1851x  Wolf
+     1825x  Deathsquito
+     1683x  Boar
+     1181x  Blob
+     1172x  Neck
+      624x  Greydwarf_Shaman
+      533x  Leviathan
+      527x  Greydwarf_Elite
+      509x  Draugr_Ranged
+      462x  Greyling
+      462x  Serpent
+      424x  Troll
+      279x  Ghost
+      274x  StoneGolem
+      259x  Draugr_Elite
+      249x  Skeleton_Poison
+      244x  Wraith
+      169x  Fenring
+       70x  BlobElite
+
+=== TOP CREATORS (by structure count) ===
+    362514x  uid=1322811199
+    227416x  uid=-919706520
+    200330x  uid=2947326612
+    137518x  uid=371458731
+     64990x  uid=1376475781
+     60077x  uid=2023239577
+     52978x  uid=2340194039
+     47980x  uid=-1077127134
+     46311x  uid=861950381
+     45540x  uid=210926877
+     37525x  uid=1825255163
+     37136x  uid=437704429
+     33727x  uid=781879803
+     32841x  uid=-484064227
+     32670x  uid=63926004
+     29037x  uid=1507744716
+     28638x  uid=-1992791698
+     26532x  uid=463502057
+     25504x  uid=-179224129
+     25029x  uid=2783775436
+  Total unique creators: 664
+
+=== UNKNOWN HASH PROFILES ===
+  hash:538325542 count=120314
+    floatKeys: [health, support]
+    longKeys: [creator]
+  hash:686545676 count=57597
+    floatKeys: [health, support]
+    longKeys: [creator]
+    strKeys: [text, author]
+    str_text: <#FFF>
+    str_author: Steam_76561198216190459
+    texts: {<#FFF>=1, Electromancy #2=1}
+  hash:-2119951934 count=98248
+    floatKeys: [health, support]
+    longKeys: [creator]
+  hash:650075310 count=55516
+    floatKeys: [health, durability, support]
+    longKeys: [creator]
+    baKeys: [TCData]
+    strKeys: [item]
+    str_item: Raspberry
+    intKeys: [stack, quality]
+    items: {Raspberry=1}
+  hash:1411875912 count=166493
+    floatKeys: [health]
+    longKeys: [creator]
+    intKeys: [stack, quality]
+  hash:1792656179 count=49965
+    floatKeys: [health, support]
+    longKeys: [creator]
+  hash:-1195767551 count=40889
+    floatKeys: [health, support]
+    longKeys: [creator]
+    strKeys: [ammoType]
+    str_ammoType: TurretBolt
+    intKeys: [targets, ammo]
+    ammoTypes: {TurretBolt=12}
+    items: {BarleyFlour=8, ChickenMeat=4, HareMeat=4, Honey=4, HoneyGlazedChicken=4, MeadEitrMinor=12, MeadFrostResist=4, MeadPoisonResist=8, MeadStaminaLingering=12, MisthareSupreme=4, Mushroom=4, MushroomJotunPuffs=4, MushroomMagecap=4, MushroomYellow=4, Salad=8, SeekerAspic=4, SerpentMeat=4, Tankard=8, Tankard_dvergr=8, TrophyGoblinKing=4, TrophySkeletonHildir=8}
+  hash:1272849455 count=46355
+    strKeys: [crafterName]
+    str_crafterName: 
+    intKeys: [worldLevel, pickedUp, stack, dataCount, quality, variant]
+    floatKeys: [durability]
+    longKeys: [crafterID, spawntime]
+  hash:109649212 count=50058
+    strKeys: [crafterName]
+    str_crafterName: 
+    intKeys: [worldLevel, pickedUp, stack, dataCount, quality, variant]
+    floatKeys: [durability]
+    longKeys: [crafterID, spawntime]
+  hash:-2129458801 count=60648
+    floatKeys: [health]
+    intKeys: [picked, enabled]
+    longKeys: [creator]
+  hash:-62980316 count=50777
+    floatKeys: [scaleScalar, health]
+    longKeys: [creator]
+  hash:-1161852777 count=154982
+    floatKeys: [health, durability, support, fuel]
+    longKeys: [lastTime, creator]
+    strKeys: [item]
+    str_item: MeadPoisonResist
+    intKeys: [stack, quality]
+    items: {MeadPoisonResist=1}
+  hash:-502993694 count=52096
+    floatKeys: [health, support]
+    longKeys: [creator]
+  hash:1341839349 count=34481
+    floatKeys: [health, support]
+    longKeys: [creator]
+  hash:-2053541920 count=30425
+    floatKeys: [health]
+    longKeys: [creator]
+  hash:-494364525 count=99016
+    floatKeys: [health]
+    longKeys: [creator]
+    baKeys: [TCData]

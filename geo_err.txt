@@ -1,0 +1,3 @@
+.........WARN File not fully read, 1922613 bytes remain
+
+Done in 6250ms

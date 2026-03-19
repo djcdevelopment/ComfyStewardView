@@ -1,0 +1,48 @@
+
+=== hash:650075310 #1 @ (-1888,-9831) ===
+  All properties:
+  floats:  {health=1.0E21, support=100.0}
+  longs:   {creator=-179224129}
+  [no TCData]
+
+=== hash:650075310 #2 @ (-1888,-9832) ===
+  All properties:
+  floats:  {health=1.0E21, support=100.0}
+  longs:   {creator=-179224129}
+  [no TCData]
+
+=== hash:650075310 #3 @ (-1888,-9832) ===
+  All properties:
+  floats:  {health=1.0E21, support=100.0}
+  longs:   {creator=-179224129}
+  [no TCData]
+
+=== hash:1411875912 #1 @ (1561,-9816) ===
+  All properties:
+  floats:  {health=1.0E17}
+  longs:   {creator=509752962}
+  [no TCData]
+
+=== hash:1411875912 #2 @ (1561,-9816) ===
+  All properties:
+  floats:  {health=1.0E17}
+  longs:   {creator=509752962}
+  [no TCData]
+
+=== hash:1411875912 #3 @ (1562,-9811) ===
+  All properties:
+  floats:  {health=1.0E17}
+  longs:   {creator=509752962}
+  [no TCData]
+
+=== hash:-494364525 #1 @ (-2944,-7164) ===
+  All properties:
+  [no TCData]
+
+=== hash:-494364525 #2 @ (-2943,-7163) ===
+  All properties:
+  [no TCData]
+
+=== hash:-494364525 #3 @ (-2942,-7165) ===
+  All properties:
+  [no TCData]

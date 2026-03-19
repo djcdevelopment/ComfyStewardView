@@ -1,0 +1,61 @@
+You are in reconnaissance mode only. Do not build a full parser yet. Do not install mods, run the game, or mutate the source files unless absolutely necessary for a read-only inspection. Goal: take a peek at these two Valheim world files and learn enough about their structure to recommend the fastest path to extracting useful metrics later.
+
+Files to inspect:
+- ComfyEra14.db
+- ComfyEra14.fwl
+
+Primary objective:
+Figure out what these files appear to be, what tooling can read them, and what evidence we can gather immediately from the raw files without reverse engineering the whole format.
+
+Questions to answer:
+1. Are these files compressed, binary, protobuf-like, Unity-serialized, or otherwise recognizable?
+2. Do they contain readable strings that hint at schema, prefab names, item names, coordinates, world metadata, or version markers?
+3. Does `.fwl` look like metadata/header and `.db` like world-state payload?
+4. Can we identify any obvious delimiters, magic bytes, version bytes, hashes, or repeated record patterns?
+5. What is the most practical next step for extracting data elements like build-piece counts, coins/gold, containers, structures, etc.?
+
+Constraints:
+- Read-only investigation first.
+- Prefer built-in shell tools plus tiny disposable scripts.
+- No big implementation. No speculative parser.
+- Capture findings with evidence, not guesses.
+- If a known open-source parser/library is discovered locally or via package manager/docs already available in environment, note it, but the main task is still file inspection.
+- Be explicit about uncertainty.
+
+Required work:
+1. Inspect file sizes, timestamps, and basic file-type hints.
+2. Hex-peek the first 128-256 bytes of each file.
+3. Search both files for printable strings and summarize any interesting hits.
+4. Look for signs of compression/encryption/serialization.
+5. Compare the two files and infer likely roles of `.db` vs `.fwl`.
+6. Produce a short recommendation: “next best move” for a throwaway extractor pipeline.
+
+Deliverable format:
+## FINDINGS
+- concise bullets with evidence
+
+## RAW INDICATORS
+- file sizes
+- first bytes / hex signature
+- notable printable strings
+- any repeated patterns or suspected record structure
+
+## INTERPRETATION
+- what the files most likely are
+- confidence level and why
+
+## NEXT BEST MOVE
+- the smallest practical next step to get useful extractable data fast
+
+## COMMAND LOG
+- exact commands/scripts used
+
+Preferred style:
+Be concrete. Show outputs that matter. Avoid long theory dumps.
+
+If useful, write tiny throwaway Python or shell snippets for:
+- hexdump
+- printable string extraction
+- entropy-ish sanity checks
+- spotting repeated byte patterns
+But keep everything inspection-focused.

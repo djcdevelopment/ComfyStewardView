@@ -1,0 +1,63 @@
+SLF4J(W): Class path contains multiple SLF4J providers.
+SLF4J(W): Found provider [ch.qos.logback.classic.spi.LogbackServiceProvider@33c7353a]
+SLF4J(W): Found provider [org.slf4j.simple.SimpleServiceProvider@681a9515]
+SLF4J(W): See https://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J(I): Actual provider is of type [ch.qos.logback.classic.spi.LogbackServiceProvider@33c7353a]
+05:22:25 [main] INFO  c.v.v.c.StConfig - Loaded config from D:\work\temp\viewer\steward-config.json
+05:22:25 [main] INFO  c.v.viewer.Main - Loading: D:\work\temp\viewer\..\ComfyEra14.db
+05:22:25 [main] INFO  c.v.viewer.Main - Parsing world data...
+05:22:26 [main] INFO  c.v.v.p.WorldParser - File read into memory: 819ms (1049 MB)
+05:22:26 [main] INFO  c.v.v.p.WorldParser - World version=35, ZDOs=8016512
+05:22:26 [main] INFO  c.v.v.p.WorldParser - Parsing 1000/8016512 ZDOs (0%) — 1183/sec
+05:22:26 [main] INFO  c.v.v.p.WorldParser - Parsing 10000/8016512 ZDOs (0%) — 11695/sec
+05:22:26 [main] INFO  c.v.v.p.WorldParser - Parsing 100000/8016512 ZDOs (1%) — 113122/sec
+05:22:26 [main] INFO  c.v.v.p.WorldParser - Parsing 500000/8016512 ZDOs (6%) — 508130/sec
+05:22:27 [main] INFO  c.v.v.p.WorldParser - Parsing 1000000/8016512 ZDOs (12%) — 790513/sec
+05:22:27 [main] INFO  c.v.v.p.WorldParser - Parsing 1500000/8016512 ZDOs (18%) — 1122754/sec
+05:22:27 [main] INFO  c.v.v.p.WorldParser - Parsing 2000000/8016512 ZDOs (24%) — 1436781/sec
+05:22:27 [main] INFO  c.v.v.p.WorldParser - Parsing 2500000/8016512 ZDOs (31%) — 1743375/sec
+05:22:27 [main] INFO  c.v.v.p.WorldParser - Parsing 3000000/8016512 ZDOs (37%) — 2036659/sec
+05:22:27 [main] INFO  c.v.v.p.WorldParser - Parsing 3500000/8016512 ZDOs (43%) — 2287581/sec
+05:22:27 [main] INFO  c.v.v.p.WorldParser - Parsing 4000000/8016512 ZDOs (49%) — 2522068/sec
+05:22:27 [main] INFO  c.v.v.p.WorldParser - Parsing 4500000/8016512 ZDOs (56%) — 2738892/sec
+05:22:27 [main] INFO  c.v.v.p.WorldParser - Parsing 5000000/8016512 ZDOs (62%) — 2906976/sec
+05:22:27 [main] INFO  c.v.v.p.WorldParser - Parsing 5500000/8016512 ZDOs (68%) — 3098591/sec
+05:22:27 [main] INFO  c.v.v.p.WorldParser - Parsing 6000000/8016512 ZDOs (74%) — 3196590/sec
+05:22:27 [main] INFO  c.v.v.p.WorldParser - Parsing 6500000/8016512 ZDOs (81%) — 3216229/sec
+05:22:28 [main] INFO  c.v.v.p.WorldParser - Parsing 7000000/8016512 ZDOs (87%) — 3245248/sec
+05:22:28 [main] INFO  c.v.v.p.WorldParser - Parsing 7500000/8016512 ZDOs (93%) — 3186066/sec
+05:22:28 [main] INFO  c.v.v.p.WorldParser - Parsing 8000000/8016512 ZDOs (99%) — 3152088/sec
+05:22:28 [main] INFO  c.v.v.p.WorldParser - Parsed 8016512 ZDOs in 2545ms. Store: 910769 entries, 2645528 buildings, 302951 dropped
+05:22:28 [main] INFO  c.v.viewer.Main - Parse complete: 910769 ZDOs (interesting) in 2545ms
+05:22:28 [main] INFO  c.v.viewer.Main - Building contracts...
+05:22:28 [main] INFO  c.v.v.e.ContractBuilder - ContractBuilder: 9133 portals, 0 dropped, 89846 entities, 162994 containers, 648650 records in 229ms
+05:22:28 [main] INFO  c.v.viewer.Main - Contracts ready: 9133 portals, 0 dropped items, 89846 entities, 162994 containers
+05:22:28 [main] INFO  c.v.viewer.Main - Computing metrics...
+05:22:28 [main] INFO  c.v.v.e.RegionLoader - No regions.json found — using origin fallback for zone budgets
+05:22:28 [main] INFO  c.v.v.e.MetricsBuilder - MetricsBuilder: 430 clusters, 1 budgets, 262 hotspots, 39 droppedHotspots in 200ms
+05:22:28 [main] INFO  c.v.viewer.Main - Metrics ready: 430 portal clusters, 1 zone budgets, 262 hotspots
+05:22:28 [main] INFO  c.v.viewer.Main - Building sectors...
+05:22:29 [main] INFO  c.v.v.e.SectorBuilder - SectorBuilder: 8202 occupied sectors, 262 high-density, 262 hotspots in 83ms
+05:22:29 [main] INFO  c.v.viewer.Main - Detecting structures...
+05:22:29 [main] INFO  c.v.v.e.StructureDetector - StructureDetector: 122 structures (active=99 cleared=23 unknown=0) in 11ms
+05:22:29 [main] INFO  c.v.viewer.Main - Structures ready: 122 total (99 active, 23 cleared, 0 unknown)
+05:22:29 [main] INFO  c.v.viewer.Main - Building alerts...
+05:22:29 [main] INFO  c.v.v.e.AlertBuilder - AlertBuilder: 3852 alerts (critical=0 high=43 medium=3798 low=11) in 24ms
+05:22:29 [main] INFO  c.v.viewer.Main - Alerts ready: 3852 total (critical=0 high=43 medium=3798 low=11)
+05:22:29 [main] INFO  io.javalin.Javalin - Starting Javalin ...
+05:22:29 [main] INFO  io.javalin.Javalin - 
+       __                  ___           _____
+      / /___ __   ______ _/ (_)___      / ___/
+ __  / / __ `/ | / / __ `/ / / __ \    / __ \
+/ /_/ / /_/ /| |/ / /_/ / / / / / /   / /_/ /
+\____/\__,_/ |___/\__,_/_/_/_/ /_/    \____/
+
+       https://javalin.io/documentation
+
+05:22:29 [main] INFO  io.javalin.Javalin - Javalin started in 191ms \o/
+05:22:29 [main] INFO  io.javalin.Javalin - Static file handler added: StaticFileConfig(hostedPath=/, directory=/static, location=CLASSPATH, precompress=false, aliasCheck=null, headers={Cache-Control=max-age=0}, skipFileFunction=Function1<jakarta.servlet.http.HttpServletRequest, java.lang.Boolean>, mimeTypes={}). File system location: 'jar:file:/D:/work/temp/viewer/target/world-viewer-1.0.0.jar!/static'
+05:22:29 [main] INFO  io.javalin.Javalin - Listening on http://localhost:7070/
+05:22:29 [main] INFO  io.javalin.Javalin - You are running Javalin 6.3.0 (released August 22, 2024. Your Javalin version is 573 days old. Consider checking for a newer version.).
+05:22:29 [main] INFO  c.v.v.api.ApiServer - API server started on port 7070
+05:22:29 [main] INFO  c.v.viewer.Main - Viewer ready: http://localhost:7070
+05:22:29 [main] INFO  c.v.viewer.Main - Ready. Press Ctrl+C to stop.

@@ -1,0 +1,138 @@
+=== EXTENDED HASH RESOLUTION ===
+Trying 382 candidates...
+  Resolved 0 / 16 target hashes
+
+=== FULL PROPERTY DUMP (first 3 of each target) ===
+
+--- hash:538325542 #1 ---
+  pos: x=-0.1 y=69.3 z=-16235.7
+  prefabName: null
+  floats: {health=1.0E17, support=215.39352}
+  longs: {creator=1322811199}
+
+--- hash:538325542 #2 ---
+  pos: x=-3.9 y=70.9 z=-16243.2
+  prefabName: null
+  floats: {health=1.0E17, support=774.7317}
+  longs: {creator=1322811199}
+
+--- hash:538325542 #3 ---
+  pos: x=4.1 y=74.9 z=-16233.1
+  prefabName: null
+  floats: {health=1.0E17, support=456.79465}
+  longs: {creator=1322811199}
+
+--- hash:-2119951934 #1 ---
+  pos: x=-279.2 y=33.8 z=-9907.4
+  prefabName: null
+  floats: {support=2000.0}
+
+--- hash:-2119951934 #2 ---
+  pos: x=-279.2 y=33.8 z=-9903.4
+  prefabName: null
+  floats: {support=2000.0}
+
+--- hash:-2119951934 #3 ---
+  pos: x=-278.2 y=35.8 z=-9932.4
+  prefabName: null
+  floats: {support=2000.0}
+
+--- hash:1272849455 #1 ---
+  pos: x=-916.8 y=19.8 z=-8072.3
+  prefabName: null
+  strings: {crafterName=}
+  ints: {worldLevel=0, pickedUp=0, stack=1, dataCount=0, quality=2, variant=0}
+  floats: {durability=100.0}
+  longs: {crafterID=0, spawntime=41239429083903}
+
+--- hash:109649212 #1 ---
+  pos: x=-863.0 y=28.3 z=-8076.2
+  prefabName: null
+  strings: {crafterName=}
+  ints: {worldLevel=0, pickedUp=0, stack=1, dataCount=0, quality=1, variant=0}
+  floats: {durability=100.0}
+  longs: {crafterID=0, spawntime=75735079815696}
+
+--- hash:109649212 #2 ---
+  pos: x=-854.4 y=29.7 z=-8094.6
+  prefabName: null
+  strings: {crafterName=}
+  ints: {worldLevel=0, pickedUp=0, stack=1, dataCount=0, quality=1, variant=0}
+  floats: {durability=100.0}
+  longs: {crafterID=0, spawntime=75735079815696}
+
+--- hash:109649212 #3 ---
+  pos: x=-854.7 y=27.8 z=-8094.5
+  prefabName: null
+  strings: {crafterName=}
+  ints: {worldLevel=0, pickedUp=0, stack=1, dataCount=0, quality=1, variant=0}
+  floats: {durability=100.0}
+  longs: {crafterID=0, spawntime=75735079815696}
+
+--- hash:1272849455 #2 ---
+  pos: x=-703.9 y=28.2 z=-8034.7
+  prefabName: null
+  strings: {crafterName=}
+  ints: {worldLevel=0, pickedUp=0, stack=1, dataCount=0, quality=1, variant=0}
+  floats: {durability=100.0}
+  longs: {crafterID=0, spawntime=10672373961453}
+
+--- hash:1272849455 #3 ---
+  pos: x=-404.5 y=27.5 z=-8043.7
+  prefabName: null
+  strings: {crafterName=}
+  ints: {worldLevel=0, pickedUp=0, stack=1, dataCount=0, quality=2, variant=0}
+  floats: {durability=100.0}
+  longs: {crafterID=0, spawntime=10672760961445}
+
+--- hash:-494364525 #1 ---
+  pos: x=-2944.6 y=191.1 z=-7164.1
+  prefabName: null
+
+--- hash:-494364525 #2 ---
+  pos: x=-2943.2 y=190.7 z=-7163.6
+  prefabName: null
+
+--- hash:-494364525 #3 ---
+  pos: x=-2942.4 y=191.4 z=-7165.0
+  prefabName: null
+
+=== NEARBY ZDOs (z: -8200 to -7800, x: -1200 to 1200) ===
+  Top 40 by count:
+     254x  hash:1703108136
+     197x  hash:-293234486
+     131x  hash:109649212
+     124x  hash:1272849455
+     114x  hash:-1661430005
+      70x  hash:-1799123710
+      57x  hash:109649211
+      53x  hash:1576173780
+      40x  hash:109649213
+      35x  hash:109649207
+      35x  hash:1172889253
+      21x  hash:109649209
+       9x  hash:432248582
+       7x  hash:-405903669
+       4x  hash:-2129458801
+       4x  hash:1255899486
+       3x  hash:-958010034
+       2x  hash:-845950839
+       2x  hash:-661882940
+       2x  hash:-313992107
+       2x  hash:118230510
+       1x  hash:-1729390917
+       1x  hash:-1495166496
+       1x  hash:-1218711148
+       1x  hash:-1209701263
+       1x  hash:-967197066
+       1x  hash:-559501202
+       1x  hash:-462474485
+       1x  hash:-367065113
+       1x  hash:81702400
+       1x  hash:212315135
+       1x  hash:396764791
+       1x  hash:443137929
+       1x  hash:584343451
+       1x  hash:676739018
+       1x  hash:1007457867
+       1x  hash:1084866395

@@ -1,0 +1,4 @@
+worldVersion=35 netTime=1.0687829093954321E7 totalZdos=8016512
+.........WARN File not fully read, 1922613 bytes remain
+
+Done in 4319ms

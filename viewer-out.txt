@@ -1,0 +1,46 @@
+03:32:41 [main] INFO  c.v.v.c.StConfig - Loaded config from D:\work\temp\viewer\steward-config.json
+03:32:41 [main] INFO  c.v.viewer.Main - Loading: D:\work\temp\ComfyEra14.db
+03:32:41 [main] INFO  c.v.viewer.Main - Parsing world data...
+03:32:42 [main] INFO  c.v.v.p.WorldParser - File read into memory: 713ms (1049 MB)
+03:32:42 [main] INFO  c.v.v.p.WorldParser - World version=35, ZDOs=8016512
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 1000/8016512 ZDOs (0%) — 1347/sec
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 10000/8016512 ZDOs (0%) — 13297/sec
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 100000/8016512 ZDOs (1%) — 128040/sec
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 500000/8016512 ZDOs (6%) — 570776/sec
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 1000000/8016512 ZDOs (12%) — 1003009/sec
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 1500000/8016512 ZDOs (18%) — 1359927/sec
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 2000000/8016512 ZDOs (24%) — 1734605/sec
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 2500000/8016512 ZDOs (31%) — 2095557/sec
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 3000000/8016512 ZDOs (37%) — 2435064/sec
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 3500000/8016512 ZDOs (43%) — 2732240/sec
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 4000000/8016512 ZDOs (49%) — 2994011/sec
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 4500000/8016512 ZDOs (56%) — 3239740/sec
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 5000000/8016512 ZDOs (62%) — 3457814/sec
+03:32:42 [main] INFO  c.v.v.p.WorldParser - Parsing 5500000/8016512 ZDOs (68%) — 3637566/sec
+03:32:43 [main] INFO  c.v.v.p.WorldParser - Parsing 6000000/8016512 ZDOs (74%) — 3450258/sec
+03:32:43 [main] INFO  c.v.v.p.WorldParser - Parsing 6500000/8016512 ZDOs (81%) — 3621169/sec
+03:32:43 [main] INFO  c.v.v.p.WorldParser - Parsing 7000000/8016512 ZDOs (87%) — 3763440/sec
+03:32:43 [main] INFO  c.v.v.p.WorldParser - Parsing 7500000/8016512 ZDOs (93%) — 3672869/sec
+03:32:43 [main] INFO  c.v.v.p.WorldParser - Parsing 8000000/8016512 ZDOs (99%) — 3603603/sec
+03:32:43 [main] INFO  c.v.v.p.WorldParser - Parsed 8016512 ZDOs in 2224ms. Store: 910749 entries, 2645548 buildings, 302951 dropped
+03:32:43 [main] INFO  c.v.viewer.Main - Parse complete: 910749 ZDOs (interesting) in 2224ms
+03:32:43 [main] INFO  c.v.viewer.Main - Building contracts...
+03:32:43 [main] INFO  c.v.v.e.ContractBuilder - ContractBuilder: 9133 portals, 0 dropped, 89846 entities, 162994 containers, 607863 records in 167ms
+03:32:43 [main] INFO  c.v.viewer.Main - Contracts ready: 9133 portals, 0 dropped items, 89846 entities, 162994 containers
+03:32:43 [main] INFO  io.javalin.Javalin - Starting Javalin ...
+03:32:43 [main] INFO  io.javalin.Javalin - 
+       __                  ___           _____
+      / /___ __   ______ _/ (_)___      / ___/
+ __  / / __ `/ | / / __ `/ / / __ \    / __ \
+/ /_/ / /_/ /| |/ / /_/ / / / / / /   / /_/ /
+\____/\__,_/ |___/\__,_/_/_/_/ /_/    \____/
+
+       https://javalin.io/documentation
+
+03:32:43 [main] INFO  io.javalin.Javalin - Javalin started in 175ms \o/
+03:32:43 [main] INFO  io.javalin.Javalin - Static file handler added: StaticFileConfig(hostedPath=/, directory=/static, location=CLASSPATH, precompress=false, aliasCheck=null, headers={Cache-Control=max-age=0}, skipFileFunction=Function1<jakarta.servlet.http.HttpServletRequest, java.lang.Boolean>, mimeTypes={}). File system location: 'jar:file:/D:/work/temp/viewer/target/world-viewer-1.0.0.jar!/static'
+03:32:43 [main] INFO  io.javalin.Javalin - Listening on http://localhost:7070/
+03:32:43 [main] INFO  io.javalin.Javalin - You are running Javalin 6.3.0 (released August 22, 2024. Your Javalin version is 573 days old. Consider checking for a newer version.).
+03:32:43 [main] INFO  c.v.v.api.ApiServer - API server started on port 7070
+03:32:43 [main] INFO  c.v.viewer.Main - Viewer ready: http://localhost:7070
+03:32:43 [main] INFO  c.v.viewer.Main - Ready. Press Ctrl+C to stop.

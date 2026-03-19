@@ -1,0 +1,29 @@
+{
+  "_comment" : "Valheim World Viewer — Steward Config. Restart to apply.",
+  "sector_size_m" : 200,
+  "cluster" : {
+    "portal_radius_m" : 200,
+    "portal_min_size" : 5,
+    "entity_radius_m" : 100
+  },
+  "density" : {
+    "build_risk_zdo_count" : 800,
+    "hotspot_sigma_multiplier" : 2.0,
+    "hotspot_min_cells" : 10,
+    "high_density_sector_zdo_count" : 500
+  },
+  "budgets" : {
+    "default_spawn_radius_m" : 500,
+    "default_spawn_max_zdos" : 2000
+  },
+  "structures" : {
+    "spawner_scan_radius_m" : 300,
+    "entrance_prefabs" : [ "Crypt2", "Crypt3", "Crypt4", "SunkenCrypt2", "SunkenCrypt3", "SunkenCrypt4", "FrostCaves", "MountainCave", "Mistlands_DvergrTownEntrance1", "AshlandsGjall" ]
+  },
+  "taxonomy" : {
+    "unknown_surge_threshold_pct" : 20
+  },
+  "metrics" : {
+    "top_prefabs_global_n" : 20
+  }
+}

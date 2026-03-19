@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Valheim World Viewer</title>
+
+  <!-- Tailwind CDN (dark mode) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { darkMode: 'class' }</script>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Alpine.js -->
+  <script defer src="https://unpkg.com/alpinejs@3.13.5/dist/cdn.min.js"></script>
+
+  <!-- Tabulator -->
+  <link href="https://unpkg.com/tabulator-tables@6.2.1/dist/css/tabulator_midnight.min.css" rel="stylesheet"/>
+  <script src="https://unpkg.com/tabulator-tables@6.2.1/dist/js/tabulator.min.js"></script>
+
+  <style>
+    html, body { height: 100%; margin: 0; background: #111827; color: #e5e7eb; }
+    #map { background: #1a2233; }
+
+    /* Heatmap canvas overlay */
+    .leaflet-heatmap-layer { pointer-events: none; }
+
+    /* Loading overlay */
+    #loading-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 9999; transition: opacity 0.5s;
+    }
+    #loading-overlay.hidden { opacity: 0; pointer-events: none; }
+
+    /* Tab bar */
+    .tab-btn { transition: background 0.15s; }
+    .tab-btn.active { background: #1d4ed8 !important; }
+
+    /* Portal status badges */
+    .badge-PAIRED  { background: #16a34a; }
+    .badge-ORPHANED { background: #dc2626; }
+    .badge-HUB     { background: #9333ea; }
+    .badge-BLANK_TAG { background: #6b7280; }
+    .badge-MISMATCH { background: #d97706; }
+
+    /* Alert severity */
+    .sev-critical { color: #ef4444; font-weight: bold; text-transform: uppercase; }
+    .sev-high     { color: #f97316; font-weight: bold; text-transform: uppercase; }
+    .sev-medium   { color: #eab308; text-transform: uppercase; }
+    .sev-low      { color: #60a5fa; text-transform: uppercase; }
+
+    /* Structure status */
+    .st-active         { color: #22c55e; font-weight: bold; }
+    .st-likely_cleared { color: #9ca3af; }
+    .st-unknown        { color: #6b7280; }
+
+    /* Tabulator overrides */
+    .tabulator { font-size: 12px; }
+
+    /* Sidebar */
+    #sidebar { width: 360px; min-width: 280px; max-width: 480px; resize: horizontal; overflow: auto; }
+
+    /* Map container */
+    #map-wrapper { position: relative; flex: 1; }
+
+    /* Tooltip */
+    #map-tooltip {
+      position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.7); padding: 4px 12px; border-radius: 4px;
+      font-size: 11px; color: #9ca3af; pointer-events: none; z-index: 1000;
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-200 flex flex-col h-screen" x-data="app()" x-init="init()">
+
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <div class="text-center">
+    <div class="text-2xl font-bold text-blue-400 mb-2">Valheim World Viewer</div>
+    <div class="text-gray-400 mb-6" x-text="loadStatus"></div>
+    <div class="w-80 h-3 bg-gray-700 rounded-full overflow-hidden">
+      <div class="h-full bg-blue-500 rounded-full transition-all duration-300" :style="`width:${loadPct}%`"></div>
+    </div>
+    <div class="text-sm text-gray-500 mt-2" x-text="`${loadParsed.toLocaleString()} / ${loadTotal.toLocaleString()} ZDOs`"></div>
+  </div>
+</div>
+
+<!-- Top nav bar -->
+<nav class="flex items-center gap-3 bg-gray-800 px-4 py-2 border-b border-gray-700 flex-shrink-0">
+  <span class="text-blue-400 font-bold text-lg mr-2">⚔ Valheim Viewer</span>
+
+  <!-- Tab buttons -->
+  <template x-for="tab in tabs" :key="tab.id">
+    <button class="tab-btn px-3 py-1 rounded text-sm bg-gray-700 hover:bg-gray-600"
+            :class="{ active: activeTab === tab.id }"
+            @click="switchTab(tab.id)"
+            x-text="tab.label"></button>
+  </template>
+
+  <!-- Spacer -->
+  <div class="flex-1"></div>
+
+  <!-- Summary quick stats -->
+  <template x-if="summary">
+    <div class="flex gap-4 text-xs text-gray-400">
+      <span>ZDOs: <b class="text-gray-200" x-text="summary.totalZdos?.toLocaleString()"></b></span>
+      <span>Players: <b class="text-gray-200" x-text="summary.playerCount"></b></span>
+      <span>Portals: <b class="text-gray-200" x-text="summary.portalCount?.toLocaleString()"></b></span>
+      <span>Parse: <b class="text-gray-200" x-text="`${summary.parseDurationMs}ms`"></b></span>
+    </div>
+  </template>
+  <template x-if="worldSummary">
+    <div class="flex gap-3 text-xs text-gray-400 border-l border-gray-600 pl-3">
+      <span>Structs: <b class="text-yellow-400" x-text="worldSummary.data?.stats?.structures?.total || 0"></b></span>
+      <template x-if="(worldSummary.data?.stats?.alerts?.critical || 0) > 0">
+        <span class="font-bold text-red-400" x-text="`🚨 ${worldSummary.data.stats.alerts.critical} crit`"></span>
+      </template>
+      <span>
+        Alerts:
+        <b class="text-orange-400" x-text="worldSummary.data?.stats?.alerts?.high || 0"></b>H /
+        <b class="text-yellow-400" x-text="worldSummary.data?.stats?.alerts?.medium || 0"></b>M /
+        <b class="text-blue-400"   x-text="worldSummary.data?.stats?.alerts?.low || 0"></b>L
+      </span>
+    </div>
+  </template>
+</nav>
+
+<!-- Main content -->
+<div class="flex flex-1 overflow-hidden">
+
+  <!-- =========== MAP TAB =========== -->
+  <div class="flex flex-1 overflow-hidden" x-show="activeTab === 'map'">
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="bg-gray-800 border-r border-gray-700 flex flex-col overflow-hidden flex-shrink-0">
+      <div class="p-3 border-b border-gray-700">
+        <div class="text-sm font-semibold text-gray-300 mb-2">Heatmap Layer</div>
+        <div class="flex gap-2 flex-wrap">
+          <template x-for="layer in heatmapLayers" :key="layer.id">
+            <button class="px-2 py-1 text-xs rounded border"
+                    :class="activeLayer === layer.id
+                      ? 'bg-blue-600 border-blue-500 text-white'
+                      : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'"
+                    @click="switchHeatmapLayer(layer.id)"
+                    x-text="layer.label"></button>
+          </template>
+          <button class="px-2 py-1 text-xs rounded border bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600"
+                  :class="showHeatmap ? '' : 'opacity-50'"
+                  @click="toggleHeatmap()"
+                  x-text="showHeatmap ? 'Hide' : 'Show'"></button>
+        </div>
+        <div class="mt-2">
+          <label class="text-xs text-gray-400">Opacity</label>
+          <input type="range" min="0.1" max="1" step="0.05" x-model.number="heatmapOpacity"
+                 @input="redrawHeatmap()" class="w-full accent-blue-500"/>
+        </div>
+        <div class="mt-1">
+          <label class="text-xs text-gray-400">Color Scheme</label>
+          <select x-model="heatmapScheme" @change="redrawHeatmap()" class="w-full bg-gray-700 text-gray-200 text-xs rounded px-2 py-1 mt-1">
+            <option value="hot">Hot (blue→red)</option>
+            <option value="green">Green density</option>
+            <option value="viridis">Viridis</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Point overlay controls -->
+      <div class="p-3 border-b border-gray-700">
+        <div class="text-sm font-semibold text-gray-300 mb-2">Point Overlays</div>
+        <template x-for="overlay in pointOverlays" :key="overlay.id">
+          <label class="flex items-center gap-2 text-xs mb-1 cursor-pointer">
+            <input type="checkbox" x-model="overlay.active" @change="toggleOverlay(overlay)"
+                   class="accent-blue-500"/>
+            <span :style="`color:${overlay.color}`">●</span>
+            <span x-text="overlay.label"></span>
+          </label>
+        </template>
+      </div>
+
+      <!-- Filters -->
+      <div class="p-3 border-b border-gray-700">
+        <div class="text-sm font-semibold text-gray-300 mb-2">Spawn Time Filter</div>
+        <div class="text-xs text-gray-400 mb-1">World fraction range (0=start, 1=now)</div>
+        <div class="flex gap-2">
+          <input type="number" x-model.number="filterSpawnAfter" step="0.05" min="0" max="2"
+                 class="w-20 bg-gray-700 text-xs text-gray-200 rounded px-2 py-1"/>
+          <span class="text-gray-400 text-xs self-center">→</span>
+          <input type="number" x-model.number="filterSpawnBefore" step="0.05" min="0" max="2"
+                 class="w-20 bg-gray-700 text-xs text-gray-200 rounded px-2 py-1"/>
+          <button @click="applyFilters()" class="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-500 rounded">Apply</button>
+        </div>
+      </div>
+
+      <!-- Map legend -->
+      <div class="p-3 flex-1 overflow-y-auto">
+        <div class="text-sm font-semibold text-gray-300 mb-2">World Bounds</div>
+        <div class="text-xs text-gray-400 space-y-1">
+          <div>X: [-26,500 → 26,500]</div>
+          <div>Z: [-20,500 → 27,500]</div>
+          <div>Cell size: 500 units</div>
+        </div>
+        <div class="mt-3 text-xs text-gray-500">
+          Click map to copy coords.<br/>
+          Scroll to zoom, drag to pan.
+        </div>
+      </div>
+    </aside>
+
+    <!-- Map -->
+    <div id="map-wrapper">
+      <div id="map" class="w-full h-full"></div>
+      <div id="map-tooltip" x-text="mapCoords"></div>
+    </div>
+  </div>
+
+  <!-- =========== PORTALS TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'portals'">
+    <div class="p-4 border-b border-gray-700 flex items-center gap-4">
+      <input x-model="portalSearch" @input="filterPortals()" type="text"
+             placeholder="Search tag..." class="bg-gray-700 text-sm rounded px-3 py-1 text-gray-200 w-64"/>
+      <template x-for="s in ['ALL','PAIRED','ORPHANED','HUB','BLANK_TAG']" :key="s">
+        <button class="px-2 py-1 text-xs rounded border"
+                :class="portalStatusFilter === s
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-700 border-gray-600 text-gray-300'"
+                @click="portalStatusFilter = s; filterPortals()"
+                x-text="s"></button>
+      </template>
+      <span class="text-xs text-gray-400 ml-2" x-text="`${filteredPortals.length.toLocaleString()} portals`"></span>
+    </div>
+    <div id="portal-table" class="flex-1"></div>
+  </div>
+
+  <!-- =========== PLAYERS TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'players'">
+    <div class="p-4 border-b border-gray-700 flex items-center gap-4">
+      <input x-model="playerSearch" @input="filterPlayers()" type="text"
+             placeholder="Search player..." class="bg-gray-700 text-sm rounded px-3 py-1 text-gray-200 w-64"/>
+      <select x-model="playerSort" @change="loadPlayers()" class="bg-gray-700 text-sm rounded px-2 py-1 text-gray-200">
+        <option value="beds">Sort: Beds</option>
+        <option value="deaths">Sort: Deaths</option>
+        <option value="builds">Sort: Builds</option>
+        <option value="portals">Sort: Portals</option>
+      </select>
+      <span class="text-xs text-gray-400" x-text="`${filteredPlayers.length} players`"></span>
+    </div>
+    <div id="player-table" class="flex-1"></div>
+  </div>
+
+  <!-- =========== ECONOMY TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'economy'">
+    <div class="p-4 flex-1 overflow-y-auto">
+      <template x-if="economy">
+        <div>
+          <div class="flex gap-6 mb-4">
+            <div class="bg-gray-800 rounded p-3">
+              <div class="text-xs text-gray-400">Unique Item Types</div>
+              <div class="text-2xl font-bold text-blue-400" x-text="economy.uniqueItemTypes?.toLocaleString()"></div>
+            </div>
+            <div class="bg-gray-800 rounded p-3">
+              <div class="text-xs text-gray-400">Total Items in Chests</div>
+              <div class="text-2xl font-bold text-green-400" x-text="economy.totalItemCount?.toLocaleString()"></div>
+            </div>
+          </div>
+
+          <div class="mb-3 text-sm font-semibold text-gray-300">Top Items in Chests</div>
+          <div id="economy-bars" class="space-y-1">
+            <template x-for="item in economy.topItems" :key="item.name">
+              <div class="flex items-center gap-2">
+                <div class="text-xs text-gray-300 w-40 truncate" x-text="item.name"></div>
+                <div class="flex-1 h-4 bg-gray-700 rounded overflow-hidden">
+                  <div class="h-full bg-blue-600 rounded"
+                       :style="`width:${Math.round(item.count / economy.topItems[0].count * 100)}%`"></div>
+                </div>
+                <div class="text-xs text-gray-400 w-16 text-right" x-text="item.count.toLocaleString()"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- =========== TOMBSTONES TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'tombstones'">
+    <div class="p-4 border-b border-gray-700 flex items-center gap-4">
+      <input x-model="tombstoneSearch" @input="filterTombstones()" type="text"
+             placeholder="Filter by player..." class="bg-gray-700 text-sm rounded px-3 py-1 text-gray-200 w-64"/>
+      <span class="text-xs text-gray-400" x-text="`${filteredTombstones.length} tombstones`"></span>
+    </div>
+    <div id="tombstone-table" class="flex-1"></div>
+  </div>
+
+  <!-- =========== SIGNS TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'signs'">
+    <div class="p-4 border-b border-gray-700 flex items-center gap-4">
+      <input x-model="signSearch" @input="loadSigns()" type="text"
+             placeholder="Search sign text..." class="bg-gray-700 text-sm rounded px-3 py-1 text-gray-200 w-64"/>
+    </div>
+    <div class="flex-1 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+      <template x-for="sign in signs" :key="sign.text + sign.x + sign.z">
+        <div class="bg-gray-800 rounded p-2 text-xs border border-gray-700">
+          <div class="text-gray-200 font-mono" x-text="sign.text"></div>
+          <div class="text-gray-500 mt-1" x-text="`(${Math.round(sign.x)}, ${Math.round(sign.z)})`"></div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- =========== DROPPED ITEMS TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'dropped'">
+    <div class="p-4 flex-1 overflow-y-auto">
+      <template x-if="dropped">
+        <div>
+          <div class="mb-3 bg-gray-800 rounded p-3 inline-block">
+            <span class="text-xs text-gray-400">Total Dropped Items: </span>
+            <span class="text-xl font-bold text-orange-400" x-text="dropped.totalDropped?.toLocaleString()"></span>
+          </div>
+          <div class="space-y-1">
+            <template x-for="item in dropped.types" :key="item.hash">
+              <div class="flex items-center gap-2">
+                <div class="text-xs w-48 truncate" :class="item.name.startsWith('hash:') ? 'text-gray-500' : 'text-gray-200'"
+                     x-text="item.name"></div>
+                <div class="flex-1 h-4 bg-gray-700 rounded overflow-hidden">
+                  <div class="h-full rounded" :class="item.name.startsWith('hash:') ? 'bg-orange-900' : 'bg-orange-500'"
+                       :style="`width:${Math.round(item.count / dropped.types[0].count * 100)}%`"></div>
+                </div>
+                <div class="text-xs text-gray-400 w-16 text-right" x-text="item.count.toLocaleString()"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- =========== ALERTS TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'alerts'">
+    <div class="p-4 border-b border-gray-700 flex items-center gap-3 flex-wrap">
+      <template x-for="s in ['ALL','CRITICAL','HIGH','MEDIUM','LOW']" :key="s">
+        <button class="px-2 py-1 text-xs rounded border"
+                :class="alertSeverityFilter === s
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-700 border-gray-600 text-gray-300'"
+                @click="alertSeverityFilter = s; filterAlerts()"
+                x-text="s"></button>
+      </template>
+      <select x-model="alertTypeFilter" @change="filterAlerts()"
+              class="bg-gray-700 text-sm rounded px-2 py-1 text-gray-200">
+        <option value="">All Types</option>
+        <option value="portal_orphaned">Portal Orphaned</option>
+        <option value="portal_blank_tag">Portal Blank Tag</option>
+        <option value="portal_duplicate_tag">Portal Duplicate Tag</option>
+        <option value="portal_cluster">Portal Cluster</option>
+        <option value="zone_budget">Zone Budget</option>
+        <option value="build_hotspot">Build Hotspot</option>
+        <option value="dropped_hotspot">Dropped Hotspot</option>
+        <option value="economy_unknown_surge">Economy Unknown</option>
+      </select>
+      <span class="text-xs text-gray-400 ml-2" x-text="`${filteredAlerts.length} alerts`"></span>
+    </div>
+    <div id="alert-table" class="flex-1"></div>
+  </div>
+
+  <!-- =========== STRUCTURES TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'structures'">
+    <div class="p-4 border-b border-gray-700 flex items-center gap-3 flex-wrap">
+      <template x-for="s in ['ALL','ACTIVE','LIKELY_CLEARED','UNKNOWN']" :key="s">
+        <button class="px-2 py-1 text-xs rounded border"
+                :class="structureStatusFilter === s
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-700 border-gray-600 text-gray-300'"
+                @click="structureStatusFilter = s; filterStructures()"
+                x-text="s.replaceAll('_',' ')"></button>
+      </template>
+      <select x-model="structureTypeFilter" @change="filterStructures()"
+              class="bg-gray-700 text-sm rounded px-2 py-1 text-gray-200">
+        <option value="">All Types</option>
+        <option value="boss_altar">Boss Altar</option>
+        <option value="dungeon_entrance">Dungeon</option>
+        <option value="cave_entrance">Cave</option>
+        <option value="camp">Camp</option>
+        <option value="ruin">Ruin</option>
+        <option value="unknown">Unknown</option>
+      </select>
+      <select x-model="structureBiomeFilter" @change="filterStructures()"
+              class="bg-gray-700 text-sm rounded px-2 py-1 text-gray-200">
+        <option value="">All Biomes</option>
+        <option value="meadows">Meadows</option>
+        <option value="black_forest">Black Forest</option>
+        <option value="swamp">Swamp</option>
+        <option value="mountain">Mountain</option>
+        <option value="plains">Plains</option>
+        <option value="mistlands">Mistlands</option>
+        <option value="ashlands">Ashlands</option>
+      </select>
+      <span class="text-xs text-gray-400" x-text="`${filteredStructures.length} structures`"></span>
+    </div>
+    <div id="structure-table" class="flex-1"></div>
+  </div>
+
+  <!-- =========== CREATURES TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'creatures'">
+    <div class="p-4 flex-1 overflow-y-auto">
+      <template x-if="creatureSummary">
+        <div>
+          <!-- Stat cards -->
+          <div class="flex gap-4 mb-6 flex-wrap">
+            <div class="bg-gray-800 rounded p-3 min-w-28">
+              <div class="text-xs text-gray-400">Total</div>
+              <div class="text-2xl font-bold text-purple-400" x-text="creatureSummary.total.toLocaleString()"></div>
+            </div>
+            <div class="bg-gray-800 rounded p-3 min-w-28">
+              <div class="text-xs text-gray-400">Hostile</div>
+              <div class="text-2xl font-bold text-red-400" x-text="(creatureSummary.byHostility.hostile||0).toLocaleString()"></div>
+            </div>
+            <div class="bg-gray-800 rounded p-3 min-w-28">
+              <div class="text-xs text-gray-400">Passive</div>
+              <div class="text-2xl font-bold text-green-400" x-text="(creatureSummary.byHostility.passive||0).toLocaleString()"></div>
+            </div>
+            <div class="bg-gray-800 rounded p-3 min-w-28">
+              <div class="text-xs text-gray-400">Neutral / NPC</div>
+              <div class="text-2xl font-bold text-yellow-400"
+                   x-text="((creatureSummary.byHostility.neutral||0)+(creatureSummary.byHostility.unknown||0)).toLocaleString()"></div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- By entity type -->
+            <div>
+              <div class="text-sm font-semibold text-gray-300 mb-2">By Entity Type</div>
+              <div class="space-y-1">
+                <template x-for="[type, count] in Object.entries(creatureSummary.byType).sort((a,b)=>b[1]-a[1])" :key="type">
+                  <div class="flex items-center gap-2">
+                    <div class="text-xs text-gray-300 w-28" x-text="type"></div>
+                    <div class="flex-1 h-4 bg-gray-700 rounded overflow-hidden">
+                      <div class="h-full bg-purple-600 rounded"
+                           :style="`width:${Math.round(count/creatureSummary.total*100)}%`"></div>
+                    </div>
+                    <div class="text-xs text-gray-400 w-16 text-right" x-text="count.toLocaleString()"></div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Top prefabs -->
+            <div>
+              <div class="text-sm font-semibold text-gray-300 mb-2">Top Creature Types</div>
+              <div class="space-y-1">
+                <template x-for="item in creatureSummary.topPrefabs" :key="item.prefab">
+                  <div class="flex items-center gap-2">
+                    <div class="text-xs w-44 truncate"
+                         :class="item.prefab.startsWith('hash:') ? 'text-gray-500' : 'text-gray-200'"
+                         x-text="item.name || item.prefab"></div>
+                    <div class="flex-1 h-4 bg-gray-700 rounded overflow-hidden">
+                      <div class="h-full rounded"
+                           :class="item.hostility==='hostile' ? 'bg-red-600' : item.hostility==='passive' ? 'bg-green-600' : 'bg-yellow-600'"
+                           :style="`width:${Math.round(item.count/creatureSummary.topPrefabs[0].count*100)}%`"></div>
+                    </div>
+                    <div class="text-xs text-gray-400 w-14 text-right" x-text="item.count.toLocaleString()"></div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+      <template x-if="!creatureSummary">
+        <div class="text-gray-500 text-sm mt-8 text-center">Loading creatures...</div>
+      </template>
+    </div>
+  </div>
+
+</div><!-- /main content -->
+
+<script>
+const API = '/api/v1';
+
+// World coordinate helpers
+const WORLD_Z_MIN = -20500, WORLD_Z_MAX = 27500;
+const WORLD_X_MIN = -26500, WORLD_X_MAX = 26500;
+
+function worldToLatLng(x, z) { return L.latLng(z, x); }
+function latLngToWorld(ll)    { return { x: ll.lng, z: ll.lat }; }
+
+function app() {
+  return {
+    // Loading
+    loadStatus: 'Connecting...', loadPct: 0, loadParsed: 0, loadTotal: 0,
+
+    // Active tab
+    activeTab: 'map',
+    tabs: [
+      { id: 'map',       label: '🗺 Map' },
+      { id: 'portals',   label: '🌀 Portals' },
+      { id: 'players',   label: '👤 Players' },
+      { id: 'economy',   label: '💰 Economy' },
+      { id: 'tombstones',label: '💀 Tombstones' },
+      { id: 'signs',     label: '📋 Signs' },
+      { id: 'dropped',    label: '🎒 Dropped' },
+      { id: 'alerts',     label: '🚨 Alerts' },
+      { id: 'structures', label: '🏛 Structures' },
+      { id: 'creatures',  label: '🐾 Creatures' },
+    ],
+
+    // Summary
+    summary: null,
+
+    // Map state
+    map: null,
+    heatmapCanvas: null,
+    heatmapLayer: null,
+    heatmapData: null,
+    activeLayer: 'BUILDING',
+    showHeatmap: true,
+    heatmapOpacity: 0.65,
+    heatmapScheme: 'hot',
+    mapCoords: '',
+    heatmapLayers: [
+      { id: 'BUILDING',     label: 'Buildings' },
+      { id: 'DROPPED_ITEM', label: 'Dropped' },
+      { id: 'ALL',          label: 'All' },
+    ],
+    pointOverlays: [
+      { id: 'PORTAL',    label: 'Portals',    color: '#818cf8', active: false, layer: null },
+      { id: 'BED',       label: 'Beds',       color: '#fb923c', active: false, layer: null },
+      { id: 'TOMBSTONE', label: 'Tombstones', color: '#f43f5e', active: false, layer: null },
+      { id: 'CONTAINER', label: 'Containers', color: '#34d399', active: false, layer: null },
+      { id: 'STRUCTURE', label: 'Structures', color: '#fbbf24', active: false, layer: null },
+    ],
+    filterSpawnAfter:  0,
+    filterSpawnBefore: 2,
+
+    // Portals
+    allPortals: [],
+    filteredPortals: [],
+    portalSearch: '',
+    portalStatusFilter: 'ALL',
+    portalTable: null,
+
+    // Players
+    allPlayers: [],
+    filteredPlayers: [],
+    playerSearch: '',
+    playerSort: 'beds',
+    playerTable: null,
+
+    // Economy
+    economy: null,
+
+    // Tombstones
+    allTombstones: [],
+    filteredTombstones: [],
+    tombstoneSearch: '',
+    tombstoneTable: null,
+
+    // Signs
+    signs: [],
+    signSearch: '',
+
+    // Dropped
+    dropped: null,
+
+    // World summary (alert/structure counts for nav)
+    worldSummary: null,
+
+    // Alerts
+    allAlerts: [], filteredAlerts: [],
+    alertSeverityFilter: 'ALL', alertTypeFilter: '',
+    alertTable: null,
+
+    // Structures
+    allStructures: [], filteredStructures: [],
+    structureStatusFilter: 'ALL', structureTypeFilter: '', structureBiomeFilter: '',
+    structureTable: null,
+
+    // Creatures
+    creatureSummary: null,
+
+    async init() {
+      await this.pollUntilReady();
+      document.getElementById('loading-overlay').classList.add('hidden');
+      this.initMap();
+      this.loadSummary();
+      this.loadWorldSummary();
+      this.switchTab('map');
+    },
+
+    async pollUntilReady() {
+      while (true) {
+        try {
+          const r = await fetch(`${API}/status`);
+          const d = await r.json();
+          this.loadStatus  = d.status;
+          this.loadPct     = d.pct || 0;
+          this.loadParsed  = d.parsed || 0;
+          this.loadTotal   = d.total || 0;
+          if (d.done) break;
+        } catch(e) {
+          this.loadStatus = 'Waiting for server...';
+        }
+        await sleep(500);
+      }
+    },
+
+    async loadSummary() {
+      const d = await fetchJson(`${API}/summary`);
+      this.summary = d;
+    },
+
+    switchTab(id) {
+      this.activeTab = id;
+      this.$nextTick(() => {
+        if (id === 'map' && this.map) this.map.invalidateSize();
+        if (id === 'portals' && !this.portalTable) this.loadPortals();
+        if (id === 'players' && !this.playerTable) this.loadPlayers();
+        if (id === 'economy' && !this.economy) this.loadEconomy();
+        if (id === 'tombstones' && !this.tombstoneTable) this.loadTombstones();
+        if (id === 'signs' && !this.signs.length) this.loadSigns();
+        if (id === 'dropped'    && !this.dropped)         this.loadDropped();
+        if (id === 'alerts'     && !this.alertTable)      this.loadAlerts();
+        if (id === 'structures' && !this.structureTable)  this.loadStructures();
+        if (id === 'creatures'  && !this.creatureSummary) this.loadCreatures();
+      });
+    },
+
+    // ===== MAP =====
+
+    initMap() {
+      if (this.map) return; // already initialized — guard against Alpine re-init
+      const bounds = L.latLngBounds(
+        [WORLD_Z_MIN, WORLD_X_MIN],
+        [WORLD_Z_MAX, WORLD_X_MAX]
+      );
+      this.map = L.map('map', {
+        crs: L.CRS.Simple,
+        minZoom: -7, maxZoom: 4,
+        zoomControl: true,
+      });
+      this.map.fitBounds(bounds.pad(0.2));
+
+      // Grid lines (every 5000 units)
+      this.drawGrid();
+
+      // Coordinate tooltip
+      this.map.on('mousemove', (e) => {
+        const w = latLngToWorld(e.latlng);
+        this.mapCoords = `X: ${Math.round(w.x)}  Z: ${Math.round(w.z)}`;
+      });
+
+      // Copy coords on click
+      this.map.on('click', (e) => {
+        const w = latLngToWorld(e.latlng);
+        navigator.clipboard?.writeText(`${Math.round(w.x)}, ${Math.round(w.z)}`);
+      });
+
+      // Canvas heatmap layer — placed directly in the map container (NOT overlayPane)
+      // so it is NOT subject to leaflet-map-pane's CSS transform during pan.
+      // Content is drawn in container coordinates via latLngToContainerPoint(),
+      // which is always correct regardless of which Leaflet pane is being translated.
+      this.heatmapCanvas = document.createElement('canvas');
+      this.heatmapCanvas.style.position = 'absolute';
+      this.heatmapCanvas.style.left = '0';
+      this.heatmapCanvas.style.top  = '0';
+      this.heatmapCanvas.style.pointerEvents = 'none';
+      this.heatmapCanvas.style.zIndex = '410'; // above overlayPane (400), below markerPane (600)
+      this._heatmapRafPending = false;
+      this.heatmapLayer = new (L.Layer.extend({
+        onAdd: (map) => {
+          map.getContainer().appendChild(this.heatmapCanvas);
+          map.on('move zoomend resize', () => {
+            if (this._heatmapRafPending) return;
+            this._heatmapRafPending = true;
+            requestAnimationFrame(() => {
+              this._heatmapRafPending = false;
+              this.repositionCanvas();
+            });
+          });
+          this.repositionCanvas();
+        },
+        onRemove: (map) => {
+          map.getContainer().removeChild(this.heatmapCanvas);
+          map.off('move zoomend resize');
+        }
+      }))();
+      this.map.addLayer(this.heatmapLayer);
+
+      this.loadHeatmap();
+    },
+
+    drawGrid() {
+      const gridStyle = { color: '#2a3547', weight: 1, opacity: 0.5, dashArray: '4,4' };
+      for (let x = -25000; x <= 25000; x += 5000) {
+        L.polyline([[WORLD_Z_MIN, x], [WORLD_Z_MAX, x]], gridStyle).addTo(this.map);
+        if (x !== 0) L.tooltip({ permanent: true, direction: 'center',
+          className: 'leaflet-tooltip-grid text-xs text-gray-600 bg-transparent border-0 shadow-none' })
+          .setLatLng(worldToLatLng(x, WORLD_Z_MIN + 500))
+          .setContent(`${x}`)
+          .addTo(this.map);
+      }
+      for (let z = -20000; z <= 27000; z += 5000) {
+        L.polyline([[z, WORLD_X_MIN], [z, WORLD_X_MAX]], gridStyle).addTo(this.map);
+      }
+      // Cardinal labels
+      const labelStyle = { permanent: true, direction: 'center',
+        className: 'text-xs font-bold text-blue-400 bg-transparent border-0 shadow-none' };
+      L.tooltip(labelStyle).setLatLng(worldToLatLng(0, WORLD_Z_MAX - 1000)).setContent('NORTH').addTo(this.map);
+      L.tooltip(labelStyle).setLatLng(worldToLatLng(0, WORLD_Z_MIN + 1000)).setContent('SOUTH').addTo(this.map);
+    },
+
+    async loadHeatmap() {
+      const d = await fetchJson(`${API}/heatmap?type=${this.activeLayer}`);
+      this.heatmapData = d;
+      this.redrawHeatmap();
+    },
+
+    repositionCanvas() {
+      if (!this.map || !this.heatmapCanvas || !this.heatmapData) return;
+      const size = this.map.getSize();
+      this.heatmapCanvas.width  = size.x;
+      this.heatmapCanvas.height = size.y;
+      this.redrawHeatmap();
+    },
+
+    redrawHeatmap() {
+      if (!this.map || !this.heatmapData || !this.heatmapCanvas) return;
+      if (!this.showHeatmap) {
+        const ctx = this.heatmapCanvas.getContext('2d');
+        ctx.clearRect(0, 0, this.heatmapCanvas.width, this.heatmapCanvas.height);
+        return;
+      }
+
+      const ctx    = this.heatmapCanvas.getContext('2d');
+      const cells  = this.heatmapData.cells;
+      const maxCnt = this.heatmapData.maxCount || 1;
+      const cs     = this.heatmapData.cellSize;
+      const opacity = this.heatmapOpacity;
+
+      ctx.clearRect(0, 0, this.heatmapCanvas.width, this.heatmapCanvas.height);
+
+      for (const [cx, cz, count] of cells) {
+        if (count === 0) continue;
+        const t = Math.pow(count / maxCnt, 0.4); // gamma compress
+
+        // World corners of this cell
+        const wx0 = cx * cs, wz0 = cz * cs;
+        const wx1 = wx0 + cs, wz1 = wz0 + cs;
+
+        const p0 = this.map.latLngToContainerPoint(worldToLatLng(wx0, wz0));
+        const p1 = this.map.latLngToContainerPoint(worldToLatLng(wx1, wz1));
+
+        const px = Math.min(p0.x, p1.x);
+        const py = Math.min(p0.y, p1.y);
+        const pw = Math.abs(p1.x - p0.x) + 1;
+        const ph = Math.abs(p1.y - p0.y) + 1;
+
+        ctx.globalAlpha = opacity * Math.max(0.05, t);
+        ctx.fillStyle = heatColor(t, this.heatmapScheme);
+        ctx.fillRect(px, py, pw, ph);
+      }
+      ctx.globalAlpha = 1;
+    },
+
+    async switchHeatmapLayer(layerId) {
+      this.activeLayer = layerId;
+      this.heatmapData = null;
+      await this.loadHeatmap();
+    },
+
+    toggleHeatmap() {
+      this.showHeatmap = !this.showHeatmap;
+      this.redrawHeatmap();
+    },
+
+    async toggleOverlay(overlay) {
+      if (overlay.active) {
+        const markers = L.layerGroup();
+        if (overlay.id === 'STRUCTURE') {
+          const typeColors = {
+            boss_altar: '#fbbf24', dungeon_entrance: '#ef4444',
+            cave_entrance: '#14b8a6', camp: '#f97316',
+            ruin: '#9ca3af', unknown: '#6b7280'
+          };
+          const d = await fetchJson(`${API}/structures?limit=5000`);
+          for (const st of (d.data || [])) {
+            const x = st.position?.x, z = st.position?.z;
+            if (x == null || Math.abs(x) >= 100000 || Math.abs(z) >= 100000) continue;
+            const color   = typeColors[st.type] || '#6b7280';
+            const opacity = st.status === 'active' ? 0.9 : st.status === 'likely_cleared' ? 0.4 : 0.25;
+            const circle = L.circleMarker(worldToLatLng(x, z), {
+              radius: 5, color, weight: 1.5, fillColor: color, fillOpacity: opacity
+            });
+            const tip = `<b>${st.prefab || st.type}</b><br>${st.biome || '—'} · ${st.status || '—'}`;
+            circle.bindTooltip(tip, { permanent: false, direction: 'top' });
+            markers.addLayer(circle);
+          }
+        } else {
+          const d = await fetchJson(`${API}/points?cat=${overlay.id}&limit=20000`);
+          for (const pt of d.points) {
+            if (Math.abs(pt.x) >= 100000 || Math.abs(pt.z) >= 100000) continue;
+            const circle = L.circleMarker(worldToLatLng(pt.x, pt.z), {
+              radius: 3, color: overlay.color, weight: 1,
+              fillColor: overlay.color, fillOpacity: 0.6
+            });
+            if (pt.label) circle.bindTooltip(pt.label, { permanent: false, direction: 'top' });
+            markers.addLayer(circle);
+          }
+        }
+        overlay.layer = markers;
+        this.map.addLayer(markers);
+      } else {
+        if (overlay.layer) this.map.removeLayer(overlay.layer);
+        overlay.layer = null;
+      }
+    },
+
+    applyFilters() {
+      for (const overlay of this.pointOverlays) {
+        if (overlay.active) {
+          this.map.removeLayer(overlay.layer);
+          overlay.layer = null;
+          overlay.active = false;
+        }
+      }
+    },
+
+    // ===== PORTALS =====
+
+    async loadPortals() {
+      const d = await fetchJson(`${API}/portals`);
+      this.allPortals = d.portals || [];
+      this.filterPortals();
+    },
+
+    filterPortals() {
+      const s = this.portalSearch.toLowerCase();
+      const sf = this.portalStatusFilter;
+      this.filteredPortals = this.allPortals.filter(p => {
+        if (sf !== 'ALL' && p.status !== sf) return false;
+        if (s && !p.tag.toLowerCase().includes(s)) return false;
+        return true;
+      });
+      this.$nextTick(() => this.renderPortalTable());
+    },
+
+    renderPortalTable() {
+      if (this.portalTable) { this.portalTable.replaceData(this.filteredPortals); return; }
+      this.portalTable = new Tabulator('#portal-table', {
+        data: this.filteredPortals,
+        layout: 'fitColumns',
+        height: '100%',
+        columns: [
+          { title: 'Tag',    field: 'tag',    sorter: 'string', width: 160, formatter: (cell) => {
+            const v = cell.getValue() || '(blank)';
+            return `<span class="font-mono">${v}</span>`;
+          }},
+          { title: 'Status', field: 'status', sorter: 'string', width: 100, formatter: (cell) => {
+            const s = cell.getValue();
+            return `<span class="px-1 py-0.5 rounded text-xs text-white badge-${s}">${s}</span>`;
+          }},
+          { title: 'X',      field: 'x',      sorter: 'number', width: 70, formatter: fmtNum },
+          { title: 'Z',      field: 'z',      sorter: 'number', width: 70, formatter: fmtNum },
+          { title: 'Paired X', field: 'pairedX', sorter: 'number', width: 80, formatter: fmtNum },
+          { title: 'Paired Z', field: 'pairedZ', sorter: 'number', width: 80, formatter: fmtNum },
+          { title: 'Author', field: 'author', sorter: 'string', width: 140 },
+        ],
+        rowClick: (e, row) => {
+          const d = row.getData();
+          this.flyMapTo(d.x, d.z);
+          this.switchTab('map');
+        },
+      });
+    },
+
+    // ===== PLAYERS =====
+
+    async loadPlayers() {
+      const d = await fetchJson(`${API}/players?sortBy=${this.playerSort}`);
+      this.allPlayers = d.players || [];
+      this.filterPlayers();
+    },
+
+    filterPlayers() {
+      const s = this.playerSearch.toLowerCase();
+      this.filteredPlayers = s
+        ? this.allPlayers.filter(p => p.displayName.toLowerCase().includes(s))
+        : [...this.allPlayers];
+      this.$nextTick(() => this.renderPlayerTable());
+    },
+
+    renderPlayerTable() {
+      if (this.playerTable) { this.playerTable.replaceData(this.filteredPlayers); return; }
+      this.playerTable = new Tabulator('#player-table', {
+        data: this.filteredPlayers,
+        layout: 'fitColumns',
+        height: '100%',
+        columns: [
+          { title: 'Name',    field: 'displayName', sorter: 'string', widthGrow: 2 },
+          { title: 'Beds',    field: 'bedCount',    sorter: 'number', width: 70 },
+          { title: 'Deaths',  field: 'deathCount',  sorter: 'number', width: 80,
+            formatter: (cell) => {
+              const v = cell.getValue();
+              const color = v >= 50 ? '#f43f5e' : v >= 10 ? '#fb923c' : '#9ca3af';
+              return `<span style="color:${color}">${v}</span>`;
+            }
+          },
+          { title: 'Builds',  field: 'buildCount',  sorter: 'number', width: 80 },
+          { title: 'Portals', field: 'portalCount', sorter: 'number', width: 75 },
+          { title: 'Source',  field: 'nameSource',  sorter: 'string', width: 110 },
+        ],
+        rowClick: (e, row) => {
+          const p = row.getData();
+          this.tombstoneSearch = p.displayName;
+          this.switchTab('tombstones');
+        },
+      });
+    },
+
+    // ===== ECONOMY =====
+
+    async loadEconomy() {
+      this.economy = await fetchJson(`${API}/economy?topN=80`);
+    },
+
+    // ===== TOMBSTONES =====
+
+    async loadTombstones() {
+      const d = await fetchJson(`${API}/tombstones`);
+      this.allTombstones = d.tombstones || [];
+      this.filterTombstones();
+    },
+
+    filterTombstones() {
+      const s = this.tombstoneSearch.toLowerCase();
+      this.filteredTombstones = s
+        ? this.allTombstones.filter(t => t.ownerName.toLowerCase().includes(s))
+        : [...this.allTombstones];
+      this.$nextTick(() => this.renderTombstoneTable());
+    },
+
+    renderTombstoneTable() {
+      if (this.tombstoneTable) { this.tombstoneTable.replaceData(this.filteredTombstones); return; }
+      this.tombstoneTable = new Tabulator('#tombstone-table', {
+        data: this.filteredTombstones,
+        layout: 'fitColumns',
+        height: '100%',
+        columns: [
+          { title: 'Player',   field: 'ownerName',    sorter: 'string', widthGrow: 2 },
+          { title: 'X',        field: 'x',            sorter: 'number', width: 70, formatter: fmtNum },
+          { title: 'Z',        field: 'z',            sorter: 'number', width: 70, formatter: fmtNum },
+          { title: 'World%',   field: 'worldFraction', sorter: 'number', width: 80,
+            formatter: (cell) => `${(cell.getValue()*100).toFixed(1)}%` },
+          { title: 'Death Time (s)', field: 'deathTimeSeconds', sorter: 'number', width: 120,
+            formatter: (cell) => cell.getValue()?.toLocaleString() },
+        ],
+        rowClick: (e, row) => {
+          const d = row.getData();
+          this.flyMapTo(d.x, d.z);
+          this.switchTab('map');
+        },
+      });
+    },
+
+    // ===== SIGNS =====
+
+    async loadSigns() {
+      const q = this.signSearch ? `&search=${encodeURIComponent(this.signSearch)}` : '';
+      const d = await fetchJson(`${API}/signs?limit=300${q}`);
+      this.signs = d.signs || [];
+    },
+
+    // ===== DROPPED =====
+
+    async loadDropped() {
+      this.dropped = await fetchJson(`${API}/dropped`);
+    },
+
+    // ===== WORLD SUMMARY =====
+
+    async loadWorldSummary() {
+      try {
+        this.worldSummary = await fetchJson(`${API}/world-summary`);
+      } catch(e) {
+        console.warn('world-summary not available', e);
+      }
+    },
+
+    // ===== ALERTS =====
+
+    async loadAlerts() {
+      const d = await fetchJson(`${API}/alerts?limit=2000`);
+      this.allAlerts = d.data || [];
+      this.filterAlerts();
+    },
+
+    filterAlerts() {
+      const sf = this.alertSeverityFilter;
+      const tf = this.alertTypeFilter;
+      this.filteredAlerts = this.allAlerts.filter(a => {
+        if (sf !== 'ALL' && a.severity?.toUpperCase() !== sf) return false;
+        if (tf && a.type !== tf) return false;
+        return true;
+      });
+      this.$nextTick(() => this.renderAlertTable());
+    },
+
+    renderAlertTable() {
+      const sevOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+      const sevColor  = { critical: '#ef4444', high: '#f97316', medium: '#eab308', low: '#60a5fa' };
+      if (this.alertTable) { this.alertTable.replaceData(this.filteredAlerts); return; }
+      this.alertTable = new Tabulator('#alert-table', {
+        data: this.filteredAlerts,
+        layout: 'fitColumns',
+        height: '100%',
+        initialSort: [{ column: 'severity', dir: 'asc' }],
+        columns: [
+          { title: 'Sev', field: 'severity', width: 80,
+            sorter: (a, b) => (sevOrder[a] ?? 9) - (sevOrder[b] ?? 9),
+            formatter: (cell) => {
+              const s = cell.getValue();
+              return `<span style="color:${sevColor[s] || '#9ca3af'};font-weight:bold;text-transform:uppercase">${s}</span>`;
+            }
+          },
+          { title: 'Type',        field: 'type',        sorter: 'string', width: 170 },
+          { title: 'Title',       field: 'title',       sorter: 'string', widthGrow: 2 },
+          { title: 'Description', field: 'description', sorter: 'string', widthGrow: 3 },
+          { title: 'X', field: 'world_x', sorter: 'number', width: 70, formatter: fmtNum },
+          { title: 'Z', field: 'world_z', sorter: 'number', width: 70, formatter: fmtNum },
+        ],
+        rowClick: (e, row) => {
+          const d = row.getData();
+          if (d.world_x != null && d.world_z != null) {
+            this.flyMapTo(d.world_x, d.world_z);
+            this.switchTab('map');
+          }
+        },
+      });
+    },
+
+    // ===== STRUCTURES =====
+
+    async loadStructures() {
+      const d = await fetchJson(`${API}/structures?limit=5000`);
+      this.allStructures = d.data || [];
+      this.filterStructures();
+    },
+
+    filterStructures() {
+      const sf = this.structureStatusFilter;
+      const tf = this.structureTypeFilter;
+      const bf = this.structureBiomeFilter;
+      this.filteredStructures = this.allStructures.filter(st => {
+        if (sf !== 'ALL' && st.status?.toUpperCase() !== sf) return false;
+        if (tf && st.type !== tf) return false;
+        if (bf && st.biome !== bf) return false;
+        return true;
+      });
+      this.$nextTick(() => this.renderStructureTable());
+    },
+
+    renderStructureTable() {
+      const stColor = { active: '#22c55e', likely_cleared: '#9ca3af', unknown: '#6b7280' };
+      if (this.structureTable) { this.structureTable.replaceData(this.filteredStructures); return; }
+      this.structureTable = new Tabulator('#structure-table', {
+        data: this.filteredStructures,
+        layout: 'fitColumns',
+        height: '100%',
+        columns: [
+          { title: 'Prefab',  field: 'prefab',  sorter: 'string', widthGrow: 2 },
+          { title: 'Type',    field: 'type',    sorter: 'string', width: 130 },
+          { title: 'Status',  field: 'status',  sorter: 'string', width: 110,
+            formatter: (cell) => {
+              const s = cell.getValue();
+              return `<span style="color:${stColor[s]||'#6b7280'};font-weight:bold">${s || '—'}</span>`;
+            }
+          },
+          { title: 'Biome',   field: 'biome',          sorter: 'string', width: 110 },
+          { title: 'Active',  field: 'spawner_active',  sorter: 'number', width: 65 },
+          { title: 'Max',     field: 'spawner_count',   sorter: 'number', width: 55 },
+          { title: 'Conf',    field: 'confidence',      sorter: 'number', width: 60,
+            formatter: (cell) => cell.getValue() != null ? (cell.getValue()*100).toFixed(0)+'%' : ''
+          },
+          { title: 'X', field: 'position.x', sorter: 'number', width: 70, formatter: fmtNum },
+          { title: 'Z', field: 'position.z', sorter: 'number', width: 70, formatter: fmtNum },
+        ],
+        rowClick: (e, row) => {
+          const d = row.getData();
+          if (d.position?.x != null) {
+            this.flyMapTo(d.position.x, d.position.z);
+            this.switchTab('map');
+          }
+        },
+      });
+    },
+
+    // ===== CREATURES =====
+
+    async loadCreatures() {
+      const d = await fetchJson(`${API}/entities?limit=50000`);
+      const entities = d.data || [];
+      const byType = {}, byHostility = {}, prefabMap = {};
+      for (const e of entities) {
+        const t = e.entity_type || 'unknown';
+        const h = e.hostility   || 'unknown';
+        byType[t]      = (byType[t]      || 0) + 1;
+        byHostility[h] = (byHostility[h] || 0) + 1;
+        const key = e.prefab || 'unknown';
+        if (!prefabMap[key]) prefabMap[key] = { prefab: key, name: e.name || key, count: 0, hostility: h };
+        prefabMap[key].count++;
+      }
+      this.creatureSummary = {
+        total: entities.length,
+        byType,
+        byHostility,
+        topPrefabs: Object.values(prefabMap).sort((a,b) => b.count - a.count).slice(0, 25),
+      };
+    },
+
+    // ===== HELPERS =====
+
+    flyMapTo(x, z) {
+      if (this.map) {
+        this.map.setView(worldToLatLng(x, z), 1);
+      }
+    },
+  };
+}
+
+// Color functions
+function heatColor(t, scheme) {
+  switch (scheme) {
+    case 'green':
+      return `rgb(${Math.round(20*t)},${Math.round(100 + 155*t)},${Math.round(20*t)})`;
+    case 'viridis': {
+      // Simplified viridis approximation
+      const r = Math.round(68 + t * (253 - 68));
+      const g = Math.round(1  + t * (231 - 1));
+      const b = Math.round(84 - t * (84 - 37));
+      return `rgb(${r},${g},${b})`;
+    }
+    default: // hot: blue→cyan→green→yellow→red
+      if (t < 0.25) return `rgb(0,0,${Math.round(255*t*4)})`;
+      if (t < 0.5)  return `rgb(0,${Math.round(255*(t-0.25)*4)},255)`;
+      if (t < 0.75) return `rgb(${Math.round(255*(t-0.5)*4)},255,${Math.round(255*(1-(t-0.5)*4))})`;
+      return `rgb(255,${Math.round(255*(1-(t-0.75)*4))},0)`;
+  }
+}
+
+// Tabulator number formatter
+function fmtNum(cell) {
+  const v = cell.getValue();
+  return v != null ? Math.round(v).toLocaleString() : '';
+}
+
+async function fetchJson(url) {
+  const r = await fetch(url);
+  return r.json();
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>

@@ -1,0 +1,628 @@
+=== RESOLVING NEARBY ASHLANDS HASHES ===
+Trying 471 candidates...
+  RESOLVED: hash:432248582 = 'Pickable_SmokePuff'
+  RESOLVED: hash:1172889253 = 'Rock_3'
+  RESOLVED: hash:1576173780 = 'Rock_4'
+
+=== PROPERTY PROFILES + WORLD COUNTS ===
+  NEW_DROP hash:-293234486    stack=1   quality=4   x=208 z=-16288
+  NEW_DROP hash:-1218711148   stack=1   quality=1   x=-1562 z=-10401
+  NEW_DROP hash:-340754114    stack=1   quality=1   x=23 z=-10194
+  NEW_DROP hash:-1342501874   stack=1   quality=1   x=24 z=-10193
+  NEW_DROP hash:-20868409     stack=1   quality=1   x=-599 z=-10085
+  NEW_DROP hash:2054657901    stack=1   quality=1   x=-641 z=-10043
+  NEW_DROP hash:769777628     stack=1   quality=1   x=-637 z=-10040
+  NEW_DROP hash:1301986444    stack=1   quality=1   x=-635 z=-10039
+  NEW_DROP hash:443137929     stack=1   quality=1   x=-618 z=-10067
+  NEW_DROP hash:1694237039    stack=1   quality=1   x=-605 z=-10044
+  NEW_DROP hash:-361463611    stack=1   quality=1   x=-550 z=-10039
+  NEW_DROP hash:-2005747631   stack=1   quality=1   x=-549 z=-10038
+  NEW_DROP hash:1407759366    stack=1   quality=1   x=-550 z=-10039
+  NEW_DROP hash:388316152     stack=1   quality=1   x=-296 z=-9997
+  NEW_DROP hash:-1432441312   stack=1   quality=1   x=-106 z=-9966
+  NEW_DROP hash:1679463535    stack=1   quality=1   x=333 z=-9963
+  NEW_DROP hash:506454164     stack=1   quality=1   x=334 z=-9964
+  NEW_DROP hash:1051414138    stack=1   quality=1   x=710 z=-9995
+  NEW_DROP hash:-1125601850   stack=2   quality=1   x=710 z=-9996
+  NEW_DROP hash:1159653928    stack=1   quality=1   x=1003 z=-10001
+  NEW_DROP hash:270239518     stack=1   quality=1   x=-373 z=-9941
+  NEW_DROP hash:-1149314721   stack=1   quality=1   x=-373 z=-9941
+  NEW_DROP hash:-881507777    stack=3   quality=1   x=-244 z=-9900
+  NEW_DROP hash:-1578654542   stack=1   quality=1   x=-261 z=-9913
+  NEW_DROP hash:-2114162550   stack=1   quality=1   x=31 z=-9905
+  NEW_DROP hash:-1747874743   stack=1   quality=1   x=921 z=-9895
+  NEW_DROP hash:1245401458    stack=1   quality=1   x=-559 z=-9873
+  NEW_DROP hash:-2018017253   stack=1   quality=1   x=232 z=-9837
+  NEW_DROP hash:-137947288    stack=1   quality=1   x=338 z=-9825
+  NEW_DROP hash:1218332729    stack=1   quality=1   x=386 z=-9863
+  NEW_DROP hash:1084996439    stack=1   quality=1   x=628 z=-9806
+  NEW_DROP hash:-1770819968   stack=1   quality=1   x=627 z=-9820
+  NEW_DROP hash:1564228932    stack=1   quality=1   x=627 z=-9820
+  NEW_DROP hash:920031124     stack=1   quality=1   x=-135 z=-9676
+  NEW_DROP hash:-1559844418   stack=1   quality=1   x=512 z=-9647
+  NEW_DROP hash:-2143218796   stack=1   quality=1   x=393 z=-9582
+  NEW_DROP hash:-1914201124   stack=3   quality=1   x=2555 z=-9545
+  NEW_DROP hash:-798024644    stack=5   quality=1   x=-780 z=-9444
+  NEW_DROP hash:4675961       stack=7   quality=1   x=2066 z=-9389
+  NEW_DROP hash:-1906091609   stack=1   quality=1   x=814 z=-9353
+  NEW_DROP hash:-996243444    stack=2   quality=1   x=824 z=-9330
+  NEW_DROP hash:-476284625    stack=1   quality=1   x=1670 z=-9204
+  NEW_DROP hash:-108963526    stack=1   quality=1   x=3135 z=-9090
+  NEW_DROP hash:-1838985169   stack=1   quality=1   x=705 z=-9030
+  NEW_DROP hash:1527524242    stack=2   quality=1   x=705 z=-9030
+  NEW_DROP hash:1628953990    stack=1   quality=1   x=184 z=-8882
+  NEW_DROP hash:-441349860    stack=1   quality=1   x=-1773 z=-8681
+  NEW_DROP hash:-347900713    stack=1   quality=1   x=474 z=-8696
+  NEW_DROP hash:1580132118    stack=18  quality=1   x=1432 z=-8686
+  NEW_DROP hash:1007457867    stack=1   quality=1   x=1851 z=-8723
+  NEW_DROP hash:-1146623251   stack=1   quality=1   x=1853 z=-8723
+  NEW_DROP hash:24890812      stack=1   quality=1   x=1856 z=-8726
+  NEW_DROP hash:386496655     stack=1   quality=1   x=-1767 z=-8672
+  NEW_DROP hash:116510864     stack=1   quality=1   x=-143 z=-8646
+  NEW_DROP hash:-1246052899   stack=1   quality=1   x=1091 z=-8574
+  NEW_DROP hash:294912805     stack=3   quality=1   x=3654 z=-8472
+  NEW_DROP hash:111807506     stack=1   quality=1   x=1940 z=-8325
+  NEW_DROP hash:109649211     stack=1   quality=1   x=2179 z=-8103
+  NEW_DROP hash:109649213     stack=1   quality=1   x=-939 z=-8063
+  NEW_DROP hash:1272849455    stack=1   quality=2   x=-917 z=-8072
+  NEW_DROP hash:109649212     stack=1   quality=1   x=-863 z=-8076
+  NEW_DROP hash:-559501202    stack=30  quality=1   x=966 z=-8045
+  NEW_DROP hash:109649209     stack=1   quality=1   x=-1138 z=-7992
+  NEW_DROP hash:1055620598    stack=1   quality=3   x=-1112 z=-7529
+  NEW_DROP hash:1951121652    stack=1   quality=1   x=-3191 z=-7490
+  NEW_DROP hash:-111754826    stack=1   quality=1   x=-3192 z=-7489
+  NEW_DROP hash:-569089572    stack=1   quality=1   x=-1996 z=-7477
+  NEW_DROP hash:-2074455458   stack=1   quality=1   x=-1949 z=-7490
+  NEW_DROP hash:616678875     stack=1   quality=3   x=-1950 z=-7491
+  NEW_DROP hash:-1519557673   stack=2   quality=1   x=-1246 z=-7462
+  NEW_DROP hash:-836947401    stack=1   quality=1   x=-1104 z=-7484
+  NEW_DROP hash:528336477     stack=1   quality=1   x=-3180 z=-7449
+  NEW_DROP hash:662706540     stack=1   quality=1   x=-3181 z=-7449
+  NEW_DROP hash:802493318     stack=1   quality=1   x=-3179 z=-7452
+  NEW_DROP hash:59425464      stack=1   quality=1   x=-3216 z=-7423
+  NEW_DROP hash:1790522819    stack=1   quality=1   x=-3126 z=-7411
+  NEW_DROP hash:-1523551927   stack=1   quality=1   x=-2899 z=-7366
+  NEW_DROP hash:-1160177777   stack=1   quality=1   x=-1187 z=-7360
+  NEW_DROP hash:-1615314128   stack=3   quality=1   x=-1187 z=-7348
+  NEW_DROP hash:-609016745    stack=1   quality=1   x=-1205 z=-7357
+  NEW_DROP hash:167698947     stack=1   quality=1   x=-2613 z=-7204
+  NEW_DROP hash:-1531883793   stack=1   quality=1   x=2883 z=-7254
+  NEW_DROP hash:-535733020    stack=6   quality=1   x=3021 z=-7243
+  NEW_DROP hash:730872782     stack=1   quality=1   x=-3513 z=-7102
+  NEW_DROP hash:-1559009424   stack=10  quality=1   x=3387 z=-7073
+  NEW_DROP hash:-389271919    stack=1   quality=1   x=-2831 z=-6961
+  NEW_DROP hash:1779145477    stack=1   quality=1   x=-1884 z=-6831
+  NEW_DROP hash:-361224582    stack=1   quality=1   x=-1888 z=-6803
+  NEW_DROP hash:131796573     stack=1   quality=1   x=-1454 z=-6814
+  NEW_DROP hash:1317085082    stack=1   quality=1   x=-1453 z=-6813
+  NEW_DROP hash:-1163188226   stack=1   quality=1   x=-1453 z=-6813
+  NEW_DROP hash:181515673     stack=1   quality=1   x=-2225 z=-6701
+  NEW_DROP hash:-1380373382   stack=1   quality=1   x=-2225 z=-6700
+  NEW_DROP hash:696030903     stack=1   quality=1   x=-1731 z=-6742
+  NEW_DROP hash:1592016380    stack=1   quality=1   x=-4927 z=-6651
+  NEW_DROP hash:-1170233273   stack=1   quality=1   x=-4926 z=-6651
+  NEW_DROP hash:-1079051988   stack=1   quality=1   x=-4926 z=-6650
+  NEW_DROP hash:-288469621    stack=1   quality=1   x=-3201 z=-6587
+  NEW_DROP hash:676297687     stack=1   quality=1   x=-2951 z=-6601
+  NEW_DROP hash:-1917457907   stack=1   quality=1   x=-2633 z=-6499
+  NEW_DROP hash:696031002     stack=1   quality=1   x=-1456 z=-6513
+  NEW_DROP hash:-1474822598   stack=37  quality=1   x=-1436 z=-6510
+  NEW_DROP hash:1985543946    stack=1   quality=1   x=-3202 z=-6459
+  NEW_DROP hash:-881616646    stack=1   quality=1   x=-1491 z=-6346
+  NEW_DROP hash:-1650135981   stack=1   quality=1   x=-2835 z=-6185
+  NEW_DROP hash:-1442468209   stack=1   quality=1   x=-2834 z=-6185
+  NEW_DROP hash:190225431     stack=1   quality=1   x=-2833 z=-6186
+  NEW_DROP hash:248039118     stack=1   quality=1   x=-2831 z=-6186
+  NEW_DROP hash:-1219034992   stack=1   quality=1   x=-2832 z=-6186
+  NEW_DROP hash:-921729736    stack=1   quality=1   x=-2834 z=-6183
+  NEW_DROP hash:-1060658883   stack=1   quality=1   x=-2832 z=-6185
+  NEW_DROP hash:109649210     stack=1   quality=2   x=-522 z=-5986
+  NEW_DROP hash:-370330082    stack=1   quality=1   x=1784 z=-5874
+  NEW_DROP hash:1418882551    stack=1   quality=1   x=4017 z=-5897
+  NEW_DROP hash:-1545751767   stack=1   quality=1   x=4023 z=-5903
+  NEW_DROP hash:58693868      stack=1   quality=1   x=-2371 z=-5740
+  NEW_DROP hash:517587124     stack=1   quality=1   x=-2246 z=-5744
+  NEW_DROP hash:-1640748002   stack=1   quality=1   x=60 z=-5461
+  NEW_DROP hash:-864298130    stack=1   quality=1   x=2217 z=-5470
+  NEW_DROP hash:1684386071    stack=1   quality=1   x=6520 z=-5452
+  NEW_DROP hash:-717547805    stack=1   quality=1   x=2870 z=-5300
+  NEW_DROP hash:-111435671    stack=1   quality=1   x=2869 z=-5300
+  NEW_DROP hash:-996272896    stack=1   quality=1   x=2869 z=-5300
+  NEW_DROP hash:-1859318427   stack=1   quality=1   x=7053 z=-5281
+  NEW_DROP hash:-1340577042   stack=1   quality=1   x=-3367 z=-5211
+  NEW_DROP hash:-1640748001   stack=1   quality=1   x=-8542 z=-5118
+  NEW_DROP hash:1090845817    stack=1   quality=1   x=-8542 z=-5118
+  NEW_DROP hash:-1620577410   stack=1   quality=1   x=-5516 z=-5113
+  NEW_DROP hash:-1292410483   stack=1   quality=1   x=-415 z=-5101
+  NEW_DROP hash:-1094347100   stack=1   quality=1   x=-383 z=-5113
+  NEW_DROP hash:647021439     stack=1   quality=1   x=3791 z=-5103
+  NEW_DROP hash:-1850988268   stack=1   quality=1   x=3815 z=-5119
+  NEW_DROP hash:1085766256    stack=1   quality=1   x=3816 z=-5120
+  NEW_DROP hash:-1347086492   stack=1   quality=1   x=3814 z=-5117
+  NEW_DROP hash:-322215482    stack=1   quality=1   x=3820 z=-5127
+  NEW_DROP hash:-1764538796   stack=1   quality=1   x=3820 z=-5127
+  NEW_DROP hash:-1849866750   stack=1   quality=1   x=3820 z=-5127
+  NEW_DROP hash:502052093     stack=10  quality=1   x=-8609 z=-5052
+  NEW_DROP hash:316605279     stack=1   quality=1   x=91 z=-5082
+  NEW_DROP hash:-601117714    stack=1   quality=1   x=2097 z=-5023
+  NEW_DROP hash:-931348166    stack=1   quality=1   x=-5773 z=-4808
+  NEW_DROP hash:-1315263071   stack=1   quality=1   x=-1152 z=-4721
+  NEW_DROP hash:-1029078359   stack=1   quality=1   x=4178 z=-4652
+  NEW_DROP hash:-1293151425   stack=10  quality=1   x=4718 z=-4596
+  NEW_DROP hash:1659590678    stack=1   quality=1   x=-2885 z=-4470
+  NEW_DROP hash:950444395     stack=1   quality=1   x=2768 z=-4473
+  NEW_DROP hash:16727443      stack=1   quality=1   x=13 z=-4320
+  NEW_DROP hash:1502599834    stack=1   quality=1   x=3214 z=-4331
+  NEW_DROP hash:-1567646802   stack=1   quality=1   x=3214 z=-4331
+  NEW_DROP hash:-1382234189   stack=1   quality=1   x=21 z=-4308
+  NEW_DROP hash:2049315250    stack=1   quality=1   x=23 z=-4304
+  NEW_DROP hash:915055238     stack=1   quality=1   x=14 z=-4300
+  NEW_DROP hash:-1596182882   stack=1   quality=1   x=15 z=-4315
+  NEW_DROP hash:-1310001585   stack=1   quality=1   x=-6888 z=-3981
+  NEW_DROP hash:931607157     stack=1   quality=1   x=-3084 z=-3756
+  NEW_DROP hash:388599790     stack=1   quality=1   x=-3085 z=-3756
+  NEW_DROP hash:-671861700    stack=1   quality=1   x=1392 z=-3503
+  NEW_DROP hash:-474798661    stack=1   quality=1   x=3607 z=-3502
+  NEW_DROP hash:1828514878    stack=4   quality=1   x=-3189 z=-3457
+  NEW_DROP hash:224753756     stack=1   quality=1   x=521 z=-3445
+  NEW_DROP hash:-1143960049   stack=1   quality=1   x=300 z=-3360
+  NEW_DROP hash:-1865024493   stack=1   quality=1   x=298 z=-3361
+  NEW_DROP hash:450722210     stack=1   quality=1   x=299 z=-3361
+  NEW_DROP hash:-1904387381   stack=1   quality=1   x=-4490 z=-3344
+  NEW_DROP hash:-1490899117   stack=1   quality=1   x=300 z=-3360
+  NEW_DROP hash:1180314225    stack=5   quality=1   x=339 z=-3349
+  NEW_DROP hash:-1640747999   stack=1   quality=1   x=2251 z=-3250
+  NEW_DROP hash:-1966477433   stack=1   quality=1   x=-5506 z=-3165
+  NEW_DROP hash:1185250548    stack=1   quality=1   x=-3600 z=-3035
+  NEW_DROP hash:696240715     stack=1   quality=1   x=-3596 z=-3036
+  NEW_DROP hash:-1653997440   stack=1   quality=1   x=-3597 z=-3036
+  NEW_DROP hash:-1357090580   stack=8   quality=1   x=-2862 z=-2993
+  NEW_DROP hash:694889784     stack=1   quality=1   x=2117 z=-2920
+  NEW_DROP hash:745645583     stack=4   quality=1   x=4738 z=-2684
+  NEW_DROP hash:-442216113    stack=11  quality=1   x=4742 z=-2680
+  NEW_DROP hash:411615136     stack=1   quality=1   x=2167 z=-2530
+  NEW_DROP hash:-1736688790   stack=1   quality=1   x=-2542 z=-2470
+  NEW_DROP hash:-687491193    stack=1   quality=1   x=-3345 z=-2375
+  NEW_DROP hash:-1416734660   stack=10  quality=1   x=-2575 z=-2382
+  NEW_DROP hash:-2105977201   stack=1   quality=1   x=-5797 z=-2135
+  NEW_DROP hash:-1821145625   stack=1   quality=1   x=2171 z=-2065
+  NEW_DROP hash:452860339     stack=1   quality=1   x=2187 z=-2044
+  NEW_DROP hash:-1891866489   stack=1   quality=1   x=2187 z=-2060
+  NEW_DROP hash:-1318346397   stack=1   quality=2   x=2181 z=-2030
+  NEW_DROP hash:-726203417    stack=1   quality=1   x=2181 z=-2030
+  NEW_DROP hash:1365582486    stack=1   quality=1   x=2181 z=-2030
+  NEW_DROP hash:-153368080    stack=10  quality=1   x=2181 z=-2030
+  NEW_DROP hash:-533689078    stack=1   quality=1   x=2181 z=-2030
+  NEW_DROP hash:916504644     stack=1   quality=1   x=2181 z=-2028
+  NEW_DROP hash:965145214     stack=1   quality=4   x=2182 z=-2028
+  NEW_DROP hash:703889544     stack=1   quality=31  x=2181 z=-2028
+  NEW_DROP hash:-964905328    stack=1   quality=6   x=2181 z=-2028
+  NEW_DROP hash:-490399162    stack=1   quality=1   x=2182 z=-2029
+  NEW_DROP hash:1840385895    stack=1   quality=1   x=2181 z=-2030
+  NEW_DROP hash:2095458909    stack=1   quality=1   x=2161 z=-2040
+  NEW_DROP hash:2120058096    stack=57  quality=1   x=2158 z=-2039
+  NEW_DROP hash:865616331     stack=1   quality=1   x=4272 z=-2024
+  NEW_DROP hash:-24546476     stack=1   quality=1   x=4270 z=-2027
+  NEW_DROP hash:-1654178317   stack=1   quality=1   x=4272 z=-2017
+  NEW_DROP hash:1736129798    stack=1   quality=1   x=4281 z=-2017
+  NEW_DROP hash:926881886     stack=1   quality=1   x=-2905 z=-1989
+  NEW_DROP hash:150066261     stack=1   quality=1   x=3943 z=-1961
+  NEW_DROP hash:-22163406     stack=1   quality=1   x=-2083 z=-1713
+  NEW_DROP hash:-68620523     stack=1   quality=1   x=3833 z=-1537
+  NEW_DROP hash:-1390649375   stack=1   quality=1   x=-5647 z=-1426
+  NEW_DROP hash:-1497409489   stack=2   quality=1   x=-2557 z=-1403
+  NEW_DROP hash:-1781955618   stack=1   quality=1   x=-2379 z=-1351
+  NEW_DROP hash:1014536855    stack=1   quality=1   x=2873 z=-1050
+  NEW_DROP hash:339800571     stack=19  quality=1   x=6872 z=-874
+  NEW_DROP hash:-1209005522   stack=1   quality=1   x=-4333 z=-423
+  NEW_DROP hash:-430432277    stack=1   quality=1   x=941 z=-381
+  NEW_DROP hash:-129361023    stack=1   quality=1   x=2261 z=-409
+  NEW_DROP hash:319457105     stack=1   quality=1   x=6064 z=-210
+  NEW_DROP hash:-750899644    stack=1   quality=1   x=2942 z=205
+  NEW_DROP hash:-1585937997   stack=1   quality=1   x=-2373 z=316
+  NEW_DROP hash:1705458814    stack=1   quality=2   x=-1177 z=424
+  NEW_DROP hash:1745123876    stack=1   quality=1   x=-1128 z=470
+  NEW_DROP hash:747145        stack=10  quality=1   x=-1121 z=478
+  NEW_DROP hash:-957080763    stack=1   quality=1   x=-1149 z=451
+  NEW_DROP hash:-1881176611   stack=1   quality=1   x=-1142 z=472
+  NEW_DROP hash:1425567131    stack=1   quality=1   x=-1128 z=472
+  NEW_DROP hash:-791142009    stack=1   quality=1   x=-1144 z=475
+  NEW_DROP hash:-1351226314   stack=1   quality=1   x=-1143 z=464
+  NEW_DROP hash:-909098104    stack=10  quality=1   x=-1124 z=479
+  NEW_DROP hash:-312105419    stack=1   quality=2   x=-1128 z=524
+  NEW_DROP hash:-1578294154   stack=1   quality=1   x=-1147 z=490
+  NEW_DROP hash:255263578     stack=1   quality=1   x=-1119 z=499
+  NEW_DROP hash:-2068097986   stack=1   quality=1   x=-1085 z=533
+  NEW_DROP hash:424208778     stack=1   quality=1   x=-1078 z=534
+  NEW_DROP hash:394875495     stack=1   quality=1   x=4603 z=993
+  NEW_DROP hash:1219941843    stack=1   quality=1   x=3393 z=1151
+  NEW_DROP hash:1502599522    stack=1   quality=5   x=-4612 z=1964
+  NEW_DROP hash:-1893623813   stack=1   quality=6   x=-4614 z=1966
+  NEW_DROP hash:1304037785    stack=1   quality=1   x=-4621 z=1965
+  NEW_DROP hash:897989326     stack=1   quality=1   x=-4621 z=1965
+  NEW_DROP hash:-698896327    stack=1   quality=1   x=-4622 z=1965
+  NEW_DROP hash:-1431804988   stack=1   quality=1   x=5337 z=2410
+  NEW_DROP hash:-802427598    stack=1   quality=1   x=-172 z=3437
+  NEW_DROP hash:-1853193749   stack=100 quality=1   x=-9024 z=3715
+  NEW_DROP hash:-1808454157   stack=1   quality=2   x=-9023 z=3713
+  NEW_DROP hash:-505018634    stack=1   quality=13  x=-9025 z=3712
+  NEW_DROP hash:-550229671    stack=100 quality=1   x=-9025 z=3712
+  NEW_DROP hash:-1416094899   stack=1   quality=7   x=-9026 z=3712
+  NEW_DROP hash:-1533933068   stack=1   quality=1   x=-9024 z=3713
+  NEW_DROP hash:1064174259    stack=5   quality=1   x=-9024 z=3711
+  NEW_DROP hash:222489465     stack=1   quality=1   x=-9024 z=3710
+  NEW_DROP hash:-761824688    stack=1   quality=1   x=-9020 z=3715
+  NEW_DROP hash:-823608926    stack=1   quality=1   x=-9017 z=3717
+  NEW_DROP hash:-555786200    stack=1   quality=1   x=-9027 z=3714
+  NEW_DROP hash:1749379817    stack=10  quality=1   x=-9024 z=3715
+  NEW_DROP hash:1777024751    stack=1   quality=1   x=-9023 z=3713
+  NEW_DROP hash:-1719994617   stack=10  quality=1   x=-9022 z=3712
+  NEW_DROP hash:1533665363    stack=26  quality=1   x=-9019 z=3715
+  NEW_DROP hash:-1862041229   stack=1   quality=1   x=-9024 z=3713
+  NEW_DROP hash:-566038322    stack=2   quality=1   x=5556 z=4014
+  NEW_DROP hash:622849921     stack=1   quality=1   x=6205 z=6110
+  NEW_DROP hash:-1434059771   stack=1   quality=1   x=-10509 z=6422
+  NEW_DROP hash:706748652     stack=1   quality=1   x=-3602 z=8863
+  NEW_DROP hash:-1046192253   stack=1   quality=1   x=-3599 z=8858
+  NEW_DROP hash:-332698626    stack=1   quality=2   x=-3599 z=8858
+  NEW_DROP hash:538325612     stack=1   quality=1   x=-3609 z=8857
+  NEW_DROP hash:-1161852937   stack=1   quality=2   x=-3584 z=8860
+  NEW_DROP hash:1495590806    stack=1   quality=1   x=-3601 z=8856
+  NEW_DROP hash:-1233292549   stack=1   quality=1   x=-3601 z=8856
+  NEW_DROP hash:70585901      stack=1   quality=2   x=-3603 z=8855
+  NEW_DROP hash:194227816     stack=1   quality=1   x=-3633 z=8886
+  NEW_DROP hash:538325705     stack=1   quality=1   x=-3620 z=8886
+  NEW_DROP hash:-84633224     stack=1   quality=1   x=7906 z=9045
+  NEW_DROP hash:264964714     stack=1   quality=1   x=7913 z=9045
+  NEW_DROP hash:-1228635177   stack=1   quality=1   x=7916 z=9045
+  NEW_DROP hash:1821410901    stack=1   quality=1   x=-9311 z=10557
+  NEW_DROP hash:1191998723    stack=3   quality=1   x=-3518 z=10848
+  NEW_DROP hash:-676449504    stack=1   quality=1   x=7460 z=11369
+  NEW_DROP hash:51600563      stack=1   quality=1   x=-2232 z=12462
+  NEW_DROP hash:1981231808    stack=50  quality=1   x=330 z=13134
+  NEW_DROP hash:524487976     stack=1   quality=4   x=328 z=13132
+  NEW_DROP hash:1232186885    stack=1   quality=4   x=328 z=13132
+  NEW_DROP hash:2121838973    stack=1   quality=4   x=328 z=13132
+  NEW_DROP hash:-96710263     stack=25  quality=1   x=4126 z=13738
+  NEW_DROP hash:-535377778    stack=2   quality=1   x=-9 z=14083
+  NEW_DROP hash:950265897     stack=1   quality=1   x=6024 z=14058
+  NEW_DROP hash:-840537217    stack=1   quality=1   x=6055 z=14056
+  NEW_DROP hash:-2047937207   stack=10  quality=1   x=-611 z=15688
+  NEW_DROP hash:336792979     stack=1   quality=1   x=-611 z=15689
+  NEW_DROP hash:-1494080700   stack=5   quality=1   x=-611 z=15688
+  NEW_DROP hash:-1120477775   stack=5   quality=1   x=-610 z=15686
+  NEW_DROP hash:-1572092205   stack=1   quality=1   x=-17727 z=7213
+  NEW_DROP hash:-2139837784   stack=1   quality=1   x=-18757 z=5697
+  NEW_DROP hash:691223085     stack=1   quality=6   x=1923 z=-16612
+  NEW_DROP hash:-421851952    stack=1   quality=6   x=1923 z=-16613
+  NEW_DROP hash:-460902046    stack=1   quality=1   x=1923 z=-16612
+  NEW_DROP hash:2134397716    stack=1   quality=4   x=1922 z=-16614
+  NEW_DROP hash:23489701      stack=1   quality=1   x=1921 z=-16614
+  NEW_DROP hash:1846396992    stack=1   quality=1   x=-22845 z=6839
+
+=== NEARBY HASH WORLD COUNTS ===
+  155667x  hash:1703108136
+          pos=(-576,-16384)
+   13380x  hash:-293234486
+          strings={crafterName=} ints={worldLevel=0, pickedUp=0, stack=1, dataCount=0, quality=4, variant=0} floats={durability=100.0} longs={crafterID=0, spawntime=9628870783697} pos=(208,-16288)
+   13811x  hash:-1661430005
+          floats={scaleScalar=0.9944366} pos=(-847,-10217)
+    5483x  hash:-1799123710
+          floats={scaleScalar=1.0861079} pos=(-693,-10220)
+   13163x  hash:109649211
+          strings={crafterName=} ints={worldLevel=0, pickedUp=0, stack=1, dataCount=0, quality=1, variant=0} floats={durability=100.0} longs={crafterID=0, spawntime=591598586776} pos=(2179,-8103)
+  287043x  Rock_4
+          floats={scaleScalar=2.9494467} pos=(-1135,-7987)
+   10218x  hash:109649213
+          strings={crafterName=} ints={worldLevel=0, pickedUp=0, stack=1, dataCount=0, quality=1, variant=0} floats={durability=100.0} longs={crafterID=0, spawntime=41239429083903} pos=(-939,-8063)
+   14664x  hash:109649207
+          strings={crafterName=} ints={worldLevel=0, pickedUp=0, stack=1, dataCount=0, quality=1, variant=0} floats={durability=100.0} longs={crafterID=0, spawntime=47242112349732} pos=(-872,-8104)
+  101386x  Rock_3
+          floats={scaleScalar=3.2929745} pos=(-1124,-7994)
+   19156x  hash:109649209
+          strings={crafterName=} ints={worldLevel=0, pickedUp=0, stack=1, dataCount=0, quality=1, variant=0} floats={durability=100.0} longs={crafterID=0, spawntime=6145955262627} pos=(-1138,-7992)
+    6578x  Pickable_SmokePuff
+          pos=(-493,-10220)
+    1463x  hash:-405903669
+          ints={seed=904673894, seAttrib=0, alert=1, haveTarget=0} floats={max_health=200.0, health=200.0, noise=0.0} longs={lastWorldTime=94309565000524, spawntime=28435016570104} pos=(-234,-10214)
+   50058x  hash:109649212
+          strings={crafterName=} ints={worldLevel=0, pickedUp=0, stack=1, dataCount=0, quality=1, variant=0} floats={durability=100.0} longs={crafterID=0, spawntime=75735079815696} pos=(-863,-8076)
+   46355x  hash:1272849455
+          strings={crafterName=} ints={worldLevel=0, pickedUp=0, stack=1, dataCount=0, quality=2, variant=0} floats={durability=100.0} longs={crafterID=0, spawntime=41239429083903} pos=(-917,-8072)
+
+=== ALL DROPPED ITEM HASHES (world-wide, sorted by count) ===
+  Total distinct dropped-item hashes: 294
+   50058x  hash:109649212
+   46355x  hash:1272849455
+   19156x  hash:109649209
+   13369x  hash:-293234486
+   13163x  hash:109649211
+   10218x  hash:109649213
+    6516x  hash:-1859318427
+    5231x  hash:2054657901
+    4155x  hash:109649210
+    2910x  hash:-361224582
+    1839x  hash:-836947401
+    1432x  hash:443137929
+    1397x  hash:1159653928
+    1004x  hash:-1432441312
+     786x  hash:-1519557673
+     690x  hash:-569089572
+     616x  hash:58693868
+     498x  hash:696030903
+     472x  hash:1790522819
+     466x  hash:662706540
+     453x  hash:1407759366
+     452x  hash:528336477
+     428x  hash:-2114162550
+     412x  hash:-1523551927
+     381x  hash:294912805
+     305x  hash:1055620598
+     297x  hash:-2143218796
+     280x  hash:167698947
+     268x  hash:-1060658883
+     255x  hash:-1914201124
+     252x  hash:1219941843
+     251x  hash:-361463611
+     250x  hash:-441349860
+     239x  hash:-108963526
+     235x  hash:-1904387381
+     228x  hash:1694237039
+     218x  hash:769777628
+     207x  hash:-20868409
+     205x  hash:-2005747631
+     179x  hash:-1966477433
+     175x  hash:-1474822598
+     163x  hash:1301986444
+     161x  hash:-340754114
+     154x  hash:181515673
+     148x  hash:1218332729
+     139x  hash:-1382234189
+     129x  hash:-535733020
+     127x  hash:-389271919
+     111x  hash:-1380373382
+     111x  hash:-1160177777
+     108x  hash:270239518
+     105x  hash:1592016380
+     103x  hash:-717547805
+      98x  hash:-1079051988
+      94x  hash:-1342501874
+      91x  hash:-864298130
+      91x  hash:647021439
+      87x  hash:-1620577410
+      87x  hash:506454164
+      84x  hash:-1545751767
+      84x  hash:1985543946
+      83x  hash:-996243444
+      81x  hash:920031124
+      81x  hash:1828514878
+      80x  hash:-1149314721
+      80x  hash:-881616646
+      80x  hash:1185250548
+      78x  hash:-111754826
+      77x  hash:190225431
+      74x  hash:1014536855
+      68x  hash:1191998723
+      66x  hash:1317085082
+      63x  hash:-1315263071
+      63x  hash:-921729736
+      62x  hash:-474798661
+      60x  hash:-1736688790
+      60x  hash:517587124
+      58x  hash:59425464
+      54x  hash:1679463535
+      53x  hash:1684386071
+      51x  hash:-1770819968
+      51x  hash:-1747874743
+      51x  hash:-996272896
+      50x  hash:-111435671
+      49x  hash:-1143960049
+      49x  hash:802493318
+      49x  hash:1580132118
+      46x  hash:-1029078359
+      45x  hash:-1917457907
+      44x  hash:1736129798
+      43x  hash:1779145477
+      41x  hash:-1125601850
+      40x  hash:-1416734660
+      37x  hash:16727443
+      37x  hash:915055238
+      34x  hash:1084996439
+      33x  hash:1180314225
+      32x  hash:-1653997440
+      32x  hash:-322215482
+      32x  hash:248039118
+      32x  hash:1007457867
+      32x  hash:2049315250
+      29x  hash:-153368080
+      29x  hash:1051414138
+      28x  hash:-1654178317
+      28x  hash:-1559009424
+      28x  hash:-24546476
+      27x  hash:-1906091609
+      27x  hash:-1559844418
+      27x  hash:-1347086492
+      27x  hash:-931348166
+      27x  hash:-442216113
+      26x  hash:502052093
+      26x  hash:931607157
+      25x  hash:-1764538796
+      25x  hash:-1163188226
+      24x  hash:-1170233273
+      24x  hash:-476284625
+      24x  hash:24890812
+      24x  hash:730872782
+      23x  hash:-1849866750
+      23x  hash:-1650135981
+      22x  hash:450722210
+      22x  hash:696240715
+      21x  hash:-1531883793
+      21x  hash:-1146623251
+      21x  hash:388316152
+      20x  hash:-1850988268
+      20x  hash:-370330082
+      20x  hash:386496655
+      20x  hash:696031002
+      20x  hash:1951121652
+      19x  hash:-137947288
+      19x  hash:1418882551
+      18x  hash:-1781955618
+      18x  hash:-1596182882
+      18x  hash:676297687
+      17x  hash:-1293151425
+      17x  hash:-1292410483
+      17x  hash:-798024644
+      16x  hash:-601117714
+      16x  hash:-68620523
+      16x  hash:224753756
+      15x  hash:-1218711148
+      15x  hash:865616331
+      15x  hash:1085766256
+      14x  hash:-1490899117
+      14x  hash:950444395
+      13x  hash:-2018017253
+      13x  hash:-1219034992
+      12x  hash:1064174259
+      11x  hash:-1615314128
+      10x  hash:-1357090580
+      10x  hash:131796573
+      10x  hash:452860339
+      10x  hash:694889784
+       8x  hash:-1442468209
+       8x  hash:-881507777
+       7x  hash:-1865024493
+       7x  hash:-1094347100
+       7x  hash:747145
+       6x  hash:-1431804988
+       6x  hash:388599790
+       6x  hash:1090845817
+       6x  hash:1628953990
+       6x  hash:1745123876
+       6x  hash:1749379817
+       5x  hash:-1497409489
+       5x  hash:-750899644
+       5x  hash:411615136
+       4x  hash:-1640748002
+       4x  hash:-1310001585
+       4x  hash:-1209005522
+       4x  hash:4675961
+       4x  hash:319457105
+       4x  hash:336792979
+       4x  hash:1659590678
+       3x  hash:-2105977201
+       3x  hash:-1891866489
+       3x  hash:-1578654542
+       3x  hash:-1533933068
+       3x  hash:-1228635177
+       3x  hash:-687491193
+       3x  hash:-676449504
+       3x  hash:-671861700
+       3x  hash:538325612
+       3x  hash:706748652
+       3x  hash:926881886
+       3x  hash:1502599834
+       3x  hash:1705458814
+       2x  hash:-2139837784
+       2x  hash:-1853193749
+       2x  hash:-1838985169
+       2x  hash:-1821145625
+       2x  hash:-1719994617
+       2x  hash:-1640748001
+       2x  hash:-1640747999
+       2x  hash:-1567646802
+       2x  hash:-1246052899
+       2x  hash:-1046192253
+       2x  hash:-840537217
+       2x  hash:-823608926
+       2x  hash:-726203417
+       2x  hash:-609016745
+       2x  hash:-566038322
+       2x  hash:-559501202
+       2x  hash:-550229671
+       2x  hash:-533689078
+       2x  hash:-347900713
+       2x  hash:-332698626
+       2x  hash:-22163406
+       2x  hash:339800571
+       2x  hash:524487976
+       2x  hash:1232186885
+       2x  hash:1425567131
+       2x  hash:1564228932
+       2x  hash:1821410901
+       2x  hash:1840385895
+       2x  hash:2121838973
+       1x  hash:-2074455458
+       1x  hash:-2068097986
+       1x  hash:-2047937207
+       1x  hash:-1893623813
+       1x  hash:-1881176611
+       1x  hash:-1862041229
+       1x  hash:-1808454157
+       1x  hash:-1585937997
+       1x  hash:-1578294154
+       1x  hash:-1572092205
+       1x  hash:-1494080700
+       1x  hash:-1434059771
+       1x  hash:-1416094899
+       1x  hash:-1390649375
+       1x  hash:-1351226314
+       1x  hash:-1340577042
+       1x  hash:-1318346397
+       1x  hash:-1233292549
+       1x  hash:-1161852937
+       1x  hash:-1120477775
+       1x  hash:-964905328
+       1x  hash:-957080763
+       1x  hash:-909098104
+       1x  hash:-802427598
+       1x  hash:-791142009
+       1x  hash:-761824688
+       1x  hash:-698896327
+       1x  hash:-555786200
+       1x  hash:-535377778
+       1x  hash:-505018634
+       1x  hash:-490399162
+       1x  hash:-460902046
+       1x  hash:-430432277
+       1x  hash:-421851952
+       1x  hash:-312105419
+       1x  hash:-288469621
+       1x  hash:-129361023
+       1x  hash:-96710263
+       1x  hash:-84633224
+       1x  hash:23489701
+       1x  hash:51600563
+       1x  hash:70585901
+       1x  hash:111807506
+       1x  hash:116510864
+       1x  hash:150066261
+       1x  hash:194227816
+       1x  hash:222489465
+       1x  hash:255263578
+       1x  hash:264964714
+       1x  hash:316605279
+       1x  hash:394875495
+       1x  hash:424208778
+       1x  hash:538325705
+       1x  hash:616678875
+       1x  hash:622849921
+       1x  hash:691223085
+       1x  hash:703889544
+       1x  hash:745645583
+       1x  hash:897989326
+       1x  hash:916504644
+       1x  hash:950265897
+       1x  hash:965145214
+       1x  hash:1245401458
+       1x  hash:1304037785
+       1x  hash:1365582486
+       1x  hash:1495590806
+       1x  hash:1502599522
+       1x  hash:1527524242
+       1x  hash:1533665363
+       1x  hash:1777024751
+       1x  hash:1846396992
+       1x  hash:1981231808
+       1x  hash:2095458909
+       1x  hash:2120058096
+       1x  hash:2134397716

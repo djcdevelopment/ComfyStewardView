@@ -1,0 +1,8 @@
+worldVersion=35 zdos=8016512
+.................
+generatedZones=174920
+globalKeys=7
+prefabLocations=18594
+RandomEvent: timer=463.5438 name=''
+Dead ZDO parse error: null
+Done in 2937ms

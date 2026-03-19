@@ -1,0 +1,328 @@
+=== Z-BAND ANALYSIS (1000-unit bands) ===
+  Biome reference: Meadows ? 0-2000, BF ? 2000-4000, Swamp/Mountain ? 4000-6000,
+  Plains ? -2000 to -4000, Mistlands ? -4000 to -6000, Ashlands ? -6000+
+  Z-band        Builds      Drops       Creatures 
+  --------------------------------------------------
+  z=26000     1763        0           0         
+  z=25000     59712       0           0         
+  z=24000     84069       0           0         
+  z=23000     80792       44          0         
+  z=22000     72408       100         0         
+  z=21000     71143       90          0         
+  z=20000     71147       90          0         
+  z=19000     71207       90          0         
+  z=18000     52433       95          0         
+  z=17000     15311       146         1         
+  z=16000     36752       431         43        
+  z=15000     82809       3446        332       
+  z=14000     139455      2660        641       
+  z=13000     173794      2479        558       
+  z=12000     107554      2190        816       
+  z=11000     105242      1902        559       
+  z=10000     39851       2919        672       
+  z=9000      77050       4777        1088      
+  z=8000      155428      6394        1575      
+  z=7000      96708       9333        1355      
+  z=6000      134988      9323        1262      
+  z=5000      97748       9869        2216      
+  z=4000      132097      10174       3578      
+  z=3000      120816      9599        4758      
+  z=2000      121991      9671        4815      
+  z=1000      97691       10469       4412      
+  z=0         129337      8403        5261      
+  z=-1000     135932      10164       5084      
+  z=-2000     132249      10414       4192      
+  z=-3000     106351      10503       4201      
+  z=-4000     72880       9603        4532      
+  z=-5000     39904       9453        2983      
+  z=-6000     42063       8614        2324      
+  z=-7000     22498       7835        1011      
+  z=-8000     30352       7082        375       
+  z=-9000     9409        6842        0         
+  z=-10000    6363        4676        1         
+  z=-11000    685         747         0         
+  z=-17000    11403       1536        0         
+  z=-18000    376         6           0         
+  z=-19000    2772        7           0         
+
+=== TOP 30 BUILD GRID CELLS (highest structure concentration) ===
+   20338 structures  area: x=[-500,0] z=[13000,13500]
+   15024 structures  area: x=[1500,2000] z=[4000,4500]
+   14125 structures  area: x=[-9000,-8500] z=[11000,11500]
+   13647 structures  area: x=[-4500,-4000] z=[14000,14500]
+   13338 structures  area: x=[-4000,-3500] z=[14000,14500]
+   12506 structures  area: x=[4000,4500] z=[-2500,-2000]
+   12163 structures  area: x=[-8500,-8000] z=[11000,11500]
+   12132 structures  area: x=[-3000,-2500] z=[12500,13000]
+   11662 structures  area: x=[2000,2500] z=[4000,4500]
+   10880 structures  area: x=[-10000,-9500] z=[9500,10000]
+   10762 structures  area: x=[4500,5000] z=[2500,3000]
+   10676 structures  area: x=[-3500,-3000] z=[14000,14500]
+   10446 structures  area: x=[-8000,-7500] z=[-3000,-2500]
+   10439 structures  area: x=[-10000,-9500] z=[6000,6500]
+   10416 structures  area: x=[3500,4000] z=[-2000,-1500]
+   10098 structures  area: x=[-1000,-500] z=[2500,3000]
+    9902 structures  area: x=[-2500,-2000] z=[13000,13500]
+    9708 structures  area: x=[-9000,-8500] z=[13000,13500]
+    9413 structures  area: x=[-10000,-9500] z=[8500,9000]
+    9275 structures  area: x=[8500,9000] z=[4000,4500]
+    9125 structures  area: x=[-19500,-19000] z=[24000,24500]
+    9098 structures  area: x=[-4000,-3500] z=[10500,11000]
+    8885 structures  area: x=[-3000,-2500] z=[500,1000]
+    8793 structures  area: x=[-10000,-9500] z=[7000,7500]
+    8728 structures  area: x=[-500,0] z=[3000,3500]
+    8697 structures  area: x=[8000,8500] z=[8500,9000]
+    8631 structures  area: x=[-1000,-500] z=[15000,15500]
+    8540 structures  area: x=[-2500,-2000] z=[-1500,-1000]
+    8506 structures  area: x=[2500,3000] z=[15500,16000]
+    8464 structures  area: x=[6000,6500] z=[6000,6500]
+
+=== BED OWNERS ===
+  Total beds: 799
+  Unique owners: 434
+   23x  Ennius Staff
+   10x  Atreus 
+   10x  Jord???
+   10x  Wootsie
+    9x  Asclea
+    9x  Horatio
+    8x  Gigi
+    7x  Krön
+    7x  Revna Fey
+    7x  Santaclawspark
+    6x  Chocoieta
+    6x  Kittykat
+    6x  Klarkie
+    6x  Son Loki
+    5x  Benji
+    5x  ChocoZilla
+    5x  Jord
+    5x  Leon St James
+    5x  Mcbeav
+    5x  Nexonpr
+    5x  Softstyles
+    4x  Argos
+    4x  Cats For Freya
+    4x  Ennius
+    4x  Gizmodan
+    4x  Halvar Mod
+    4x  Jogo
+    4x  Kaltos
+    4x  Kipp
+    4x  Lehks
+
+=== TOMBSTONES ===
+  Total tombstones: 613
+  122x  Asclea
+   18x  Nina
+   13x  Khin
+   12x  Fortynine
+   11x  Wootsie
+    9x  Sköll
+    9x  Thelofttroll
+    8x  YoMomma
+    7x  Benji
+    7x  Jeraeldo
+    6x  Fitz
+    6x  Helina
+    6x  Jones
+    6x  Kyoki Ben
+    6x  OlEh
+    6x  Solaire ?????????
+    6x  Waxx
+    6x  Wolfinside
+    5x  Argos
+    5x  LuckyOwl
+    5x  Serrilda
+    5x  Tidbit
+    5x  Tomcat
+    4x  Balthazar
+    4x  CrashBandicute
+    4x  Gandalf
+    4x  Helga Blom
+    4x  Hrothrick
+    4x  Jaacon
+    4x  Jord
+    4x  Klarkie
+    4x  NotDefined
+    4x  Queen Bee
+    4x  Revna Fey
+    4x  River
+    4x  Simian
+    4x  SnuPagadiRah
+    4x  Toad
+    4x  Valreiser
+    3x  ARROWS
+    3x  Aki Rudolf
+    3x  Alashal
+    3x  Asmodel
+    3x  Asura
+    3x  Azein
+    3x  Chris
+    3x  Damon
+    3x  EweazyY
+    3x  Fanatic
+    3x  Fery
+    3x  Fingolfin
+    3x  Grymsted
+    3x  Lewyr
+    3x  Nostromos
+    3x  StueoN
+    3x  Thistle
+    3x  Trey
+    3x  Valermos
+    3x  Valus
+    3x  ViX
+    3x  Xatu
+    2x  Abu????????
+    2x  Alchemy
+    2x  AwesomeFatGuy
+    2x  Blood Echoed
+    2x  BuGgY
+    2x  Chef
+    2x  Chiunicolo
+    2x  Christoooo
+    2x  Crowsbeard
+    2x  Deen
+    2x  Douglina
+    2x  DrakiKujba
+    2x  Drek
+    2x  Grimmlok
+    2x  Hjordis
+    2x  Johnn
+    2x  Kalara
+    2x  Lehks
+    2x  Lemons
+    2x  Lockwood
+    2x  LumpyCustard
+    2x  Mask
+    2x  Mcbeav
+    2x  Mervlin
+    2x  Moonbooter
+    2x  Mr Yellow
+    2x  Pib
+    2x  Presiyan
+    2x  QuEeN BeE
+    2x  Rhosian
+    2x  Robb
+    2x  Sam
+    2x  Santaclawspark
+    2x  Setsuna
+    2x  Skaði
+    2x  Snabb Bjorn
+    2x  Soulomonb
+    2x  Tensua
+    2x  Tore
+    2x  Tundra
+    2x  Tymothy
+    2x  UlFrIc
+    2x  Yung hydra
+    2x  Zita
+    1x  Akirah
+    1x  Alrightman
+    1x  Aokighara
+    1x  Asgard
+    1x  Atrateze
+    1x  Azzzzro
+    1x  Babayaga
+    1x  Baconbaby
+    1x  Barry
+    1x  Batoras
+    1x  Beerswerve
+    1x  Beffjesos
+    1x  Brill
+    1x  Brohammer
+    1x  Corbin Ye Black
+    1x  Crystalwolff
+    1x  Dakoob 
+    1x  DeSquid
+    1x  Dee Unable
+    1x  Dennis
+    1x  Dogwaggle
+    1x  Dragnar
+    1x  Eigar
+    1x  Ela Pickleball
+    1x  Elta Stormr
+    1x  Ennius
+    1x  Fauxus
+    1x  Fenn
+    1x  Friendlythor
+    1x  Fumiga Snow
+    1x  GarlicDread
+    1x  Gilbert
+    1x  Gladiatorr
+    1x  Gravy
+    1x  Gromchicho
+    1x  HalJord
+    1x  Ireya
+    1x  Itchyx
+    1x  JaMbArO
+    1x  Kana
+    1x  Karum
+    1x  Katvargr
+    1x  Kaz Refr
+    1x  Keyroon
+    1x  Khallista
+    1x  Kipp
+    1x  Kitty
+    1x  Kluh'taq
+    1x  Knellnar 
+    1x  Kombatkarl
+    1x  Krabby Rab
+    1x  Kron ReP
+    1x  Leon St James
+    1x  Loiba
+    1x  Luddite
+    1x  Magnus Wartooth
+    1x  Mithrandir Ii
+    1x  Mr NeKrOs
+    1x  Nexonpr
+    1x  Nius Cval
+    1x  Nykey
+    1x  Oathkeeper
+    1x  Patkeladd
+    1x  Phi Sig
+    1x  PieWasStolen
+    1x  Pika
+    1x  Pioupioudibad
+    1x  Poobus
+    1x  Pyrelektron
+    1x  Pyreqson
+    1x  Ragnar Lodbrok
+    1x  Raldof
+    1x  Reina Borg
+    1x  Retrodove
+    1x  Rhodimir
+    1x  Rimaruu
+    1x  Risu
+    1x  Rosenvik
+    1x  Rout
+    1x  Saikou
+    1x  Sazzle
+    1x  Scorpionn
+    1x  Seariel???? ??? ????
+    1x  Solaire
+    1x  Son Loki
+    1x  SouthJester
+    1x  TalmudEnjoyer
+    1x  ThAgNaR
+    1x  Tigerr
+    1x  Tom
+    1x  Torvi
+    1x  Trica
+    1x  Tronchatoro
+    1x  Utilelar
+    1x  Vala Maldoran
+    1x  Vardig Vergulf
+    1x  Vern
+    1x  WinterScion
+    1x  Winterson
+    1x  Wookie
+    1x  XvIkInGx
+    1x  Ysmir Vahl
+    1x  Zarall Asbjorne
+    1x  Zerpasz
+    1x  arrows
+    1x  unknown
+
+=== TOTAL DROPPED ITEMS: 192176 ===
