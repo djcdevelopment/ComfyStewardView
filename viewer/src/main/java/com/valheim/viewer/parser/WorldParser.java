@@ -86,9 +86,9 @@ public class WorldParser {
     // Stored in structureIndices rather than discarded with generic buildings.
     private static final Set<String> KNOWN_ENTRANCES = new HashSet<>(Arrays.asList(
         // Black Forest
-        "Crypt2", "Crypt3", "Crypt4",
+        "Crypt1", "Crypt2", "Crypt3", "Crypt4", "BurialChamber",
         // Swamp
-        "SunkenCrypt2", "SunkenCrypt3", "SunkenCrypt4",
+        "SunkenCrypt1", "SunkenCrypt2", "SunkenCrypt3", "SunkenCrypt4",
         // Mountain
         "FrostCaves", "MountainCave",
         // Plains
@@ -256,6 +256,27 @@ public class WorldParser {
         for (String name : KNOWN_ENTRANCES) {
             store.registerHashName(sh(name), name);
         }
+
+        // Dungeon interiors / crypt components
+        store.registerHashName((int)3800928356L, "Burial Crypt Chest");
+        store.registerHashName((int)4104329089L, "Crypt Chest");
+        store.registerHashName((int)4252449299L, "Muddy Scrap Pile");
+        store.registerHashName((int)1756993846L, "Muddy Scrap Pile");
+        store.registerHashName((int)3848155824L, "Crypt Exit");
+        store.registerHashName((int)3955100387L, "Crypt Gate");
+        store.registerHashName((int)849594011L,  "Crypt Loot");
+        store.registerHashName((int)2275296700L, "Iron Gate");
+        store.registerHashName((int)2952831755L, "Yellow Mushroom");
+        store.registerHashName((int)1520650186L, "Mushroom");
+        store.registerHashName((int)2823374043L, "Vegvisir (Boss Stone)");
+        store.registerHashName(2034747966,       "Barrel");
+        store.registerHashName(757858766,        "Burial Crypt Item");
+        store.registerHashName(1577361568,       "Burial Crypt Item");
+        store.registerHashName(449644523,        "Skeletal Remains");
+        store.registerHashName(449644525,        "Skeletal Remains");
+        store.registerHashName((int)4036512582L, "Crypt Decoration");
+        store.registerHashName((int)1620622954L, "Crypt Decoration");
+        store.registerHashName(951398868,        "Crypt Decoration");
     }
 
     // ----- Direct ZDO parser -----
@@ -289,6 +310,15 @@ public class WorldParser {
                 store.add(hash, x, y, z, Categories.STRUCTURE, 0L, 0L, null, null, 0, 0));
             if (validPos) store.allHeatmap.increment(x, z);
             return;
+        }
+
+        // Valheim places all dungeon interiors at high elevations (Y > 3000)
+        // Store them so they can be queried, but DON'T return early so other categories
+        // or heatmaps can still process them if necessary.
+        if (y > 3000f) {
+            store.interiorIndices.add(
+                store.add(hash, x, y, z, Categories.INTERIOR, 0L, 0L, null, null, 0, 0)
+            );
         }
 
         // No property flags → pure positional ZDO (very lightweight nature object)

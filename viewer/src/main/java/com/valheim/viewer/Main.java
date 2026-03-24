@@ -28,12 +28,12 @@ import java.net.URI;
  * Entry point for Valheim World Viewer.
  *
  * Usage:
- *   java -Xmx3g -jar world-viewer.jar [path/to/save.db] [--port 7070] [--no-browser]
+ *   java -Xmx3g -jar world-viewer.jar [path/to/save.db] [--port 8003] [--no-browser]
  */
 public class Main {
 
     private static final Logger log = LoggerFactory.getLogger(Main.class);
-    private static final int DEFAULT_PORT = 7070;
+    private static final int DEFAULT_PORT = 8003;
 
     public static void main(String[] args) throws Exception {
         String dbPath    = "ComfyEra14.db";
@@ -58,7 +58,7 @@ public class Main {
         File dbFile = new File(dbPath);
         if (!dbFile.exists()) {
             System.err.println("ERROR: Save file not found: " + dbFile.getAbsolutePath());
-            System.err.println("Usage: java -Xmx3g -jar world-viewer.jar [save.db] [--port 7070]");
+            System.err.println("Usage: java -Xmx3g -jar world-viewer.jar [save.db] [--port 8003]");
             System.exit(1);
         }
 

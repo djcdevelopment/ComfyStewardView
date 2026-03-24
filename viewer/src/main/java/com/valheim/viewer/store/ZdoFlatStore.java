@@ -67,6 +67,7 @@ public class ZdoFlatStore {
     public final List<Integer> itemStandIndices = new ArrayList<>(400_000);
     public final List<Integer> creatureIndices  = new ArrayList<>(55_000);
     public final List<Integer> structureIndices = new ArrayList<>(5_000);
+    public final List<Integer> interiorIndices  = new ArrayList<>(50_000);
 
     // ----- Aggregate stats (accumulated inline during parse) -----
     public final Map<Integer, Integer> droppedItemCounts = new LinkedHashMap<>();
@@ -187,6 +188,7 @@ public class ZdoFlatStore {
         public static final byte BALLISTA     = 10;
         public static final byte UNKNOWN      = 11;
         public static final byte STRUCTURE    = 12; // dungeon/boss-site entrance
+        public static final byte INTERIOR     = 13; // interior parts (Y > 3000)
 
         public static String name(byte cat) {
             switch (cat) {
@@ -202,6 +204,7 @@ public class ZdoFlatStore {
                 case SIGN:         return "SIGN";
                 case BALLISTA:     return "BALLISTA";
                 case STRUCTURE:    return "STRUCTURE";
+                case INTERIOR:     return "INTERIOR";
                 default:           return "UNKNOWN";
             }
         }

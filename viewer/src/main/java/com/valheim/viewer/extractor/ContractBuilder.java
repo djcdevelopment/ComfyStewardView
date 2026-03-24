@@ -252,17 +252,34 @@ public class ContractBuilder {
     private static String inferStructureType(String prefab) {
         if (prefab == null || prefab.startsWith("hash:")) return "unknown";
         String lower = prefab.toLowerCase();
-        if (lower.contains("crypt"))                           return "dungeon_entrance";
+
+        // 1. Dungeons (Primary targets)
+        if (lower.contains("sunkencrypt"))                      return "sunken_crypt";
+        if (lower.contains("burialchamber") || lower.contains("crypt")) 
+                                                                return "burial_chamber";
+        if (lower.contains("trollcave"))                        return "troll_cave";
         if (lower.contains("frostcave") || lower.contains("mountaincave") ||
-            lower.contains("cave"))                            return "cave_entrance";
+            (lower.contains("cave") && !lower.contains("troll"))) 
+                                                                return "frost_cave";
+
+        // 2. Points of Interest
+        if (lower.contains("haldor") || lower.contains("hildir") || 
+            lower.contains("vendor"))                          return "vendor";
+        if (lower.contains("draugr") || lower.contains("woodvillage"))
+                                                                return "draugr_village";
         if (lower.contains("dvergrtown") || lower.contains("dvergr"))
-                                                               return "dungeon_entrance";
-        if (lower.contains("goblincamp"))                      return "camp";
+                                                                return "dvergr_village";
+        if (lower.contains("goblincamp") || lower.contains("fuling"))
+                                                                return "fuling_village";
+        if (lower.contains("drakenest"))                       return "drake_nest";
+        
+        // 3. Boss Altars and Ruins
         if (lower.contains("bossstone") || lower.contains("altar") ||
             lower.contains("fader"))                           return "boss_altar";
         if (lower.contains("tarpit"))                          return "ruin";
         if (lower.contains("inferno") || lower.contains("niddavalir"))
-                                                               return "dungeon_entrance";
+                                                                return "ashlands_ruin";
+
         return "unknown";
     }
 

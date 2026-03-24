@@ -473,6 +473,44 @@
         <div class="text-gray-500 text-sm mt-8 text-center">Loading creatures...</div>
       </template>
     </div>
+    </div>
+  </div>
+
+  <!-- =========== SELECTION TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'selection'">
+    <div class="p-4 border-b border-gray-700 flex items-center justify-between">
+      <div class="text-sm border-l-4 border-green-500 pl-3">
+        <div class="text-gray-200 font-bold">Dungeon Area Selection</div>
+        <div class="text-xs text-gray-400">Hold Shift + Drag on map to select</div>
+      </div>
+      <span class="text-xs text-gray-400" x-text="`${selectionData.length.toLocaleString()} distinct items`"></span>
+    </div>
+    <div class="flex-1 overflow-y-auto p-4">
+      <template x-if="isSelectionLoading">
+        <div class="flex flex-col items-center justify-center h-40">
+          <svg class="animate-spin h-8 w-8 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <div class="text-gray-400 text-sm animate-pulse">Scanning dungeon contents...</div>
+        </div>
+      </template>
+      <template x-if="!isSelectionLoading && selectionData.length === 0">
+        <div class="text-gray-500 text-sm mt-8 text-center text-lg">
+          No items selected.</br>
+          <span class="text-gray-400 text-xs mt-2 block">Hold Shift and Drag on the map to define an area.</span>
+        </div>
+      </template>
+      <div x-show="!isSelectionLoading && selectionData.length > 0" class="space-y-1">
+        <template x-for="item in selectionData" :key="item.prefab">
+          <div class="flex items-center justify-between bg-gray-800 p-2 px-4 rounded border-l-2"
+               :class="item.prefab.includes('Chest') ? 'border-yellow-500 bg-yellow-900/10' : (item.prefab.includes('Scrap') || item.prefab.includes('Loot') ? 'border-green-500 bg-green-900/10' : 'border-gray-500')">
+            <div class="text-sm text-gray-200" x-text="item.prefab"></div>
+            <div class="text-md font-bold text-gray-300" x-text="'x' + item.count"></div>
+          </div>
+        </template>
+      </div>
+    </div>
   </div>
 
 </div><!-- /main content -->
@@ -491,6 +529,7 @@ function app() {
   return {
     // Loading
     loadStatus: 'Connecting...', loadPct: 0, loadParsed: 0, loadTotal: 0,
+    isSelectionLoading: false,
 
     // Active tab
     activeTab: 'map',
@@ -505,6 +544,7 @@ function app() {
       { id: 'alerts',     label: '🚨 Alerts' },
       { id: 'structures', label: '🏛 Structures' },
       { id: 'creatures',  label: '🐾 Creatures' },
+      { id: 'selection',  label: '🔲 Selection' },
     ],
 
     // Summary
@@ -531,6 +571,7 @@ function app() {
       { id: 'TOMBSTONE', label: 'Tombstones', color: '#f43f5e', active: false, layer: null },
       { id: 'CONTAINER', label: 'Containers', color: '#34d399', active: false, layer: null },
       { id: 'STRUCTURE', label: 'Structures', color: '#fbbf24', active: false, layer: null },
+      { id: 'INTERIOR',  label: 'Dungeon Interiors', color: '#a855f7', active: false, layer: null },
     ],
     filterSpawnAfter:  0,
     filterSpawnBefore: 2,
@@ -580,6 +621,10 @@ function app() {
 
     // Creatures
     creatureSummary: null,
+
+    // Selection
+    selectionData: [],
+    selectionRect: null,
 
     async init() {
       await this.pollUntilReady();
@@ -656,6 +701,41 @@ function app() {
       this.map.on('click', (e) => {
         const w = latLngToWorld(e.latlng);
         navigator.clipboard?.writeText(`${Math.round(w.x)}, ${Math.round(w.z)}`);
+      });
+
+      // Selection box (Shift + Drag)
+      let isSelecting = false;
+      let startPoint = null;
+
+      this.map.on('mousedown', (e) => {
+        if (e.originalEvent.shiftKey) {
+          this.map.dragging.disable();
+          isSelecting = true;
+          startPoint = e.latlng;
+          if (this.selectionRect) this.map.removeLayer(this.selectionRect);
+          this.selectionRect = L.rectangle([startPoint, startPoint], {
+            color: '#4ade80', weight: 1, fillColor: '#4ade80', fillOpacity: 0.2
+          }).addTo(this.map);
+        }
+      });
+      this.map.on('mousemove', (e) => {
+        if (isSelecting && this.selectionRect) {
+          this.selectionRect.setBounds([startPoint, e.latlng]);
+        }
+      });
+      this.map.on('mouseup', (e) => {
+        if (isSelecting) {
+          isSelecting = false;
+          this.map.dragging.enable();
+          if (this.selectionRect) {
+            const bounds = this.selectionRect.getBounds();
+            const sw = latLngToWorld(bounds.getSouthWest());
+            const ne = latLngToWorld(bounds.getNorthEast());
+            const minX = Math.min(sw.x, ne.x), maxX = Math.max(sw.x, ne.x);
+            const minZ = Math.min(sw.z, ne.z), maxZ = Math.max(sw.z, ne.z);
+            this.fetchSelection(minX, maxX, minZ, maxZ);
+          }
+        }
       });
 
       // Canvas heatmap layer — placed directly in the map container (NOT overlayPane)
@@ -780,40 +860,57 @@ function app() {
       if (overlay.active) {
         const markers = L.layerGroup();
         if (overlay.id === 'STRUCTURE') {
-          const typeColors = {
-            boss_altar: '#fbbf24', dungeon_entrance: '#ef4444',
-            cave_entrance: '#14b8a6', camp: '#f97316',
-            ruin: '#9ca3af', unknown: '#6b7280'
+          const typeIcons = {
+            boss_altar: '🔥', sunken_crypt: '🟢', burial_chamber: '💀',
+            troll_cave: '🫐', frost_cave: '❄️', draugr_village: '🧟', 
+            dvergr_village: '🧙', fuling_village: '👺', vendor: '💰', 
+            ruin: '🧱', ashlands_ruin: '🌋', drake_nest: '🐉', unknown: '❓'
           };
           const d = await fetchJson(`${API}/structures?limit=5000`);
           for (const st of (d.data || [])) {
             const x = st.position?.x, z = st.position?.z;
             if (x == null || Math.abs(x) >= 100000 || Math.abs(z) >= 100000) continue;
-            const color   = typeColors[st.type] || '#6b7280';
-            const opacity = st.status === 'active' ? 0.9 : st.status === 'likely_cleared' ? 0.4 : 0.25;
-            const circle = L.circleMarker(worldToLatLng(x, z), {
-              radius: 5, color, weight: 1.5, fillColor: color, fillOpacity: opacity
+            const iconStr = typeIcons[st.type] || '🏛️';
+            const marker = L.marker(worldToLatLng(x, z), {
+              icon: L.divIcon({ html: `<div style="font-size:16px; text-shadow: 1px 1px 2px black;">${iconStr}</div>`, className: 'bg-transparent border-0' })
             });
             const tip = `<b>${st.prefab || st.type}</b><br>${st.biome || '—'} · ${st.status || '—'}`;
-            circle.bindTooltip(tip, { permanent: false, direction: 'top' });
-            markers.addLayer(circle);
+            marker.bindTooltip(tip, { permanent: false, direction: 'top' });
+            markers.addLayer(marker);
           }
         } else {
-          const d = await fetchJson(`${API}/points?cat=${overlay.id}&limit=20000`);
+          const d = await fetchJson(`${API}/points?cat=${overlay.id}&limit=200000`);
           for (const pt of d.points) {
             if (Math.abs(pt.x) >= 100000 || Math.abs(pt.z) >= 100000) continue;
+            let color = overlay.color;
+            let radius = 3;
+            if (overlay.id === 'INTERIOR') {
+              const p = pt.prefab || '';
+              if (p.includes('Chest')) color = '#facc15';
+              else if (p.includes('Scrap') || p.includes('Loot') || p.includes('Mushroom')) color = '#a3e635';
+              else if (p.includes('Gate') || p.includes('Exit')) color = '#38bdf8';
+              else color = '#6b7280';
+              radius = 2;
+            }
             const circle = L.circleMarker(worldToLatLng(pt.x, pt.z), {
-              radius: 3, color: overlay.color, weight: 1,
-              fillColor: overlay.color, fillOpacity: 0.6
+              radius: radius, color: color, weight: 1,
+              fillColor: color, fillOpacity: Math.min(1, overlay.id === 'INTERIOR' ? 0.9 : 0.6)
             });
-            if (pt.label) circle.bindTooltip(pt.label, { permanent: false, direction: 'top' });
+            const lbl = overlay.id === 'INTERIOR' ? (pt.prefab || pt.label || 'Prop') : (pt.label || '');
+            if (lbl) circle.bindTooltip(lbl, { permanent: false, direction: 'top' });
             markers.addLayer(circle);
           }
         }
         overlay.layer = markers;
         this.map.addLayer(markers);
       } else {
-        if (overlay.layer) this.map.removeLayer(overlay.layer);
+        if (overlay.layer) {
+          overlay.layer.eachLayer(l => {
+            if (l.closeTooltip) l.closeTooltip();
+            if (l.unbindTooltip) l.unbindTooltip();
+          });
+          this.map.removeLayer(overlay.layer);
+        }
         overlay.layer = null;
       }
     },
@@ -821,7 +918,13 @@ function app() {
     applyFilters() {
       for (const overlay of this.pointOverlays) {
         if (overlay.active) {
-          this.map.removeLayer(overlay.layer);
+          if (overlay.layer) {
+            overlay.layer.eachLayer(l => {
+              if (l.closeTooltip) l.closeTooltip();
+              if (l.unbindTooltip) l.unbindTooltip();
+            });
+            this.map.removeLayer(overlay.layer);
+          }
           overlay.layer = null;
           overlay.active = false;
         }
@@ -1118,6 +1221,25 @@ function app() {
         byHostility,
         topPrefabs: Object.values(prefabMap).sort((a,b) => b.count - a.count).slice(0, 25),
       };
+    },
+
+    async fetchSelection(minX, maxX, minZ, maxZ) {
+      this.switchTab('selection');
+      this.selectionData = [];
+      this.isSelectionLoading = true;
+      try {
+        const d = await fetchJson(`${API}/points?cat=INTERIOR&limit=200000&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}`);
+        const counts = {};
+        for (const pt of d.points) {
+          const p = pt.prefab || pt.label || 'Unknown Prop';
+          counts[p] = (counts[p] || 0) + 1;
+        }
+        this.selectionData = Object.entries(counts)
+          .sort((a,b) => b[1] - a[1])
+          .map(([prefab, count]) => ({ prefab, count }));
+      } finally {
+        this.isSelectionLoading = false;
+      }
     },
 
     // ===== HELPERS =====
