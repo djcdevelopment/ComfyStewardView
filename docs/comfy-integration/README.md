@@ -4,6 +4,15 @@ This folder is the entry point for the steward-tooling work that landed in late 
 
 **What's running:** `D:\work\temp\viewer\` (the Javalin + Leaflet app at `http://localhost:7080/`), now reading v106 inventories correctly, with 617-item classification, guild-gear awareness, server-issuer detection, and 3 new forensics endpoints. The parser used to drop 99% of containers silently — that's fixed.
 
+## ⚡ Where to start — pick one
+
+| Goal | Go to |
+|---|---|
+| **"I want to build this from scratch right now"** | [BUILD_GUIDE.md](BUILD_GUIDE.md) — 10 numbered steps, every one with a verify command. ~15 minutes if Java 17 is installed. |
+| **"It's already running, I just want to confirm everything's wired"** | Run the quick-verify block below (~30 seconds) or `smoke-test.ps1` (17 assertions). |
+| **"I want to understand what's here before I touch anything"** | Read [LESSONS_LEARNED.md](LESSONS_LEARNED.md) and look at [diagrams/01-architecture.svg](diagrams/01-architecture.svg). |
+| **"I want to extend it"** | [diagrams/05-extension-map.svg](diagrams/05-extension-map.svg) for what's open, [LLM_PROMPT_GUIDE.md](LLM_PROMPT_GUIDE.md) for paste-ready prompts. |
+
 ## Quick verify (5 commands, ~30 seconds)
 
 ```bash
@@ -30,10 +39,11 @@ A PowerShell version of these is at `smoke-test.ps1` next to this README.
 | Doc | What's in it |
 |---|---|
 | [README.md](README.md) | (this file) — index, quick verify, run instructions |
+| [**BUILD_GUIDE.md**](BUILD_GUIDE.md) | **Step-by-step build contract.** Pre-flight checks, component manifest (what each file emits + why), 10 numbered steps with verify command after every one. Read this if you're touching the code. |
 | [RETROSPECTIVE.md](RETROSPECTIVE.md) | Decision tree of the session: what worked, what we tried + reverted, why we ended up on Path A |
 | [LESSONS_LEARNED.md](LESSONS_LEARNED.md) | Technical discoveries worth carrying forward: v106 format, Engravings mod, guild gear pattern, player attribution, etc. |
 | [LLM_PROMPT_GUIDE.md](LLM_PROMPT_GUIDE.md) | ~10 paste-ready prompts for extending the system using any free chat model (ChatGPT free, Claude.ai free, Gemini free). Each prompt is self-contained. |
-| [smoke-test.ps1](smoke-test.ps1) | PowerShell one-shot that exercises every endpoint and confirms the patches landed |
+| [smoke-test.ps1](smoke-test.ps1) | PowerShell one-shot that exercises every endpoint and confirms the patches landed (17 assertions, exit 0 = all good) |
 | [diagrams/](diagrams/) | SVG diagrams (5) — architecture, data flow, build, integration points, extension map |
 | [reference/](reference/) | The full analysis docs and our standalone toolkit references |
 | [screenshots/](screenshots/) | Five labeled screenshots of the integrated UI (Map / Portals / Economy / Server Issuers / Guild Gear) |
@@ -63,27 +73,18 @@ The starred three are new — see [LESSONS_LEARNED.md § Forensics tabs](LESSONS
 
 ## Build / rebuild
 
-If you change Java source, the fast path (no Maven) is:
+**See [BUILD_GUIDE.md](BUILD_GUIDE.md)** for the full contracted walkthrough with verify commands at each step. The short version:
 
-```powershell
-# 1. Recompile changed files (excluding the corrupt jetty-servlet.jar)
-$jdk = "C:\Users\<you>\.gradle\jdks\eclipse_adoptium-17-amd64-windows.2"  # or wherever your JDK 17 lives
-$lib = "D:\work\temp\viewer\lib"
-$jars = "jackson-annotations-2.17.2.jar","jackson-core-2.17.2.jar","jackson-databind-2.17.2.jar","javalin-6.3.0.jar","slf4j-api-2.0.13.jar","jetty-http.jar","jetty-io.jar","jetty-server.jar","jetty-util.jar" | % { "$lib\$_" }
-$cp = "D:\work\temp\viewer\target\classes;" + ($jars -join ';')
-& "$jdk\bin\javac.exe" -cp $cp -d "D:\work\temp\viewer\target\classes" path/to/ChangedFile.java
+| What changed | What you re-do |
+|---|---|
+| A `.java` file under `viewer/src/main/java/` | BUILD_GUIDE steps 2-3 (compile + bundle into JAR) |
+| `viewer/src/main/resources/static/index.html` | BUILD_GUIDE step 4 (bundle static resource into JAR) |
+| `viewer/classification.json` | Nothing to build — it's read from disk at startup. Restart the daemon (steps 7-8). |
+| Any of the above | Then steps 5, 7-9 (sync JARs, restart, smoke test). |
 
-# 2. Update the JAR in place
-cd D:\work\temp\viewer\target\classes
-& "$jdk\bin\jar.exe" uf D:\work\temp\viewer\target\world-viewer-1.0.0-shaded.jar com/valheim/viewer/<your changed paths>.class
-Copy-Item D:\work\temp\viewer\target\world-viewer-1.0.0-shaded.jar D:\work\temp\viewer\target\world-viewer-1.0.0.jar -Force
+Typical cycle: ~15 seconds end to end.
 
-# 3. Restart the daemon
-Stop-Process -Id (Get-NetTCPConnection -LocalPort 7080).OwningProcess -Force
-# then launch the java -jar command from "Run instructions" above
-```
-
-Why no Maven: `lib/jetty-servlet.jar` is a 554-byte stub (corrupted at some point). `mvn package` blows up on it; targeted `javac` calls that exclude it work fine. See [diagrams/03-build-path.svg](diagrams/03-build-path.svg). Fixing the stub jar is a 5-minute job for anyone with Maven Central access — left as an exercise.
+**Why no Maven:** `lib/jetty-servlet.jar` is a 554-byte stub (corrupted). `mvn package` blows up on it; targeted `javac` calls that exclude it work fine. See [diagrams/03-build-path.svg](diagrams/03-build-path.svg). Fixing the stub jar would unblock Maven and is a 5-minute job — listed in [diagrams/05-extension-map.svg](diagrams/05-extension-map.svg) under KNOWN BUGS.
 
 ## What changed (one-line summary)
 
