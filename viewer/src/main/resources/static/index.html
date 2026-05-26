@@ -766,6 +766,12 @@ function app() {
       this.loadSummary();
       this.loadWorldSummary();
       this.switchTab('map');
+      // PB6 / screenshot capture: deep-link tabs via URL hash `#tab=<id>`.
+      // Also useful for sharing links to specific views.
+      const hashTab = (location.hash || '').replace(/^#tab=/, '');
+      if (hashTab && this.tabs.some(t => t.id === hashTab)) {
+        setTimeout(() => this.switchTab(hashTab), 600);
+      }
     },
 
     async pollUntilReady() {
@@ -1180,6 +1186,12 @@ function app() {
       const d = await fetchJson(`${API}/forensics/server-issuers?limit=100`);
       this.serverIssuers = d;
       this.guildGearMeta = d;   // shared
+      // If user landed on Guild Gear via deep-link (or just hasn't picked an issuer yet)
+      // and we just got the list, auto-load the top issuer so the page has content.
+      if (this.activeTab === 'guildgear' && !this.selectedIssuer && d.issuers && d.issuers.length) {
+        this.selectedIssuer = d.issuers[0].crafter;
+        this.loadGuildGear();
+      }
     },
     async loadGuildGear() {
       if (!this.selectedIssuer) { this.guildGearItems = null; return; }
