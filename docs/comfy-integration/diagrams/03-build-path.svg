@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 650" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <style>
+    .bg     { fill: #0d1320; }
+    .step   { fill: #1a2336; stroke: #2a3450; stroke-width: 1; rx: 4; }
+    .danger { fill: #2a1820; stroke: #c66; stroke-width: 2; rx: 4; }
+    .ok     { fill: #1a2a1a; stroke: #6c6; stroke-width: 2; rx: 4; }
+    .label  { fill: #cdd; font-size: 12px; }
+    .sub    { fill: #99a; font-size: 11px; }
+    .title  { fill: #fff; font-size: 14px; font-weight: 600; }
+    .header { fill: #fff; font-size: 18px; font-weight: 600; }
+    .arrow  { stroke: #557; stroke-width: 1.5; fill: none; marker-end: url(#a); }
+    .danger-arrow { stroke: #c66; stroke-width: 1.5; fill: none; marker-end: url(#ad); }
+    .ok-arrow     { stroke: #6c6; stroke-width: 1.5; fill: none; marker-end: url(#ag); }
+    .code   { fill: #9c9; font-family: ui-monospace, monospace; font-size: 11px; }
+  </style>
+  <defs>
+    <marker id="a"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#557"/></marker>
+    <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#c66"/></marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#6c6"/></marker>
+  </defs>
+
+  <rect width="1100" height="650" class="bg"/>
+  <text x="40" y="35" class="header">Build path — two options</text>
+  <text x="40" y="58" class="sub">Red path is what stops working (corrupt jetty-servlet.jar stub). Green path is the workaround we used.</text>
+
+  <!-- Maven path (broken) -->
+  <text x="40" y="100" class="title" fill="#c66">Maven path — BLOCKED</text>
+  <rect x="40" y="115" width="220" height="60" class="danger"/>
+  <text x="60" y="138" class="label">pom.xml</text>
+  <text x="60" y="158" class="code">mvn package</text>
+
+  <line class="danger-arrow" x1="265" y1="145" x2="295" y2="145"/>
+
+  <rect x="300" y="115" width="320" height="60" class="danger"/>
+  <text x="320" y="138" class="label">FAIL on lib/jetty-servlet.jar</text>
+  <text x="320" y="158" class="sub">554-byte stub — "zip END header not found"</text>
+
+  <line class="danger-arrow" x1="625" y1="145" x2="655" y2="145"/>
+
+  <rect x="660" y="115" width="380" height="60" class="danger"/>
+  <text x="680" y="138" class="label">Fix candidate (5 min job)</text>
+  <text x="680" y="158" class="sub">Re-download jetty-servlet ~554 KB from Maven Central, drop in lib/</text>
+
+  <!-- Spacer -->
+  <line x1="40" y1="210" x2="1060" y2="210" stroke="#334" stroke-dasharray="4,3"/>
+
+  <!-- javac path (works) -->
+  <text x="40" y="245" class="title" fill="#6c6">Direct javac path — WORKS</text>
+  <rect x="40" y="260" width="280" height="80" class="ok"/>
+  <text x="60" y="285" class="label">1. Edit Java source</text>
+  <text x="60" y="305" class="code">src/main/java/.../*.java</text>
+  <text x="60" y="323" class="sub">(any of the 7 files we patched)</text>
+
+  <line class="ok-arrow" x1="325" y1="300" x2="355" y2="300"/>
+
+  <rect x="360" y="260" width="320" height="80" class="ok"/>
+  <text x="380" y="285" class="label">2. Compile to target/classes</text>
+  <text x="380" y="305" class="code">javac -cp $classes;$lib/jackson*.jar;</text>
+  <text x="380" y="323" class="code">  ...;$lib/jetty-{http,io,server,util}.jar</text>
+
+  <line class="ok-arrow" x1="685" y1="300" x2="715" y2="300"/>
+
+  <rect x="720" y="260" width="320" height="80" class="ok"/>
+  <text x="740" y="285" class="label">3. Update shaded JAR in place</text>
+  <text x="740" y="305" class="code">jar uf world-viewer-1.0.0-shaded.jar \</text>
+  <text x="740" y="323" class="code">  com/valheim/viewer/.../*.class</text>
+
+  <line class="ok-arrow" x1="540" y1="345" x2="540" y2="375"/>
+
+  <rect x="40" y="375" width="1000" height="80" class="ok"/>
+  <text x="60" y="400" class="label">4. Sync the two JAR copies (Maven shade leaves world-viewer-1.0.0.jar and -shaded.jar as duplicates)</text>
+  <text x="60" y="420" class="code">Copy-Item world-viewer-1.0.0-shaded.jar world-viewer-1.0.0.jar -Force</text>
+  <text x="60" y="440" class="sub">The daemon launches the unsuffixed jar; both must have the same content.</text>
+
+  <line class="ok-arrow" x1="540" y1="460" x2="540" y2="490"/>
+
+  <rect x="40" y="490" width="1000" height="120" class="ok"/>
+  <text x="60" y="515" class="label">5. Restart the daemon</text>
+  <text x="60" y="538" class="code">Stop-Process -Id (Get-NetTCPConnection -LocalPort 7080).OwningProcess -Force</text>
+  <text x="60" y="558" class="code">java -Xmx3g -jar target\world-viewer-1.0.0.jar D:\work\temp\ComfyEra14.db --port 7080 --no-browser</text>
+  <text x="60" y="582" class="sub">Daemon parses in ~3 s, ready in ~8 s total. Verify with smoke-test.ps1.</text>
+  <text x="60" y="600" class="code">curl http://localhost:7080/api/v1/status   # → {"done":true,...}</text>
+</svg>

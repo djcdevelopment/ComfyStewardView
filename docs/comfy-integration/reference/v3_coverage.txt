@@ -1,0 +1,59 @@
+# V3 prefab-dictionary merge — coverage report
+
+Source dictionary: comfyera14_prefabs.csv (3569 prefab→name entries)
+
+## containers.csv
+  rows total:        61289
+  already vanilla:   40108
+  newly resolved:    21181  (34.6%)
+  still unknown:     0  (0.0%)
+  distinct unknown hashes: 0
+
+## inventory.csv
+  rows total:    332063
+  already vanilla: 170937
+  newly resolved:  158559  (47.7%)
+  still unknown:   0  (0.0%)
+
+## Top newly-resolved container types
+      7858  piece_chest_blackmetal
+      1740  piece_chest_barrel
+      1737  stonechest
+      1355  TreasureChest_dvergrtown
+      1288  TreasureChest_dvergrtower
+      1125  piece_gift1
+       995  piece_gift3
+       721  TreasureChest_mountaincave
+       527  piece_pot2_cracked
+       518  piece_pot3_cracked
+       482  TreasureChest_charredfortress
+       471  piece_pot3
+       367  piece_pot1
+       346  piece_gift2
+       311  piece_pot1_cracked
+       236  TreasureChest_mountaincave_hildir
+       209  TreasureChest_ashland_stone
+       193  TreasureChest_forestcrypt_hildir
+       170  incinerator
+       123  piece_pot2
+        93  TreasureChest_dvergr_loose_stone
+        86  loot_chest_stone
+        48  loot_chest_wood
+        43  TreasureChest_fCrypt
+        36  Chest
+        26  TreasureChest_plainsfortress_hildir
+        23  VikingShip_Ashlands
+        12  blackmarble_tile_wall_2x4
+        11  piece_pot1_red
+         6  TreasureChest_heath_hildir
+         5  piece_blackmarble_table
+         5  piece_pot3_red
+         3  piece_dvergr_metal_wall_2x2
+         3  piece_pot2_red
+         2  blackmarble_2x1x1
+         2  blackmarble_floor
+         1  blackmarble_basecorner
+         1  blackmarble_column_3
+         1  darkwood_pole4
+         1  piece_blackmarble_bench
+         1  wood_wall_quarter

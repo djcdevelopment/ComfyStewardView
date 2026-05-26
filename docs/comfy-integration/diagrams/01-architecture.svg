@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 700" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <style>
+    .bg     { fill: #0d1320; }
+    .layer  { fill: #1a2336; stroke: #2a3450; stroke-width: 1; rx: 4; }
+    .new    { fill: #2a1820; stroke: #c66; stroke-width: 2; rx: 4; }
+    .patched{ fill: #1a2a1a; stroke: #6c6; stroke-width: 2; rx: 4; }
+    .label  { fill: #cdd; font-size: 13px; }
+    .sub    { fill: #99a; font-size: 11px; }
+    .title  { fill: #fff; font-size: 14px; font-weight: 600; }
+    .arrow  { stroke: #557; stroke-width: 1.5; fill: none; marker-end: url(#a); }
+    .arrow-new { stroke: #c66; stroke-width: 2; fill: none; marker-end: url(#an); }
+    .header { fill: #fff; font-size: 18px; font-weight: 600; }
+    .layer-label { fill: #88a; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; }
+  </style>
+  <defs>
+    <marker id="a"  viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#557"/></marker>
+    <marker id="an" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#c66"/></marker>
+  </defs>
+
+  <rect width="1100" height="700" class="bg"/>
+
+  <text x="40" y="35" class="header">Comfy Steward View — Architecture</text>
+  <text x="40" y="58" class="sub">After Path A integration. Green = patched (our changes). Red = new file. Grey = original.</text>
+
+  <!-- Storage layer -->
+  <text x="40" y="100" class="layer-label">STORAGE</text>
+  <rect x="40" y="115" width="200" height="60" class="layer"/>
+  <text x="60" y="138" class="title">ComfyEra14.db</text>
+  <text x="60" y="158" class="sub">1.1 GB · 8M ZDOs · world v35</text>
+
+  <rect x="280" y="115" width="200" height="60" class="new"/>
+  <text x="300" y="138" class="title">classification.json</text>
+  <text x="300" y="158" class="sub">60 KB · 617 items · NEW</text>
+
+  <!-- Parse layer -->
+  <text x="40" y="220" class="layer-label">PARSE (one-shot at startup)</text>
+  <rect x="40" y="235" width="280" height="80" class="patched"/>
+  <text x="60" y="258" class="title">WorldParser</text>
+  <text x="60" y="278" class="sub">v106 inventory · capture qual/crafter/customData</text>
+  <text x="60" y="296" class="sub">per ZDO type → dispatch + tally</text>
+
+  <rect x="360" y="235" width="220" height="80" class="patched"/>
+  <text x="380" y="258" class="title">ZdoFlatStore</text>
+  <text x="380" y="278" class="sub">parallel primitive arrays · indices</text>
+  <text x="380" y="296" class="sub">+ forensics fields · + CoinCache</text>
+
+  <rect x="620" y="235" width="200" height="80" class="new"/>
+  <text x="640" y="258" class="title">ClassificationStore</text>
+  <text x="640" y="278" class="sub">loaded once at startup</text>
+  <text x="640" y="296" class="sub">name → cat/tier/biome · NEW</text>
+
+  <!-- Build / Analysis layer -->
+  <text x="40" y="360" class="layer-label">CONTRACTS + DERIVATION</text>
+  <rect x="40" y="375" width="200" height="80" class="layer"/>
+  <text x="60" y="398" class="title">ContractBuilder</text>
+  <text x="60" y="418" class="sub">flat-store → typed contracts</text>
+  <text x="60" y="436" class="sub">portals · entities · containers · records</text>
+
+  <rect x="280" y="375" width="180" height="80" class="layer"/>
+  <text x="300" y="398" class="title">MetricsBuilder</text>
+  <text x="300" y="418" class="sub">portal clusters · density</text>
+  <text x="300" y="436" class="sub">zone budgets · hotspots</text>
+
+  <rect x="500" y="375" width="200" height="80" class="patched"/>
+  <text x="520" y="398" class="title">AlertBuilder</text>
+  <text x="520" y="418" class="sub">portal · zone · hotspot · economy</text>
+  <text x="520" y="436" class="sub">+ forensics (quality / server / engrav)</text>
+
+  <rect x="740" y="375" width="180" height="80" class="layer"/>
+  <text x="760" y="398" class="title">StructureDetector</text>
+  <text x="760" y="418" class="sub">boss altars · POIs</text>
+  <text x="760" y="436" class="sub">122 detected</text>
+
+  <!-- API layer -->
+  <text x="40" y="500" class="layer-label">REST API (Javalin + Jetty :7080)</text>
+  <rect x="40" y="515" width="880" height="80" class="patched"/>
+  <text x="60" y="540" class="title">ApiServer</text>
+  <text x="60" y="562" class="sub">/api/v1/status · /summary · /heatmap · /portals · /containers · /economy ★ · /players · /tombstones · /signs · /beds · /dropped · /points</text>
+  <text x="60" y="580" class="sub">/world-summary · /metrics · /entities · /alerts · /sectors · /structures · /forensics/top-coin-caches ★ · /server-issuers ★ · /guild-gear ★</text>
+
+  <!-- UI -->
+  <text x="40" y="630" class="layer-label">USER INTERFACE</text>
+  <rect x="40" y="645" width="880" height="40" class="patched"/>
+  <text x="60" y="670" class="title">index.html (Alpine + Tabulator + Leaflet)</text>
+  <text x="500" y="670" class="sub">+ 3 new tabs · economy enhanced with category/tier chips</text>
+
+  <!-- Arrows -->
+  <line class="arrow" x1="140" y1="180" x2="180" y2="230"/>
+  <line class="arrow-new" x1="380" y1="180" x2="700" y2="230"/>
+  <line class="arrow" x1="320" y1="275" x2="356" y2="275"/>
+  <line class="arrow-new" x1="620" y1="275" x2="580" y2="275"/>
+  <line class="arrow" x1="450" y1="320" x2="180" y2="370"/>
+  <line class="arrow" x1="450" y1="320" x2="370" y2="370"/>
+  <line class="arrow" x1="450" y1="320" x2="600" y2="370"/>
+  <line class="arrow" x1="450" y1="320" x2="830" y2="370"/>
+  <line class="arrow" x1="480" y1="460" x2="480" y2="510"/>
+  <line class="arrow" x1="480" y1="600" x2="480" y2="640"/>
+</svg>

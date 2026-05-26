@@ -4,6 +4,7 @@ import com.valheim.viewer.config.StConfig;
 import com.valheim.viewer.contract.Alert;
 import com.valheim.viewer.contract.Portal;
 import com.valheim.viewer.contract.WorldContracts;
+import com.valheim.viewer.store.ZdoFlatStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +39,17 @@ public class AlertBuilder {
     private static final int MAX_DROPPED_HOTSPOT_ALERTS = 10;
 
     public AlertResult build(WorldContracts contracts, MetricsResult metrics) {
+        return build(contracts, metrics, null);
+    }
+
+    /**
+     * PA4 overload accepting ZdoFlatStore for forensics-driven alerts.
+     * NOTE: technically breaches the "no ZdoFlatStore beyond ContractBuilder" boundary
+     * (see class header). Pragmatic shortcut to surface item-level intelligence (quality
+     * overflow / server-issued / engravings) without plumbing through WorldContracts.
+     * Refactor candidate: move these counts into a ForensicsContract on WorldContracts.
+     */
+    public AlertResult build(WorldContracts contracts, MetricsResult metrics, ZdoFlatStore store) {
         long t0 = System.currentTimeMillis();
         StConfig cfg = StConfig.get();
 
@@ -47,6 +59,7 @@ public class AlertBuilder {
         buildZoneBudgetAlerts(metrics, alerts);
         buildHotspotAlerts(metrics, alerts);
         buildEconomySurgeAlert(contracts, cfg, alerts);
+        if (store != null) buildForensicsAlerts(store, alerts);
 
         AlertResult result = new AlertResult();
         result.alerts = alerts;
@@ -240,6 +253,53 @@ public class AlertBuilder {
          .meta("unique_types", unique)
          .meta("unknown_pct", unknownPct)
          .meta("threshold_pct", cfg.unknownSurgeThresholdPct));
+    }
+
+    // ---- PA4 Forensics alerts (item-level intelligence) ----
+
+    private void buildForensicsAlerts(ZdoFlatStore s, List<Alert> out) {
+        // Quality overflow — critical, individual sample alerts (cap 5 for noise control)
+        if (s.qualityOverflowCount > 0) {
+            int shown = Math.min(5, s.qualityOverflowSamples.size());
+            for (int i = 0; i < shown; i++) {
+                String sample = s.qualityOverflowSamples.get(i);
+                out.add(new Alert(
+                    "quality-overflow-" + i,
+                    "quality_overflow", "critical",
+                    "Quality overflow: " + sample,
+                    "Item with quality > 1,000,000 detected. Either save corruption or mod exploit; the quality int has overflowed. Steward should investigate the player who crafted this item."
+                ).meta("sample", sample));
+            }
+            if (s.qualityOverflowCount > shown) {
+                out.add(new Alert(
+                    "quality-overflow-aggregate",
+                    "quality_overflow_aggregate", "critical",
+                    s.qualityOverflowCount + " items with overflow quality (showing top " + shown + ")",
+                    "Total of " + s.qualityOverflowCount + " items have quality > 1,000,000. Sample shown above."
+                ).meta("count", s.qualityOverflowCount));
+            }
+        }
+
+        // Server-issued items count — info-level, single aggregate
+        if (s.serverIssuedItemCount > 0) {
+            out.add(new Alert(
+                "forensics-server-issued",
+                "server_issued_items", "low",
+                s.serverIssuedItemCount + " server-issued items across " + s.serverIssuerCatalog.size() + " issuer identities",
+                "Items where the crafter name contains HTML/color tags. These are guild rewards, event vouchers, or admin cosmetics — not player crafts. Filter quality-outlier alerts against this set."
+            ).meta("items", s.serverIssuedItemCount)
+             .meta("issuers", s.serverIssuerCatalog.size()));
+        }
+
+        // Engravings tracked — info-level, explains why high-quality items aren't exploits
+        if (s.engravingsTrackedCount > 0) {
+            out.add(new Alert(
+                "forensics-engravings",
+                "engravings_tracked", "low",
+                s.engravingsTrackedCount + " items engraved by the Engravings mod",
+                "Items with engravings.quality customData. The Engravings mod repurposes the quality field as an engraving tier — high quality on these items is NOT a vanilla upgrade and should not be flagged as exploit."
+            ).meta("count", s.engravingsTrackedCount));
+        }
     }
 
     // ---- Helpers ----

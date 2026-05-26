@@ -76,6 +76,29 @@ public class ZdoFlatStore {
     // Counter for building ZDOs (not stored in flat arrays)
     public int buildingCount;
 
+    // ----- PA4/PA5 forensics (item-level intelligence) ------------------
+    /** Items with quality > 1,000,000 — likely overflow exploits (e.g. Ditseey/DeerStew). */
+    public int qualityOverflowCount = 0;
+    /** Up to 20 examples for the alert payload. */
+    public final List<String> qualityOverflowSamples = new ArrayList<>();
+    /** Items whose crafter name contains HTML tags (server-issued / guild rewards). */
+    public int serverIssuedItemCount = 0;
+    /** Items whose customData contains engravings.quality (Engravings mod-tracked). */
+    public int engravingsTrackedCount = 0;
+    /** Top container coin caches (sorted desc by coins, capped at 100). */
+    public final List<CoinCache> topCoinCaches = new ArrayList<>();
+    /** Per-server-issuer-crafter item catalog: crafter name -> {item name -> count}. */
+    public final Map<String, Map<String, Integer>> serverIssuerCatalog = new LinkedHashMap<>();
+
+    public static final class CoinCache {
+        public final int   zdoIndex;
+        public final float x, y, z;
+        public final long  coins;
+        public CoinCache(int idx, float x, float y, float z, long coins) {
+            this.zdoIndex = idx; this.x = x; this.y = y; this.z = z; this.coins = coins;
+        }
+    }
+
     public ZdoFlatStore(int initialCapacity) {
         this.capacity = initialCapacity;
         allocate(initialCapacity);

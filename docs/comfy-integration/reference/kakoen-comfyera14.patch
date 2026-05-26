@@ -1,0 +1,74 @@
+diff --git a/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/archive/ValheimSaveArchive.java b/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/archive/ValheimSaveArchive.java
+index e093028..253c8c1 100644
+--- a/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/archive/ValheimSaveArchive.java
++++ b/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/archive/ValheimSaveArchive.java
+@@ -26,7 +26,7 @@ import net.kakoen.valheim.save.parser.ZPackage;
+ @Slf4j
+ public class ValheimSaveArchive implements ValheimArchive {
+ 
+-	public static final int MAX_SUPPORTED_WORLD_VERSION = 34;
++	public static final int MAX_SUPPORTED_WORLD_VERSION = 35;
+ 	
+ 	private Meta meta;
+ 	private long modified;
+diff --git a/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/archive/character/Inventory.java b/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/archive/character/Inventory.java
+index 21ebc6d..7086e29 100644
+--- a/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/archive/character/Inventory.java
++++ b/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/archive/character/Inventory.java
+@@ -18,7 +18,7 @@ import net.kakoen.valheim.save.parser.ZPackage;
+ @Slf4j
+ public class Inventory {
+ 	
+-	private static final int MAX_SUPPORTED_INVENTORY_VERSION = 104;
++	private static final int MAX_SUPPORTED_INVENTORY_VERSION = 106;
+ 	
+ 	private int version;
+ 	private List<InventoryItem> inventoryItems;
+diff --git a/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/archive/character/InventoryItem.java b/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/archive/character/InventoryItem.java
+index fb71e5a..f8cc5fb 100644
+--- a/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/archive/character/InventoryItem.java
++++ b/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/archive/character/InventoryItem.java
+@@ -24,6 +24,10 @@ public class InventoryItem {
+ 	private long crafterId;
+ 	private String crafterName;
+ 	private Map<String, String> customData;
++	// v106+ additions, exact semantics unconfirmed. Always seen as (0, true) in ComfyEra14 sample.
++	// Hypothesized as worldLevel (int) + pickedUp (bool); rename when verified against Iron Gate sources.
++	private int worldLevel;
++	private boolean pickedUp;
+ 
+ 	public InventoryItem(ZPackage zPackage, int version) {
+ 		name = zPackage.readString();
+@@ -36,6 +40,8 @@ public class InventoryItem {
+ 		crafterId = version >= 103 ? zPackage.readLong() : 0;
+ 		crafterName = version >= 103 ? zPackage.readString() : "";
+ 		customData = version >= 104 ? zPackage.readMap() : new LinkedHashMap<>();
++		worldLevel = version >= 106 ? zPackage.readInt32() : 0;
++		pickedUp = version >= 106 ? zPackage.readBool() : true;
+ 	}
+ 	
+ 	public void save(ZPackage writer) {
+@@ -49,5 +55,7 @@ public class InventoryItem {
+ 		writer.writeLong(crafterId);
+ 		writer.writeString(crafterName);
+ 		writer.writeMap(customData);
++		writer.writeInt32(worldLevel);
++		writer.writeBool(pickedUp);
+ 	}
+ }
+diff --git a/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/parser/ZPackage.java b/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/parser/ZPackage.java
+index fd5e618..4e1c096 100644
+--- a/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/parser/ZPackage.java
++++ b/valheim-save-tools-lib/src/main/java/net/kakoen/valheim/save/parser/ZPackage.java
+@@ -517,9 +517,9 @@ public class ZPackage implements AutoCloseable {
+ 		if (worldVersion < 33) {
+ 			return readChar();
+ 		}
+-		int num = readByte();
++		int num = readByte() & 0xFF;
+ 		if ((num & 128) != 0) {
+-			num = ((num & 127) << 8) | readByte();
++			num = ((num & 127) << 8) | (readByte() & 0xFF);
+ 		}
+ 		return num;
+ 	}

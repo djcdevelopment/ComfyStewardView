@@ -7,6 +7,7 @@ import com.valheim.viewer.contract.Sector;
 import com.valheim.viewer.contract.Structure;
 import com.valheim.viewer.contract.WorldContracts;
 import com.valheim.viewer.extractor.AlertResult;
+import com.valheim.viewer.extractor.ClassificationStore;
 import com.valheim.viewer.extractor.MetricsResult;
 import com.valheim.viewer.extractor.SectorResult;
 import com.valheim.viewer.store.HeatmapGrid;
@@ -44,6 +45,7 @@ public class ApiServer {
     private volatile MetricsResult metrics = null;
     private volatile AlertResult alerts = null;
     private volatile SectorResult sectorResult = null;
+    private volatile ClassificationStore classification = null;
 
     public ApiServer(WorldParser parser) {
         this.parser = parser;
@@ -79,6 +81,10 @@ public class ApiServer {
 
     public void setSectors(SectorResult sectors) {
         this.sectorResult = sectors;
+    }
+
+    public void setClassification(ClassificationStore classification) {
+        this.classification = classification;
     }
 
     private void registerRoutes() {
@@ -146,6 +152,14 @@ public class ApiServer {
         // &biome=meadows|black_forest|swamp|mountain|plains|mistlands|ashlands
         // &limit=N &offset=N
         app.get("/api/v1/structures", this::handleStructures);
+
+        // PA5 — Forensics endpoints (item-level intelligence sourced from inventory parse)
+        // Per-container coin caches sorted desc
+        app.get("/api/v1/forensics/top-coin-caches", this::handleTopCoinCaches);
+        // Server-issuer crafters with item counts
+        app.get("/api/v1/forensics/server-issuers", this::handleServerIssuers);
+        // Items issued by a specific server identity (query: ?issuer=<name>)
+        app.get("/api/v1/forensics/guild-gear", this::handleGuildGear);
     }
 
     // ----- Handlers -----
@@ -337,6 +351,22 @@ public class ApiServer {
             ObjectNode item = items.addObject();
             item.put("name", e.getKey());
             item.put("count", e.getValue());
+            if (classification != null) classification.enrich(e.getKey(), item);
+        }
+        // Aggregate counts by category for a top-level breakdown
+        if (classification != null) {
+            Map<String, Long> byCategory = new java.util.TreeMap<>();
+            Map<String, Long> byTier = new java.util.TreeMap<>();
+            for (Map.Entry<String, Long> e : sorted) {
+                ClassificationStore.Entry c = classification.get(e.getKey());
+                if (c == null) { byCategory.merge("(unknown)", e.getValue(), Long::sum); continue; }
+                byCategory.merge(c.category, e.getValue(), Long::sum);
+                if (c.tier >= 0) byTier.merge("tier" + c.tier, e.getValue(), Long::sum);
+            }
+            ObjectNode cats = root.putObject("byCategory");
+            byCategory.forEach(cats::put);
+            ObjectNode tiers = root.putObject("byTier");
+            byTier.forEach(tiers::put);
         }
         ctx.json(root.toString());
     }
@@ -859,6 +889,105 @@ public class ApiServer {
             log.error("Failed to serialize metrics/summary", e);
             ctx.status(500).json("{\"error\":\"serialization failure\"}");
         }
+    }
+
+    // ----- PA5 Forensics handlers -----
+
+    private void handleTopCoinCaches(Context ctx) {
+        ZdoFlatStore s = requireStore(ctx); if (s == null) return;
+        int limit = ctx.queryParamAsClass("limit", Integer.class).getOrDefault(50);
+
+        // Sort + trim (the inline parser trims to 100; we may want fewer here)
+        List<ZdoFlatStore.CoinCache> sorted = new ArrayList<>(s.topCoinCaches);
+        sorted.sort((a, b) -> Long.compare(b.coins, a.coins));
+
+        long totalCoins = 0;
+        for (ZdoFlatStore.CoinCache c : sorted) totalCoins += c.coins;
+
+        ObjectNode root = envelope(s);
+        root.put("totalCachesTracked", sorted.size());
+        root.put("totalCoinsTracked", totalCoins);
+        ArrayNode arr = root.putArray("caches");
+        for (int i = 0; i < Math.min(limit, sorted.size()); i++) {
+            ZdoFlatStore.CoinCache c = sorted.get(i);
+            ObjectNode n = arr.addObject();
+            n.put("zdoIndex", c.zdoIndex);
+            n.put("x", c.x); n.put("y", c.y); n.put("z", c.z);
+            n.put("coins", c.coins);
+            String prefab = (c.zdoIndex >= 0 && c.zdoIndex < s.size()) ? s.nameForHash(s.prefabId[c.zdoIndex]) : null;
+            if (prefab != null) n.put("containerPrefab", prefab);
+        }
+        ctx.json(root.toString());
+    }
+
+    private void handleServerIssuers(Context ctx) {
+        ZdoFlatStore s = requireStore(ctx); if (s == null) return;
+        int limit = ctx.queryParamAsClass("limit", Integer.class).getOrDefault(100);
+
+        // Compute totals per crafter
+        List<Map.Entry<String, Map<String, Integer>>> sorted =
+            new ArrayList<>(s.serverIssuerCatalog.entrySet());
+        sorted.sort((a, b) -> Integer.compare(totalItems(b.getValue()), totalItems(a.getValue())));
+
+        ObjectNode root = envelope(s);
+        root.put("distinctIssuers", s.serverIssuerCatalog.size());
+        root.put("totalServerIssuedItems", s.serverIssuedItemCount);
+        ArrayNode arr = root.putArray("issuers");
+        for (int i = 0; i < Math.min(limit, sorted.size()); i++) {
+            Map.Entry<String, Map<String, Integer>> e = sorted.get(i);
+            ObjectNode n = arr.addObject();
+            n.put("crafter", e.getKey());
+            int items = totalItems(e.getValue());
+            n.put("itemCount", items);
+            n.put("distinctTypes", e.getValue().size());
+            // Top 5 sample items
+            ArrayNode samples = n.putArray("topItems");
+            e.getValue().entrySet().stream()
+                .sorted((x, y) -> y.getValue() - x.getValue())
+                .limit(5)
+                .forEach(it -> {
+                    ObjectNode o = samples.addObject();
+                    o.put("name", it.getKey());
+                    o.put("count", it.getValue());
+                });
+        }
+        ctx.json(root.toString());
+    }
+
+    private void handleGuildGear(Context ctx) {
+        ZdoFlatStore s = requireStore(ctx); if (s == null) return;
+        String issuer = ctx.queryParam("issuer");
+
+        ObjectNode root = envelope(s);
+        if (issuer == null || issuer.isEmpty()) {
+            root.put("error", "?issuer=<crafterName> required. Use /api/v1/forensics/server-issuers to list available.");
+            ctx.status(400).json(root.toString());
+            return;
+        }
+        Map<String, Integer> cat = s.serverIssuerCatalog.get(issuer);
+        if (cat == null) {
+            root.put("error", "no items found for issuer '" + issuer + "'");
+            root.put("hint", "GET /api/v1/forensics/server-issuers");
+            ctx.status(404).json(root.toString());
+            return;
+        }
+        root.put("issuer", issuer);
+        root.put("totalItems", totalItems(cat));
+        root.put("distinctTypes", cat.size());
+        ArrayNode arr = root.putArray("items");
+        cat.entrySet().stream()
+            .sorted((a, b) -> b.getValue() - a.getValue())
+            .forEach(e -> {
+                ObjectNode n = arr.addObject();
+                n.put("name", e.getKey());
+                n.put("count", e.getValue());
+                if (classification != null) classification.enrich(e.getKey(), n);
+            });
+        ctx.json(root.toString());
+    }
+
+    private static int totalItems(Map<String, Integer> cat) {
+        int sum = 0; for (Integer v : cat.values()) sum += v; return sum;
     }
 
     // ----- Helpers -----

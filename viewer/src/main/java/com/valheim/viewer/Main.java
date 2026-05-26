@@ -6,6 +6,7 @@ import com.valheim.viewer.contract.Region;
 import com.valheim.viewer.contract.WorldContracts;
 import com.valheim.viewer.extractor.AlertBuilder;
 import com.valheim.viewer.extractor.AlertResult;
+import com.valheim.viewer.extractor.ClassificationStore;
 import com.valheim.viewer.extractor.ContractBuilder;
 import com.valheim.viewer.extractor.MetricsBuilder;
 import com.valheim.viewer.extractor.MetricsResult;
@@ -150,7 +151,8 @@ public class Main {
         log.info("Building alerts...");
         AlertResult alerts;
         try {
-            alerts = new AlertBuilder().build(contracts, metrics);
+            // Pass store for PA4 forensics alerts (quality overflow / server-issued / engravings)
+            alerts = new AlertBuilder().build(contracts, metrics, store);
         } catch (Exception e) {
             log.error("AlertBuilder failed", e);
             System.exit(1);
@@ -166,12 +168,22 @@ public class Main {
             alerts.alerts.size(), alerts.critical_count, alerts.high_count,
             alerts.medium_count, alerts.low_count);
 
+        // Load item classification (category/tier/biome/source/mod) from JSON.
+        // Tries the viewer dir first, then the comfy out dir for dev convenience.
+        ClassificationStore classification = ClassificationStore.loadOrEmpty(
+            "classification.json",
+            new File(dbFile.getParentFile(), "classification.json").getAbsolutePath(),
+            "D:/work/comfy/out/classification.json"
+        );
+        log.info("Item classification: {} entries loaded", classification.size());
+
         ApiServer server = new ApiServer(parser);
         server.setStore(store);
         server.setContracts(contracts);
         server.setMetrics(metrics);
         server.setAlerts(alerts);
         server.setSectors(sectors);
+        server.setClassification(classification);
         server.start(port);
 
         String url = "http://localhost:" + port;

@@ -2,3 +2,7 @@
 # ignore exported world data that we will keep locally
 *.db
 *.fwl*
+
+# Daemon runtime logs — re-generated on every restart
+viewer/logs/*.log
+viewer/logs/*.err

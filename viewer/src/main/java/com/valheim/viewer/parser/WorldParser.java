@@ -506,7 +506,10 @@ public class WorldParser {
                     spawntime, creator, null, null, 0, 0));
             if (validPos) store.allHeatmap.increment(x, z);
             if (items != null) {
-                try { parseInventoryIntoTotals(items, store.chestItemTotals, store); }
+                try {
+                    int containerIdx = store.size() - 1;
+                    parseInventoryIntoTotals(items, store.chestItemTotals, store, containerIdx, x, y, z);
+                }
                 catch (Exception ignored) {}
             }
             return;
@@ -653,34 +656,89 @@ public class WorldParser {
     // ----- Inventory parsing -----
 
     private static void parseInventoryIntoTotals(String base64, Map<String, Long> totals,
-            ZdoFlatStore store) throws Exception {
+            ZdoFlatStore store, int containerIdx, float cx, float cy, float cz) throws Exception {
         byte[] raw = Base64.getDecoder().decode(base64);
         java.io.DataInputStream in = new java.io.DataInputStream(
             new ByteArrayInputStream(raw));
         int version   = readInt32LE(in);
         int itemCount = readInt32LE(in);
-        if (version > 105) return; // unknown format — fields added in v106+ cause misalignment
+        if (version > 106) return; // genuinely unknown format
         if (itemCount < 0 || itemCount > 1000) return;
+
+        long containerCoinTotal = 0;
 
         for (int j = 0; j < itemCount; j++) {
             String name = readInvString(in);
             int    stk  = readInt32LE(in);
-            readFloat(in);
-            readInt32LE(in); readInt32LE(in);
-            in.read(); // equipped
-            if (version >= 101) readInt32LE(in);
-            if (version >= 102) readInt32LE(in);
-            if (version >= 103) { readInt64LE(in); readInvString(in); }
+            readFloat(in);                    // durability
+            readInt32LE(in); readInt32LE(in); // slot pos
+            in.read();                        // equipped
+
+            // PA4: capture quality + crafterName + customData keys for forensics
+            int    qual         = (version >= 101) ? readInt32LE(in) : 0;
+            int    variant      = (version >= 102) ? readInt32LE(in) : 0;
+            long   crafterId    = 0;
+            String crafterName  = null;
+            if (version >= 103) {
+                crafterId   = readInt64LE(in);
+                crafterName = readInvString(in);
+            }
+            boolean hasEngravingsQuality = false;
             if (version >= 104) {
                 int mc = readInt32LE(in);
                 if (mc < 0 || mc > 200) return; // safety cap - abnormal = misaligned
-                for (int k = 0; k < mc; k++) { readInvString(in); readInvString(in); }
+                for (int k = 0; k < mc; k++) {
+                    String key = readInvString(in);
+                    /* val = */ readInvString(in);
+                    if ("engravings.quality".equals(key)) hasEngravingsQuality = true;
+                }
             }
-            if (version >= 105) in.read();
-            if (name != null && !name.isEmpty()) {
-                // Register hash→name for dropped item resolution (prefab name == item name)
-                store.registerHashName(sh(name), name);
-                if (stk > 0) totals.merge(name, (long) stk, Long::sum);
+            if (version >= 106) {
+                readInt32LE(in);    // worldLevel
+                in.read();          // pickedUp
+            } else if (version >= 105) {
+                in.read();          // pickedUp only
+            }
+
+            if (name == null || name.isEmpty()) continue;
+
+            // Existing: register name + accumulate totals
+            store.registerHashName(sh(name), name);
+            if (stk > 0) totals.merge(name, (long) stk, Long::sum);
+
+            // PA4/PA5 forensics tracking
+            if ("Coins".equals(name) && stk > 0) containerCoinTotal += stk;
+
+            // Quality overflow (DeerStew-style int field corruption / overflow)
+            if (qual > 1_000_000) {
+                store.qualityOverflowCount++;
+                if (store.qualityOverflowSamples.size() < 20) {
+                    store.qualityOverflowSamples.add(name + " q=" + qual
+                        + " by " + (crafterName == null ? "" : crafterName));
+                }
+            }
+
+            // Engravings tracked (mod-issued, quality field repurposed)
+            if (hasEngravingsQuality) store.engravingsTrackedCount++;
+
+            // Server-issued items (HTML-tagged crafter)
+            if (crafterName != null && (crafterName.indexOf('<') >= 0 || crafterName.indexOf('>') >= 0)) {
+                store.serverIssuedItemCount++;
+                Map<String, Integer> cat = store.serverIssuerCatalog.computeIfAbsent(crafterName, k -> new LinkedHashMap<>());
+                cat.merge(name, 1, Integer::sum);
+            }
+        }
+
+        // Per-container coin total — track top 100 caches
+        if (containerCoinTotal > 0) {
+            store.topCoinCaches.add(new ZdoFlatStore.CoinCache(
+                containerIdx, cx, cy, cz, containerCoinTotal));
+            // Periodically trim to top 100 to bound memory
+            if (store.topCoinCaches.size() > 200) {
+                store.topCoinCaches.sort((a, b) -> Long.compare(b.coins, a.coins));
+                while (store.topCoinCaches.size() > 100) {
+                    store.topCoinCaches.remove(store.topCoinCaches.size() - 1);
+                }
             }
         }
     }

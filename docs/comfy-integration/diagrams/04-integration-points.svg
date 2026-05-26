@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 760" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <style>
+    .bg     { fill: #0d1320; }
+    .row    { fill: #1a2336; stroke: #2a3450; stroke-width: 1; rx: 3; }
+    .new    { fill: #2a1820; stroke: #c66; stroke-width: 2; rx: 3; }
+    .patched{ fill: #1a2a1a; stroke: #6c6; stroke-width: 2; rx: 3; }
+    .label  { fill: #cdd; font-size: 12px; }
+    .sub    { fill: #99a; font-size: 11px; }
+    .code   { fill: #9c9; font-family: ui-monospace, monospace; font-size: 11px; }
+    .arrow  { stroke: #88a; stroke-width: 1.2; fill: none; marker-end: url(#a); }
+    .title  { fill: #fff; font-size: 13px; font-weight: 600; }
+    .header { fill: #fff; font-size: 18px; font-weight: 600; }
+    .col    { fill: #88a; font-size: 11px; font-weight: 600; letter-spacing: 1px; }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#88a"/></marker></defs>
+
+  <rect width="1100" height="760" class="bg"/>
+  <text x="40" y="35" class="header">Integration points — every file we touched, what it does, what lights up</text>
+
+  <!-- Column headers -->
+  <text x="40"   y="80" class="col">FILE</text>
+  <text x="380"  y="80" class="col">CHANGE</text>
+  <text x="780"  y="80" class="col">LIGHTS UP</text>
+
+  <!-- Row 1: WorldParser -->
+  <rect x="40" y="100" width="320" height="80" class="patched"/>
+  <text x="55" y="125" class="title">parser/WorldParser.java</text>
+  <text x="55" y="146" class="sub">~line 660 (parseInventoryIntoTotals)</text>
+  <text x="55" y="165" class="sub">+ caller at ~line 509</text>
+
+  <rect x="380" y="100" width="380" height="80" class="row"/>
+  <text x="395" y="125" class="label">Removed: <tspan class="code">if (version &gt; 105) return;</tspan></text>
+  <text x="395" y="146" class="label">Added: v106 reads (int32 worldLevel, byte pickedUp)</text>
+  <text x="395" y="165" class="label">Capture qual/crafter/customData → store</text>
+
+  <rect x="780" y="100" width="280" height="80" class="row"/>
+  <text x="795" y="125" class="label">/api/v1/economy uniqueItemTypes</text>
+  <text x="795" y="145" class="sub">110 → 618 (5.6×)</text>
+  <text x="795" y="163" class="sub">totalItemCount 65k → 13.7M (210×)</text>
+
+  <!-- Row 2: ZdoFlatStore -->
+  <rect x="40" y="200" width="320" height="80" class="patched"/>
+  <text x="55" y="225" class="title">store/ZdoFlatStore.java</text>
+  <text x="55" y="246" class="sub">Bottom of class, before grow()</text>
+
+  <rect x="380" y="200" width="380" height="80" class="row"/>
+  <text x="395" y="225" class="label">Added 5 fields (qualityOverflowSamples,</text>
+  <text x="395" y="245" class="label">serverIssuerCatalog, topCoinCaches, ...)</text>
+  <text x="395" y="265" class="label">+ public static class CoinCache</text>
+
+  <rect x="780" y="200" width="280" height="80" class="row"/>
+  <text x="795" y="225" class="label">Data plumbing for PA4 alerts</text>
+  <text x="795" y="245" class="label">+ PA5 forensics endpoints</text>
+
+  <!-- Row 3: ClassificationStore (NEW) -->
+  <rect x="40" y="300" width="320" height="80" class="new"/>
+  <text x="55" y="325" class="title">extractor/ClassificationStore.java</text>
+  <text x="55" y="346" class="sub">NEW · ~140 LOC · Jackson + slf4j</text>
+
+  <rect x="380" y="300" width="380" height="80" class="row"/>
+  <text x="395" y="325" class="label">Loads classification.json at startup</text>
+  <text x="395" y="345" class="label">Exposes: get(name) → Entry · enrich(name, node)</text>
+  <text x="395" y="365" class="label">Tried paths: viewer/, save dir, D:\work\comfy\out</text>
+
+  <rect x="780" y="300" width="280" height="80" class="row"/>
+  <text x="795" y="325" class="label">/economy items get</text>
+  <text x="795" y="345" class="label">category/subcategory/tier/biome/source</text>
+
+  <!-- Row 4: AlertBuilder -->
+  <rect x="40" y="400" width="320" height="80" class="patched"/>
+  <text x="55" y="425" class="title">extractor/AlertBuilder.java</text>
+  <text x="55" y="446" class="sub">Added overload build(c, m, store)</text>
+  <text x="55" y="465" class="sub">+ buildForensicsAlerts()</text>
+
+  <rect x="380" y="400" width="380" height="80" class="row"/>
+  <text x="395" y="425" class="label">3 new alert types:</text>
+  <text x="395" y="445" class="label">  quality_overflow (CRITICAL)</text>
+  <text x="395" y="463" class="label">  server_issued_items (LOW info)</text>
+  <text x="395" y="475" class="label">  engravings_tracked (LOW info)</text>
+
+  <rect x="780" y="400" width="280" height="80" class="row"/>
+  <text x="795" y="425" class="label">/api/v1/alerts</text>
+  <text x="795" y="445" class="sub">Now: 1 critical (was 0)</text>
+  <text x="795" y="465" class="sub">DeerStew/Ditseey detected</text>
+
+  <!-- Row 5: Main -->
+  <rect x="40" y="500" width="320" height="80" class="patched"/>
+  <text x="55" y="525" class="title">Main.java</text>
+  <text x="55" y="546" class="sub">After alert build, before server start</text>
+
+  <rect x="380" y="500" width="380" height="80" class="row"/>
+  <text x="395" y="525" class="label">Loads ClassificationStore (3 path tries)</text>
+  <text x="395" y="545" class="label">Calls server.setClassification(...)</text>
+  <text x="395" y="565" class="label">Passes store to AlertBuilder.build(c, m, store)</text>
+
+  <rect x="780" y="500" width="280" height="80" class="row"/>
+  <text x="795" y="525" class="label">Wiring — nothing user-visible</text>
+  <text x="795" y="545" class="sub">but everything depends on it</text>
+
+  <!-- Row 6: ApiServer -->
+  <rect x="40" y="600" width="320" height="80" class="patched"/>
+  <text x="55" y="625" class="title">api/ApiServer.java</text>
+  <text x="55" y="646" class="sub">+ setClassification setter</text>
+  <text x="55" y="665" class="sub">+ 3 new handlers + route registrations</text>
+
+  <rect x="380" y="600" width="380" height="80" class="row"/>
+  <text x="395" y="625" class="label">handleEconomy enriches topItems</text>
+  <text x="395" y="645" class="label">+ byCategory + byTier aggregates</text>
+  <text x="395" y="665" class="label">/forensics/top-coin-caches · /server-issuers · /guild-gear</text>
+
+  <rect x="780" y="600" width="280" height="80" class="row"/>
+  <text x="795" y="625" class="label">3 new tabs in UI can populate</text>
+  <text x="795" y="645" class="label">Economy tab gets enrichment</text>
+
+  <!-- Row 7: index.html -->
+  <rect x="40" y="700" width="320" height="50" class="patched"/>
+  <text x="55" y="722" class="title">resources/static/index.html</text>
+  <text x="55" y="740" class="sub">Alpine x-data app() — tabs array + DOM sections</text>
+
+  <rect x="380" y="700" width="380" height="50" class="row"/>
+  <text x="395" y="722" class="label">+ 3 tab buttons + 3 DOM sections + 4 load methods</text>
+  <text x="395" y="740" class="label">+ category/tier chips in Economy</text>
+
+  <rect x="780" y="700" width="280" height="50" class="row"/>
+  <text x="795" y="722" class="label">Tabs: Coin Caches · Server Issuers</text>
+  <text x="795" y="740" class="label">· Guild Gear · Economy enhanced</text>
+</svg>

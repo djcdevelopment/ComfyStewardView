@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 760" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <style>
+    .bg      { fill: #0d1320; }
+    .header  { fill: #fff; font-size: 18px; font-weight: 600; }
+    .col     { fill: #88a; font-size: 11px; font-weight: 600; letter-spacing: 1px; }
+    .title   { fill: #fff; font-size: 13px; font-weight: 600; }
+    .label   { fill: #cdd; font-size: 12px; }
+    .sub     { fill: #99a; font-size: 11px; }
+    .easy    { fill: #1a2a1a; stroke: #6c6; rx: 3; }
+    .medium  { fill: #2a2a18; stroke: #cc6; rx: 3; }
+    .hard    { fill: #2a1820; stroke: #c66; rx: 3; }
+    .bug     { fill: #2a1018; stroke: #c44; stroke-width: 2; rx: 3; }
+    .badge   { font-size: 10px; font-weight: 600; }
+  </style>
+
+  <rect width="1100" height="760" class="bg"/>
+  <text x="40" y="35" class="header">Extension map — what's open, what's blocked, what's worth doing next</text>
+  <text x="40" y="58" class="sub">Green=easy(hours)  ·  Yellow=medium(days)  ·  Red=hard(weeks)  ·  Dark-red border = bug worth fixing</text>
+
+  <!-- Column headers -->
+  <text x="40"  y="95" class="col">UNFINISHED WORK</text>
+  <text x="560" y="95" class="col">KNOWN BUGS / TECHNICAL DEBT</text>
+
+  <!-- Left column: extensions -->
+
+  <rect x="40" y="115" width="500" height="60" class="easy"/>
+  <text x="55" y="135" class="title">Sign moderation tab</text>
+  <text x="55" y="153" class="sub">160k signs, 35k unique texts. Add filter by word list (profanity / advertising) → flag list.</text>
+  <text x="55" y="170" class="sub">Data is in signs.csv already. UI tab + filter. ~2 hrs.</text>
+
+  <rect x="40" y="185" width="500" height="60" class="easy"/>
+  <text x="55" y="205" class="title">Player session reconstruction</text>
+  <text x="55" y="223" class="sub">spawnTimeMicros per ZDO + per-player creator_id → "when was each player active?"</text>
+  <text x="55" y="240" class="sub">Histogram per player. Identify recently-active vs ghosts. ~1 day.</text>
+
+  <rect x="40" y="255" width="500" height="60" class="easy"/>
+  <text x="55" y="275" class="title">Classification refresh from comfy modpack source</text>
+  <text x="55" y="293" class="sub">Re-scrape redseiko/ComfyMods + Therzie/Smoothbrain for new prefab names.</text>
+  <text x="55" y="310" class="sub">Update classification.json. Re-load on daemon restart. ~2 hrs.</text>
+
+  <rect x="40" y="325" width="500" height="60" class="medium"/>
+  <text x="55" y="345" class="title">Zone budget alerts (server lag detection)</text>
+  <text x="55" y="363" class="sub">Valheim's per-zone ZDO cap causes ticks-per-second drops. Bucket all ZDOs into 64m zones,</text>
+  <text x="55" y="380" class="sub">flag those over 80% of cap. ~2 days. Their MetricsBuilder has scaffolding.</text>
+
+  <rect x="40" y="395" width="500" height="60" class="medium"/>
+  <text x="55" y="415" class="title">Building piece census + ownership</text>
+  <text x="55" y="433" class="sub">2.6M building ZDOs (currently just counted, not stored). Detect via signature</text>
+  <text x="55" y="450" class="sub">hasCreator &amp;&amp; (hasSupport || hasHealth). Capacity issue if all retained. ~3 days.</text>
+
+  <rect x="40" y="465" width="500" height="60" class="medium"/>
+  <text x="55" y="485" class="title">Cross-server snapshot comparison</text>
+  <text x="55" y="503" class="sub">Run on multiple .db files (era 13 vs 14 vs 15). Show item/player/build deltas.</text>
+  <text x="55" y="520" class="sub">Add /api/v1/snapshots + UI tab. ~4 days.</text>
+
+  <rect x="40" y="535" width="500" height="60" class="hard"/>
+  <text x="55" y="555" class="title">Steam ID resolution</text>
+  <text x="55" y="573" class="sub">internal_id (long) → Steam64 → display name. Needs Steam Web API key + rate-limit handling.</text>
+  <text x="55" y="590" class="sub">Cache locally. ~1 week + ongoing API cost.</text>
+
+  <rect x="40" y="605" width="500" height="60" class="hard"/>
+  <text x="55" y="625" class="title">Live server attach (no daemon stop)</text>
+  <text x="55" y="643" class="sub">Watch the .db file for rolling-backup writes, hot-reload chunks.</text>
+  <text x="55" y="660" class="sub">Major architecture change. ~2 weeks. Useful for live ops.</text>
+
+  <rect x="40" y="675" width="500" height="60" class="hard"/>
+  <text x="55" y="695" class="title">Per-player .fch parsing</text>
+  <text x="55" y="713" class="sub">Read individual character files for skills / recipes / world fog.</text>
+  <text x="55" y="730" class="sub">Requires ServerCharacters mod active. Separate file format. ~2 weeks.</text>
+
+  <!-- Right column: bugs -->
+
+  <rect x="560" y="115" width="500" height="80" class="bug"/>
+  <text x="575" y="138" class="title">lib/jetty-servlet.jar is a 554-byte stub</text>
+  <text x="575" y="158" class="sub">Blocks mvn package. Workaround: targeted javac excluding it (see build-path.svg).</text>
+  <text x="575" y="176" class="sub">Fix: download jetty-servlet-{matching-version}.jar from Maven Central. ~5 min.</text>
+  <text x="575" y="192" class="sub">cmd: curl -L -o lib/jetty-servlet.jar 'https://repo1.maven.org/...'</text>
+
+  <rect x="560" y="205" width="500" height="60" class="bug"/>
+  <text x="575" y="228" class="title">Boundary breach: AlertBuilder reads ZdoFlatStore</text>
+  <text x="575" y="247" class="sub">Their stated rule: only ContractBuilder touches ZdoFlatStore.</text>
+  <text x="575" y="262" class="sub">Our PA4 patch overload breaches this. Refactor: add ForensicsContract. ~half day.</text>
+
+  <rect x="560" y="275" width="500" height="60" class="bug"/>
+  <text x="575" y="298" class="title">v105 read path is hypothetical</text>
+  <text x="575" y="317" class="sub">Their code reads 1 byte for v≥105. We have no v105 saves to confirm.</text>
+  <text x="575" y="332" class="sub">If a v105 save appears with different layout, this will misread. Low risk.</text>
+
+  <rect x="560" y="345" width="500" height="60" class="bug"/>
+  <text x="575" y="368" class="title">parseInventoryIntoTotals: silent-return on safety caps</text>
+  <text x="575" y="387" class="sub">If customData has &gt;200 keys, function returns without logging.</text>
+  <text x="575" y="402" class="sub">Could leave forensics counts incomplete on edge cases. Add log.warn. ~5 min.</text>
+
+  <rect x="560" y="415" width="500" height="60" class="bug"/>
+  <text x="575" y="438" class="title">Server-issuer modal renders raw HTML from crafter names</text>
+  <text x="575" y="457" class="sub">We sanitize in our standalone report.html (renderValheimText). Their SPA</text>
+  <text x="575" y="472" class="sub">uses x-html which trusts the content. Low risk (data is server-side), but XSS-shaped.</text>
+
+  <rect x="560" y="485" width="500" height="60" class="bug"/>
+  <text x="575" y="508" class="title">No persistent state — re-parses 1.1 GB on every start</text>
+  <text x="575" y="527" class="sub">~8 seconds. Cache ZdoFlatStore to disk after first parse, mtime-check.</text>
+  <text x="575" y="542" class="sub">~half day. Big UX win for dev loop.</text>
+
+  <rect x="560" y="555" width="500" height="60" class="bug"/>
+  <text x="575" y="578" class="title">Building heatmap uses count-only, not weight</text>
+  <text x="575" y="597" class="sub">A 1-stone-floor cell counts the same as a 50-stone-floor cell.</text>
+  <text x="575" y="612" class="sub">Use weighted density via per-prefab cost. ~half day.</text>
+
+  <rect x="560" y="625" width="500" height="60" class="bug"/>
+  <text x="575" y="648" class="title">Some Ashlands creature prefabs missing from CREATURE_NAMES</text>
+  <text x="575" y="667" class="sub">Ours catches 94k (vs theirs 89k). Both miss some — list is hand-curated.</text>
+  <text x="575" y="682" class="sub">Audit: enumerate unknown hashes with creature signature (hasMaxHealth, hasTame), add. ~2 hrs.</text>
+
+  <rect x="560" y="695" width="500" height="40" class="bug"/>
+  <text x="575" y="718" class="title">classification.json is hand-curated for 617 items</text>
+  <text x="575" y="735" class="sub">Modpack updates leave new items uncategorized — schedule a quarterly refresh.</text>
+</svg>

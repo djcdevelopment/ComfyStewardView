@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 760" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <style>
+    .bg     { fill: #0d1320; }
+    .step   { fill: #1a2336; stroke: #2a3450; stroke-width: 1; rx: 4; }
+    .new    { fill: #2a1820; stroke: #c66; stroke-width: 2; rx: 4; }
+    .label  { fill: #cdd; font-size: 13px; }
+    .sub    { fill: #99a; font-size: 11px; }
+    .num    { fill: #88c; font-size: 22px; font-weight: 700; }
+    .title  { fill: #fff; font-size: 14px; font-weight: 600; }
+    .arrow  { stroke: #557; stroke-width: 1.5; fill: none; marker-end: url(#a); }
+    .header { fill: #fff; font-size: 18px; font-weight: 600; }
+    .code   { fill: #9c9; font-size: 11px; font-family: ui-monospace, monospace; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#557"/></marker>
+  </defs>
+
+  <rect width="1100" height="760" class="bg"/>
+  <text x="40" y="35" class="header">Data flow: .db file → JSON response</text>
+  <text x="40" y="58" class="sub">Where our patches change behavior. Green outline = new path; everything else is original.</text>
+
+  <!-- Step 1 -->
+  <text x="50" y="105" class="num">1</text>
+  <rect x="75" y="80" width="250" height="60" class="step"/>
+  <text x="95" y="105" class="title">File open + header read</text>
+  <text x="95" y="125" class="sub">worldVersion, netTime, myId, nextUid, numZdos</text>
+
+  <line class="arrow" x1="200" y1="140" x2="200" y2="170"/>
+
+  <!-- Step 2 -->
+  <text x="50" y="200" class="num">2</text>
+  <rect x="75" y="170" width="700" height="80" class="step"/>
+  <text x="95" y="195" class="title">Stream every ZDO (~8M) — single linear pass</text>
+  <text x="95" y="215" class="sub">For each: uint16 flags, Vector2s sector, Vector3 position, int32 prefab hash, [Vector3 rotation], typed bags</text>
+  <text x="95" y="235" class="sub">Dispatch by prefab hash → portal / bed / sign / tombstone / item stand / container / creature / structure / building</text>
+
+  <line class="arrow" x1="425" y1="250" x2="425" y2="280"/>
+
+  <!-- Step 3 -->
+  <text x="50" y="310" class="num">3</text>
+  <rect x="75" y="280" width="320" height="70" class="step"/>
+  <text x="95" y="305" class="title">Container detected</text>
+  <text x="95" y="325" class="sub">store.containerIndices.add(...)</text>
+  <text x="95" y="340" class="code">if (items != null) parseInventoryIntoTotals(...)</text>
+
+  <!-- Step 4 (the patched one) -->
+  <text x="450" y="310" class="num">4</text>
+  <rect x="475" y="280" width="600" height="160" class="new"/>
+  <text x="495" y="305" class="title">parseInventoryIntoTotals — PATCHED</text>
+  <text x="495" y="324" class="sub">Was: skipped if version &gt; 105 (dropped 99% of containers)</text>
+  <text x="495" y="340" class="sub">Now: reads v106 — int32 worldLevel + byte pickedUp after customData</text>
+  <text x="495" y="362" class="sub">Capture per item: quality, crafterName, customData keys</text>
+  <text x="495" y="380" class="sub">On qual &gt; 1M → quality overflow sample</text>
+  <text x="495" y="398" class="sub">On crafterName contains &lt;/&gt; → server-issued count + add to issuer catalog</text>
+  <text x="495" y="416" class="sub">On customData has engravings.quality → engravings count</text>
+  <text x="495" y="434" class="sub">On Coins stack → containerCoinTotal accumulator → topCoinCaches if &gt;0</text>
+
+  <line class="arrow" x1="425" y1="350" x2="425" y2="475"/>
+  <line class="arrow" x1="775" y1="440" x2="775" y2="475"/>
+
+  <!-- Step 5 -->
+  <text x="50" y="500" class="num">5</text>
+  <rect x="75" y="475" width="1000" height="80" class="step"/>
+  <text x="95" y="500" class="title">After parse: ZdoFlatStore is the source of truth in memory</text>
+  <text x="95" y="520" class="sub">portalIndices · containerIndices · chestItemTotals · qualityOverflowSamples · serverIssuerCatalog · topCoinCaches · ...</text>
+  <text x="95" y="540" class="sub">Heatmaps (building / dropped / all) finalized for spatial queries</text>
+
+  <line class="arrow" x1="575" y1="555" x2="575" y2="590"/>
+
+  <!-- Step 6 -->
+  <text x="50" y="620" class="num">6</text>
+  <rect x="75" y="590" width="480" height="80" class="step"/>
+  <text x="95" y="615" class="title">ContractBuilder + MetricsBuilder + AlertBuilder</text>
+  <text x="95" y="635" class="sub">Build typed contracts, compute portal clusters/zone budgets/hotspots</text>
+  <text x="95" y="653" class="sub">AlertBuilder also reads store for forensics alerts (PA4)</text>
+
+  <text x="580" y="620" class="num">7</text>
+  <rect x="605" y="590" width="470" height="80" class="new"/>
+  <text x="625" y="615" class="title">ApiServer routes — PATCHED + NEW</text>
+  <text x="625" y="635" class="sub">/economy enriched with category/tier per item + byCategory/byTier aggregates</text>
+  <text x="625" y="653" class="sub">+ /forensics/top-coin-caches · /server-issuers · /guild-gear</text>
+
+  <line class="arrow" x1="575" y1="670" x2="575" y2="700"/>
+
+  <!-- Step 8 -->
+  <text x="50" y="730" class="num">8</text>
+  <rect x="75" y="700" width="1000" height="40" class="step"/>
+  <text x="95" y="725" class="title">SPA fetches JSON, renders into Alpine reactive bindings</text>
+</svg>
