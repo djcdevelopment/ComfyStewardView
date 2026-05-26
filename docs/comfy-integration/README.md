@@ -11,7 +11,8 @@ This folder is the entry point for the steward-tooling work that landed in late 
 | **"I want to build this from scratch right now"** | [BUILD_GUIDE.md](BUILD_GUIDE.md) — 10 numbered steps, every one with a verify command. ~15 minutes if Java 17 is installed. |
 | **"It's already running, I just want to confirm everything's wired"** | Run the quick-verify block below (~30 seconds) or `smoke-test.ps1` (17 assertions). |
 | **"I want to understand what's here before I touch anything"** | Read [LESSONS_LEARNED.md](LESSONS_LEARNED.md) and look at [diagrams/01-architecture.svg](diagrams/01-architecture.svg). |
-| **"I want to extend it"** | [diagrams/05-extension-map.svg](diagrams/05-extension-map.svg) for what's open, [LLM_PROMPT_GUIDE.md](LLM_PROMPT_GUIDE.md) for paste-ready prompts. |
+| **"I want to extend it / use it on a different world"** | [ENHANCEMENT_PLAYBOOK.md](ENHANCEMENT_PLAYBOOK.md) — tiered ladder of enhancements (1=hours, 5=weeks). Every entry has architectural reasoning + paste-ready prompt for free chat models + verify command. Calls out what's portable vs ComfyEra14-tuned. |
+| **"I just want to copy-paste a prompt for one specific thing"** | [LLM_PROMPT_GUIDE.md](LLM_PROMPT_GUIDE.md) — 10 self-contained prompts for common tasks. |
 
 ## Quick verify (5 commands, ~30 seconds)
 
@@ -40,9 +41,10 @@ A PowerShell version of these is at `smoke-test.ps1` next to this README.
 |---|---|
 | [README.md](README.md) | (this file) — index, quick verify, run instructions |
 | [**BUILD_GUIDE.md**](BUILD_GUIDE.md) | **Step-by-step build contract.** Pre-flight checks, component manifest (what each file emits + why), 10 numbered steps with verify command after every one. Read this if you're touching the code. |
+| [**ENHANCEMENT_PLAYBOOK.md**](ENHANCEMENT_PLAYBOOK.md) | **How to grow this on any worldfile.** What's portable vs ComfyEra14-tuned. 5-tier ladder of enhancements (any-world deeper queries → multi-tenant federation). Each entry: architectural reasoning, code/schema template, paste-ready prompt for any free chat model, verify command. Read this when planning the next sprint. |
 | [RETROSPECTIVE.md](RETROSPECTIVE.md) | Decision tree of the session: what worked, what we tried + reverted, why we ended up on Path A |
 | [LESSONS_LEARNED.md](LESSONS_LEARNED.md) | Technical discoveries worth carrying forward: v106 format, Engravings mod, guild gear pattern, player attribution, etc. |
-| [LLM_PROMPT_GUIDE.md](LLM_PROMPT_GUIDE.md) | ~10 paste-ready prompts for extending the system using any free chat model (ChatGPT free, Claude.ai free, Gemini free). Each prompt is self-contained. |
+| [LLM_PROMPT_GUIDE.md](LLM_PROMPT_GUIDE.md) | ~10 paste-ready prompts for common tasks (add an item, add an alert, add an endpoint, debug a parse failure, etc.). Each prompt is self-contained. |
 | [smoke-test.ps1](smoke-test.ps1) | PowerShell one-shot that exercises every endpoint and confirms the patches landed (17 assertions, exit 0 = all good) |
 | [diagrams/](diagrams/) | SVG diagrams (5) — architecture, data flow, build, integration points, extension map |
 | [reference/](reference/) | The full analysis docs and our standalone toolkit references |
