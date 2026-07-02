@@ -4,6 +4,9 @@ import com.valheim.viewer.api.ApiServer;
 import com.valheim.viewer.config.StConfig;
 import com.valheim.viewer.contract.Region;
 import com.valheim.viewer.contract.WorldContracts;
+import com.valheim.viewer.db.AnalyticsCache;
+import com.valheim.viewer.db.AnalyticsCacheReader;
+import com.valheim.viewer.db.RenderedLayerBuilder;
 import com.valheim.viewer.extractor.AlertBuilder;
 import com.valheim.viewer.extractor.AlertResult;
 import com.valheim.viewer.extractor.ClassificationStore;
@@ -30,6 +33,7 @@ import java.net.URI;
  *
  * Usage:
  *   java -Xmx3g -jar world-viewer.jar [path/to/save.db] [--port 8003] [--no-browser]
+ *   java -Xmx4g -jar world-viewer.jar world.db --build-cache --render-layers --no-browser
  */
 public class Main {
 
@@ -40,6 +44,13 @@ public class Main {
         String dbPath    = "ComfyEra14.db";
         int    port      = DEFAULT_PORT;
         boolean noBrowser = false;
+        boolean buildCache = false;
+        boolean rebuildCache = false;
+        boolean renderLayers = false;
+        boolean batchOnly = false;
+        boolean cacheFields = false;
+        String cachePath = "world-cache.duckdb";
+        String renderDirPath = "rendered";
 
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -48,6 +59,28 @@ public class Main {
                     break;
                 case "--no-browser":
                     noBrowser = true;
+                    break;
+                case "--build-cache":
+                    buildCache = true;
+                    break;
+                case "--rebuild-cache":
+                    buildCache = true;
+                    rebuildCache = true;
+                    break;
+                case "--cache":
+                    if (i + 1 < args.length) cachePath = args[++i];
+                    break;
+                case "--render-layers":
+                    renderLayers = true;
+                    break;
+                case "--batch-only":
+                    batchOnly = true;
+                    break;
+                case "--cache-fields":
+                    cacheFields = true;
+                    break;
+                case "--render-dir":
+                    if (i + 1 < args.length) renderDirPath = args[++i];
                     break;
                 default:
                     if (!args[i].startsWith("--")) dbPath = args[i];
@@ -59,13 +92,28 @@ public class Main {
         File dbFile = new File(dbPath);
         if (!dbFile.exists()) {
             System.err.println("ERROR: Save file not found: " + dbFile.getAbsolutePath());
-            System.err.println("Usage: java -Xmx3g -jar world-viewer.jar [save.db] [--port 8003]");
+            System.err.println("Usage: java -Xmx3g -jar world-viewer.jar [save.db] [--port 8003] [--build-cache] [--render-layers] [--batch-only] [--cache-fields]");
             System.exit(1);
         }
 
         log.info("Loading: {}", dbFile.getAbsolutePath());
 
         WorldParser parser = new WorldParser();
+        File cacheFile = new File(cachePath);
+        File renderRoot = new File(renderDirPath);
+        AnalyticsCache analyticsCache = null;
+        if (buildCache) {
+            try {
+                log.info("Analytics cache enabled: {} (rebuild={}, fields={})",
+                    cacheFile.getAbsolutePath(), rebuildCache, cacheFields);
+                analyticsCache = new AnalyticsCache(cacheFile, rebuildCache, cacheFields);
+                parser.setAnalyticsCache(analyticsCache);
+            } catch (Exception e) {
+                log.error("Failed to initialize analytics cache", e);
+                System.exit(1);
+                return;
+            }
+        }
 
         // Parse FIRST (synchronously), then start Javalin
         // This tests whether Javalin startup interferes with parse performance
@@ -75,10 +123,42 @@ public class Main {
             store = parser.parse(dbFile);
         } catch (Exception e) {
             log.error("Parse failed", e);
+            if (analyticsCache != null) {
+                try { analyticsCache.close(); } catch (Exception ignored) {}
+            }
             System.exit(1);
             return;
         }
+        if (analyticsCache != null) {
+            try {
+                analyticsCache.finish();
+                log.info("Analytics cache ready: {}", cacheFile.getAbsolutePath());
+            } catch (Exception e) {
+                log.error("Failed to finalize analytics cache", e);
+                System.exit(1);
+                return;
+            }
+        }
         log.info("Parse complete: {} ZDOs (interesting) in {}ms", store.size(), store.parseDurationMs);
+
+        if (renderLayers) {
+            try (AnalyticsCacheReader reader = new AnalyticsCacheReader(cacheFile, renderRoot)) {
+                log.info("Rendering static layers for snapshot {} into {}",
+                    reader.snapshotId(), renderRoot.getAbsolutePath());
+                File manifest = new RenderedLayerBuilder(cacheFile, renderRoot, reader.snapshotId())
+                    .renderDefaults();
+                log.info("Rendered layer manifest: {}", manifest.getAbsolutePath());
+            } catch (Exception e) {
+                log.error("Failed to render static layers", e);
+                System.exit(1);
+                return;
+            }
+        }
+
+        if (batchOnly) {
+            log.info("Batch work complete; exiting before API startup.");
+            return;
+        }
 
         log.info("Building contracts...");
         WorldContracts contracts;
@@ -184,6 +264,14 @@ public class Main {
         server.setAlerts(alerts);
         server.setSectors(sectors);
         server.setClassification(classification);
+        if (cacheFile.exists()) {
+            try {
+                server.setAnalyticsCacheReader(new AnalyticsCacheReader(cacheFile, renderRoot));
+                log.info("Analytics cache reader attached: {}", cacheFile.getAbsolutePath());
+            } catch (Exception e) {
+                log.warn("Analytics cache exists but could not be opened: {}", e.toString());
+            }
+        }
         server.start(port);
 
         String url = "http://localhost:" + port;

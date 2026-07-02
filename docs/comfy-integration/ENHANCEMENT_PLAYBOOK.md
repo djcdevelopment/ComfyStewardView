@@ -2,13 +2,14 @@
 
 The integration that landed is a foundation, not a finished product. This doc tells you (a) what's portable to other Valheim saves vs. tuned for ComfyEra14, (b) a tiered ladder of enhancements ranked by cost-to-impact, and (c) for each one: architectural reasoning, code/schema template, paste-ready prompt for a free chat model, and a verify command.
 
-If you only read three things in this folder: this file, [BUILD_GUIDE.md](BUILD_GUIDE.md), [diagrams/05-extension-map.svg](diagrams/05-extension-map.svg). Everything else is reference.
+If you only read three things in this folder: this file, [BUILD_GUIDE.md](BUILD_GUIDE.md), [diagrams/05-extension-map.svg](diagrams/05-extension-map.svg). For all-ZDO investigation work, also read [BATCH_ANALYTICS_PLAN.md](BATCH_ANALYTICS_PLAN.md).
 
 ## Premise
 
 **Assumption:** you have at least one Valheim world save (`.db` + `.fwl`). It works on any save at world version 32+ that uses inventory format up to v106. If you have multiple saves, even better — Tier 2+ becomes possible.
 
 **What's portable across any worldfile** (no changes needed):
+- The batch analytics cache (`AnalyticsCache`, `AnalyticsCacheReader`, `RenderedLayerBuilder`) - writes full ZDO rows to DuckDB and pre-renders dense overlays without changing the live dashboard path
 - The whole parser (`WorldParser.java`) — reads the binary, handles all known versions including v106
 - The whole data model (`ZdoFlatStore.java`) — column-oriented in-memory store
 - All API endpoints — they reflect whatever's in the save
@@ -31,15 +32,16 @@ If you only read three things in this folder: this file, [BUILD_GUIDE.md](BUILD_
 
 ## How to think about extending
 
-Three architectural primitives keep the codebase coherent. New work should land in exactly one of these layers:
+Four architectural primitives keep the codebase coherent. New work should land in exactly one of these layers:
 
 | Layer | Where new code goes | When to use |
 |---|---|---|
+| **BATCH ANALYTICS** | `db/AnalyticsCache.java`, `db/AnalyticsCacheReader.java`, `db/RenderedLayerBuilder.java` | You need to keep or query millions of ZDOs, generate pre-rendered layers, or run bounded drilldowns that should not inflate the live in-memory store. |
 | **PARSER** capture | `WorldParser.parseInventoryIntoTotals` (or new method) → `ZdoFlatStore` fields | You need data that's in the bytes but not currently captured. Example: per-item `crafterId` (we added this for the issuer roster). |
 | **ENRICHMENT** | New file in `extractor/`, called from `Main` after parse | You're computing something from already-captured data. Example: density hotspots, structure detection, classification join. |
 | **API + UI** | `ApiServer` route + handler + `index.html` tab | You're surfacing existing data in a new shape. Example: every PA5 forensics endpoint + PA6 tab. |
 
-**Decision rule:** if the data is in the bytes but you don't have it in memory, you need PARSER work. If you have it in memory but the right query doesn't exist, you need ENRICHMENT. If you have the right query but no UI, you need API+UI.
+**Decision rule:** if the data is in the bytes but you don't have it in memory, you need PARSER work. If you need all-ZDO retention, world-scale counts, or pre-rendered density views, use BATCH ANALYTICS. If you have it in memory but the right query doesn't exist, you need ENRICHMENT. If you have the right query but no UI, you need API+UI.
 
 Most enhancement requests live in API+UI. PARSER changes are rare and expensive (they cost a re-parse of the whole save).
 
@@ -85,6 +87,23 @@ Multiple communities running this. Different mods. Different scales. Federated v
 ---
 
 ## Tier 1 enhancements
+
+### 1.0 - Cached ZDO explorer and rendered overlays
+
+**Why:** GM questions such as "show me all player-built pieces in this area" or "where are the gold-heavy containers" require more rows than the live dashboard should hold or draw. The DuckDB cache keeps every ZDO and the rendered layers summarize dense data before the browser sees it.
+
+**Architectural layer:** BATCH ANALYTICS + API+UI. Keep writes in `AnalyticsCache`, bounded reads in `AnalyticsCacheReader`, and high-density visuals in `RenderedLayerBuilder`.
+
+**Current foundation:** `--build-cache`/`--rebuild-cache` writes `zdo` and `container_item`, `--render-layers` emits build-density and container-coin PNGs, and the API exposes `/api/v1/db/zdo/query`, `/api/v1/db/containers/items`, `/api/v1/db/selection-summary`, and `/api/v1/rendered/manifest`.
+
+**Next slice:** add a UI panel over `/api/v1/db/zdo/query` with category, prefab, creatorId, and bounding-box filters. Keep the route paginated and continue using rendered layers for world-scale density.
+
+**Verify:**
+
+```bash
+curl -s "http://localhost:7080/api/v1/rendered/manifest" | jq '.layers | length'
+curl -s "http://localhost:7080/api/v1/db/zdo/query?category=BUILDING&limit=5" | jq '.rows | length'
+```
 
 ### 1.1 — Per-biome wealth heatmap
 

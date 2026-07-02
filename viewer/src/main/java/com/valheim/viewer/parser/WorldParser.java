@@ -1,5 +1,6 @@
 package com.valheim.viewer.parser;
 
+import com.valheim.viewer.db.AnalyticsCache;
 import com.valheim.viewer.store.ZdoFlatStore;
 import com.valheim.viewer.store.ZdoFlatStore.Categories;
 import com.valheim.viewer.store.ZdoFlatStore.PlayerRecord;
@@ -131,6 +132,11 @@ public class WorldParser {
     private final AtomicInteger totalZdos  = new AtomicInteger(0);
     private final AtomicReference<String> statusMsg = new AtomicReference<>("Initializing...");
     private volatile boolean done = false;
+    private AnalyticsCache analyticsCache = null;
+
+    public void setAnalyticsCache(AnalyticsCache analyticsCache) {
+        this.analyticsCache = analyticsCache;
+    }
 
     public ParseProgress getProgress() {
         int parsed = zdosParsed.get(), total = totalZdos.get();
@@ -178,6 +184,11 @@ public class WorldParser {
             statusMsg.set("Parsing " + String.format("%,d", count) + " world objects...");
             log.info("World version={}, ZDOs={}", worldVersion, count);
 
+            if (analyticsCache != null) {
+                statusMsg.set("Initializing analytics cache...");
+                analyticsCache.beginSnapshot(dbFile, worldVersion, store.netTimeSeconds);
+            }
+
             // --- ZDO loop ---
             for (int i = 0; i < count; i++) {
                 if (i == 1_000 || i == 10_000 || i == 100_000 || (i % 500_000 == 0 && i > 0)) {
@@ -189,7 +200,7 @@ public class WorldParser {
                         i, count, (double)i/count*100));
                 }
                 zdosParsed.set(i);
-                parseZdo(buf, worldVersion, store, t0);
+                parseZdo(buf, worldVersion, store, t0, i);
             }
         }
 
@@ -281,7 +292,7 @@ public class WorldParser {
 
     // ----- Direct ZDO parser -----
 
-    private void parseZdo(ByteBuffer buf, int worldVersion, ZdoFlatStore store, long t0) {
+    private void parseZdo(ByteBuffer buf, int worldVersion, ZdoFlatStore store, long t0, int zdoIndex) throws Exception {
         int flags = Short.toUnsignedInt(buf.getShort());
 
         // Skip sector (2×int16)
@@ -301,14 +312,18 @@ public class WorldParser {
         }
 
         boolean validPos = Math.abs(x) < 100_000f && Math.abs(z) < 100_000f;
+        boolean cacheEnabled = analyticsCache != null;
+        boolean cacheFields = cacheEnabled && analyticsCache.capturesFields();
+        boolean isEntrance = ENTRANCE_HASHES.contains(hash);
 
         // Dungeon / boss-site entrance — check BEFORE property-flag early return
         // because some entrance ZDOs (Crypt*, FrostCaves) have no property flags
-        if (ENTRANCE_HASHES.contains(hash)) {
+        if (isEntrance && (!cacheFields || (flags & 0xFF) == 0)) {
             if ((flags & 0xFF) != 0) skipProperties(buf, flags, worldVersion);
             store.structureIndices.add(
                 store.add(hash, x, y, z, Categories.STRUCTURE, 0L, 0L, null, null, 0, 0));
             if (validPos) store.allHeatmap.increment(x, z);
+            recordCacheZdo(zdoIndex, store, hash, Categories.STRUCTURE, x, y, z, 0L, 0L, 0L, flags);
             return;
         }
 
@@ -324,32 +339,37 @@ public class WorldParser {
         // No property flags → pure positional ZDO (very lightweight nature object)
         if ((flags & 0xFF) == 0) {
             if (validPos) store.allHeatmap.increment(x, z);
+            byte cat = y > 3000f ? Categories.INTERIOR : Categories.NATURE;
+            recordCacheZdo(zdoIndex, store, hash, cat, x, y, z, 0L, 0L, 0L, flags);
             return;
         }
 
         // ---- Fast-path checks based on prefab hash ----
 
         // Goblin bed: NPC
-        if (hash == HASH_GOBLIN_BED) {
+        if (!cacheFields && hash == HASH_GOBLIN_BED) {
             skipProperties(buf, flags, worldVersion);
             if (validPos) store.allHeatmap.increment(x, z);
+            recordCacheZdo(zdoIndex, store, hash, Categories.UNKNOWN, x, y, z, 0L, 0L, 0L, flags);
             return;
         }
 
         // Known creature
-        if (CREATURE_HASHES.contains(hash)) {
+        if (!cacheFields && CREATURE_HASHES.contains(hash)) {
             skipProperties(buf, flags, worldVersion);
             store.creatureIndices.add(
                 store.add(hash, x, y, z, Categories.CREATURE, 0L, 0L, null, null, 0, 0));
             if (validPos) store.allHeatmap.increment(x, z);
+            recordCacheZdo(zdoIndex, store, hash, Categories.CREATURE, x, y, z, 0L, 0L, 0L, flags);
             return;
         }
 
         // Ballista
-        if (hash == HASH_BALLISTA) {
+        if (!cacheFields && hash == HASH_BALLISTA) {
             skipProperties(buf, flags, worldVersion);
             store.add(hash, x, y, z, Categories.BALLISTA, 0L, 0L, null, null, 0, 0);
             if (validPos) store.allHeatmap.increment(x, z);
+            recordCacheZdo(zdoIndex, store, hash, Categories.BALLISTA, x, y, z, 0L, 0L, 0L, flags);
             return;
         }
 
@@ -376,8 +396,12 @@ public class WorldParser {
 
         // Connections
         if ((flags & FLAG_CONNECTIONS) != 0) {
-            buf.get();       // connectionType
-            buf.getInt();    // connectionHash
+            int connectionType = buf.get() & 0xFF;
+            int connectionHash = buf.getInt();
+            if (cacheEnabled) {
+                analyticsCache.insertIntField(zdoIndex, "connection", 0, "connectionType", connectionType);
+                analyticsCache.insertIntField(zdoIndex, "connection", connectionHash, "connectionHash", connectionHash);
+            }
         }
 
         // Floats
@@ -386,6 +410,7 @@ public class WorldParser {
             for (int j = 0; j < n; j++) {
                 int h = buf.getInt();
                 float v = buf.getFloat();
+                if (cacheEnabled) analyticsCache.insertFloatField(zdoIndex, "float", h, fieldName(h), v);
                 if      (h == H_HEALTH)  { health = v;  hasHealth  = true; }
                 else if (h == H_SUPPORT) { support = v; hasSupport = true; }
             }
@@ -394,13 +419,37 @@ public class WorldParser {
         // Vector3s (skip — we don't use any)
         if ((flags & FLAG_VECTOR3S) != 0) {
             int n = readNumItems(buf, worldVersion);
-            buf.position(buf.position() + n * 16);  // 4 hash + 12 float3
+            if (!cacheEnabled) {
+                buf.position(buf.position() + n * 16);  // 4 hash + 12 float3
+            } else {
+                for (int j = 0; j < n; j++) {
+                    int h = buf.getInt();
+                    float vx = buf.getFloat();
+                    float vy = buf.getFloat();
+                    float vz = buf.getFloat();
+                    analyticsCache.insertVectorField(zdoIndex, "vec3", h, fieldName(h),
+                        Float.toString(vx) + "," + Float.toString(vy) + "," + Float.toString(vz));
+                }
+            }
         }
 
         // Quaternions (skip)
         if ((flags & FLAG_QUATS) != 0) {
             int n = readNumItems(buf, worldVersion);
-            buf.position(buf.position() + n * 20);  // 4 hash + 16 float4
+            if (!cacheEnabled) {
+                buf.position(buf.position() + n * 20);  // 4 hash + 16 float4
+            } else {
+                for (int j = 0; j < n; j++) {
+                    int h = buf.getInt();
+                    float qx = buf.getFloat();
+                    float qy = buf.getFloat();
+                    float qz = buf.getFloat();
+                    float qw = buf.getFloat();
+                    analyticsCache.insertVectorField(zdoIndex, "quat", h, fieldName(h),
+                        Float.toString(qx) + "," + Float.toString(qy) + "," +
+                        Float.toString(qz) + "," + Float.toString(qw));
+                }
+            }
         }
 
         // Ints
@@ -409,6 +458,7 @@ public class WorldParser {
             for (int j = 0; j < n; j++) {
                 int h = buf.getInt();
                 int v = buf.getInt();
+                if (cacheEnabled) analyticsCache.insertIntField(zdoIndex, "int", h, fieldName(h), v);
                 if      (h == H_STACK)   { stack   = v; hasStack   = true; }
                 else if (h == H_QUALITY) quality = v;
             }
@@ -420,6 +470,7 @@ public class WorldParser {
             for (int j = 0; j < n; j++) {
                 int  h = buf.getInt();
                 long v = buf.getLong();
+                if (cacheEnabled) analyticsCache.insertLongField(zdoIndex, "long", h, fieldName(h), v);
                 if      (h == H_CREATOR)   { creator   = v; hasCreator   = true; }
                 else if (h == H_OWNER)     { owner     = v; }
                 else if (h == H_SPAWNTIME) { spawntime = v; hasSpawntime = true; }
@@ -432,6 +483,10 @@ public class WorldParser {
             for (int j = 0; j < n; j++) {
                 int    h = buf.getInt();
                 String v = readString(buf);
+                if (cacheEnabled) {
+                    if (h == H_ITEMS) analyticsCache.insertBlobField(zdoIndex, "string", h, fieldName(h), v.length());
+                    else analyticsCache.insertStringField(zdoIndex, "string", h, fieldName(h), v);
+                }
                 if      (h == H_OWNER_NAME)   { ownerName   = nullIfEmpty(v); }
                 else if (h == H_TAG)          { tag         = nullIfEmpty(v); }
                 else if (h == H_TEXT)         { text        = nullIfEmpty(v); }
@@ -446,19 +501,50 @@ public class WorldParser {
         if ((flags & FLAG_BYTEARRAYS) != 0) {
             int n = readNumItems(buf, worldVersion);
             for (int j = 0; j < n; j++) {
-                buf.position(buf.position() + 4);  // skip hash
+                int h = buf.getInt();
                 int len = buf.getInt();
+                if (cacheEnabled) analyticsCache.insertBlobField(zdoIndex, "bytearray", h, fieldName(h), len);
                 buf.position(buf.position() + len);
             }
         }
 
         // ----- Classification -----
 
+        if (isEntrance) {
+            store.structureIndices.add(
+                store.add(hash, x, y, z, Categories.STRUCTURE, spawntime, creator, null, null, 0, 0));
+            if (validPos) store.allHeatmap.increment(x, z);
+            recordCacheZdo(zdoIndex, store, hash, Categories.STRUCTURE, x, y, z, creator, owner, spawntime, flags);
+            return;
+        }
+
+        if (CREATURE_HASHES.contains(hash)) {
+            store.creatureIndices.add(
+                store.add(hash, x, y, z, Categories.CREATURE, spawntime, creator, null, null, 0, 0));
+            if (validPos) store.allHeatmap.increment(x, z);
+            recordCacheZdo(zdoIndex, store, hash, Categories.CREATURE, x, y, z, creator, owner, spawntime, flags);
+            return;
+        }
+
+        if (hash == HASH_BALLISTA) {
+            store.add(hash, x, y, z, Categories.BALLISTA, spawntime, creator, null, null, 0, 0);
+            if (validPos) store.allHeatmap.increment(x, z);
+            recordCacheZdo(zdoIndex, store, hash, Categories.BALLISTA, x, y, z, creator, owner, spawntime, flags);
+            return;
+        }
+
+        if (hash == HASH_GOBLIN_BED) {
+            if (validPos) store.allHeatmap.increment(x, z);
+            recordCacheZdo(zdoIndex, store, hash, Categories.UNKNOWN, x, y, z, creator, owner, spawntime, flags);
+            return;
+        }
+
         if (isTombstone) {
             store.tombstoneIndices.add(
                 store.add(hash, x, y, z, Categories.TOMBSTONE,
                     spawntime, owner, ownerName, null, 0, 0));
             if (validPos) store.allHeatmap.increment(x, z);
+            recordCacheZdo(zdoIndex, store, hash, Categories.TOMBSTONE, x, y, z, creator, owner, spawntime, flags);
             if (owner != 0) {
                 final String capturedName = ownerName;
                 PlayerRecord pr = store.players.computeIfAbsent(owner,
@@ -475,6 +561,7 @@ public class WorldParser {
                 store.add(hash, x, y, z, Categories.PORTAL,
                     spawntime, creator, tag, author, 0, 0));
             if (validPos) store.allHeatmap.increment(x, z);
+            recordCacheZdo(zdoIndex, store, hash, Categories.PORTAL, x, y, z, creator, owner, spawntime, flags);
             return;
         }
 
@@ -483,6 +570,7 @@ public class WorldParser {
                 store.add(hash, x, y, z, Categories.BED,
                     spawntime, owner, ownerName, null, 0, 0));
             if (validPos) store.allHeatmap.increment(x, z);
+            recordCacheZdo(zdoIndex, store, hash, Categories.BED, x, y, z, creator, owner, spawntime, flags);
             if (owner != 0) {
                 final String capturedName2 = ownerName;
                 store.players.computeIfAbsent(owner,
@@ -497,6 +585,7 @@ public class WorldParser {
                 store.add(hash, x, y, z, Categories.SIGN,
                     spawntime, creator, text, author, 0, 0));
             if (validPos) store.allHeatmap.increment(x, z);
+            recordCacheZdo(zdoIndex, store, hash, Categories.SIGN, x, y, z, creator, owner, spawntime, flags);
             return;
         }
 
@@ -508,10 +597,12 @@ public class WorldParser {
             if (items != null) {
                 try {
                     int containerIdx = store.size() - 1;
-                    parseInventoryIntoTotals(items, store.chestItemTotals, store, containerIdx, x, y, z);
+                    parseInventoryIntoTotals(items, store.chestItemTotals, store,
+                        containerIdx, zdoIndex, x, y, z, analyticsCache);
                 }
                 catch (Exception ignored) {}
             }
+            recordCacheZdo(zdoIndex, store, hash, Categories.CONTAINER, x, y, z, creator, owner, spawntime, flags);
             return;
         }
 
@@ -522,6 +613,7 @@ public class WorldParser {
             if (validPos) store.allHeatmap.increment(x, z);
             // Register dropped-item hash for name resolution (prefab name == item name)
             if (item != null) store.registerHashName(sh(item), item);
+            recordCacheZdo(zdoIndex, store, hash, Categories.ITEM_STAND, x, y, z, creator, owner, spawntime, flags);
             return;
         }
 
@@ -532,6 +624,7 @@ public class WorldParser {
                 store.allHeatmap.increment(x, z);
                 store.droppedItemHeatmap.increment(x, z);
             }
+            recordCacheZdo(zdoIndex, store, hash, Categories.DROPPED_ITEM, x, y, z, creator, owner, spawntime, flags);
             return;
         }
 
@@ -546,11 +639,21 @@ public class WorldParser {
                 PlayerRecord pr = store.players.get(creator);
                 if (pr != null) pr.buildCount++;
             }
+            recordCacheZdo(zdoIndex, store, hash, Categories.BUILDING, x, y, z, creator, owner, spawntime, flags);
             return;
         }
 
         // Nature / unclassified
         if (validPos) store.allHeatmap.increment(x, z);
+        byte fallbackCategory = y > 3000f ? Categories.INTERIOR : Categories.UNKNOWN;
+        recordCacheZdo(zdoIndex, store, hash, fallbackCategory, x, y, z, creator, owner, spawntime, flags);
+    }
+
+    private void recordCacheZdo(int zdoIndex, ZdoFlatStore store, int hash, byte category,
+            float x, float y, float z, long creator, long owner, long spawntime, int flags) throws Exception {
+        if (analyticsCache == null) return;
+        analyticsCache.insertZdo(zdoIndex, hash, store.nameForHash(hash), category,
+            x, y, z, creator, owner, spawntime, flags);
     }
 
     // ----- Skip all remaining properties (fast path for nature ZDOs) -----
@@ -653,10 +756,29 @@ public class WorldParser {
 
     public static int stableHash(String s) { return sh(s); }
 
+    private static String fieldName(int hash) {
+        if (hash == H_CREATOR) return "creator";
+        if (hash == H_OWNER) return "owner";
+        if (hash == H_SPAWNTIME) return "spawntime";
+        if (hash == H_HEALTH) return "health";
+        if (hash == H_SUPPORT) return "support";
+        if (hash == H_STACK) return "stack";
+        if (hash == H_QUALITY) return "quality";
+        if (hash == H_OWNER_NAME) return "ownerName";
+        if (hash == H_TEXT) return "text";
+        if (hash == H_AUTHOR) return "author";
+        if (hash == H_TAG) return "tag";
+        if (hash == H_ITEM) return "item";
+        if (hash == H_ITEMS) return "items";
+        if (hash == H_CRAFTER_NAME) return "crafterName";
+        return null;
+    }
+
     // ----- Inventory parsing -----
 
     private static void parseInventoryIntoTotals(String base64, Map<String, Long> totals,
-            ZdoFlatStore store, int containerIdx, float cx, float cy, float cz) throws Exception {
+            ZdoFlatStore store, int containerIdx, int cacheZdoIndex, float cx, float cy, float cz,
+            AnalyticsCache analyticsCache) throws Exception {
         byte[] raw = Base64.getDecoder().decode(base64);
         java.io.DataInputStream in = new java.io.DataInputStream(
             new ByteArrayInputStream(raw));
@@ -670,7 +792,7 @@ public class WorldParser {
         for (int j = 0; j < itemCount; j++) {
             String name = readInvString(in);
             int    stk  = readInt32LE(in);
-            readFloat(in);                    // durability
+            float durability = readFloat(in);
             readInt32LE(in); readInt32LE(in); // slot pos
             in.read();                        // equipped
 
@@ -684,14 +806,21 @@ public class WorldParser {
                 crafterName = readInvString(in);
             }
             boolean hasEngravingsQuality = false;
+            StringBuilder customJson = null;
             if (version >= 104) {
                 int mc = readInt32LE(in);
                 if (mc < 0 || mc > 200) return; // safety cap - abnormal = misaligned
+                if (mc > 0) customJson = new StringBuilder("{");
                 for (int k = 0; k < mc; k++) {
                     String key = readInvString(in);
-                    /* val = */ readInvString(in);
+                    String val = readInvString(in);
+                    if (customJson != null) {
+                        if (k > 0) customJson.append(',');
+                        appendJsonPair(customJson, key, val);
+                    }
                     if ("engravings.quality".equals(key)) hasEngravingsQuality = true;
                 }
+                if (customJson != null) customJson.append('}');
             }
             if (version >= 106) {
                 readInt32LE(in);    // worldLevel
@@ -705,6 +834,10 @@ public class WorldParser {
             // Existing: register name + accumulate totals
             store.registerHashName(sh(name), name);
             if (stk > 0) totals.merge(name, (long) stk, Long::sum);
+            if (analyticsCache != null) {
+                analyticsCache.insertContainerItem(cacheZdoIndex, name, stk, durability, qual, variant,
+                    crafterId, crafterName, customJson == null ? null : customJson.toString(), cx, cy, cz);
+            }
 
             // PA4/PA5 forensics tracking
             if ("Coins".equals(name) && stk > 0) containerCoinTotal += stk;
@@ -741,6 +874,33 @@ public class WorldParser {
                 }
             }
         }
+    }
+
+    private static void appendJsonPair(StringBuilder sb, String key, String value) {
+        sb.append('"').append(jsonEscape(key)).append('"')
+          .append(':')
+          .append('"').append(jsonEscape(value)).append('"');
+    }
+
+    private static String jsonEscape(String value) {
+        if (value == null) return "";
+        StringBuilder out = new StringBuilder(value.length() + 8);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '"': out.append("\\\""); break;
+                case '\\': out.append("\\\\"); break;
+                case '\b': out.append("\\b"); break;
+                case '\f': out.append("\\f"); break;
+                case '\n': out.append("\\n"); break;
+                case '\r': out.append("\\r"); break;
+                case '\t': out.append("\\t"); break;
+                default:
+                    if (c < 0x20) out.append(String.format("\\u%04x", (int) c));
+                    else out.append(c);
+            }
+        }
+        return out.toString();
     }
 
     private static int readInt32LE(java.io.DataInputStream in) throws java.io.IOException {

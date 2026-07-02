@@ -6,3 +6,10 @@
 # Daemon runtime logs — re-generated on every restart
 viewer/logs/*.log
 viewer/logs/*.err
+
+# Batch analytics outputs generated from real world saves
+viewer/target/*.duckdb
+viewer/target/*.duckdb.wal
+viewer/target/rendered-*/
+viewer/target/generation-*.log
+/steward-config.json

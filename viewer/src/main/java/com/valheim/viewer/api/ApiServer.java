@@ -6,6 +6,7 @@ import com.valheim.viewer.contract.Alert;
 import com.valheim.viewer.contract.Sector;
 import com.valheim.viewer.contract.Structure;
 import com.valheim.viewer.contract.WorldContracts;
+import com.valheim.viewer.db.AnalyticsCacheReader;
 import com.valheim.viewer.extractor.AlertResult;
 import com.valheim.viewer.extractor.ClassificationStore;
 import com.valheim.viewer.extractor.MetricsResult;
@@ -20,6 +21,8 @@ import io.javalin.http.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.nio.file.Files;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.*;
@@ -46,6 +49,7 @@ public class ApiServer {
     private volatile AlertResult alerts = null;
     private volatile SectorResult sectorResult = null;
     private volatile ClassificationStore classification = null;
+    private volatile AnalyticsCacheReader analyticsCacheReader = null;
 
     public ApiServer(WorldParser parser) {
         this.parser = parser;
@@ -85,6 +89,10 @@ public class ApiServer {
 
     public void setClassification(ClassificationStore classification) {
         this.classification = classification;
+    }
+
+    public void setAnalyticsCacheReader(AnalyticsCacheReader analyticsCacheReader) {
+        this.analyticsCacheReader = analyticsCacheReader;
     }
 
     private void registerRoutes() {
@@ -160,6 +168,13 @@ public class ApiServer {
         app.get("/api/v1/forensics/server-issuers", this::handleServerIssuers);
         // Items issued by a specific server identity (query: ?issuer=<name>)
         app.get("/api/v1/forensics/guild-gear", this::handleGuildGear);
+
+        // Batch analytics cache endpoints
+        app.get("/api/v1/rendered/manifest", this::handleRenderedManifest);
+        app.get("/api/v1/rendered/{file}", this::handleRenderedFile);
+        app.get("/api/v1/db/zdo/query", this::handleDbZdoQuery);
+        app.get("/api/v1/db/containers/items", this::handleDbContainerItems);
+        app.get("/api/v1/db/selection-summary", this::handleDbSelectionSummary);
     }
 
     // ----- Handlers -----
@@ -990,6 +1005,103 @@ public class ApiServer {
         int sum = 0; for (Integer v : cat.values()) sum += v; return sum;
     }
 
+    // ----- Batch analytics cache handlers -----
+
+    private void handleRenderedManifest(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            File manifest = reader.manifestFile();
+            if (!manifest.exists()) {
+                ctx.status(404).json("{\"error\":\"rendered manifest not found\"}");
+                return;
+            }
+            ctx.contentType("application/json").result(Files.readString(manifest.toPath()));
+        } catch (Exception e) {
+            log.error("Failed to read rendered manifest", e);
+            ctx.status(500).json("{\"error\":\"rendered manifest read failure\"}");
+        }
+    }
+
+    private void handleRenderedFile(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            File file = reader.renderedFile(ctx.pathParam("file"));
+            if (file == null) {
+                ctx.status(400).json("{\"error\":\"invalid rendered file\"}");
+                return;
+            }
+            if (!file.exists()) {
+                ctx.status(404).json("{\"error\":\"rendered file not found\"}");
+                return;
+            }
+            ctx.contentType("image/png").result(Files.readAllBytes(file.toPath()));
+        } catch (Exception e) {
+            log.error("Failed to read rendered file", e);
+            ctx.status(500).json("{\"error\":\"rendered file read failure\"}");
+        }
+    }
+
+    private void handleDbZdoQuery(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            float minX = ctx.queryParamAsClass("minX", Float.class).getOrDefault(-100_000f);
+            float maxX = ctx.queryParamAsClass("maxX", Float.class).getOrDefault(100_000f);
+            float minZ = ctx.queryParamAsClass("minZ", Float.class).getOrDefault(-100_000f);
+            float maxZ = ctx.queryParamAsClass("maxZ", Float.class).getOrDefault(100_000f);
+            String category = ctx.queryParam("category");
+            String prefab = ctx.queryParam("prefab");
+            Long creatorId = longQueryParam(ctx, "creatorId");
+            int limit = clampLimit(ctx.queryParamAsClass("limit", Integer.class).getOrDefault(1_000), 20_000);
+            int offset = Math.max(0, ctx.queryParamAsClass("offset", Integer.class).getOrDefault(0));
+
+            ctx.json(mapper.writeValueAsString(reader.queryZdos(
+                mapper, minX, maxX, minZ, maxZ, category, prefab, creatorId, limit, offset)));
+        } catch (Exception e) {
+            log.error("Failed DB ZDO query", e);
+            ctx.status(500).json("{\"error\":\"db zdo query failure\"}");
+        }
+    }
+
+    private void handleDbContainerItems(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            float minX = ctx.queryParamAsClass("minX", Float.class).getOrDefault(-100_000f);
+            float maxX = ctx.queryParamAsClass("maxX", Float.class).getOrDefault(100_000f);
+            float minZ = ctx.queryParamAsClass("minZ", Float.class).getOrDefault(-100_000f);
+            float maxZ = ctx.queryParamAsClass("maxZ", Float.class).getOrDefault(100_000f);
+            String item = ctx.queryParam("item");
+            int limit = clampLimit(ctx.queryParamAsClass("limit", Integer.class).getOrDefault(1_000), 20_000);
+            int offset = Math.max(0, ctx.queryParamAsClass("offset", Integer.class).getOrDefault(0));
+
+            ctx.json(mapper.writeValueAsString(reader.queryContainerItems(
+                mapper, minX, maxX, minZ, maxZ, item, limit, offset)));
+        } catch (Exception e) {
+            log.error("Failed DB container item query", e);
+            ctx.status(500).json("{\"error\":\"db container item query failure\"}");
+        }
+    }
+
+    private void handleDbSelectionSummary(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            float minX = ctx.queryParamAsClass("minX", Float.class).getOrDefault(-100_000f);
+            float maxX = ctx.queryParamAsClass("maxX", Float.class).getOrDefault(100_000f);
+            float minZ = ctx.queryParamAsClass("minZ", Float.class).getOrDefault(-100_000f);
+            float maxZ = ctx.queryParamAsClass("maxZ", Float.class).getOrDefault(100_000f);
+            int topN = clampLimit(ctx.queryParamAsClass("topN", Integer.class).getOrDefault(20), 100);
+            ctx.json(mapper.writeValueAsString(reader.selectedAreaSummary(
+                mapper, minX, maxX, minZ, maxZ, topN)));
+        } catch (Exception e) {
+            log.error("Failed DB selection summary", e);
+            ctx.status(500).json("{\"error\":\"db selection summary failure\"}");
+        }
+    }
+
     // ----- Helpers -----
 
     private ZdoFlatStore requireStore(Context ctx) {
@@ -1001,6 +1113,14 @@ public class ApiServer {
             return null;
         }
         return store;
+    }
+
+    private AnalyticsCacheReader requireAnalyticsCache(Context ctx) {
+        if (analyticsCacheReader == null) {
+            ctx.status(503).json("{\"error\":\"analytics cache not available\"}");
+            return null;
+        }
+        return analyticsCacheReader;
     }
 
     private ObjectNode envelope(ZdoFlatStore s) {
@@ -1035,8 +1155,27 @@ public class ApiServer {
                 return Categories.BALLISTA;
             case "NATURE":
                 return Categories.NATURE;
+            case "STRUCTURE":
+                return Categories.STRUCTURE;
+            case "INTERIOR":
+                return Categories.INTERIOR;
             default:
                 return Categories.UNKNOWN;
+        }
+    }
+
+    private static int clampLimit(int value, int max) {
+        if (value < 1) return 1;
+        return Math.min(value, max);
+    }
+
+    private static Long longQueryParam(Context ctx, String name) {
+        String raw = ctx.queryParam(name);
+        if (raw == null || raw.isEmpty()) return null;
+        try {
+            return Long.parseLong(raw);
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 }

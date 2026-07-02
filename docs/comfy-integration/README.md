@@ -8,6 +8,7 @@ This folder is the entry point for the steward-tooling work that landed in late 
 
 | Goal | Go to |
 |---|---|
+| **"I want to investigate all ZDOs, build pieces, or container items"** | [BATCH_ANALYTICS_PLAN.md](BATCH_ANALYTICS_PLAN.md) - DuckDB cache, rendered layers, DB-backed APIs, Era16 baseline, and next milestones. |
 | **"I want to build this from scratch right now"** | [BUILD_GUIDE.md](BUILD_GUIDE.md) — 10 numbered steps, every one with a verify command. ~15 minutes if Java 17 is installed. |
 | **"It's already running, I just want to confirm everything's wired"** | Run the quick-verify block below (~30 seconds) or `smoke-test.ps1` (17 assertions). |
 | **"I want to understand what's here before I touch anything"** | Read [LESSONS_LEARNED.md](LESSONS_LEARNED.md) and look at [diagrams/01-architecture.svg](diagrams/01-architecture.svg). |
@@ -39,6 +40,8 @@ A PowerShell version of these is at `smoke-test.ps1` next to this README.
 
 | Doc | What's in it |
 |---|---|
+| [**BATCH_ANALYTICS_PLAN.md**](BATCH_ANALYTICS_PLAN.md) | **All-ZDO analytics plan.** DuckDB schema, batch CLI, rendered layer outputs, DB-backed routes, generated Era16 counts, and prioritized GM feature milestones. |
+| [RETROSPECTIVE_BATCH_ANALYTICS.md](RETROSPECTIVE_BATCH_ANALYTICS.md) | Retrospective for the DuckDB analytics implementation: decisions, failed attempts, validation, and follow-up plan. |
 | [README.md](README.md) | (this file) — index, quick verify, run instructions |
 | [**BUILD_GUIDE.md**](BUILD_GUIDE.md) | **Step-by-step build contract.** Pre-flight checks, component manifest (what each file emits + why), 10 numbered steps with verify command after every one. Read this if you're touching the code. |
 | [**ENHANCEMENT_PLAYBOOK.md**](ENHANCEMENT_PLAYBOOK.md) | **How to grow this on any worldfile.** What's portable vs ComfyEra14-tuned. 5-tier ladder of enhancements (any-world deeper queries → multi-tenant federation). Each entry: architectural reasoning, code/schema template, paste-ready prompt for any free chat model, verify command. Read this when planning the next sprint. |
@@ -72,6 +75,34 @@ java -Xmx3g -jar target/world-viewer-1.0.0.jar ../ComfyEra14.db --port 7080 --no
 Open `http://localhost:7080/` in a browser. Tabs across the top: Map · Portals · Players · Economy · Tombstones · Signs · Dropped · Alerts · Structures · Creatures · **🪙 Coin Caches** · **👑 Server Issuers** · **🎁 Guild Gear** · Selection.
 
 The starred three are new — see [LESSONS_LEARNED.md § Forensics tabs](LESSONS_LEARNED.md#forensics-tabs).
+
+## Batch analytics mode
+
+For GM investigations that need every ZDO, build a DuckDB cache and static map overlays in a batch run:
+
+```powershell
+java -Xmx6g -jar target\world-viewer-1.0.0.jar `
+  C:\work\comfy\erasave\ComfyEra16.db `
+  --rebuild-cache `
+  --cache target\ComfyEra16.duckdb `
+  --render-layers `
+  --render-dir target\rendered-era16 `
+  --batch-only `
+  --no-browser
+```
+
+Then attach the generated cache to the viewer:
+
+```powershell
+java -Xmx6g -jar target\world-viewer-1.0.0.jar `
+  C:\work\comfy\erasave\ComfyEra16.db `
+  --cache target\ComfyEra16.duckdb `
+  --render-dir target\rendered-era16 `
+  --port 7080 `
+  --no-browser
+```
+
+The cache keeps all ZDO rows in DuckDB and the UI uses rendered overlays plus bounded drilldown routes. See [BATCH_ANALYTICS_PLAN.md](BATCH_ANALYTICS_PLAN.md) for schema, API details, and the generated Era16 baseline.
 
 ## Build / rebuild
 

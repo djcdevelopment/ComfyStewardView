@@ -166,6 +166,16 @@
             <option value="viridis">Viridis</option>
           </select>
         </div>
+        <div class="mt-2" x-show="renderedLayers.length > 0">
+          <label class="text-xs text-gray-400">Rendered Layer</label>
+          <select x-model="renderedLayerId" @change="switchRenderedLayer(renderedLayerId)"
+                  class="w-full bg-gray-700 text-gray-200 text-xs rounded px-2 py-1 mt-1">
+            <option value="">None</option>
+            <template x-for="layer in renderedLayers" :key="layer.id">
+              <option :value="layer.id" x-text="layer.label"></option>
+            </template>
+          </select>
+        </div>
       </div>
 
       <!-- Point overlay controls -->
@@ -688,6 +698,10 @@ function app() {
     heatmapCanvas: null,
     heatmapLayer: null,
     heatmapData: null,
+    renderedManifest: null,
+    renderedLayers: [],
+    renderedLayerId: '',
+    renderedOverlay: null,
     activeLayer: 'BUILDING',
     showHeatmap: true,
     heatmapOpacity: 0.65,
@@ -763,6 +777,7 @@ function app() {
       await this.pollUntilReady();
       document.getElementById('loading-overlay').classList.add('hidden');
       this.initMap();
+      this.loadRenderedManifest();
       this.loadSummary();
       this.loadWorldSummary();
       this.switchTab('map');
@@ -938,6 +953,35 @@ function app() {
       const d = await fetchJson(`${API}/heatmap?type=${this.activeLayer}`);
       this.heatmapData = d;
       this.redrawHeatmap();
+    },
+
+    async loadRenderedManifest() {
+      try {
+        const r = await fetch(`${API}/rendered/manifest`);
+        if (!r.ok) return;
+        const d = await r.json();
+        this.renderedManifest = d;
+        this.renderedLayers = d.layers || [];
+      } catch(e) {
+        this.renderedManifest = null;
+        this.renderedLayers = [];
+      }
+    },
+
+    async switchRenderedLayer(layerId) {
+      if (this.renderedOverlay) {
+        this.map.removeLayer(this.renderedOverlay);
+        this.renderedOverlay = null;
+      }
+      if (!layerId) return;
+      const layer = this.renderedLayers.find(l => l.id === layerId);
+      if (!layer || !layer.bounds) return;
+      const b = layer.bounds;
+      this.renderedOverlay = L.imageOverlay(`${API}/rendered/${layer.file}`, [
+        [b.minZ, b.minX],
+        [b.maxZ, b.maxX]
+      ], { opacity: 0.75, interactive: false });
+      this.renderedOverlay.addTo(this.map);
     },
 
     repositionCanvas() {
@@ -1402,6 +1446,22 @@ function app() {
       this.selectionData = [];
       this.isSelectionLoading = true;
       try {
+        try {
+          const summary = await fetchJson(`${API}/db/selection-summary?topN=30&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}`);
+          const rows = [];
+          for (const r of (summary.topPrefabs || [])) {
+            rows.push({ prefab: `ZDO ${r.key || 'unknown'}`, count: r.value });
+          }
+          for (const r of (summary.topItems || [])) {
+            rows.push({ prefab: `Item ${r.key || 'unknown'}`, count: r.value });
+          }
+          if (rows.length > 0) {
+            this.selectionData = rows;
+            return;
+          }
+        } catch(e) {
+          // Analytics cache is optional; fall back to the legacy interior selection.
+        }
         const d = await fetchJson(`${API}/points?cat=INTERIOR&limit=200000&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}`);
         const counts = {};
         for (const pt of d.points) {

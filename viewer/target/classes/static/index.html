@@ -166,6 +166,16 @@
             <option value="viridis">Viridis</option>
           </select>
         </div>
+        <div class="mt-2" x-show="renderedLayers.length > 0">
+          <label class="text-xs text-gray-400">Rendered Layer</label>
+          <select x-model="renderedLayerId" @change="switchRenderedLayer(renderedLayerId)"
+                  class="w-full bg-gray-700 text-gray-200 text-xs rounded px-2 py-1 mt-1">
+            <option value="">None</option>
+            <template x-for="layer in renderedLayers" :key="layer.id">
+              <option :value="layer.id" x-text="layer.label"></option>
+            </template>
+          </select>
+        </div>
       </div>
 
       <!-- Point overlay controls -->
@@ -267,11 +277,36 @@
             </div>
           </div>
 
+          <!-- PA3: category + tier breakdown chips (populated only if classification loaded) -->
+          <template x-if="economy.byCategory">
+            <div class="mb-4">
+              <div class="text-sm font-semibold text-gray-300 mb-1">By Category</div>
+              <div class="flex flex-wrap gap-2 mb-3">
+                <template x-for="(count, cat) in economy.byCategory" :key="cat">
+                  <span class="px-2 py-1 text-xs rounded bg-gray-700 border border-gray-600">
+                    <span class="text-gray-300" x-text="cat"></span>
+                    <span class="text-gray-400 ml-1" x-text="count.toLocaleString()"></span>
+                  </span>
+                </template>
+              </div>
+              <div class="text-sm font-semibold text-gray-300 mb-1">By Progression Tier</div>
+              <div class="flex flex-wrap gap-2 mb-3">
+                <template x-for="(count, tier) in economy.byTier" :key="tier">
+                  <span class="px-2 py-1 text-xs rounded bg-gray-700 border border-gray-600">
+                    <span class="text-gray-300" x-text="tier"></span>
+                    <span class="text-gray-400 ml-1" x-text="count.toLocaleString()"></span>
+                  </span>
+                </template>
+              </div>
+            </div>
+          </template>
+
           <div class="mb-3 text-sm font-semibold text-gray-300">Top Items in Chests</div>
           <div id="economy-bars" class="space-y-1">
             <template x-for="item in economy.topItems" :key="item.name">
               <div class="flex items-center gap-2">
                 <div class="text-xs text-gray-300 w-40 truncate" x-text="item.name"></div>
+                <div class="text-xs text-gray-500 w-32 truncate" x-text="item.category ? (item.category + (item.tier != null ? ' · t' + item.tier : '')) : ''"></div>
                 <div class="flex-1 h-4 bg-gray-700 rounded overflow-hidden">
                   <div class="h-full bg-blue-600 rounded"
                        :style="`width:${Math.round(item.count / economy.topItems[0].count * 100)}%`"></div>
@@ -306,6 +341,111 @@
         <div class="bg-gray-800 rounded p-2 text-xs border border-gray-700">
           <div class="text-gray-200 font-mono" x-text="sign.text"></div>
           <div class="text-gray-500 mt-1" x-text="`(${Math.round(sign.x)}, ${Math.round(sign.z)})`"></div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- =========== PA5/PA6 COIN CACHES TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'caches'">
+    <div class="p-4 flex-1 overflow-y-auto">
+      <template x-if="coinCaches">
+        <div>
+          <div class="mb-3 bg-gray-800 rounded p-3 inline-block">
+            <span class="text-xs text-gray-400">Caches Tracked: </span>
+            <span class="text-xl font-bold text-yellow-400" x-text="coinCaches.totalCachesTracked?.toLocaleString()"></span>
+            <span class="text-xs text-gray-400 ml-4">Total Coins (tracked): </span>
+            <span class="text-xl font-bold text-yellow-400" x-text="coinCaches.totalCoinsTracked?.toLocaleString()"></span>
+          </div>
+          <div class="text-xs text-gray-500 mb-3">Top container coin caches sorted by stack total. Click row to fly to map.</div>
+          <table class="w-full text-xs">
+            <thead class="text-gray-400">
+              <tr><th class="text-left p-1">Container</th><th class="text-left p-1">Position</th><th class="text-right p-1">Coins</th></tr>
+            </thead>
+            <tbody>
+              <template x-for="(c, i) in coinCaches.caches" :key="i">
+                <tr class="border-b border-gray-800 hover:bg-gray-800 cursor-pointer"
+                    @click="flyMapTo(c.x, c.z); switchTab('map')">
+                  <td class="p-1 text-gray-300" x-text="c.containerPrefab || ('zdo ' + c.zdoIndex)"></td>
+                  <td class="p-1 text-gray-500 font-mono" x-text="`${Math.round(c.x)}, ${Math.round(c.z)}`"></td>
+                  <td class="p-1 text-yellow-400 text-right font-bold" x-text="c.coins.toLocaleString()"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- =========== PA5/PA6 SERVER ISSUERS TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'issuers'">
+    <div class="p-4 flex-1 overflow-y-auto">
+      <template x-if="serverIssuers">
+        <div>
+          <div class="mb-3 bg-gray-800 rounded p-3 inline-block">
+            <span class="text-xs text-gray-400">Distinct Issuers: </span>
+            <span class="text-xl font-bold text-purple-400" x-text="serverIssuers.distinctIssuers?.toLocaleString()"></span>
+            <span class="text-xs text-gray-400 ml-4">Total Items Issued: </span>
+            <span class="text-xl font-bold text-purple-400" x-text="serverIssuers.totalServerIssuedItems?.toLocaleString()"></span>
+          </div>
+          <div class="text-xs text-gray-500 mb-3">Crafters whose name contains HTML/color tags (guild rewards, event vouchers, admin cosmetics). Click row to see full catalog.</div>
+          <table class="w-full text-xs">
+            <thead class="text-gray-400">
+              <tr><th class="text-left p-1">Issuer (rendered)</th><th class="text-right p-1">Items</th><th class="text-right p-1">Types</th><th class="text-left p-1">Top items</th></tr>
+            </thead>
+            <tbody>
+              <template x-for="(iss, i) in serverIssuers.issuers" :key="i">
+                <tr class="border-b border-gray-800 hover:bg-gray-800 cursor-pointer" @click="selectIssuer(iss.crafter)">
+                  <td class="p-1" x-html="iss.crafter"></td>
+                  <td class="p-1 text-gray-300 text-right" x-text="iss.itemCount.toLocaleString()"></td>
+                  <td class="p-1 text-gray-300 text-right" x-text="iss.distinctTypes"></td>
+                  <td class="p-1 text-gray-500" x-text="iss.topItems.map(x => x.name + '×' + x.count).join(', ').substring(0, 60)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- =========== PA5/PA6 GUILD GEAR TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'guildgear'">
+    <div class="p-4 flex-1 overflow-y-auto">
+      <div class="mb-4 flex items-center gap-2">
+        <span class="text-sm text-gray-300">Issuer:</span>
+        <select x-model="selectedIssuer" @change="loadGuildGear()"
+                class="bg-gray-700 text-xs rounded px-2 py-1 text-gray-200 w-2/3">
+          <option value="">— select an issuer —</option>
+          <template x-if="guildGearMeta">
+            <template x-for="(iss, i) in guildGearMeta.issuers" :key="i">
+              <option :value="iss.crafter" x-text="iss.crafter.replace(/<[^>]+>/g,'').substring(0,80) + ' (' + iss.itemCount + ' items)'"></option>
+            </template>
+          </template>
+        </select>
+      </div>
+      <template x-if="guildGearItems">
+        <div>
+          <div class="mb-3 text-xs text-gray-400">
+            <span x-html="guildGearItems.issuer"></span>
+            <span class="ml-3">— <span class="text-green-400 font-bold" x-text="guildGearItems.totalItems"></span> items, <span class="text-green-400 font-bold" x-text="guildGearItems.distinctTypes"></span> distinct types</span>
+          </div>
+          <table class="w-full text-xs">
+            <thead class="text-gray-400">
+              <tr><th class="text-left p-1">Item</th><th class="text-left p-1">Category</th><th class="text-left p-1">Tier · Biome</th><th class="text-right p-1">Count</th></tr>
+            </thead>
+            <tbody>
+              <template x-for="(it, i) in guildGearItems.items" :key="i">
+                <tr class="border-b border-gray-800">
+                  <td class="p-1 text-gray-200" x-text="it.name"></td>
+                  <td class="p-1 text-gray-500" x-text="it.category || ''"></td>
+                  <td class="p-1 text-gray-500" x-text="(it.tier != null ? 't' + it.tier : '') + (it.biome ? ' · ' + it.biome : '')"></td>
+                  <td class="p-1 text-gray-300 text-right" x-text="it.count.toLocaleString()"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
         </div>
       </template>
     </div>
@@ -544,6 +684,9 @@ function app() {
       { id: 'alerts',     label: '🚨 Alerts' },
       { id: 'structures', label: '🏛 Structures' },
       { id: 'creatures',  label: '🐾 Creatures' },
+      { id: 'caches',     label: '🪙 Coin Caches' },
+      { id: 'issuers',    label: '👑 Server Issuers' },
+      { id: 'guildgear',  label: '🎁 Guild Gear' },
       { id: 'selection',  label: '🔲 Selection' },
     ],
 
@@ -555,6 +698,10 @@ function app() {
     heatmapCanvas: null,
     heatmapLayer: null,
     heatmapData: null,
+    renderedManifest: null,
+    renderedLayers: [],
+    renderedLayerId: '',
+    renderedOverlay: null,
     activeLayer: 'BUILDING',
     showHeatmap: true,
     heatmapOpacity: 0.65,
@@ -630,9 +777,16 @@ function app() {
       await this.pollUntilReady();
       document.getElementById('loading-overlay').classList.add('hidden');
       this.initMap();
+      this.loadRenderedManifest();
       this.loadSummary();
       this.loadWorldSummary();
       this.switchTab('map');
+      // PB6 / screenshot capture: deep-link tabs via URL hash `#tab=<id>`.
+      // Also useful for sharing links to specific views.
+      const hashTab = (location.hash || '').replace(/^#tab=/, '');
+      if (hashTab && this.tabs.some(t => t.id === hashTab)) {
+        setTimeout(() => this.switchTab(hashTab), 600);
+      }
     },
 
     async pollUntilReady() {
@@ -667,6 +821,9 @@ function app() {
         if (id === 'tombstones' && !this.tombstoneTable) this.loadTombstones();
         if (id === 'signs' && !this.signs.length) this.loadSigns();
         if (id === 'dropped'    && !this.dropped)         this.loadDropped();
+        if (id === 'caches'     && !this.coinCaches)      this.loadCoinCaches();
+        if (id === 'issuers'    && !this.serverIssuers)   this.loadServerIssuers();
+        if (id === 'guildgear'  && !this.guildGearMeta)   this.loadServerIssuers();  // populate dropdown
         if (id === 'alerts'     && !this.alertTable)      this.loadAlerts();
         if (id === 'structures' && !this.structureTable)  this.loadStructures();
         if (id === 'creatures'  && !this.creatureSummary) this.loadCreatures();
@@ -796,6 +953,35 @@ function app() {
       const d = await fetchJson(`${API}/heatmap?type=${this.activeLayer}`);
       this.heatmapData = d;
       this.redrawHeatmap();
+    },
+
+    async loadRenderedManifest() {
+      try {
+        const r = await fetch(`${API}/rendered/manifest`);
+        if (!r.ok) return;
+        const d = await r.json();
+        this.renderedManifest = d;
+        this.renderedLayers = d.layers || [];
+      } catch(e) {
+        this.renderedManifest = null;
+        this.renderedLayers = [];
+      }
+    },
+
+    async switchRenderedLayer(layerId) {
+      if (this.renderedOverlay) {
+        this.map.removeLayer(this.renderedOverlay);
+        this.renderedOverlay = null;
+      }
+      if (!layerId) return;
+      const layer = this.renderedLayers.find(l => l.id === layerId);
+      if (!layer || !layer.bounds) return;
+      const b = layer.bounds;
+      this.renderedOverlay = L.imageOverlay(`${API}/rendered/${layer.file}`, [
+        [b.minZ, b.minX],
+        [b.maxZ, b.maxX]
+      ], { opacity: 0.75, interactive: false });
+      this.renderedOverlay.addTo(this.map);
     },
 
     repositionCanvas() {
@@ -1029,6 +1215,38 @@ function app() {
       this.economy = await fetchJson(`${API}/economy?topN=80`);
     },
 
+    // ===== PA5 Forensics — Coin Caches =====
+    coinCaches: null,
+    async loadCoinCaches() {
+      this.coinCaches = await fetchJson(`${API}/forensics/top-coin-caches?limit=50`);
+    },
+
+    // ===== PA5 Forensics — Server Issuers =====
+    serverIssuers: null,
+    guildGearMeta: null,
+    selectedIssuer: '',
+    guildGearItems: null,
+    async loadServerIssuers() {
+      const d = await fetchJson(`${API}/forensics/server-issuers?limit=100`);
+      this.serverIssuers = d;
+      this.guildGearMeta = d;   // shared
+      // If user landed on Guild Gear via deep-link (or just hasn't picked an issuer yet)
+      // and we just got the list, auto-load the top issuer so the page has content.
+      if (this.activeTab === 'guildgear' && !this.selectedIssuer && d.issuers && d.issuers.length) {
+        this.selectedIssuer = d.issuers[0].crafter;
+        this.loadGuildGear();
+      }
+    },
+    async loadGuildGear() {
+      if (!this.selectedIssuer) { this.guildGearItems = null; return; }
+      this.guildGearItems = await fetchJson(`${API}/forensics/guild-gear?issuer=${encodeURIComponent(this.selectedIssuer)}`);
+    },
+    selectIssuer(crafter) {
+      this.selectedIssuer = crafter;
+      this.switchTab('guildgear');
+      this.loadGuildGear();
+    },
+
     // ===== TOMBSTONES =====
 
     async loadTombstones() {
@@ -1228,6 +1446,22 @@ function app() {
       this.selectionData = [];
       this.isSelectionLoading = true;
       try {
+        try {
+          const summary = await fetchJson(`${API}/db/selection-summary?topN=30&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}`);
+          const rows = [];
+          for (const r of (summary.topPrefabs || [])) {
+            rows.push({ prefab: `ZDO ${r.key || 'unknown'}`, count: r.value });
+          }
+          for (const r of (summary.topItems || [])) {
+            rows.push({ prefab: `Item ${r.key || 'unknown'}`, count: r.value });
+          }
+          if (rows.length > 0) {
+            this.selectionData = rows;
+            return;
+          }
+        } catch(e) {
+          // Analytics cache is optional; fall back to the legacy interior selection.
+        }
         const d = await fetchJson(`${API}/points?cat=INTERIOR&limit=200000&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}`);
         const counts = {};
         for (const pt of d.points) {

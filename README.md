@@ -10,6 +10,12 @@ Runs as a single Java fat-JAR. Loads a `.db` into memory in ~8 seconds, serves a
 java -Xmx3g -jar viewer/target/world-viewer-1.0.0.jar path/to/ComfyEra14.db --port 7080 --no-browser
 ```
 
+For million-ZDO investigation work, build an optional DuckDB analytics cache and pre-rendered map layers instead of pushing every point to the browser:
+
+```
+java -Xmx6g -jar viewer/target/world-viewer-1.0.0.jar path/to/ComfyEra16.db --rebuild-cache --cache viewer/target/world-cache.duckdb --render-layers --render-dir viewer/target/rendered --batch-only --no-browser
+```
+
 Then open `http://localhost:7080/` — tabs: Map, Portals, Players, Economy, Tombstones, Signs, Dropped, Alerts, Structures, Creatures, Coin Caches, Server Issuers, Guild Gear, Selection.
 
 ## Start here: `docs/comfy-integration/`
@@ -20,6 +26,8 @@ The integration handoff (everything new, plus how to build / extend / re-screens
 
 Highlights:
 
+- [`docs/comfy-integration/BATCH_ANALYTICS_PLAN.md`](docs/comfy-integration/BATCH_ANALYTICS_PLAN.md) - DuckDB cache, rendered layer, API, and next-milestone plan for all-ZDO GM investigations.
+- [`docs/comfy-integration/RETROSPECTIVE_BATCH_ANALYTICS.md`](docs/comfy-integration/RETROSPECTIVE_BATCH_ANALYTICS.md) - implementation retrospective for the DB-backed analytics slice.
 - [`docs/comfy-integration/BUILD_GUIDE.md`](docs/comfy-integration/BUILD_GUIDE.md) — 10 numbered build steps, every one with a verify command. ~15 min total.
 - [`docs/comfy-integration/ENHANCEMENT_PLAYBOOK.md`](docs/comfy-integration/ENHANCEMENT_PLAYBOOK.md) — 5-tier ladder of extensions (any-world deeper queries -> multi-tenant). Each entry has architectural reasoning, code template, paste-ready prompt for free chat models, verify command.
 - [`docs/comfy-integration/LESSONS_LEARNED.md`](docs/comfy-integration/LESSONS_LEARNED.md) — technical discoveries (v106 inventory format, Engravings mod quality repurposing, guild-gear pattern, BED_OWNER player attribution).
