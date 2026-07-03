@@ -1,51 +1,131 @@
 # ComfyStewardView
 
-Valheim world-file (`.db`) parser + REST API + Leaflet/Tailwind SPA for stewarding high-player-count community servers.
+Valheim world-file (`.db`) parser, steward API, and browser viewer for high-player-count community servers.
 
-Runs as a single Java fat-JAR. Loads a `.db` into memory in ~8 seconds, serves a categorized, forensics-enriched dashboard at `http://localhost:7080/`.
+The app runs as a single Java fat JAR. In normal mode it parses the world into an in-memory steward dashboard. In batch analytics mode it also writes a full-fidelity DuckDB cache and pre-rendered map layers for large-world GM investigations.
 
-## Quick run
+## Quick start
 
+Run the viewer against a save file:
+
+```powershell
+java -Xmx3g -jar viewer\target\world-viewer-1.0.0.jar `
+  path\to\world.db `
+  --port 7080 `
+  --no-browser
 ```
-java -Xmx3g -jar viewer/target/world-viewer-1.0.0.jar path/to/ComfyEra14.db --port 7080 --no-browser
+
+Open `http://localhost:7080/`.
+
+Main tabs:
+- Map
+- Portals
+- Players
+- Economy
+- Tombstones
+- Signs
+- Dropped
+- Alerts
+- Structures
+- Creatures
+- Coin Caches
+- Server Issuers
+- Guild Gear
+- Selection
+
+## Batch analytics mode
+
+For million-ZDO investigation work, build a DuckDB cache and rendered overlays instead of sending raw point clouds to the browser:
+
+```powershell
+java -Xmx6g -jar viewer\target\world-viewer-1.0.0.jar `
+  path\to\world.db `
+  --rebuild-cache `
+  --cache viewer\target\world-cache.duckdb `
+  --render-layers `
+  --render-dir viewer\target\rendered `
+  --batch-only `
+  --no-browser
 ```
 
-For million-ZDO investigation work, build an optional DuckDB analytics cache and pre-rendered map layers instead of pushing every point to the browser:
+Then start the viewer with the cache attached:
 
+```powershell
+java -Xmx6g -jar viewer\target\world-viewer-1.0.0.jar `
+  path\to\world.db `
+  --cache viewer\target\world-cache.duckdb `
+  --render-dir viewer\target\rendered `
+  --port 7080 `
+  --no-browser
 ```
-java -Xmx6g -jar viewer/target/world-viewer-1.0.0.jar path/to/ComfyEra16.db --rebuild-cache --cache viewer/target/world-cache.duckdb --render-layers --render-dir viewer/target/rendered --batch-only --no-browser
+
+Supported analytics flags:
+
+```text
+--build-cache
+--rebuild-cache
+--cache <path>
+--render-layers
+--render-dir <dir>
+--batch-only
+--cache-fields
 ```
 
-Then open `http://localhost:7080/` — tabs: Map, Portals, Players, Economy, Tombstones, Signs, Dropped, Alerts, Structures, Creatures, Coin Caches, Server Issuers, Guild Gear, Selection.
+## Documentation
 
-## Start here: `docs/comfy-integration/`
+The project docs are centered in [`docs/comfy-integration/README.md`](docs/comfy-integration/README.md). The core integration and analytics docs are current through the July 2, 2026 DB-backed analytics work.
 
-The integration handoff (everything new, plus how to build / extend / re-screenshot) lives at:
+Useful entry points:
 
-**[`docs/comfy-integration/README.md`](docs/comfy-integration/README.md)** — entry point with a "where to start" decision matrix.
+- [`docs/comfy-integration/BATCH_ANALYTICS_PLAN.md`](docs/comfy-integration/BATCH_ANALYTICS_PLAN.md) - DuckDB schema, rendered layers, DB-backed APIs, and next milestones.
+- [`docs/comfy-integration/RETROSPECTIVE_BATCH_ANALYTICS.md`](docs/comfy-integration/RETROSPECTIVE_BATCH_ANALYTICS.md) - implementation retrospective for the analytics cache slice.
+- [`docs/comfy-integration/BUILD_GUIDE.md`](docs/comfy-integration/BUILD_GUIDE.md) - build and rebuild workflow.
+- [`docs/comfy-integration/ENHANCEMENT_PLAYBOOK.md`](docs/comfy-integration/ENHANCEMENT_PLAYBOOK.md) - extension roadmap and implementation patterns.
+- [`docs/comfy-integration/LESSONS_LEARNED.md`](docs/comfy-integration/LESSONS_LEARNED.md) - format and domain discoveries worth preserving.
+- [`docs/comfy-integration/smoke-test.ps1`](docs/comfy-integration/smoke-test.ps1) - quick endpoint verification script.
 
-Highlights:
+## Current feature surface
 
-- [`docs/comfy-integration/BATCH_ANALYTICS_PLAN.md`](docs/comfy-integration/BATCH_ANALYTICS_PLAN.md) - DuckDB cache, rendered layer, API, and next-milestone plan for all-ZDO GM investigations.
-- [`docs/comfy-integration/RETROSPECTIVE_BATCH_ANALYTICS.md`](docs/comfy-integration/RETROSPECTIVE_BATCH_ANALYTICS.md) - implementation retrospective for the DB-backed analytics slice.
-- [`docs/comfy-integration/BUILD_GUIDE.md`](docs/comfy-integration/BUILD_GUIDE.md) — 10 numbered build steps, every one with a verify command. ~15 min total.
-- [`docs/comfy-integration/ENHANCEMENT_PLAYBOOK.md`](docs/comfy-integration/ENHANCEMENT_PLAYBOOK.md) — 5-tier ladder of extensions (any-world deeper queries -> multi-tenant). Each entry has architectural reasoning, code template, paste-ready prompt for free chat models, verify command.
-- [`docs/comfy-integration/LESSONS_LEARNED.md`](docs/comfy-integration/LESSONS_LEARNED.md) — technical discoveries (v106 inventory format, Engravings mod quality repurposing, guild-gear pattern, BED_OWNER player attribution).
-- [`docs/comfy-integration/diagrams/`](docs/comfy-integration/diagrams/) — 5 SVGs: architecture, data flow, build path, integration points, extension map.
-- [`docs/comfy-integration/screenshots/`](docs/comfy-integration/screenshots/) — 5 UI captures (Map, Portals, Economy, Server Issuers, Guild Gear).
-- [`docs/comfy-integration/smoke-test.ps1`](docs/comfy-integration/smoke-test.ps1) — 17 assertions; exit 0 = all patches landed.
+- Streaming world parse into `ZdoFlatStore` for the live steward dashboard.
+- REST API for summaries, heatmaps, portals, players, economy, tombstones, signs, beds, dropped items, sectors, structures, alerts, and entity contracts.
+- Item classification loaded from `viewer/classification.json`.
+- Forensics routes for coin caches, server issuers, and guild gear.
+- Optional DuckDB analytics cache with `world_snapshot`, `zdo`, `zdo_field`, `container_item`, and `render_cell`.
+- Rendered overlay and DB-backed drilldown routes:
+  - `/api/v1/rendered/manifest`
+  - `/api/v1/rendered/{file}`
+  - `/api/v1/db/zdo/query`
+  - `/api/v1/db/containers/items`
+  - `/api/v1/db/selection-summary`
+
+## Still to build
+
+This is the consolidated backlog pulled from the handoff docs and batch analytics plan:
+
+- Cached ZDO explorer UI over `/api/v1/db/zdo/query`.
+- Semantic location masks such as known-world radius and space-island filters.
+- Build analytics and leaderboards by creator, prefab, sector, and zone.
+- Container wealth reports by area, item type, crafter, and inferred owner.
+- Creator-ID inference across beds, tombstones, portals, signs, wards, and build clusters.
+- Portal hub analysis with outgoing destination mapping.
+- Targeted custom-field watchlists backed by `--cache-fields`.
+- Local bounded 3D prefab viewer.
+- Per-container inventory drill-down in the live UI.
+- Alert noise reduction for orphaned portals.
+- Unresolved prefab/hash identification for several building, container, item-stand, and Ashlands dropped-item variants.
 
 ## Repo layout
 
-```
-viewer/                          - integrated Javalin + Jetty + Leaflet/Tailwind SPA (the running app)
-viewer/src/main/java/            - Java source
-viewer/src/main/resources/static - SPA (single index.html)
-viewer/classification.json       - 617-item taxonomy (loaded at startup)
-viewer/target/                   - build outputs (JAR + .class files)
-docs/comfy-integration/          - integration handoff (read this first)
-docs/                            - broader planning docs (community survival platform)
-LICENSE.md                       - license
+```text
+viewer/                          integrated Javalin app and frontend
+viewer/src/main/java/            Java source
+viewer/src/main/resources/static frontend assets
+viewer/classification.json       item taxonomy loaded at startup
+viewer/lib/                      runtime jars, including DuckDB
+viewer/target/                   build outputs, jars, generated cache artifacts
+docs/comfy-integration/          integration handoff and analytics docs
+manual-zpackage-src/             patched ZPackage source used in earlier parser work
+manual-zpackage-build/           compiled patched ZPackage classes
 ```
 
 ## License
