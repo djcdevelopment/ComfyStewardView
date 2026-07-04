@@ -6,11 +6,13 @@ The app runs as a single Java fat JAR. In normal mode it parses the world into a
 
 ## Quick start
 
-Simplest path on Windows:
+Recommended path for Windows users:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Start-Viewer.ps1
 ```
+
+This is the tested path for non-developers.
 
 The script will:
 - ask for the world `.db` file path
@@ -24,7 +26,7 @@ The script will:
 
 If Windows blocks local scripts, use the exact command above from a PowerShell window.
 
-Build the viewer jar before running it so the shaded artifact includes all runtime dependencies:
+Manual build/run path for advanced users:
 
 ```powershell
 cd viewer
