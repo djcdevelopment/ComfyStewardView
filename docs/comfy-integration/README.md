@@ -59,18 +59,28 @@ A PowerShell version of these is at `smoke-test.ps1` next to this README.
 |---|---|
 | [diagrams/01-architecture.svg](diagrams/01-architecture.svg) | Layered components — parser → store → contracts → API → SPA — and where ClassificationStore plugs in |
 | [diagrams/02-data-flow.svg](diagrams/02-data-flow.svg) | Sequence: `.db` bytes → ZDO stream → per-type dispatch → inventory decode → forensics tally → REST response |
-| [diagrams/03-build-path.svg](diagrams/03-build-path.svg) | Source → javac → JAR update → daemon restart loop. The "no Maven required" recompile path that works around the corrupt jetty-servlet.jar stub. |
+| [diagrams/03-build-path.svg](diagrams/03-build-path.svg) | Historical manual rebuild path from the pre-Maven packaging workflow. Keep it for context only; use `mvn package -DskipTests` for current builds. |
 | [diagrams/04-integration-points.svg](diagrams/04-integration-points.svg) | The 7 files we modified, what each change does, and which existing API/UI each lights up |
 | [diagrams/05-extension-map.svg](diagrams/05-extension-map.svg) | Known LF (Looking For) extension areas, with priority + difficulty markers. Start here when planning the next sprint. |
 
 ## Run instructions
 
-The daemon is a fat JAR. Same invocation as before, no Maven needed at runtime.
+Build the fat JAR once before running it:
+
+```powershell
+cd viewer
+mvn package -DskipTests
+cd ..
+```
+
+Then start it. Maven is not needed at runtime.
 
 ```bash
 cd D:\work\temp\viewer
 java -Xmx3g -jar target/world-viewer-1.0.0.jar ../ComfyEra14.db --port 7080 --no-browser
 ```
+
+If you hit `NoClassDefFoundError: kotlin/jvm/internal/Intrinsics`, the jar was packaged without Kotlin stdlib. Rebuild after pulling the latest `viewer/pom.xml`.
 
 Open `http://localhost:7080/` in a browser. Tabs across the top: Map · Portals · Players · Economy · Tombstones · Signs · Dropped · Alerts · Structures · Creatures · **🪙 Coin Caches** · **👑 Server Issuers** · **🎁 Guild Gear** · Selection.
 
@@ -110,14 +120,13 @@ The cache keeps all ZDO rows in DuckDB and the UI uses rendered overlays plus bo
 
 | What changed | What you re-do |
 |---|---|
-| A `.java` file under `viewer/src/main/java/` | BUILD_GUIDE steps 2-3 (compile + bundle into JAR) |
-| `viewer/src/main/resources/static/index.html` | BUILD_GUIDE step 4 (bundle static resource into JAR) |
+| Any code or resource under `viewer/` | `cd viewer && mvn package -DskipTests` |
 | `viewer/classification.json` | Nothing to build — it's read from disk at startup. Restart the daemon (steps 7-8). |
-| Any of the above | Then steps 5, 7-9 (sync JARs, restart, smoke test). |
+| Any of the above | Restart the daemon, then run `smoke-test.ps1`. |
 
-Typical cycle: ~15 seconds end to end.
+Typical cycle: rebuild, restart, smoke test.
 
-**Why no Maven:** `lib/jetty-servlet.jar` is a 554-byte stub (corrupted). `mvn package` blows up on it; targeted `javac` calls that exclude it work fine. See [diagrams/03-build-path.svg](diagrams/03-build-path.svg). Fixing the stub jar would unblock Maven and is a 5-minute job — listed in [diagrams/05-extension-map.svg](diagrams/05-extension-map.svg) under KNOWN BUGS.
+**Historical note:** older handoff material described a manual rebuild path around a broken packaging setup. The current supported build is `mvn package -DskipTests`, and the current `pom.xml` explicitly includes Kotlin stdlib so the fat jar does not fail at runtime with `kotlin/jvm/internal/Intrinsics`.
 
 ## What changed (one-line summary)
 

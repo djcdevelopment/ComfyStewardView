@@ -30,6 +30,8 @@ java -Xmx3g -jar target/world-viewer-1.0.0.jar ../ComfyEra14.db
 java -Xmx3g -jar target/world-viewer-1.0.0.jar ../ComfyEra14.db --port 7070 --no-browser
 ```
 
+If startup throws `NoClassDefFoundError: kotlin/jvm/internal/Intrinsics`, rebuild after pulling the latest `pom.xml`; the runtime needs Kotlin stdlib packaged into the fat jar.
+
 **Static files are embedded in the JAR.** Editing `src/main/resources/static/index.html` requires a rebuild (`mvn package`) for changes to take effect in the JAR. During development you can also serve the file directly since all API calls use relative `/api/v1/...` paths.
 
 **Kill a running server:**

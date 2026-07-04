@@ -6,6 +6,14 @@ The app runs as a single Java fat JAR. In normal mode it parses the world into a
 
 ## Quick start
 
+Build the viewer jar before running it so the shaded artifact includes all runtime dependencies:
+
+```powershell
+cd viewer
+mvn package -DskipTests
+cd ..
+```
+
 Run the viewer against a save file:
 
 ```powershell
@@ -16,6 +24,8 @@ java -Xmx3g -jar viewer\target\world-viewer-1.0.0.jar `
 ```
 
 Open `http://localhost:7080/`.
+
+If startup fails with `NoClassDefFoundError: kotlin/jvm/internal/Intrinsics`, the jar was built without Kotlin stdlib. Rebuild after pulling the latest `viewer/pom.xml`.
 
 Main tabs:
 - Map

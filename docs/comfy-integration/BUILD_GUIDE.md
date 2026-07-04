@@ -1,5 +1,10 @@
 # Build guide — what you build, what it emits, how to verify
 
+> Current path: run `cd viewer && mvn package -DskipTests` to produce the runnable fat jar.
+> If startup fails with `NoClassDefFoundError: kotlin/jvm/internal/Intrinsics`, pull the latest `viewer/pom.xml` and rebuild.
+>
+> The rest of this document describes an older manual jar-patching workflow kept for historical context.
+
 This is the contract for taking the source in this repo and producing the running daemon you saw screenshots of. Every step says **what** you're doing, **why**, **what's emitted**, and the **verify command** that proves it worked. If a verify fails, fix that step before continuing.
 
 **Final outcome:** a Java daemon on `http://localhost:7080/` that parses `ComfyEra14.db` in ~8 seconds and serves a categorized, forensics-enriched UI matching the screenshots in [`screenshots/`](screenshots/).
