@@ -6,6 +6,24 @@ The app runs as a single Java fat JAR. In normal mode it parses the world into a
 
 ## Quick start
 
+Simplest path on Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Start-Viewer.ps1
+```
+
+The script will:
+- ask for the world `.db` file path
+- check that Java 17+ is installed
+- download Maven locally for this repo if needed
+- install the bundled `valheim-save-tools-fixed.jar` into the local Maven cache if needed
+- build the jar
+- start the viewer
+- wait until it is ready
+- open the browser automatically
+
+If Windows blocks local scripts, use the exact command above from a PowerShell window.
+
 Build the viewer jar before running it so the shaded artifact includes all runtime dependencies:
 
 ```powershell

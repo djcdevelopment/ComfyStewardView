@@ -1,4 +1,5 @@
 ### workspace artifacts ###
+.tools/
 # ignore exported world data that we will keep locally
 *.db
 *.fwl*

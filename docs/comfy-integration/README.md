@@ -65,6 +65,15 @@ A PowerShell version of these is at `smoke-test.ps1` next to this README.
 
 ## Run instructions
 
+Simplest path for Windows users:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Start-Viewer.ps1
+```
+
+That script prompts for the save file path, downloads Maven locally if needed, builds the jar, starts the server, waits for readiness, and opens the browser.
+It also installs the bundled `valheim-save-tools-fixed.jar` into the local Maven cache on first run if that dependency is missing.
+
 Build the fat JAR once before running it:
 
 ```powershell
