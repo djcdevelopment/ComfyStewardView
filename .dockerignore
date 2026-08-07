@@ -1,0 +1,9 @@
+# Whitelist build context: the repo root carries probe junk, committed
+# target/ output, and multi-MB jars that must not reach the daemon.
+*
+!viewer/pom.xml
+!viewer/src/**
+!viewer/classification.json
+!viewer/steward-config.json
+!valheim-save-tools-fixed.jar
+!entrypoint.sh

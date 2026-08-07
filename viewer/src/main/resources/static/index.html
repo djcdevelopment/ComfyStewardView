@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Valheim World Viewer</title>
 
+  <!-- Reverse proxies (e.g. tailscale funnel --set-path=/steward) strip the mount
+       prefix, so all app URLs are relative and only resolve under a trailing slash. -->
+  <script>
+    if (!location.pathname.endsWith('/') && !/\.[a-z0-9]+$/i.test(location.pathname))
+      location.replace(location.pathname + '/' + location.search + location.hash);
+  </script>
+
   <!-- Tailwind CDN (dark mode) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
@@ -656,7 +663,7 @@
 </div><!-- /main content -->
 
 <script>
-const API = '/api/v1';
+const API = 'api/v1';
 
 // World coordinate helpers
 const WORLD_Z_MIN = -20500, WORLD_Z_MAX = 27500;

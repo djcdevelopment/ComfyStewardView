@@ -249,11 +249,10 @@ public class Main {
             alerts.medium_count, alerts.low_count);
 
         // Load item classification (category/tier/biome/source/mod) from JSON.
-        // Tries the viewer dir first, then the comfy out dir for dev convenience.
+        // Tries the viewer dir first, then the save file's directory.
         ClassificationStore classification = ClassificationStore.loadOrEmpty(
             "classification.json",
-            new File(dbFile.getParentFile(), "classification.json").getAbsolutePath(),
-            "D:/work/comfy/out/classification.json"
+            new File(dbFile.getParentFile(), "classification.json").getAbsolutePath()
         );
         log.info("Item classification: {} entries loaded", classification.size());
 
