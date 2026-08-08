@@ -17,6 +17,21 @@ renders the same in a browser, an IDE preview, or embedded in Markdown.
 
 Read `10` for orientation, `11` for the mechanism most of the system depends on.
 
+## Where they are used
+
+[WHITEPAPER.html](../WHITEPAPER.html) embeds all five. It holds `{{FIG_*}}` placeholders
+rather than copies, so these files stay the single source of truth — edit a diagram and
+re-run the build, and the paper follows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\Build-Whitepaper.ps1
+```
+
+That emits a self-contained `whitepaper.built.html` (git-ignored) with each SVG inlined as
+a base64 data URI. Data URIs rather than inline `<svg>` because these diagrams carry
+internal `<style>` blocks with generic class names, and SVG styles are not scoped — five
+inlined side by side would collide with each other and with the page.
+
 ## Superseded
 
 `01-architecture.svg` through `05-extension-map.svg` predate the prefab dictionary,

@@ -1,0 +1,339 @@
+<title>ComfyStewardView — Architecture &amp; Findings</title>
+<style>
+  :root {
+    --paper:#f1f4f9; --card:#ffffff; --ink:#131a29; --body:#333c50; --muted:#6b7690;
+    --rule:#d3d9e4; --rule-soft:#e4e8f0; --accent:#a8434f; --accent-soft:#f2e2e4;
+    --verify:#3d755b; --verify-soft:#e0ecE6; --code:#3c5a44;
+    --display:'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua',Georgia,serif;
+    --text:Georgia,'Iowan Old Style','Times New Roman',serif;
+    --mono:ui-monospace,'Cascadia Mono','SF Mono',Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#0b111d; --card:#131c2e; --ink:#eef1f7; --body:#bcc5d7; --muted:#7d86a8;
+      --rule:#242e45; --rule-soft:#1b2438; --accent:#d97b84; --accent-soft:#2a1820;
+      --verify:#6fae8c; --verify-soft:#14241c; --code:#9c9;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:#0b111d; --card:#131c2e; --ink:#eef1f7; --body:#bcc5d7; --muted:#7d86a8;
+    --rule:#242e45; --rule-soft:#1b2438; --accent:#d97b84; --accent-soft:#2a1820;
+    --verify:#6fae8c; --verify-soft:#14241c; --code:#9c9;
+  }
+  :root[data-theme="light"] {
+    --paper:#f1f4f9; --card:#ffffff; --ink:#131a29; --body:#333c50; --muted:#6b7690;
+    --rule:#d3d9e4; --rule-soft:#e4e8f0; --accent:#a8434f; --accent-soft:#f2e2e4;
+    --verify:#3d755b; --verify-soft:#e0ece6; --code:#3c5a44;
+  }
+
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--body);
+         font-family:var(--text); font-size:17px; line-height:1.62;
+         -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1180px; margin:0 auto; padding:0 28px 96px; }
+  .col  { max-width:68ch; margin-inline:auto; }
+
+  /* masthead */
+  header.mast { border-bottom:2px solid var(--ink); margin-bottom:44px; padding:64px 0 26px; }
+  .eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:.14em;
+             text-transform:uppercase; color:var(--muted); margin:0 0 18px; }
+  h1 { font-family:var(--display); font-size:clamp(34px,5.2vw,54px); line-height:1.08;
+       color:var(--ink); margin:0 0 16px; font-weight:600; text-wrap:balance;
+       letter-spacing:-.012em; }
+  .standfirst { font-size:20px; line-height:1.5; color:var(--body); margin:0 0 26px;
+                max-width:60ch; text-wrap:pretty; }
+  .byline { font-family:var(--mono); font-size:12px; color:var(--muted);
+            display:flex; flex-wrap:wrap; gap:22px; }
+
+  /* sections */
+  section { margin:0 0 56px; }
+  .kicker { font-family:var(--mono); font-size:11px; letter-spacing:.14em;
+            text-transform:uppercase; color:var(--accent); margin:0 0 10px; }
+  h2 { font-family:var(--display); font-size:31px; line-height:1.2; color:var(--ink);
+       margin:0 0 18px; font-weight:600; text-wrap:balance; letter-spacing:-.008em; }
+  h3 { font-family:var(--display); font-size:21px; color:var(--ink); margin:34px 0 12px;
+       font-weight:600; text-wrap:balance; }
+  p { margin:0 0 18px; text-wrap:pretty; }
+  strong { color:var(--ink); font-weight:600; }
+  code { font-family:var(--mono); font-size:.87em; color:var(--code);
+         background:var(--rule-soft); padding:1px 5px; border-radius:3px; }
+  a { color:var(--accent); text-underline-offset:3px; }
+  a:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:2px; }
+
+  /* the paper's structural device: a claim bound to its measurement */
+  .measured { display:grid; grid-template-columns:auto 1fr; gap:0 18px;
+              border-left:3px solid var(--verify); background:var(--verify-soft);
+              padding:16px 20px; margin:26px 0; border-radius:0 4px 4px 0; }
+  .measured .m-tag { font-family:var(--mono); font-size:10px; letter-spacing:.12em;
+                     text-transform:uppercase; color:var(--verify); padding-top:4px;
+                     white-space:nowrap; }
+  .measured p { margin:0; font-size:15.5px; line-height:1.55; }
+  .measured p + p { margin-top:8px; }
+
+  .correction { border-left:3px solid var(--accent); background:var(--accent-soft);
+                padding:16px 20px; margin:26px 0; border-radius:0 4px 4px 0; }
+  .correction .m-tag { font-family:var(--mono); font-size:10px; letter-spacing:.12em;
+                       text-transform:uppercase; color:var(--accent); display:block; margin-bottom:6px; }
+  .correction p { margin:0; font-size:15.5px; line-height:1.55; }
+
+  /* figures break the measure */
+  figure { margin:40px 0; }
+  figure .frame { border:1px solid var(--rule); border-radius:5px; overflow:hidden;
+                  background:#0d1320; line-height:0; }
+  figure img { width:100%; height:auto; display:block; }
+  figcaption { font-size:14.5px; color:var(--muted); margin-top:12px; max-width:74ch;
+               line-height:1.5; }
+  figcaption b { color:var(--ink); font-weight:600; font-family:var(--mono);
+                 font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+                 display:block; margin-bottom:4px; }
+
+  /* data */
+  .tablewrap { overflow-x:auto; margin:26px 0; border:1px solid var(--rule); border-radius:5px; }
+  table { border-collapse:collapse; width:100%; font-size:14.5px; background:var(--card); }
+  th, td { text-align:left; padding:10px 16px; border-bottom:1px solid var(--rule-soft); }
+  thead th { font-family:var(--mono); font-size:10.5px; letter-spacing:.1em;
+             text-transform:uppercase; color:var(--muted); background:var(--paper);
+             border-bottom:1px solid var(--rule); white-space:nowrap; }
+  tbody tr:last-child td { border-bottom:none; }
+  td.num, th.num { text-align:right; font-family:var(--mono);
+                   font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .up   { color:var(--verify); font-weight:600; }
+  .down { color:var(--accent); font-weight:600; }
+  td.mono, th.mono { font-family:var(--mono); font-size:12.5px; }
+
+  ul { margin:0 0 18px; padding-left:22px; }
+  li { margin-bottom:9px; }
+  li::marker { color:var(--muted); }
+
+  details { border-top:1px solid var(--rule-soft); padding:14px 0; }
+  summary { cursor:pointer; font-family:var(--mono); font-size:12.5px; color:var(--accent);
+            letter-spacing:.04em; }
+  details[open] summary { margin-bottom:12px; }
+
+  footer.end { border-top:2px solid var(--ink); margin-top:64px; padding-top:22px;
+               font-size:14px; color:var(--muted); }
+  hr.soft { border:none; border-top:1px solid var(--rule-soft); margin:44px 0; }
+
+  @media (max-width:720px) {
+    body { font-size:16px; }
+    .wrap { padding:0 18px 64px; }
+    .measured { grid-template-columns:1fr; gap:8px; }
+  }
+  @media (prefers-reduced-motion:reduce) { * { animation:none !important; transition:none !important; } }
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="col">
+    <p class="eyebrow">Technical white paper · ComfyStewardView</p>
+    <h1>Reading a nine-million-object world</h1>
+    <p class="standfirst">A Valheim save file stores every object as a bare integer hash. Recovering what those integers mean — and proving the recovery — turned out to be the load-bearing problem in the whole system.</p>
+    <div class="byline">
+      <span>Steward API &amp; viewer</span>
+      <span>ComfyEra16 · 9,155,594 ZDOs</span>
+      <span>August 2026</span>
+    </div>
+  </div>
+</header>
+
+<section class="col">
+  <p class="kicker">Summary</p>
+  <h2>What this is</h2>
+  <p>ComfyStewardView parses Valheim world saves for high-player-count community servers and serves the result as a REST API and a browser dashboard. Server stewards use it for the questions that a game console cannot answer: who owns this chest, where did the coins accumulate, which portals are orphaned, whose tombstone is that, which zones are dense enough to lag.</p>
+  <p>The world it was built against holds <strong>9,155,594 objects</strong> in a 1.27 GB file. At that scale the interesting engineering is not the dashboard — it is the parse, and specifically one detail of it.</p>
+
+  <div class="measured">
+    <span class="m-tag">Measured</span>
+    <div>
+      <p>Prefab-name coverage went from <strong>15.6% to 99.5%</strong> of all ZDOs. Before: 7,730,680 objects unnamed. After: 49,385, across 129 hashes.</p>
+      <p>Every number in this paper was measured on a real world file, not estimated. Where a figure corrects an earlier claim, both are shown.</p>
+    </div>
+  </div>
+</section>
+
+<section class="col">
+  <p class="kicker">The problem</p>
+  <h2>Names are not in the file</h2>
+  <p>A Valheim ZDO — the network-replicated object record that everything in the world is made of — stores its prefab as a 32-bit hash of the prefab's name. The name itself is never written to the save. It exists only inside the running game's object registry.</p>
+  <p>So a parser reading the file cold sees <code>538325542</code> and has no way to know it is a grausten wall. Without a hash-to-name dictionary the system substitutes the literal string <code>hash:538325542</code>, and that string then travels everywhere: into the API, into the map, into five separate classifiers that each check for the prefix and give up.</p>
+  <p>A dictionary had solved this once before, offline. It lived on a drive that no longer exists. A full-depth search of the working tree found exactly one surviving prefab dictionary — freshly extracted from the game assembly by a sibling toolchain, 3,458 entries, generated the same week.</p>
+</section>
+
+<figure>
+  <div class="frame"><img src="{{FIG_DATAFLOW}}" alt="Data flow diagram: a world save is read by the parser, which resolves prefab names from a verified dictionary before any object is read, then populates an in-memory store and a DuckDB cache that feed extractors, the REST API, and rendered map layers."></div>
+  <figcaption><b>Figure 1 — Data flow</b>Names are resolved before the first object is parsed, in strict trust order: the verified dictionary claims its hashes first, hand-written entries fill gaps only, and discovered item names fill the rest. The red path at the bottom is what the dictionary removes.</figcaption>
+</figure>
+
+<section class="col">
+  <p class="kicker">Finding</p>
+  <h2>The evidence did not survive contact with its own data</h2>
+  <p>Wiring the dictionary in was straightforward. Reconciling it against what the codebase already believed was not.</p>
+  <p>Eight hand-written names contradicted it. Six of those were load-bearing — they were not just labels, they drove classification through hash sets, so a wrong name meant a wrong category for every object of that type. Two of the six were recorded in the project's own handoff notes as <em>confirmed</em>, verified by inspecting object properties.</p>
+  <p>Those confirmations were re-measured with the shipping parser, reporting the fraction of each hash's objects that actually carried the property in question:</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th class="mono">Hash</th><th>Recorded as</th><th>Property</th><th class="num">Carried it</th><th class="num">Fraction</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">686545676</td><td>sign_hmHildir — “SIGN, confirmed”</td><td><code>text</code></td><td class="num">1 of 79,881</td><td class="num down">0.001%</td></tr>
+        <tr><td class="mono">-1195767551</td><td>turret — “Ballista, confirmed”</td><td><code>ammoType</code></td><td class="num">9 of 41,651</td><td class="num down">0.022%</td></tr>
+        <tr><td class="mono">1411875912</td><td>itemstandh</td><td><code>item</code></td><td class="num">0 of 173,040</td><td class="num down">absent</td></tr>
+        <tr><td class="mono">-1161852777</td><td>ArmorStand</td><td><code>item</code></td><td class="num">0 of 159,003</td><td class="num down">absent</td></tr>
+        <tr><td class="mono">650075310</td><td>itemstand_rooster</td><td><code>item</code></td><td class="num">12 of 59,447</td><td class="num down">0.020%</td></tr>
+        <tr><td class="mono">-494364525</td><td>container variant</td><td><code>items</code></td><td class="num">0 of 82,429</td><td class="num down">absent</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>What each hash actually carries corroborates the dictionary instead. Four of the six show <code>health</code> and <code>support</code> on 96–99.9% of their objects — the signature of a building piece. One shows <code>scaleScalar</code> on 98.5%: a scaled world prop, and the dictionary names it a cliff.</p>
+
+  <div class="correction">
+    <span class="m-tag">Root cause</span>
+    <p>The original evidence came from a probe whose property capture was gated on a latch that stayed open until a string-bearing object appeared. Until then it overwrote its key sets from <em>different</em> objects. The printed profile was a union across unrelated records — which is how the same output attributes barley flour, honey-glazed chicken and a Goblin King trophy to a ballista.</p>
+  </div>
+
+  <p>The lesson is narrow and worth stating plainly: <strong>a property observed without a denominator identifies nothing.</strong> Twelve occurrences out of 40,889 is noise wearing the costume of proof. Every identity claim in the system now reports a fraction.</p>
+
+  <h3>What it cost</h3>
+  <p>Roughly 573,000 objects were misclassified in the deployed application. Item stands were inflated by a factor of four, signs by 40%, and the world appeared to contain 41,651 ballistae. It contains 400.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Category</th><th class="num">Before</th><th class="num">After</th><th class="num">Change</th></tr></thead>
+      <tbody>
+        <tr><td>Item stands</td><td class="num">466,724</td><td class="num">107,902</td><td class="num down">−358,822</td></tr>
+        <tr><td>Signs</td><td class="num">194,774</td><td class="num">115,470</td><td class="num down">−79,304</td></tr>
+        <tr><td>Containers</td><td class="num">153,387</td><td class="num">74,752</td><td class="num down">−78,635</td></tr>
+        <tr><td>Ballistae</td><td class="num">41,651</td><td class="num">400</td><td class="num down">−41,251</td></tr>
+        <tr><td>Building pieces</td><td class="num">3,488,502</td><td class="num">3,629,427</td><td class="num up">+140,925</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Removals and reassignments balance exactly — every object dropped from one category was found in another, none lost or double-counted. Signs were the only category with no content-based fallback, so they gained one: the component atlas records exactly one writer for the <code>text</code> field and one for <code>author</code>, nothing else in the game writes either. That rule recovered <strong>577 genuine signs</strong> the system had never detected.</p>
+</section>
+
+<figure>
+  <div class="frame"><img src="{{FIG_CONTRACTS}}" alt="Contracts diagram: inbound binary save and JSON reference files, an internal six-table DuckDB schema with snapshot provenance and position-based object identity, and an outbound REST surface with the ingest contract and Parquet archive format."></div>
+  <figcaption><b>Figure 2 — Contracts</b>Every boundary and the shape of what crosses it. Note the inbound record layout: the save stores no persistent object identifier, which is the constraint the delta engine had to be built around.</figcaption>
+</figure>
+
+<section class="col">
+  <p class="kicker">Finding</p>
+  <h2>A delta that compared array slots</h2>
+  <p>The system retains a history of ingested saves and reports what changed between them. The comparison keyed on <code>zdo_index</code> — which is the parser's loop counter, the object's ordinal position in the file.</p>
+  <p>Because the save contains no persistent object identifier, that column is not identity. Comparing it compares array slots. If one snapshot holds N objects and another holds M, “present in B but absent from A” evaluates to exactly the index range N to M − 1: the difference in row counts, attributed to whichever objects happen to occupy the tail of the larger file. One of the two figures is always zero.</p>
+  <p>Identity is now <strong>prefab hash plus position quantised to one centimetre</strong>. Two objects cannot occupy the same coordinates, and a placed object keeps its position across saves. The engine also carries a self-check — added minus removed must equal the change in total rows — because about 0.8% of position keys are shared by more than one object, and a change in how many sit at one spot is invisible to a presence-based comparison.</p>
+
+  <div class="measured">
+    <span class="m-tag">Measured</span>
+    <div>
+      <p>Between two copies of the same world: <strong>43 objects added, 43 removed, 2,366 ownership changes</strong>, no net inventory change. Wandering fauna and little else — the correct answer for two saves of one world.</p>
+      <p>Both files hold exactly 9,155,594 objects, so the previous engine reported <strong>0 added, 0 removed</strong>: a confident description of nothing happening.</p>
+    </div>
+  </div>
+</section>
+
+<figure>
+  <div class="frame"><img src="{{FIG_OVERVIEW}}" alt="System overview: OMEN runs the world server and does all parsing and cache building, then copies artifacts into AM4's volume and touches a marker file; AM4 serves the result publicly through a tailscale funnel."></div>
+  <figcaption><b>Figure 3 — Where the work runs</b>Processing sits on the workstation, serving on the lab server. The marker file is the entire mechanism: the container already skipped its own build when that file was present, so relocating the work required no application change.</figcaption>
+</figure>
+
+<section class="col">
+  <p class="kicker">Architecture</p>
+  <h2>Split by cost, not by tier</h2>
+  <p>The obvious reason to move parsing off the serving host would be CPU time. That reason turned out to be wrong, and measuring it produced the more interesting result.</p>
+
+  <div class="measured">
+    <span class="m-tag">Measured</span>
+    <div>
+      <p>A cache built from scratch takes <strong>47 seconds</strong> at ~260,000 objects/second. The same work appended into an existing cache takes <strong>12–13 minutes</strong>, at ~12,400/second — a 21× difference.</p>
+      <p>The cause is indexing: the cache builds its indexes when a snapshot is finalised, so every later append writes through them and the bulk-loader loses its advantage.</p>
+    </div>
+  </div>
+
+  <p>So the split is not about the 47 seconds. It is about keeping gigabytes of disk churn away from the machine running a live game server, and keeping the snapshot history — which grows by 1–2 GB per retained save and gets progressively more expensive to extend — on the workstation, while the server receives only what it serves.</p>
+  <p>The serving host still parses a save at startup, in about four seconds: roughly twenty endpoints read the in-memory store rather than the database. Only the expensive batch build moved.</p>
+
+  <h3>One world, several copies</h3>
+  <p>Every save in this environment is a copy of the same world with slight testing drift. They therefore share one world identifier and differ by source and backup id, rather than being modelled as separate worlds. That distinction is not pedantry: splitting them would scatter one world's history into parallel timelines and make the comparison view unable to diff them, which is the only interesting question to ask of two copies.</p>
+</section>
+
+<figure>
+  <div class="frame"><img src="{{FIG_STACK}}" alt="Tech stack: a browser layer of Alpine, Leaflet, Tabulator and Tailwind from CDN; a JVM layer with Javalin on embedded Jetty, DuckDB JDBC and Jackson; a hand-rolled parser; and a two-stage container build on a Debian JRE base."></div>
+  <figcaption><b>Figure 4 — Stack</b>One shaded jar, no application server, no ORM, no frontend build step. Two constraints are called out because they are not obvious from the dependency list: the runtime image is Debian rather than Alpine because the embedded database needs glibc, and the save parser is hand-written — the vendored library only opens the file.</figcaption>
+</figure>
+
+<section class="col">
+  <p class="kicker">Operations</p>
+  <h2>Two lanes, and an ordering constraint</h2>
+  <p>Code and data ship separately. The code lane tars a whitelist, builds the image on the target, and polls for readiness. The data lane builds artifacts on the workstation, gates them, and installs them into the serving host's volume.</p>
+  <p>Both gates fail closed. The publish gate refuses unless the cache was built from the exact bytes the serving host will read — otherwise the database view and the in-memory view would describe different saves. It also refuses a snapshot with no rows, or one with no dictionary version recorded.</p>
+  <p>The lanes are not commutative. Published data carries corrected names, but the in-memory endpoints come from the serving host's own parse with whatever build it is running. Publishing onto an older build yields a viewer whose map and database disagree — right names in one, wrong in the other. Deploy, verify, then publish.</p>
+
+  <div class="measured">
+    <span class="m-tag">Measured</span>
+    <div>
+      <p>Archiving a snapshot as columnar Parquet with zstd: <strong>113.7 MB against 1,196 MB</strong> live, written in about three seconds, lossless — every column of every row.</p>
+      <p>It also stays queryable in place, with no import step. A round trip read back all 9,155,594 objects and 406,511 inventory rows through a glob, with category counts identical to the live cache.</p>
+    </div>
+  </div>
+</section>
+
+<figure>
+  <div class="frame"><img src="{{FIG_TOOLING}}" alt="Tooling diagram: local development scripts, the code lane deploying an image to the serving host, and the data lane building artifacts, passing a SHA-256 gate, archiving to Parquet, and installing into the volume before restart."></div>
+  <figcaption><b>Figure 5 — Lanes</b>Deploy when the jar changes; publish when the world changes. Both emit a tracked JSON receipt, which is the audit record of what shipped and whether the public URL verified.</figcaption>
+</figure>
+
+<section class="col">
+  <p class="kicker">Reference</p>
+  <h2>Measurements</h2>
+  <p>Everything quantified in this paper, with the world it was measured against.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Quantity</th><th class="num">Value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>World size</td><td class="num">9,155,594</td><td>objects, ComfyEra16, 1.27 GB, world version 37</td></tr>
+        <tr><td>Prefab coverage before</td><td class="num">15.6%</td><td>7,730,680 objects unnamed</td></tr>
+        <tr><td>Prefab coverage after</td><td class="num">99.5%</td><td>49,385 unresolved across 129 hashes</td></tr>
+        <tr><td>Dictionary</td><td class="num">3,458</td><td>entries, game 0.221.12, all validated at load</td></tr>
+        <tr><td>Parse rate</td><td class="num">~260,000/s</td><td>fresh cache build, 47 s total</td></tr>
+        <tr><td>Append rate</td><td class="num">~12,400/s</td><td>into an existing indexed cache, 12–13 min</td></tr>
+        <tr><td>Serve-mode parse</td><td class="num">~4 s</td><td>in-memory only, no cache write</td></tr>
+        <tr><td>Cache per snapshot</td><td class="num">1,196 MB</td><td>live DuckDB</td></tr>
+        <tr><td>Archive per snapshot</td><td class="num">113.7 MB</td><td>Parquet + zstd, lossless, 10.5×</td></tr>
+        <tr><td>Deploy duration</td><td class="num">1 m 43 s</td><td>image build on target, cache refresh, verify</td></tr>
+        <tr><td>Misclassified objects</td><td class="num">~573,000</td><td>corrected by retiring six hash-set entries</td></tr>
+        <tr><td>Signs recovered</td><td class="num">577</td><td>by the content-based rule, never previously detected</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="col">
+  <p class="kicker">Limits</p>
+  <h2>What this does not claim</h2>
+  <ul>
+    <li><strong>There is no test suite.</strong> No unit tests, no test framework in the build. Verification is a 21-check smoke test against a running daemon plus measured before/after parses. Two of those checks fail on this world because they assert findings specific to an older one.</li>
+    <li><strong>Coverage is not total.</strong> 129 hashes covering 49,385 objects remain unnamed — modded content and a location namespace the dictionary does not span. An endpoint lists them, so the residue stays visible rather than reading as completeness.</li>
+    <li><strong>Deltas are a lower bound on churn.</strong> About 0.8% of position keys hold more than one object; a change in multiplicity at those keys is invisible to a presence-based comparison. The engine reports when its own arithmetic fails to reconcile.</li>
+    <li><strong>Archived history loses object-level diffing only if pruned.</strong> Parquet archives are lossless; the limitation would come from choosing to keep aggregates instead, which this system does not currently do.</li>
+    <li><strong>The dictionary is a snapshot of one game version.</strong> It names what shipped in 0.221.12. A game update makes it stale, and the symptom is a coverage percentage that drops — which is why coverage is reported on every parse and exposed on the summary endpoint.</li>
+  </ul>
+
+  <details>
+    <summary>On the discipline this paper argues for</summary>
+    <p>Three claims in this codebase were confidently wrong, and each was wrong in the same way: an observation was recorded without the denominator that would have shown it was noise. A property on twelve objects out of forty thousand. A delta engine that reported zero because zero is what its arithmetic degenerates to. A duration copied from a parse timing into a document describing a very different operation.</p>
+    <p>None of these were careless. Each was a reasonable inference from a real observation. What they lacked was a ratio — and a ratio is cheap. The corrective adopted throughout is unglamorous: report fractions, not counts; make the comparison state whether it reconciles; and when a figure is measured, say against what.</p>
+  </details>
+</section>
+
+<footer class="end col">
+  <p>Diagrams are hand-authored SVG, versioned alongside the source at <code>docs/comfy-integration/diagrams/</code>. They carry measured figures, so they go stale the same way prose does — a diagram with an outdated number is worse than one with none, because the number looks authoritative.</p>
+</footer>
+
+</div>
