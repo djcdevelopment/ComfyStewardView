@@ -36,6 +36,7 @@ com\valheim\viewer\contract\Vec3.class
 com\valheim\viewer\contract\WorldSummary$StructStats.class
 com\valheim\viewer\extractor\StructureDetector.class
 com\valheim\viewer\contract\Alert.class
+com\valheim\viewer\db\RenderedDeltaLayerBuilder$CoinDelta.class
 com\valheim\viewer\db\SnapshotDeltaEngine.class
 com\valheim\viewer\extractor\TaxonomyClassifier$TaxEntry.class
 com\valheim\viewer\config\StConfig.class

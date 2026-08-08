@@ -105,6 +105,15 @@
 
     #sidebar { width: 286px; min-width: 286px; background: var(--sv-surface); border-right: 1px solid var(--sv-border); overflow-y: auto; padding: 12px 14px 24px; }
     .legacy-nav, .legacy-map-sidebar { display: none !important; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    .tabulator, .view-scroll table { overflow-x: auto; }
+    .table-host { overflow-x: auto; }
+    .spawn-histo { position: relative; height: 44px; border: 1px solid var(--sv-border-2); border-radius: 4px; background: var(--sv-inset, #1b2030); overflow: hidden; touch-action: none; }
+    .spawn-bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 1px; padding: 3px 4px; opacity: .55; }
+    .spawn-bar { flex: 1; background: #7d8ca1; border-radius: 1px 1px 0 0; }
+    .spawn-range { position: absolute; top: 0; bottom: 0; background: rgba(74,134,200,.22); border-left: 1px solid #4a86c8; border-right: 1px solid #4a86c8; pointer-events: none; }
+    .spawn-handle { position: absolute; top: 0; bottom: 0; width: 12px; margin-left: -6px; cursor: ew-resize; }
+    .spawn-handle::after { content: ''; position: absolute; left: 5px; top: 0; bottom: 0; width: 2px; background: #5fa8e0; }
     #map-wrapper { position: relative; flex: 1; min-width: 0; }
     #map { width: 100%; height: 100%; background: #151b27; }
     .map-sidebar-toggle { position: absolute; left: 10px; top: 10px; z-index: 1100; width: 30px; height: 30px; border-radius: 5px; border: 1px solid var(--sv-border-2); background: rgba(18,22,31,.94); color: #c7cfdd; cursor: pointer; }
@@ -195,7 +204,7 @@
   </div></template>
 </header>
 
-<div id="scope-popover" class="scope-popover" x-cloak x-show="scopeOpen" @click.outside="scopeOpen=false">
+<div id="scope-popover" class="scope-popover" role="dialog" aria-label="View scope details" x-cloak x-show="scopeOpen" @click.outside="scopeOpen=false" @keydown.escape.window="scopeOpen=false">
   <div class="p-3 border-b" style="border-color:var(--sv-border)">
     <div class="text-sm font-semibold" style="color:var(--sv-bright)" x-text="`What snapshot #${selectedSnapshotId || '—'} controls`"></div>
     <div class="text-xs mt-1" style="color:var(--sv-muted)">DB-backed views follow the selected snapshot. Operational views remain pinned to the world parsed at boot.</div>
@@ -314,13 +323,13 @@
       <section class="card">
         <div class="card-header">
           <span class="eyebrow !text-gray-300">RASTER LAYER</span><span class="flex-1"></span>
-          <button class="switch" :class="{on:showHeatmap}" @click="toggleHeatmap()" :aria-label="showHeatmap ? 'Hide raster layer' : 'Show raster layer'"><span></span></button>
+          <button class="switch" role="switch" :aria-checked="showHeatmap" :class="{on:showHeatmap}" @click="toggleHeatmap()" :aria-label="showHeatmap ? 'Hide raster layer' : 'Show raster layer'"><span></span></button>
           <span class="eyebrow !w-7" :style="`color:${showHeatmap ? '#7cc59a' : '#6d7789'}`" x-text="showHeatmap ? 'ON' : 'OFF'"></span>
         </div>
         <div class="p-3 flex flex-col gap-3" :class="{'opacity-40 pointer-events-none':!showHeatmap}">
           <div class="segmented" aria-label="Raster mode">
-            <button class="segment flex-1" :class="{active:mapRasterMode==='snapshot'}" @click="setRasterMode('snapshot')">Snapshot</button>
-            <button class="segment flex-1" :class="{active:mapRasterMode==='changes'}" @click="setRasterMode('changes')">Changes</button>
+            <button class="segment flex-1" :aria-pressed="mapRasterMode==='snapshot'" :class="{active:mapRasterMode==='snapshot'}" @click="setRasterMode('snapshot')">Snapshot</button>
+            <button class="segment flex-1" :aria-pressed="mapRasterMode==='changes'" :class="{active:mapRasterMode==='changes'}" @click="setRasterMode('changes')">Changes</button>
           </div>
 
           <div x-show="mapRasterMode === 'changes'" class="flex flex-col gap-2">
@@ -332,14 +341,15 @@
           <div class="flex flex-col gap-1.5">
             <span class="eyebrow">LAYER</span>
             <div class="raster-layer-grid">
-              <template x-for="group in activeRasterGroups()" :key="group.layer"><button class="layer-button" :class="{active:activeRasterLayer===group.layer}" @click="selectRasterLayer(group.layer)" x-text="group.label"></button></template>
+              <template x-for="group in activeRasterGroups()" :key="group.layer"><button class="layer-button" :aria-pressed="activeRasterLayer===group.layer" :class="{active:activeRasterLayer===group.layer}" @click="selectRasterLayer(group.layer)" x-text="group.label"></button></template>
             </div>
           </div>
 
           <div class="flex flex-col gap-1.5" x-show="rasterCellSizes.length">
-            <span class="eyebrow">CELL SIZE</span>
-            <div class="segmented">
-              <template x-for="size in rasterCellSizes" :key="size"><button class="segment flex-1" :class="{active:Number(rasterCellSize)===Number(size)}" @click="rasterCellSize=Number(size);applyRasterLayer()" x-text="size"></button></template>
+            <span class="eyebrow">RESOLUTION</span>
+            <div class="segmented" aria-label="Raster resolution in meters per cell">
+              <button class="segment flex-1" x-show="rasterCellSizes.length > 1" :aria-pressed="rasterCellSizeMode==='auto'" :class="{active:rasterCellSizeMode==='auto'}" @click="rasterCellSizeMode='auto';updateAutoResolution(true)">Auto</button>
+              <template x-for="size in rasterCellSizes" :key="size"><button class="segment flex-1" :aria-pressed="rasterCellSizeMode!=='auto'&&Number(rasterCellSize)===Number(size)" :class="{active:rasterCellSizeMode!=='auto'&&Number(rasterCellSize)===Number(size)}" @click="rasterCellSizeMode=Number(size);rasterCellSize=Number(size);applyRasterLayer()" x-text="size"></button></template>
             </div>
           </div>
 
@@ -350,7 +360,7 @@
 
           <div class="flex flex-col gap-1.5" x-show="mapRasterMode==='snapshot'">
             <span class="eyebrow">COLOR RAMP</span>
-            <template x-for="ramp in colorRamps" :key="ramp.id"><button class="ramp-option" :class="{active:heatmapScheme===ramp.id}" @click="heatmapScheme=ramp.id;recolorizeRaster()"><span class="ramp-swatch" :style="`background:${ramp.gradient}`"></span><span class="flex-1 text-left" x-text="ramp.label"></span><span x-show="heatmapScheme===ramp.id">✓</span></button></template>
+            <template x-for="ramp in colorRamps" :key="ramp.id"><button class="ramp-option" :aria-pressed="heatmapScheme===ramp.id" :class="{active:heatmapScheme===ramp.id}" @click="heatmapScheme=ramp.id;recolorizeRaster()"><span class="ramp-swatch" :style="`background:${ramp.gradient}`"></span><span class="flex-1 text-left" x-text="ramp.label"></span><span x-show="heatmapScheme===ramp.id">✓</span></button></template>
           </div>
 
           <div x-show="rasterState==='loading'" class="state-strip warn"><span class="loading-mark !w-3 !h-3"></span><span>Loading raster manifest…</span></div>
@@ -370,14 +380,37 @@
             <input type="checkbox" x-model="overlay.active" @change="toggleOverlay(overlay)" class="accent-blue-500"/>
             <span class="scope-dot" :style="`color:${overlay.color}`"></span><span class="flex-1" x-text="overlay.label"></span>
             <span class="endpoint" x-show="overlay.loading">loading…</span>
-            <span class="endpoint" title="Point layers use a 5,000-marker viewport budget. Zoom, then toggle or reapply filters to reload the visible area." x-show="!overlay.loading && overlay.shown != null" x-text="overlayBudgetLabel(overlay)"></span>
+            <span class="endpoint" title="Point layers use a 5,000-marker viewport budget. Zoom, then toggle or reapply filters to reload the visible area." x-show="!overlay.loading && overlay.shown != null"><span x-text="overlayBudgetLabel(overlay)"></span><span class="sr-only"> — point layers use a 5,000-marker viewport budget; zoom in, then toggle or reapply filters to reload the visible area</span></span>
             <span class="endpoint" style="color:#d9635f" x-show="overlay.error" x-text="overlay.error"></span>
           </label></template>
         </div>
       </section>
 
       <section class="card p-3">
-        <div class="eyebrow mb-2">SPAWN FRACTION</div>
+        <div class="flex items-center gap-2 mb-2"><span class="eyebrow">SPAWN FRACTION</span><span class="flex-1"></span><span class="endpoint" x-show="spawnHistogram && spawnHistogram.available" x-text="spawnHistogram ? `distribution · snapshot #${spawnHistogram.snapshotId}` : ''"></span></div>
+        <div x-cloak x-show="spawnHistogram && spawnHistogram.available" class="mb-2">
+          <div class="spawn-histo" x-ref="spawnHisto">
+            <div class="spawn-bars">
+              <template x-for="(n, i) in (spawnHistogram ? spawnHistogram.counts : [])" :key="i">
+                <span class="spawn-bar" :style="`height:${spawnHistogram.maxCount ? Math.max(n > 0 ? 6 : 0, Math.round(n / spawnHistogram.maxCount * 100)) : 0}%`"></span>
+              </template>
+            </div>
+            <div class="spawn-range" :style="`left:${filterSpawnAfter / 2 * 100}%;right:${100 - filterSpawnBefore / 2 * 100}%`"></div>
+            <div class="spawn-handle" role="slider" tabindex="0" aria-label="Spawn range start"
+                 aria-valuemin="0" aria-valuemax="2" :aria-valuenow="filterSpawnAfter"
+                 :style="`left:${filterSpawnAfter / 2 * 100}%`"
+                 @pointerdown="startSpawnDrag($event, 'after')"
+                 @keydown.left.prevent="nudgeSpawn('after', $event.shiftKey ? -0.25 : -0.05)"
+                 @keydown.right.prevent="nudgeSpawn('after', $event.shiftKey ? 0.25 : 0.05)"></div>
+            <div class="spawn-handle" role="slider" tabindex="0" aria-label="Spawn range end"
+                 aria-valuemin="0" aria-valuemax="2" :aria-valuenow="filterSpawnBefore"
+                 :style="`left:${filterSpawnBefore / 2 * 100}%`"
+                 @pointerdown="startSpawnDrag($event, 'before')"
+                 @keydown.left.prevent="nudgeSpawn('before', $event.shiftKey ? -0.25 : -0.05)"
+                 @keydown.right.prevent="nudgeSpawn('before', $event.shiftKey ? 0.25 : 0.05)"></div>
+          </div>
+          <div class="endpoint mt-1" style="color:var(--sv-warn,#d9a34a)" x-show="spawnMismatchWarning()" x-text="spawnMismatchWarning()"></div>
+        </div>
         <div class="flex items-center gap-2"><input aria-label="Spawn fraction from" type="number" x-model.number="filterSpawnAfter" step=".05" min="0" max="2" class="sv-input w-20"/><span style="color:var(--sv-dim)">→</span><input aria-label="Spawn fraction to" type="number" x-model.number="filterSpawnBefore" step=".05" min="0" max="2" class="sv-input w-20"/><button @click="applyFilters()" class="btn-primary">Apply</button></div>
       </section>
 
@@ -485,16 +518,16 @@
           <div class="flex justify-between endpoint mt-1"><template x-for="(tick,tickIndex) in rasterLegendTicks()" :key="tickIndex"><span x-text="tick.toLocaleString()"></span></template></div>
         </div>
         <div x-show="mapRasterMode==='changes'" class="flex flex-col gap-1.5">
-          <div><div class="flex justify-between endpoint mb-1"><span style="color:#e8a5a2">removed</span><span x-text="deltaLegendMax('removed').toLocaleString()"></span></div><div class="h-2 rounded-sm" style="background:linear-gradient(90deg,#24191d,#743837,#d9635f)"></div></div>
+          <div><div class="flex justify-between endpoint mb-1"><span style="color:#e8a5a2" x-text="deltaChannelCaption('removed')"></span><span x-text="deltaLegendMax('removed').toLocaleString()"></span></div><div class="h-2 rounded-sm" style="background:linear-gradient(90deg,#24191d,#743837,#d9635f)"></div></div>
           <div><div class="flex justify-between endpoint mb-1"><span style="color:#e7dfbd">overlap</span><span>both channels</span></div><div class="h-1.5 rounded-sm" style="background:#e7dfbd"></div></div>
-          <div><div class="flex justify-between endpoint mb-1"><span style="color:#7cc59a">added</span><span x-text="deltaLegendMax('added').toLocaleString()"></span></div><div class="h-2 rounded-sm" style="background:linear-gradient(90deg,#16221c,#2f6948,#5fae7f)"></div></div>
+          <div><div class="flex justify-between endpoint mb-1"><span style="color:#7cc59a" x-text="deltaChannelCaption('added')"></span><span x-text="deltaLegendMax('added').toLocaleString()"></span></div><div class="h-2 rounded-sm" style="background:linear-gradient(90deg,#16221c,#2f6948,#5fae7f)"></div></div>
           <div class="flex justify-between endpoint"><span>1</span><span>independent channel maxima</span><span>MAX</span></div>
         </div>
       </div>
       <div id="map-tooltip"><span x-text="mapCoords || 'Move over map for coordinates'"></span><span> · shift+drag to select</span></div>
 
       <button x-cloak x-show="selectionData.length && !selectionOpen" class="btn-secondary absolute right-3 bottom-3 z-[1100]" @click="selectionOpen=true" x-text="`Last selection · ${selectionTotal().toLocaleString()} rows · reopen`"></button>
-      <div class="selection-drawer" x-cloak x-show="selectionOpen">
+      <div class="selection-drawer" role="region" aria-label="Selection details" x-cloak x-show="selectionOpen" @keydown.escape.window="selectionOpen=false">
         <div class="view-header">
           <span class="view-title">Region selection</span><span class="endpoint" x-text="selectionBoundsLabel()"></span>
           <span class="scope-badge snapshot">snapshot-aware</span><span class="endpoint" x-text="`#${selectedSnapshotId || '—'}`"></span><span class="flex-1"></span>
@@ -1278,6 +1311,7 @@ function app() {
     renderedOverlay: null,
     activeRasterLayer: 'build-density',
     rasterCellSize: 500,
+    rasterCellSizeMode: 'auto',
     rasterLayerGroups: [],
     rasterCellSizes: [],
     _rasterImageCache: {},
@@ -1309,6 +1343,8 @@ function app() {
     ],
     filterSpawnAfter:  0,
     filterSpawnBefore: 2,
+    spawnHistogram: null,
+    _spawnHistogramToken: 0,
 
     // Portals
     allPortals: [],
@@ -1367,6 +1403,7 @@ function app() {
       document.getElementById('loading-overlay').classList.add('hidden');
       this.initMap();
       this.loadSummary();
+      this.loadSpawnHistogram();
       this.loadWorldSummary();
       // Populate the World Selector up front. It reads its options from the world_ids present
       // in the cache, and those only arrive with the snapshot list -- without this the header
@@ -1504,12 +1541,18 @@ function app() {
         [WORLD_Z_MIN, WORLD_X_MIN],
         [WORLD_Z_MAX, WORLD_X_MAX]
       );
+      // CSS alone can't stop Leaflet's JS-managed pan/zoom transforms.
+      const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
       this.map = L.map('map', {
         crs: L.CRS.Simple,
         minZoom: -7, maxZoom: 4,
         zoomControl: true,
+        zoomAnimation: !reducedMotion,
+        fadeAnimation: !reducedMotion,
+        markerZoomAnimation: !reducedMotion,
       });
       this.map.fitBounds(bounds.pad(0.2));
+      this.map.on('zoomend', () => this.updateAutoResolution());
 
       // Grid lines (every 5000 units)
       this.drawGrid();
@@ -1689,7 +1732,7 @@ function app() {
 
     activeRasterGroups() {
       if (this.mapRasterMode === 'snapshot') return this.rasterLayerGroups;
-      const labels = { 'build-activity':'Build activity', 'all-zdos':'All ZDOs' };
+      const labels = { 'build-activity':'Build activity', 'all-zdos':'All ZDOs', 'dropped-items':'Dropped', 'coins':'Coins' };
       const groups = [];
       for (const layer of this.deltaRenderedLayers) if (!groups.some(g => g.layer === layer.layer)) groups.push({ layer:layer.layer, label:labels[layer.layer] || layer.label || layer.layer });
       return groups;
@@ -1716,7 +1759,8 @@ function app() {
         }
         return;
       }
-      if (!sizes.includes(this.rasterCellSize)) this.rasterCellSize = sizes.includes(500) ? 500 : sizes[0];
+      if (this.rasterCellSizeMode === 'auto') this.rasterCellSize = this.autoCellSize(sizes);
+      else if (!sizes.includes(this.rasterCellSize)) this.rasterCellSize = sizes.includes(500) ? 500 : sizes[0];
       if (!this.showHeatmap) { this.removeRasterOverlay(); return; }
 
       const layer = entries.find(l => l.layer === this.activeRasterLayer && Number(l.cellSize) === Number(this.rasterCellSize));
@@ -1823,7 +1867,14 @@ function app() {
       const entry = this.activeRasterEntry();
       if (!entry) return 'Raster intensity';
       const label = this.activeRasterGroups().find(g => g.layer === this.activeRasterLayer)?.label || entry.label || this.activeRasterLayer;
-      return `${label} per ${entry.cellSize} m cell`;
+      const units = entry.units === 'coins' ? ' (coin stacks)' : '';
+      return `${label}${units} per ${entry.cellSize} m cell`;
+    },
+
+    deltaChannelCaption(channel) {
+      const entry = this.activeRasterEntry();
+      if (entry?.units === 'coins') return channel === 'removed' ? 'stacks removed' : 'stacks gained';
+      return channel;
     },
 
     rasterLegendTicks() {
@@ -1857,12 +1908,34 @@ function app() {
       if (!entry) return this.rasterState === 'empty' ? 'Raster has no data' : 'Raster manifest unavailable';
       const label = this.activeRasterGroups().find(g => g.layer === this.activeRasterLayer)?.label || this.activeRasterLayer;
       const source = this.mapRasterMode === 'changes' ? `#${this.deltaFromId} → #${this.deltaToId}` : `snapshot #${this.renderedManifest?.snapshotId ?? this.selectedSnapshotId}`;
-      return `${label} · ${entry.cellSize} m cells · ${source}${this.mapRasterMode === 'snapshot' ? ` · ${this.colorRamps.find(r => r.id === this.heatmapScheme)?.label || 'Ember'}` : ''}${this.rasterState === 'stale' ? ' · stale' : ''}`;
+      const resolution = `${this.rasterCellSizeMode === 'auto' ? 'Auto · ' : ''}${entry.cellSize} m cells`;
+      return `${label} · ${resolution} · ${source}${this.mapRasterMode === 'snapshot' ? ` · ${this.colorRamps.find(r => r.id === this.heatmapScheme)?.label || 'Ember'}` : ''}${this.rasterState === 'stale' ? ' · stale' : ''}`;
     },
     rasterStateColor() { return ({ready:'#5fae7f',loading:'#d9a34a',stale:'#d9a34a',error:'#d9635f',unavailable:'#d9a34a',empty:'#6d7789'})[this.rasterState] || '#6d7789'; },
 
     recolorizeRaster() {
       if (this.mapRasterMode === 'snapshot') this.applyRasterLayer();
+    },
+
+    // CRS.Simple: meters-per-pixel is 2^-zoom, so cellSize * 2^zoom is a cell's on-screen
+    // pixel span. Target ~8 px per cell (log2 = 3) — finer looks noisy, coarser looks blocky.
+    autoCellSize(sizes) {
+      const zoom = this.map ? this.map.getZoom() : 0;
+      let best = sizes[0], bestScore = Infinity;
+      for (const size of sizes) {
+        const score = Math.abs(Math.log2(size * Math.pow(2, zoom)) - 3);
+        if (score < bestScore) { bestScore = score; best = size; }
+      }
+      return best;
+    },
+
+    updateAutoResolution(force) {
+      if (this.rasterCellSizeMode !== 'auto' || !this.rasterCellSizes.length) return;
+      const best = this.autoCellSize(this.rasterCellSizes);
+      if (force || Number(best) !== Number(this.rasterCellSize)) {
+        this.rasterCellSize = best;
+        this.applyRasterLayer();
+      }
     },
 
     toggleHeatmap() {
@@ -1981,6 +2054,60 @@ function app() {
       const summaryFields = { PORTAL:'portalCount', BED:'bedCount', TOMBSTONE:'tombstoneCount', CONTAINER:'containerCount' };
       const summaryValue = Number(this.summary?.[summaryFields[overlay.id]] ?? this.summary?.categoryCounts?.[overlay.id]);
       return Number.isFinite(summaryValue) ? summaryValue : (payload.points || payload.data || []).length;
+    },
+
+    // The histogram describes the boot-pinned points the filter acts on, so it deliberately
+    // does not follow the snapshot selector; the caption carries its own provenance.
+    async loadSpawnHistogram() {
+      const token = ++this._spawnHistogramToken;
+      try {
+        const r = await fetch(`${API}/db/spawn-histogram?buckets=40`);
+        if (!r.ok) throw new Error(r.status);
+        const d = await r.json();
+        if (token !== this._spawnHistogramToken) return;
+        this.spawnHistogram = d && d.available ? d : null;
+      } catch (e) {
+        if (token === this._spawnHistogramToken) this.spawnHistogram = null;
+      }
+    },
+
+    spawnMismatchWarning() {
+      const net = Number(this.spawnHistogram?.netTimeSeconds || 0);
+      const bootNet = Number(this.summary?.snapshotNetTime || 0);
+      if (!(net > 0) || !(bootNet > 0)) return '';
+      return Math.abs(net - bootNet) / net > 0.01
+        ? 'histogram snapshot differs from boot-pinned points' : '';
+    },
+
+    _setSpawnFraction(which, value) {
+      const snapped = Math.max(0, Math.min(2, Math.round(value / 0.05) * 0.05));
+      const rounded = Math.round(snapped * 100) / 100;
+      if (which === 'after') this.filterSpawnAfter = Math.min(rounded, this.filterSpawnBefore);
+      else this.filterSpawnBefore = Math.max(rounded, this.filterSpawnAfter);
+    },
+
+    nudgeSpawn(which, delta) {
+      this._setSpawnFraction(which,
+        (which === 'after' ? this.filterSpawnAfter : this.filterSpawnBefore) + delta);
+    },
+
+    startSpawnDrag(event, which) {
+      const strip = this.$refs.spawnHisto;
+      if (!strip) return;
+      event.target.setPointerCapture(event.pointerId);
+      const move = (e) => {
+        const rect = strip.getBoundingClientRect();
+        this._setSpawnFraction(which, (e.clientX - rect.left) / rect.width * 2);
+      };
+      const up = () => {
+        event.target.removeEventListener('pointermove', move);
+        event.target.removeEventListener('pointerup', up);
+        event.target.removeEventListener('pointercancel', up);
+      };
+      event.target.addEventListener('pointermove', move);
+      event.target.addEventListener('pointerup', up);
+      event.target.addEventListener('pointercancel', up);
+      move(event);
     },
 
     async applyFilters() {
