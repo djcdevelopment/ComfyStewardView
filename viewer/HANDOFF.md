@@ -1,52 +1,56 @@
 # Valheim World Viewer — Handoff Document
 
-**Last updated:** 2026-03-19
-**Status:** All 5 phases complete and working.
-**Server:** `http://localhost:7070` — run from `D:\work\temp\viewer\`
+**Status:** v4 M0–M4 and the core M5 workbench are deployed; M6 operational polish is partial.
+**Production:** [https://am4.tail8e749c.ts.net/steward/](https://am4.tail8e749c.ts.net/steward/)
 
 ---
 
 ## What This Is
 
-A self-contained Java web application that reads a Valheim `.db` save file, runs a full analysis pipeline, and serves an interactive dark-theme web UI. No Valheim installation required. No external database. One fat JAR, one save file, done.
+A self-contained Java web application that reads Valheim `.db` saves, runs the steward analysis
+pipeline, and serves an interactive dark-theme UI. It can run directly from one fat JAR and one
+save file. Batch mode additionally maintains an embedded DuckDB snapshot history and pre-rendered
+absolute/delta raster artifacts; it does not require a separate database service.
 
-**Save file in use:** `D:\work\temp\ComfyEra14.db` — 1.1GB, 8M ZDOs, world version 35, seed CGakkJyIvq.
+Production has two independent delivery lanes. OMEN performs the expensive save ingest, DuckDB,
+and raster work; AM4 serves the published cache and artifacts. Use `tools/Deploy-Steward.ps1` for
+code and `tools/Publish-Steward.ps1` for data. AM4 does not build a raster in an HTTP request.
+
+### Current release boundary
+
+- The unified World / Changes / History / Explore shell, grouped World navigation, Coin trail,
+  snapshot-aware History/Explore/selection flows, and explicit time-scope labels are live.
+- Map supports absolute Snapshot rasters and two-channel Changes rasters. Changes and Map share
+  one ordered comparison pair; pairs outside the advertised recent matrix remain table-only.
+- The release passed a clean Maven package with all three delta-raster tests, both AM4 delivery
+  lanes, live API/PNG checks, and a browser smoke of the compositor and dual legend.
+- Remaining v4 work is tracked as M6 in `docs/design/STEWARD_VIEW_V4_INTEGRATION_PLAN.md`: the
+  spawn aggregate/histogram, full async-state coverage, accessibility/responsive regression, and
+  publish telemetry. Point overlays remain explicitly pinned to the boot snapshot.
 
 ---
 
 ## How to Build and Run
 
-```bash
-# Prereqs: Java 17, Maven (at /c/Users/derek/AppData/Local/Temp/apache-maven-3.9.6/bin/mvn)
+```powershell
+# From the repository root; prerequisite: Java 17.
+Set-Location .\viewer
+.\mvnw.cmd package
 
-cd D:/work/temp/viewer
-
-# Build
-/c/Users/derek/AppData/Local/Temp/apache-maven-3.9.6/bin/mvn package -q -DskipTests
-
-# Run
-java -Xmx3g -jar target/world-viewer-1.0.0.jar ../ComfyEra14.db
-# With options:
-java -Xmx3g -jar target/world-viewer-1.0.0.jar ../ComfyEra14.db --port 7070 --no-browser
+# Run against a local save.
+java -Xmx3g -jar target\world-viewer-1.0.0.jar ..\path\to\world.db --port 7080 --no-browser
 ```
 
 If startup throws `NoClassDefFoundError: kotlin/jvm/internal/Intrinsics`, rebuild after pulling the latest `pom.xml`; the runtime needs Kotlin stdlib packaged into the fat jar.
 
 **Static files are embedded in the JAR.** Editing `src/main/resources/static/index.html` requires a rebuild (`mvn package`) for changes to take effect in the JAR. During development you can also serve the file directly since all API calls use relative `/api/v1/...` paths.
 
-**Kill a running server:**
-```bash
-netstat -ano | grep ":7070 "        # find PID
-powershell -Command "Stop-Process -Id <PID> -Force"
-```
-
----
-
 ## Project Structure
 
-```
-D:\work\temp\viewer\
+```text
+viewer/
 ├── pom.xml                                          # Maven: Java 17, Javalin 6.3.0, Jackson 2.17.2
+├── mvnw.cmd                                         # repository-local Maven launcher
 ├── HANDOFF.md                                       # this file
 ├── steward-config.json                              # auto-generated on first run, tunable
 ├── target/world-viewer-1.0.0.jar                    # built fat JAR
@@ -77,6 +81,7 @@ D:\work\temp\viewer\
     │   │   ├── StructureDetector.java               # classifies structures active/likely_cleared/unknown
     │   │   ├── AlertBuilder.java                    # generates typed severity-ranked alerts
     │   │   └── AlertResult.java
+    │   ├── db/                                      # DuckDB cache/history, delta engine, raster builders
     │   ├── parser/WorldParser.java                  # streaming binary ZDO parser (no external library)
     │   └── store/
     │       ├── ZdoFlatStore.java                    # parallel primitive arrays, 3 heatmaps, index lists
@@ -120,6 +125,18 @@ ApiServer.start(port)
     → serves static index.html + all /api/v1/* routes
 ```
 
+With `--build-cache` / `--render-layers`, the batch path wraps the same parse:
+
+```text
+WorldParser.parse(dbFile) → AnalyticsCache snapshot ingest
+    → render every absolute snapshot missing a manifest
+    → render every missing ordered delta pair among each world's latest six snapshots
+    → exit with --batch-only, or attach AnalyticsCacheReader and start the API
+```
+
+The delta builder and absolute builder write immutable, manifest-addressed PNGs. The API serves
+only filenames advertised by the selected manifest; it never queues an on-demand build.
+
 **Key architectural rule:** `ContractBuilder` is the only class that reads `ZdoFlatStore` internals. All downstream stages receive `WorldContracts` only. This boundary is documented in every extractor class javadoc.
 
 ---
@@ -135,6 +152,13 @@ All endpoints return JSON. Legacy endpoints (portals, players, etc.) use a `{ ap
 | GET | `/api/v1/world-summary` | — | Full WorldSummary contract with nested stats |
 | GET | `/api/v1/rendered/manifest` | `snapshot=N` (optional) | Manifest of pre-rendered raster layers (gray8 PNGs) |
 | GET | `/api/v1/rendered/{file}` | `snapshot=N` (optional) | Raster layer PNG; colorized client-side |
+| GET | `/api/v1/rendered/delta/manifest` | `from=N` `to=M` | Recent-pair delta manifest; canonical older→newer order |
+| GET | `/api/v1/rendered/delta/{file}` | `from=N` `to=M` | Added/removed gray8 PNG advertised by the pair manifest |
+| GET | `/api/v1/db/snapshots` | `worldId=` (optional) | Snapshot history with ZDO/raster availability and top-level `deltaPairs` |
+| GET | `/api/v1/db/snapshots/compare` | `from=N` `to=M` | Tabular comparison for any valid same-world pair |
+| GET | `/api/v1/db/zdo/query` | `snapshot=N` (optional), bounds/filters/paging | Snapshot-aware ZDO query |
+| GET | `/api/v1/db/containers/items` | `snapshot=N` (optional), bounds/item/paging | Snapshot-aware container-item query |
+| GET | `/api/v1/db/selection-summary` | `snapshot=N` (optional), bounds, `topN` | Snapshot-aware Map selection summary |
 | GET | `/api/v1/points` | `cat=PORTAL\|BED\|TOMBSTONE\|CONTAINER` `minX/maxX/minZ/maxZ` `limit` | Map overlay points |
 | GET | `/api/v1/portals` | — | Full portal list with pairing info and status |
 | GET | `/api/v1/players` | `sortBy=beds\|deaths\|builds\|portals` | Player records |
@@ -160,7 +184,31 @@ Single HTML file, all dependencies via CDN. No build step. Tech stack:
 - **Tabulator 6.2.1** — data tables (midnight theme)
 - **Tailwind 3 CDN** — dark mode CSS
 
-### Tabs
+### Canonical UI / IA contract
+
+[`design_mocks/Steward View v4 - Raster Compare.dc.html`](../design_mocks/Steward%20View%20v4%20-%20Raster%20Compare.dc.html)
+is the canonical design for the shell, navigation, Map, raster comparison, provenance,
+and async states. The implementation sequence and HTTP/artifact contracts live in
+[`docs/design/STEWARD_VIEW_V4_INTEGRATION_PLAN.md`](../docs/design/STEWARD_VIEW_V4_INTEGRATION_PLAN.md).
+Earlier mocks remain supporting references for detail views while the rollout is incremental.
+
+- Primary navigation is **World / Changes / History / Explore**. World leaf views are grouped
+  under **Spatial / Inventories / Forensics / Population**; existing leaf IDs and deep links
+  remain compatible. Top caches, Issuers, and Guild gear converge under **Coin trail** segments.
+- Map's **Raster Field** has **Snapshot** and **Changes** modes. Snapshot retains Build density,
+  Dropped, All ZDOs, and Coins. Changes shares its ordered From/To pair with the Changes view and
+  offers Build activity and All ZDO change with added-green, removed-red, neutral-overlap rendering.
+  Production opens in Snapshot mode; selecting Changes initializes the newest eligible adjacent pair.
+- Every visible dataset must state its time scope: selected snapshot, comparison pair, all
+  snapshots, or boot snapshot. In particular, raster provenance and boot-pinned point-overlay
+  provenance are displayed separately until the points API becomes snapshot-aware.
+- Raster views use the common `idle/loading/ready/empty/error/stale` vocabulary. Missing or
+  unavailable rasters leave point overlays and tabular comparisons usable; refresh failures keep
+  and label the last successful result.
+
+### Leaf views
+
+These are the existing data-bearing leaves retained under the canonical two-level navigation:
 
 | Tab | Data Source | Notes |
 |-----|-------------|-------|
@@ -190,6 +238,14 @@ Grid lines every 5000 units. NORTH label = positive Z.
 ### Heatmap Rasters
 
 The map heatmap is a pre-rendered raster: `RenderedLayerBuilder` bakes one grayscale intensity PNG per layer × cell size (per snapshot) from the DuckDB cache, and the frontend colorizes it client-side through a LUT built from the active color scheme, then shows it as an `L.imageOverlay`. Opacity changes call `setOpacity()`; scheme changes re-run the LUT against a cached decode — neither refetches. The in-memory `HeatmapGrid`s still exist server-side for `/status` totals and dropped-item density metrics, but no longer feed the UI.
+
+The v4 comparison contract extends this with two aligned gray8 channels per eligible snapshot
+pair. The client composites added objects in green, removed objects in red, and overlap in a
+neutral/ivory tone. Each manifest layer entry has one union `bounds` shared by its `addedFile`
+and `removedFile`, with independent logarithmic endpoints in `addedMaxRaw` and `removedMaxRaw`.
+OMEN precomputes and validates these artifacts; AM4 serves them and never rasterizes on demand.
+Pairs outside the published recent-six matrix remain available through the tabular Changes
+comparison.
 
 ---
 
@@ -293,7 +349,10 @@ Map<Long, PlayerRecord> players             // creatorId → PlayerRecord
 
 ---
 
-## Key Data Facts (ComfyEra14.db)
+## Historical Fixture Facts (ComfyEra14.db)
+
+These measurements document the original ComfyEra14 development fixture. They are not current
+production totals; use the live summary and snapshot APIs for those.
 
 - **8M ZDOs total**, ~3-4s parse time with `-Xmx3g`
 - **89,846 creature entities** in contracts (all with properties — pure positional creatures excluded)
@@ -384,7 +443,8 @@ and if it is absent there, `GET /api/v1/prefabs/unresolved` is the live worklist
 - **Alert suppression / config** — toggle alert types in the UI or config file
 - **Portal map overlay cleanup** — currently shows all 9k portals; could add a "paired only" filter
 - **Player detail page** — click a player → show all their portals, beds, tombstones on the map simultaneously
-- **Inventory drill-down** — click a container in `/api/v1/containers` → show its items (the store already has `chestItemTotals` but not per-container inventory; would need to re-parse)
+- **Inventory drill-down** — add a per-container UI over the cached `container_item` data and
+  `/api/v1/db/containers/items`; the batch cache already retains the required detail.
 - **Regions.json support** — place a `regions.json` next to the JAR to get zone budget alerts; currently no region file means no zone_budget alerts
 - **Dungeon/cave visualization** — once players visit crypts/frost caves, those ZDOs will appear automatically; could add a "cleared dungeons" summary card
 - **Live reload** — watch the `.db` file for changes and re-parse; useful for active servers

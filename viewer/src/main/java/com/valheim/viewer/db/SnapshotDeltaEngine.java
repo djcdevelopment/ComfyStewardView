@@ -80,6 +80,26 @@ public final class SnapshotDeltaEngine {
 
     private SnapshotDeltaEngine() {}
 
+    /**
+     * SQL predicate implementing Steward's snapshot identity rule.
+     *
+     * <p>The aliases are supplied only by package-owned query builders, never by request data.
+     * Keeping the predicate here ensures tabular deltas and spatial delta rasters cannot drift
+     * into subtly different definitions of "the same object".
+     */
+    static String missingIdentityPredicate(String presentAlias, String absentAlias) {
+        return "NOT EXISTS (" +
+            "SELECT 1 FROM zdo " + absentAlias + " " +
+            "WHERE " + absentAlias + ".snapshot_id = ? " +
+            "AND " + absentAlias + ".prefab_hash = " + presentAlias + ".prefab_hash " +
+            "AND CAST(ROUND(" + absentAlias + ".x * " + POS_SCALE + ") AS BIGINT) = " +
+                "CAST(ROUND(" + presentAlias + ".x * " + POS_SCALE + ") AS BIGINT) " +
+            "AND CAST(ROUND(" + absentAlias + ".y * " + POS_SCALE + ") AS BIGINT) = " +
+                "CAST(ROUND(" + presentAlias + ".y * " + POS_SCALE + ") AS BIGINT) " +
+            "AND CAST(ROUND(" + absentAlias + ".z * " + POS_SCALE + ") AS BIGINT) = " +
+                "CAST(ROUND(" + presentAlias + ".z * " + POS_SCALE + ") AS BIGINT))";
+    }
+
     public static DeltaResult computeDelta(Connection conn, long fromSnapshotId, long toSnapshotId)
             throws SQLException {
 
@@ -136,13 +156,7 @@ public final class SnapshotDeltaEngine {
             "SELECT b.prefab_name, b.category, COUNT(*) AS n " +
             "FROM zdo b " +
             "WHERE b.snapshot_id = ? " +
-            "  AND NOT EXISTS (" +
-            "        SELECT 1 FROM zdo a " +
-            "        WHERE a.snapshot_id = ? " +
-            "          AND a.prefab_hash = b.prefab_hash " +
-            "          AND CAST(ROUND(a.x * " + POS_SCALE + ") AS BIGINT) = CAST(ROUND(b.x * " + POS_SCALE + ") AS BIGINT) " +
-            "          AND CAST(ROUND(a.y * " + POS_SCALE + ") AS BIGINT) = CAST(ROUND(b.y * " + POS_SCALE + ") AS BIGINT) " +
-            "          AND CAST(ROUND(a.z * " + POS_SCALE + ") AS BIGINT) = CAST(ROUND(b.z * " + POS_SCALE + ") AS BIGINT)) " +
+            "  AND " + missingIdentityPredicate("b", "a") + " " +
             "GROUP BY b.prefab_name, b.category " +
             "ORDER BY n DESC";
 

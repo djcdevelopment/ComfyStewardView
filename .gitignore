@@ -13,4 +13,8 @@ viewer/target/*.duckdb
 viewer/target/*.duckdb.wal
 viewer/target/rendered-*/
 viewer/target/generation-*.log
+design_mocks/.thumbnail
+viewer/target/test-classes/
+viewer/target/surefire-reports/
+viewer/target/maven-status/maven-compiler-plugin/testCompile/
 /steward-config.json

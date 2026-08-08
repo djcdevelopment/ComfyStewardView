@@ -8,6 +8,7 @@ import com.valheim.viewer.contract.Structure;
 import com.valheim.viewer.contract.WorldContracts;
 import com.valheim.viewer.db.AnalyticsCache;
 import com.valheim.viewer.db.AnalyticsCacheReader;
+import com.valheim.viewer.db.RenderedDeltaLayerBuilder;
 import com.valheim.viewer.db.RenderedLayerBuilder;
 import com.valheim.viewer.db.SnapshotDeltaEngine;
 import com.valheim.viewer.db.SnapshotIngestService;
@@ -172,6 +173,8 @@ public class ApiServer {
         app.get("/api/v1/forensics/guild-gear", this::handleGuildGear);
 
         // Batch analytics cache & snapshot history endpoints
+        app.get("/api/v1/rendered/delta/manifest", this::handleRenderedDeltaManifest);
+        app.get("/api/v1/rendered/delta/{file}", this::handleRenderedDeltaFile);
         app.get("/api/v1/rendered/manifest", this::handleRenderedManifest);
         app.get("/api/v1/rendered/{file}", this::handleRenderedFile);
         app.get("/api/v1/db/zdo/query", this::handleDbZdoQuery);
@@ -1018,25 +1021,15 @@ public class ApiServer {
 
     // ----- Batch analytics cache handlers -----
 
-    /** Optional ?snapshot=N on rendered routes; absent falls back to the reader's pinned latest. */
-    private Long renderedSnapshotParam(Context ctx) {
-        Long snapshot = longQueryParam(ctx, "snapshot");
-        if (snapshot != null && snapshot <= 0) {
-            ctx.status(400).json("{\"error\":\"snapshot must be positive\"}");
-            return -1L;
-        }
-        return snapshot;
-    }
-
     private void handleRenderedManifest(Context ctx) {
         AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
         if (reader == null) return;
         try {
-            Long snapshot = renderedSnapshotParam(ctx);
-            if (snapshot != null && snapshot == -1L) return;
-            File manifest = snapshot != null ? reader.manifestFile(snapshot) : reader.manifestFile();
+            Long snapshot = resolveSnapshotParam(ctx, reader, "snapshot", false);
+            if (snapshot == null) return;
+            File manifest = reader.manifestFile(snapshot);
             if (!manifest.exists()) {
-                ctx.status(404).json("{\"error\":\"rendered manifest not found\"}");
+                apiError(ctx, 404, "rendered manifest not found for snapshot " + snapshot);
                 return;
             }
             ctx.contentType("application/json").result(Files.readString(manifest.toPath()));
@@ -1050,11 +1043,9 @@ public class ApiServer {
         AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
         if (reader == null) return;
         try {
-            Long snapshot = renderedSnapshotParam(ctx);
-            if (snapshot != null && snapshot == -1L) return;
-            File file = snapshot != null
-                ? reader.renderedFile(snapshot, ctx.pathParam("file"))
-                : reader.renderedFile(ctx.pathParam("file"));
+            Long snapshot = resolveSnapshotParam(ctx, reader, "snapshot", false);
+            if (snapshot == null) return;
+            File file = reader.renderedFile(snapshot, ctx.pathParam("file"));
             if (file == null) {
                 ctx.status(400).json("{\"error\":\"invalid rendered file\"}");
                 return;
@@ -1070,10 +1061,66 @@ public class ApiServer {
         }
     }
 
+    private void handleRenderedDeltaManifest(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            long[] pair = resolveSnapshotPair(ctx, reader, true);
+            if (pair == null) return;
+            if (!reader.isDeltaPairInRecentMatrix(pair[0], pair[1])) {
+                apiError(ctx, 404, "delta raster pair is outside this world's latest-six matrix");
+                return;
+            }
+            File manifest = reader.deltaManifestFile(pair[0], pair[1]);
+            if (!reader.deltaRasterAvailable(pair[0], pair[1])) {
+                apiError(ctx, 404, "pre-rendered delta raster unavailable for pair " +
+                    pair[0] + " -> " + pair[1]);
+                return;
+            }
+            ctx.contentType("application/json").result(Files.readString(manifest.toPath()));
+        } catch (Exception e) {
+            log.error("Failed to read rendered delta manifest", e);
+            ctx.status(500).json("{\"error\":\"rendered delta manifest read failure\"}");
+        }
+    }
+
+    private void handleRenderedDeltaFile(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            long[] pair = resolveSnapshotPair(ctx, reader, true);
+            if (pair == null) return;
+            if (!reader.isDeltaPairInRecentMatrix(pair[0], pair[1])) {
+                apiError(ctx, 404, "delta raster pair is outside this world's latest-six matrix");
+                return;
+            }
+            File file = reader.deltaRenderedFile(pair[0], pair[1], ctx.pathParam("file"));
+            if (file == null) {
+                apiError(ctx, 400, "invalid rendered delta file");
+                return;
+            }
+            // This check also validates the manifest and all aligned pair channels.
+            if (!reader.deltaRenderedFileAdvertised(pair[0], pair[1], ctx.pathParam("file"))) {
+                apiError(ctx, 404, "rendered delta file is not advertised by this pair's manifest");
+                return;
+            }
+            if (!file.isFile()) {
+                apiError(ctx, 404, "rendered delta file not found");
+                return;
+            }
+            ctx.contentType("image/png").result(Files.readAllBytes(file.toPath()));
+        } catch (Exception e) {
+            log.error("Failed to read rendered delta file", e);
+            ctx.status(500).json("{\"error\":\"rendered delta file read failure\"}");
+        }
+    }
+
     private void handleDbZdoQuery(Context ctx) {
         AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
         if (reader == null) return;
         try {
+            Long snapshot = resolveSnapshotParam(ctx, reader, "snapshot", false);
+            if (snapshot == null) return;
             float minX = ctx.queryParamAsClass("minX", Float.class).getOrDefault(-100_000f);
             float maxX = ctx.queryParamAsClass("maxX", Float.class).getOrDefault(100_000f);
             float minZ = ctx.queryParamAsClass("minZ", Float.class).getOrDefault(-100_000f);
@@ -1085,7 +1132,7 @@ public class ApiServer {
             int offset = Math.max(0, ctx.queryParamAsClass("offset", Integer.class).getOrDefault(0));
 
             ctx.json(mapper.writeValueAsString(reader.queryZdos(
-                mapper, minX, maxX, minZ, maxZ, category, prefab, creatorId, limit, offset)));
+                mapper, snapshot, minX, maxX, minZ, maxZ, category, prefab, creatorId, limit, offset)));
         } catch (Exception e) {
             log.error("Failed DB ZDO query", e);
             ctx.status(500).json("{\"error\":\"db zdo query failure\"}");
@@ -1096,6 +1143,8 @@ public class ApiServer {
         AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
         if (reader == null) return;
         try {
+            Long snapshot = resolveSnapshotParam(ctx, reader, "snapshot", false);
+            if (snapshot == null) return;
             float minX = ctx.queryParamAsClass("minX", Float.class).getOrDefault(-100_000f);
             float maxX = ctx.queryParamAsClass("maxX", Float.class).getOrDefault(100_000f);
             float minZ = ctx.queryParamAsClass("minZ", Float.class).getOrDefault(-100_000f);
@@ -1105,7 +1154,7 @@ public class ApiServer {
             int offset = Math.max(0, ctx.queryParamAsClass("offset", Integer.class).getOrDefault(0));
 
             ctx.json(mapper.writeValueAsString(reader.queryContainerItems(
-                mapper, minX, maxX, minZ, maxZ, item, limit, offset)));
+                mapper, snapshot, minX, maxX, minZ, maxZ, item, limit, offset)));
         } catch (Exception e) {
             log.error("Failed DB container item query", e);
             ctx.status(500).json("{\"error\":\"db container item query failure\"}");
@@ -1116,13 +1165,15 @@ public class ApiServer {
         AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
         if (reader == null) return;
         try {
+            Long snapshot = resolveSnapshotParam(ctx, reader, "snapshot", false);
+            if (snapshot == null) return;
             float minX = ctx.queryParamAsClass("minX", Float.class).getOrDefault(-100_000f);
             float maxX = ctx.queryParamAsClass("maxX", Float.class).getOrDefault(100_000f);
             float minZ = ctx.queryParamAsClass("minZ", Float.class).getOrDefault(-100_000f);
             float maxZ = ctx.queryParamAsClass("maxZ", Float.class).getOrDefault(100_000f);
             int topN = clampLimit(ctx.queryParamAsClass("topN", Integer.class).getOrDefault(20), 100);
             ctx.json(mapper.writeValueAsString(reader.selectedAreaSummary(
-                mapper, minX, maxX, minZ, maxZ, topN)));
+                mapper, snapshot, minX, maxX, minZ, maxZ, topN)));
         } catch (Exception e) {
             log.error("Failed DB selection summary", e);
             ctx.status(500).json("{\"error\":\"db selection summary failure\"}");
@@ -1162,6 +1213,7 @@ public class ApiServer {
             // The snapshot data is already committed, so a render failure degrades, not fails.
             long newSnapshotId = receipt.path("snapshotId").asLong(0);
             boolean rendered = false;
+            int deltaPairsRendered = 0;
             if (newSnapshotId > 0) {
                 try {
                     new RenderedLayerBuilder(reader.dbFile(), reader.renderDir(), newSnapshotId).renderDefaults();
@@ -1169,8 +1221,20 @@ public class ApiServer {
                 } catch (Exception renderEx) {
                     log.error("Rendered layer build failed for snapshot {}", newSnapshotId, renderEx);
                 }
+                try {
+                    deltaPairsRendered = new RenderedDeltaLayerBuilder(reader.dbFile(), reader.renderDir())
+                        .renderRecentPairs();
+                } catch (Exception renderEx) {
+                    log.error("Rendered delta layer build failed after snapshot {}", newSnapshotId, renderEx);
+                }
+                try {
+                    reader.refreshLatestSnapshotId();
+                } catch (Exception refreshEx) {
+                    log.warn("Could not refresh latest analytics snapshot after ingest: {}", refreshEx.toString());
+                }
             }
             receipt.put("renderedLayers", rendered);
+            receipt.put("deltaPairsRendered", deltaPairsRendered);
             ctx.json(receipt.toString());
         } catch (Exception e) {
             log.error("Snapshot ingestion failed", e);
@@ -1183,6 +1247,10 @@ public class ApiServer {
         if (reader == null) return;
         try {
             String worldId = ctx.queryParam("worldId");
+            if (worldId != null && !worldId.isBlank() && !reader.worldExists(worldId)) {
+                apiError(ctx, 404, "world not found: " + worldId);
+                return;
+            }
             ctx.json(mapper.writeValueAsString(reader.listSnapshots(mapper, worldId)));
         } catch (Exception e) {
             log.error("Failed listing snapshots", e);
@@ -1194,10 +1262,8 @@ public class ApiServer {
         AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
         if (reader == null) return;
         try {
-            Long snapshotId = longQueryParam(ctx, "snapshotId");
-            if (snapshotId == null) {
-                snapshotId = reader.snapshotId();
-            }
+            Long snapshotId = resolveSnapshotParam(ctx, reader, "snapshotId", false);
+            if (snapshotId == null) return;
             ctx.json(mapper.writeValueAsString(reader.getSnapshotDelta(mapper, snapshotId)));
         } catch (Exception e) {
             log.error("Failed fetching snapshot delta", e);
@@ -1209,12 +1275,10 @@ public class ApiServer {
         AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
         if (reader == null) return;
         try {
-            Long fromId = longQueryParam(ctx, "from");
-            Long toId = longQueryParam(ctx, "to");
-            if (fromId == null || toId == null) {
-                ctx.status(400).json("{\"error\":\"both 'from' and 'to' snapshot parameters are required\"}");
-                return;
-            }
+            long[] pair = resolveSnapshotPair(ctx, reader, false);
+            if (pair == null) return;
+            long fromId = pair[0];
+            long toId = pair[1];
 
             SnapshotDeltaEngine.DeltaResult delta = SnapshotDeltaEngine.computeDelta(reader.connection(), fromId, toId);
             ObjectNode root = mapper.createObjectNode();
@@ -1284,6 +1348,83 @@ public class ApiServer {
             return null;
         }
         return analyticsCacheReader;
+    }
+
+    /** Resolve and validate an optional/required snapshot id without treating malformed input as absent. */
+    private Long resolveSnapshotParam(Context ctx, AnalyticsCacheReader reader,
+            String paramName, boolean required) throws Exception {
+        String raw = ctx.queryParam(paramName);
+        long snapshotId;
+        if (raw == null || raw.isBlank()) {
+            if (required) {
+                apiError(ctx, 400, "missing required '" + paramName + "' snapshot parameter");
+                return null;
+            }
+            snapshotId = reader.snapshotId();
+        } else {
+            try {
+                snapshotId = Long.parseLong(raw);
+            } catch (NumberFormatException e) {
+                apiError(ctx, 400, "'" + paramName + "' must be a positive integer snapshot id");
+                return null;
+            }
+        }
+        if (snapshotId <= 0) {
+            apiError(ctx, 400, "'" + paramName + "' must be a positive integer snapshot id");
+            return null;
+        }
+
+        AnalyticsCacheReader.SnapshotInfo info = reader.snapshotInfo(snapshotId);
+        if (info == null) {
+            apiError(ctx, 404, "snapshot not found: " + snapshotId);
+            return null;
+        }
+        String requestedWorld = ctx.queryParam("worldId");
+        if (requestedWorld != null && !requestedWorld.isBlank() &&
+                !Objects.equals(requestedWorld, info.worldId())) {
+            apiError(ctx, 409, "snapshot " + snapshotId + " belongs to world '" +
+                info.worldId() + "', not '" + requestedWorld + "'");
+            return null;
+        }
+        return snapshotId;
+    }
+
+    /** Validate existence/world membership for a pair; optionally require canonical raster order. */
+    private long[] resolveSnapshotPair(Context ctx, AnalyticsCacheReader reader, boolean canonicalRasterOrder)
+            throws Exception {
+        Long fromId = resolveSnapshotParam(ctx, reader, "from", true);
+        if (fromId == null) return null;
+        Long toId = resolveSnapshotParam(ctx, reader, "to", true);
+        if (toId == null) return null;
+        if (fromId.equals(toId)) {
+            apiError(ctx, 400, "'from' and 'to' must identify different snapshots");
+            return null;
+        }
+
+        AnalyticsCacheReader.SnapshotInfo from = reader.snapshotInfo(fromId);
+        AnalyticsCacheReader.SnapshotInfo to = reader.snapshotInfo(toId);
+        if (from.worldId() == null || from.worldId().isBlank() ||
+                to.worldId() == null || to.worldId().isBlank()) {
+            apiError(ctx, 409, "both snapshots must have world provenance before they can be compared");
+            return null;
+        }
+        if (!Objects.equals(from.worldId(), to.worldId())) {
+            apiError(ctx, 409, "snapshots belong to different worlds ('" + from.worldId() +
+                "' vs '" + to.worldId() + "')");
+            return null;
+        }
+        if (canonicalRasterOrder && fromId >= toId) {
+            apiError(ctx, 400, "delta rasters use canonical order: older/lower snapshot as 'from' " +
+                "and newer/higher snapshot as 'to'");
+            return null;
+        }
+        return new long[] {fromId, toId};
+    }
+
+    private void apiError(Context ctx, int status, String message) {
+        ObjectNode error = mapper.createObjectNode();
+        error.put("error", message);
+        ctx.status(status).json(error.toString());
     }
 
     private ObjectNode envelope(ZdoFlatStore s) {

@@ -6,6 +6,7 @@ import com.valheim.viewer.contract.Region;
 import com.valheim.viewer.contract.WorldContracts;
 import com.valheim.viewer.db.AnalyticsCache;
 import com.valheim.viewer.db.AnalyticsCacheReader;
+import com.valheim.viewer.db.RenderedDeltaLayerBuilder;
 import com.valheim.viewer.db.RenderedLayerBuilder;
 import com.valheim.viewer.db.SnapshotIngestService;
 import com.valheim.viewer.db.SnapshotProvenance;
@@ -216,6 +217,9 @@ public class Main {
                         .renderDefaults();
                     log.info("Rendered layer manifest: {}", manifest.getAbsolutePath());
                 }
+                int renderedPairs = new RenderedDeltaLayerBuilder(cacheFile, renderRoot)
+                    .renderRecentPairs();
+                log.info("Recent delta raster matrix ready ({} new pair manifests)", renderedPairs);
             } catch (Exception e) {
                 log.error("Failed to render static layers", e);
                 System.exit(1);

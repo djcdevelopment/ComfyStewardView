@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#0e1118;font-family:'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;color:#dfe4ec}
+    button,input,select{font:inherit}button{appearance:none}.mono{font-family:'IBM Plex Mono',monospace}.micro{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.075em;color:#6d7789}.card{background:linear-gradient(#181d29,#151a24);border:1px solid #262d3c;border-radius:7px;box-shadow:inset 0 1px rgba(255,255,255,.025),0 6px 16px rgba(0,0,0,.22);overflow:hidden}.card-head{height:35px;padding:0 11px;border-bottom:1px solid #232936;display:flex;align-items:center;gap:7px}.segment{height:28px;padding:2px;display:flex;gap:2px;background:#111621;border:1px solid #2b3345;border-radius:5px}.seg{flex:1;border:0;border-radius:3px;background:transparent;color:#8b95a7;font-size:11.5px;cursor:pointer}.seg.on{background:#2a4d78;color:#e7f0fa;box-shadow:inset 0 0 0 1px #3a6ea8}.choice{height:28px;border:1px solid #2b3345;border-radius:4px;background:#1b2030;color:#96a0b1;font-size:11.5px;display:flex;align-items:center;justify-content:center;cursor:pointer}.choice.on{background:#2a4d78;border-color:#3a6ea8;color:#dbe8f7}.badge{height:20px;padding:0 7px;border-radius:10px;display:inline-flex;align-items:center;gap:5px;font-size:10.5px;white-space:nowrap}.dot{width:5px;height:5px;border-radius:50%;flex:none}.button{height:28px;padding:0 10px;border:1px solid #2b3345;border-radius:5px;background:#1b2030;color:#c7cfdd;font-size:11.5px;display:flex;align-items:center;justify-content:center;cursor:pointer}.button:hover{border-color:#3a6ea8;color:#eef4fb}.select{height:29px;padding:0 8px;border:1px solid #2b3345;border-radius:4px;background:#1b2030;color:#dfe4ec;display:flex;align-items:center;justify-content:space-between;font-size:11.5px}.overlay-row{padding:7px 11px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #1d2330}.state-card{margin:0 11px 11px;padding:9px 10px;border-radius:5px;font-size:10.8px;line-height:1.45}.nav{height:38px;padding:0 14px;display:flex;align-items:stretch;gap:2px;background:#11151d;border-bottom:1px solid #232936}.nav-item{padding:0 14px;display:flex;align-items:center;border-bottom:2px solid transparent;color:#8b95a7;font-size:12.5px;font-weight:500;cursor:pointer}.nav-item.on{border-color:#5fa8e0;color:#e7ecf4}.subnav{height:36px;padding:0 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #1c2230;overflow:hidden}.sub-item{height:24px;padding:0 9px;display:flex;align-items:center;border-radius:4px;color:#8b95a7;font-size:12px;white-space:nowrap}.sub-item.on{background:#2a4d78;color:#dbe8f7}.divider{width:1px;height:16px;background:#232936;margin:0 7px;flex:none}@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:#2a3140;border-radius:5px}
+  </style>
+</helmet>
+
+<div style="width:1600px;height:1000px;display:flex;flex-direction:column;background:#0e1118;color:#dfe4ec;font-size:13px;overflow:hidden;position:relative">
+  <header style="height:52px;padding:0 18px;display:flex;align-items:center;gap:20px;background:#141821;border-bottom:1px solid #232936;flex:none">
+    <div style="display:flex;align-items:baseline;gap:9px">
+      <span style="font-size:15px;font-weight:600;color:#f0f3f8">Steward View</span>
+      <span class="micro">WORLD INTELLIGENCE</span>
+      <span class="mono" style="font-size:9px;color:#4e5768;border:1px solid #252c3b;border-radius:8px;padding:1px 5px">V4</span>
+    </div>
+    <div style="height:24px;width:1px;background:#232936"></div>
+    <span class="micro">WORLD</span>
+    <div class="select" style="width:128px">world_alpha <span style="color:#5c6678">▾</span></div>
+    <span class="micro" style="margin-left:4px">SNAPSHOT</span>
+    <div class="select" style="width:124px"><span><span class="dot" style="display:inline-block;background:#5fae7f;margin-right:6px;animation:pulse 2.4s ease-in-out infinite"></span>#0148 · latest</span><span style="color:#5c6678">▾</span></div>
+    <div class="badge" style="color:#d9a34a;background:rgba(217,163,74,.1);border:1px solid rgba(217,163,74,.3)"><span class="dot" style="background:#d9a34a"></span>scopes 3 of 14 views</div>
+    <div style="flex:1"></div>
+    <div style="display:flex;gap:24px">
+      <div><div class="micro">ZDOS</div><div class="mono" style="font-size:14px;color:#e7ecf4">412,908</div></div>
+      <div><div class="micro">PLAYERS</div><div class="mono" style="font-size:14px;color:#e7ecf4">37</div></div>
+      <div><div class="micro">PORTALS</div><div class="mono" style="font-size:14px;color:#e7ecf4">218</div></div>
+    </div>
+  </header>
+
+  <nav class="nav">
+    <div onClick="{{ goMap }}" class="nav-item {{ worldNavClass }}">World</div>
+    <div onClick="{{ goChanges }}" class="nav-item {{ changesNavClass }}">Changes</div>
+    <div class="nav-item">History</div>
+    <div class="nav-item">Explore</div>
+  </nav>
+
+  <sc-if value="{{ isWorld }}" hint-placeholder-val="{{ true }}">
+  <div class="subnav">
+    <span class="micro" style="color:#4e5768">SPATIAL</span><span class="sub-item on">Map</span><span class="sub-item">Portals</span><span class="sub-item">Structures</span>
+    <span class="divider"></span><span class="micro" style="color:#4e5768">INVENTORIES</span><span class="sub-item">Economy</span><span class="sub-item">Dropped</span><span class="sub-item">Signs</span><span class="sub-item">Tombstones</span>
+    <span class="divider"></span><span class="micro" style="color:#4e5768">FORENSICS</span><span class="sub-item">Alerts <span class="mono" style="margin-left:6px;font-size:9px;color:#e8a5a2">7</span></span><span class="sub-item">Coin trail</span>
+    <span class="divider"></span><span class="micro" style="color:#4e5768">POPULATION</span><span class="sub-item">Players</span><span class="sub-item">Creatures</span>
+  </div>
+  </sc-if>
+
+  <main style="flex:1;min-height:0;display:flex">
+    <sc-if value="{{ isWorld }}" hint-placeholder-val="{{ true }}">
+    <aside style="width:286px;flex:none;padding:12px 14px 20px;display:flex;flex-direction:column;gap:12px;background:#12161f;border-right:1px solid #232936;overflow-y:auto">
+      <div style="display:flex;align-items:center"><span class="micro" style="color:#4e5768">MAP CONTROLS</span><div style="flex:1"></div><span class="mono" style="font-size:9.5px;color:#5c6678">AUTO-COLLAPSE &lt; 1360 PX</span></div>
+
+      <section class="card">
+        <div class="card-head">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#6d7789" stroke-width="1.4"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5"></rect><path d="M2.5 6.2h11M2.5 9.8h11M6.2 2.5v11M9.8 2.5v11"></path></svg>
+          <span style="font-size:11.5px;font-weight:600;letter-spacing:.04em;color:#c7cfdd">RASTER FIELD</span>
+          <div style="flex:1"></div>
+          <div onClick="{{ toggleRaster }}" style="width:30px;height:16px;border-radius:9px;padding:2px;display:flex;cursor:pointer;background:{{ rasterTrack }};border:1px solid {{ rasterTrackBorder }};justify-content:{{ rasterJustify }}"><span style="width:12px;height:12px;border-radius:50%;background:{{ rasterKnob }}"></span></div>
+          <span class="mono" style="font-size:9.5px;color:{{ rasterStateColor }};width:22px">{{ rasterStateLabel }}</span>
+        </div>
+        <div style="padding:10px 11px 11px;display:flex;flex-direction:column;gap:10px;opacity:{{ rasterBodyOpacity }}">
+          <div class="segment">
+            <button onClick="{{ setSnapshotMode }}" class="seg {{ snapshotModeClass }}">Snapshot</button>
+            <button onClick="{{ setChangesMode }}" class="seg {{ changesModeClass }}">Changes</button>
+          </div>
+
+          <sc-if value="{{ isSnapshotMode }}">
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <div style="display:flex;align-items:center"><span class="micro">LAYER</span><div style="flex:1"></div><span class="badge" style="height:18px;color:#7cc59a;background:rgba(95,174,127,.1);border:1px solid rgba(95,174,127,.25)"><span class="dot" style="background:#5fae7f"></span>#0148</span></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+              <sc-for list="{{ absoluteLayers }}" as="layer" hint-placeholder-count="4">
+                <button onClick="{{ layer.select }}" class="choice {{ layer.className }}">{{ layer.name }}</button>
+              </sc-for>
+            </div>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ isChangesMode }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center"><span class="micro">SNAPSHOT PAIR</span><div style="flex:1"></div><span class="badge" style="height:18px;color:{{ pairBadgeColor }};background:{{ pairBadgeBg }};border:1px solid {{ pairBadgeBorder }}"><span class="dot" style="background:{{ pairBadgeDot }}"></span>{{ pairBadgeText }}</span></div>
+            <div style="display:grid;grid-template-columns:1fr 18px 1fr;align-items:end;gap:5px">
+              <div><div class="micro" style="margin-bottom:4px">FROM</div><div onClick="{{ cycleFrom }}" class="select">{{ fromSnapshot }} <span style="color:#5c6678">▾</span></div></div>
+              <div style="height:29px;display:flex;align-items:center;justify-content:center;color:#5c6678">→</div>
+              <div><div class="micro" style="margin-bottom:4px">TO</div><div onClick="{{ cycleTo }}" class="select">{{ toSnapshot }} <span style="color:#5c6678">▾</span></div></div>
+            </div>
+            <span style="font-size:10.5px;line-height:1.4;color:#6d7789">Shared with the Changes view. Spatial pairs are precomputed among the latest six snapshots.</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <span class="micro">CHANGE FIELD</span>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+              <button onClick="{{ setBuildDelta }}" class="choice {{ buildDeltaClass }}">Build activity</button>
+              <button onClick="{{ setAllDelta }}" class="choice {{ allDeltaClass }}">All ZDO change</button>
+            </div>
+          </div>
+          <div style="padding:7px 8px;border:1px solid #303746;border-radius:5px;background:#121722;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center;gap:7px"><span style="width:48px;height:8px;border-radius:2px;background:linear-gradient(90deg,#471f25,#d9635f)"></span><span style="font-size:10.5px;color:#c7cfdd">Removed</span><div style="flex:1"></div><span class="mono" style="font-size:9.5px;color:#8b95a7">red channel</span></div>
+            <div style="display:flex;align-items:center;gap:7px"><span style="width:48px;height:8px;border-radius:2px;background:linear-gradient(90deg,#173328,#5fae7f)"></span><span style="font-size:10.5px;color:#c7cfdd">Added</span><div style="flex:1"></div><span class="mono" style="font-size:9.5px;color:#8b95a7">green channel</span></div>
+            <div style="display:flex;align-items:center;gap:7px"><span style="width:48px;height:8px;border-radius:2px;background:linear-gradient(90deg,#766e5a,#eee6c9)"></span><span style="font-size:10.5px;color:#c7cfdd">Overlap</span><div style="flex:1"></div><span class="mono" style="font-size:9.5px;color:#8b95a7">both channels</span></div>
+          </div>
+          </sc-if>
+
+          <div style="display:flex;flex-direction:column;gap:5px"><span class="micro">CELL SIZE</span><div class="segment">
+            <sc-for list="{{ cellSizes }}" as="cell" hint-placeholder-count="4"><button onClick="{{ cell.select }}" class="seg {{ cell.className }}">{{ cell.name }}</button></sc-for>
+          </div></div>
+          <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex"><span class="micro">OPACITY</span><div style="flex:1"></div><span class="mono" style="font-size:10.5px;color:#c7cfdd">{{ opacityLabel }}</span></div><input type="range" min="0" max="100" value="{{ opacity }}" onChange="{{ setOpacity }}" style="width:100%;height:4px;accent-color:#4a86c8"></div>
+
+          <sc-if value="{{ isSnapshotMode }}">
+          <div style="display:flex;flex-direction:column;gap:5px"><span class="micro">COLOR RAMP</span><div class="segment">
+            <sc-for list="{{ ramps }}" as="ramp" hint-placeholder-count="3"><button onClick="{{ ramp.select }}" class="seg {{ ramp.className }}">{{ ramp.name }}</button></sc-for>
+          </div></div>
+          </sc-if>
+        </div>
+
+        <sc-if value="{{ showLoading }}"><div class="state-card" style="color:#8cc4ee;background:rgba(95,168,224,.08);border:1px solid rgba(95,168,224,.26);display:flex;align-items:center;gap:8px"><span style="width:12px;height:12px;border:2px solid #35597b;border-top-color:#8cc4ee;border-radius:50%;animation:spin .8s linear infinite"></span>Loading {{ rasterRequestLabel }}… last raster remains visible.</div></sc-if>
+        <sc-if value="{{ showMissing }}"><div class="state-card" style="color:#e8a5a2;background:rgba(217,99,95,.08);border:1px solid rgba(217,99,95,.28)"><b>Raster unavailable.</b> Manifest or channel image is missing; point overlays remain usable. <span style="color:#8cc4ee">Retry</span></div></sc-if>
+        <sc-if value="{{ showStale }}"><div class="state-card" style="color:#e4bd76;background:rgba(217,163,74,.08);border:1px solid rgba(217,163,74,.28)"><b>Showing last successful raster.</b> Requested artifact is still publishing; provenance below identifies the displayed pair.</div></sc-if>
+        <sc-if value="{{ showUnavailable }}"><div class="state-card" style="color:#e4bd76;background:rgba(217,163,74,.08);border:1px solid rgba(217,163,74,.28)"><b>No spatial raster for {{ fromSnapshot }} → {{ toSnapshot }}.</b> This pair falls outside the latest-six matrix. The tabular comparison is still available in Changes.</div></sc-if>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#6d7789" stroke-width="1.4"><circle cx="5" cy="5.5" r="1.6"></circle><circle cx="11" cy="8.5" r="1.6"></circle><circle cx="6" cy="11.5" r="1.6"></circle></svg><span style="font-size:11.5px;font-weight:600;letter-spacing:.04em;color:#c7cfdd">POINT OVERLAYS</span><div style="flex:1"></div><span class="mono" style="font-size:9.5px;color:#6d7789">2 ON</span></div>
+        <div style="padding:8px 11px;border-bottom:1px solid #232936;background:rgba(217,163,74,.045);display:flex;align-items:center;gap:7px"><span class="badge" style="color:#d9a34a;background:rgba(217,163,74,.1);border:1px solid rgba(217,163,74,.28)"><span class="dot" style="background:#d9a34a"></span>boot #0148</span><span style="font-size:10.5px;line-height:1.35;color:#8b95a7">Points do not follow the raster pair yet.</span></div>
+        <sc-for list="{{ overlays }}" as="overlay" hint-placeholder-count="4"><div class="overlay-row"><span style="width:13px;height:13px;border-radius:3px;border:1px solid {{ overlay.box }};background:{{ overlay.fill }}"></span><span class="dot" style="width:7px;height:7px;background:{{ overlay.dot }}"></span><span style="flex:1;font-size:12px;color:{{ overlay.text }}">{{ overlay.name }}</span><span class="mono" style="font-size:10px;color:{{ overlay.countColor }}">{{ overlay.count }}</span></div></sc-for>
+        <div style="padding:7px 11px;font-size:10.5px;line-height:1.4;color:#d9a34a">Showing 5,000 of 74,752 containers · zoom in to load the rest</div>
+      </section>
+
+      <section class="card" style="padding:9px 11px;display:flex;flex-direction:column;gap:7px">
+        <div class="micro">DISPLAYED PROVENANCE</div>
+        <div style="display:grid;grid-template-columns:72px 1fr;gap:5px 8px;font-size:10.7px"><span style="color:#6d7789">Raster</span><span class="mono" style="color:#c7cfdd">{{ rasterProvenance }}</span><span style="color:#6d7789">Points</span><span class="mono" style="color:#d9a34a">boot snapshot #0148</span><span style="color:#6d7789">Encoding</span><span class="mono" style="color:#8b95a7">gray8 · client composite</span></div>
+      </section>
+    </aside>
+
+    <section style="flex:1;min-width:0;position:relative;background:#0b0e14;overflow:hidden">
+      <canvas ref="{{ mapRef }}" width="1274" height="874" style="position:absolute;inset:0;width:100%;height:100%;display:block"></canvas>
+
+      <div style="position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:8px;padding:5px 10px;background:rgba(18,22,31,.92);border:1px solid #2b3345;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,.28)"><span class="dot" style="width:6px;height:6px;background:{{ rasterPillDot }}"></span><span style="font-size:11.5px;color:#c7cfdd">{{ rasterPillText }}</span></div>
+      <div style="position:absolute;top:47px;left:12px;display:flex;align-items:center;gap:6px;padding:4px 8px;background:rgba(18,22,31,.9);border:1px solid #302d2a;border-radius:12px"><span class="dot" style="background:#d9a34a"></span><span style="font-size:10.5px;color:#d9a34a">points · boot snapshot #0148</span></div>
+
+      <sc-if value="{{ showRasterMapState }}">
+      <div style="position:absolute;top:88px;left:50%;transform:translateX(-50%);padding:8px 11px;display:flex;align-items:center;gap:8px;background:rgba(18,22,31,.95);border:1px solid {{ mapStateBorder }};border-radius:5px;box-shadow:0 8px 24px rgba(0,0,0,.45)"><span style="color:{{ mapStateColor }};font-size:11.5px">{{ mapStateText }}</span></div>
+      </sc-if>
+
+      <div style="position:absolute;left:43%;top:37%;width:9px;height:9px;border-radius:50%;background:#d9a34a;box-shadow:0 0 0 3px rgba(217,163,74,.2)"></div>
+      <div style="position:absolute;left:59%;top:51%;width:9px;height:9px;border-radius:50%;background:#5fa8e0;box-shadow:0 0 0 3px rgba(95,168,224,.2)"></div>
+      <div style="position:absolute;left:65%;top:30%;width:9px;height:9px;border-radius:50%;background:#d9635f;box-shadow:0 0 0 3px rgba(217,99,95,.2)"></div>
+      <div style="position:absolute;left:35%;top:61%;width:9px;height:9px;border-radius:50%;background:#a98fd4;box-shadow:0 0 0 3px rgba(169,143,212,.2)"></div>
+
+      <div style="position:absolute;left:45%;top:31%;padding:7px 9px;display:flex;flex-direction:column;gap:3px;background:rgba(14,17,24,.94);border:1px solid #2b3345;border-radius:5px;box-shadow:0 6px 18px rgba(0,0,0,.5)"><span style="font-size:11.5px;font-weight:600;color:#e7ecf4">Build activity cluster</span><span class="mono" style="font-size:10.5px;color:#7cc59a">+142 added</span><span class="mono" style="font-size:10.5px;color:#e8a5a2">−38 removed</span><span class="mono" style="font-size:10px;color:#8b95a7">−1,248 / 2,096</span></div>
+
+      <div style="position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:6px"><div class="button" style="width:30px;padding:0;font-size:15px">+</div><div class="button" style="width:30px;padding:0;font-size:15px">−</div><div class="button" style="width:30px;padding:0">⤢</div></div>
+
+      <sc-if value="{{ showLegend }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;right:12px;bottom:54px;width:286px;padding:9px 11px;background:rgba(18,22,31,.95);border:1px solid #2b3345;border-radius:6px;display:flex;flex-direction:column;gap:7px;box-shadow:0 8px 24px rgba(0,0,0,.35)">
+        <sc-if value="{{ isChangesMode }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:baseline"><span style="font-size:11px;font-weight:600;color:#c7cfdd">Changed objects per {{ cellSize }} m cell</span><div style="flex:1"></div><span class="micro">DUAL LOG</span></div>
+          <div style="display:grid;grid-template-columns:54px 1fr 44px;gap:7px;align-items:center"><span style="font-size:10px;color:#e8a5a2">REMOVED</span><span style="height:9px;border-radius:2px;background:linear-gradient(90deg,#241a20,#6d2d35,#d9635f)"></span><span class="mono" style="font-size:9.5px;text-align:right;color:#e8a5a2">3,821</span><span style="font-size:10px;color:#eee6c9">OVERLAP</span><span style="height:9px;border-radius:2px;background:linear-gradient(90deg,#453f35,#958b70,#eee6c9)"></span><span class="mono" style="font-size:9.5px;text-align:right;color:#aaa38f">both</span><span style="font-size:10px;color:#7cc59a">ADDED</span><span style="height:9px;border-radius:2px;background:linear-gradient(90deg,#14251e,#2e7652,#5fae7f)"></span><span class="mono" style="font-size:9.5px;text-align:right;color:#7cc59a">5,944</span></div>
+          <div class="mono" style="display:flex;justify-content:space-between;font-size:9px;color:#6d7789;padding-left:61px;padding-right:42px"><span>1</span><span>12</span><span>140</span><span>1.6k</span><span>MAX</span></div>
+        </sc-if>
+        <sc-if value="{{ isSnapshotMode }}"><div style="display:flex;align-items:baseline"><span style="font-size:11px;font-weight:600;color:#c7cfdd">Objects per {{ cellSize }} m cell</span><div style="flex:1"></div><span class="micro">LOG</span></div><div style="height:9px;border-radius:2px;background:{{ absoluteLegendGradient }}"></div><div class="mono" style="display:flex;justify-content:space-between;font-size:9px;color:#6d7789"><span>1</span><span>12</span><span>140</span><span>1.6k</span><span>15,275</span></div></sc-if>
+      </div>
+      </sc-if>
+
+      <div style="position:absolute;left:12px;bottom:12px;padding:6px 11px;display:flex;gap:12px;background:rgba(18,22,31,.92);border:1px solid #242b3a;border-radius:5px" class="mono"><span style="font-size:11px;color:#8b95a7">x −1,248</span><span style="font-size:11px;color:#8b95a7">z 2,096</span><span style="color:#4e5768">|</span><span style="font-size:11px;color:#8b95a7">zoom 4</span><span style="color:#4e5768">|</span><span style="font-size:11px;color:#8b95a7">shift+drag to select region</span></div>
+      <div class="button" style="position:absolute;right:12px;bottom:12px">Region selection · 1,284 ZDOs <span style="color:#5fa8e0;margin-left:7px">open</span></div>
+    </section>
+    </sc-if>
+
+    <sc-if value="{{ isChangesView }}">
+    <section style="flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto">
+      <div style="height:50px;padding:0 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #1c2230"><span style="font-size:14px;font-weight:600;color:#f0f3f8">Changes</span><span class="mono" style="font-size:10.5px;color:#6d7789">/db/snapshots/compare</span><span class="badge" style="color:#7cc59a;background:rgba(95,174,127,.1);border:1px solid rgba(95,174,127,.3)"><span class="dot" style="background:#5fae7f"></span>snapshot-aware</span><div style="flex:1"></div><span class="micro">FROM</span><div onClick="{{ cycleFrom }}" class="select" style="width:96px">{{ fromSnapshot }} <span style="color:#5c6678">▾</span></div><span style="color:#5c6678">→</span><span class="micro">TO</span><div onClick="{{ cycleTo }}" class="select" style="width:96px">{{ toSnapshot }} <span style="color:#5c6678">▾</span></div><div onClick="{{ goMap }}" class="button" style="border-color:#3a6ea8;background:#2a4d78;color:#e7f0fa">Open spatial compare →</div></div>
+      <div style="padding:18px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:9px">
+          <sc-for list="{{ changeStats }}" as="stat" hint-placeholder-count="5"><div class="card" style="padding:11px 13px"><div class="micro">{{ stat.label }}</div><div class="mono" style="margin-top:4px;font-size:20px;color:{{ stat.color }}">{{ stat.value }}</div><div style="margin-top:3px;font-size:10.5px;color:#6d7789">{{ stat.note }}</div></div></sc-for>
+        </div>
+        <div class="card" style="padding:11px 13px;display:flex;align-items:center;gap:10px"><span class="dot" style="width:7px;height:7px;background:#5fae7f"></span><span style="font-size:12px;color:#c7cfdd">Spatial pair ready for Build activity and All ZDO change at 64 / 320 / 500 / 1000 m.</span><div style="flex:1"></div><span class="mono" style="font-size:10px;color:#6d7789">same pair as Map · {{ fromSnapshot }} → {{ toSnapshot }}</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px"><div class="card"><div class="card-head"><span class="dot" style="background:#5fae7f"></span><span style="font-size:12px;font-weight:600;color:#c7cfdd">Added prefabs</span><div style="flex:1"></div><span class="mono" style="font-size:10px;color:#7cc59a">+5,944 objects</span></div><sc-for list="{{ addedRows }}" as="row" hint-placeholder-count="7"><div style="height:37px;padding:0 12px;display:flex;align-items:center;border-bottom:1px solid #1d2330"><span class="mono" style="font-size:11px;color:#dfe4ec;flex:1">{{ row.name }}</span><span class="mono" style="font-size:11px;color:#7cc59a">{{ row.value }}</span></div></sc-for></div><div class="card"><div class="card-head"><span class="dot" style="background:#d9635f"></span><span style="font-size:12px;font-weight:600;color:#c7cfdd">Removed prefabs</span><div style="flex:1"></div><span class="mono" style="font-size:10px;color:#e8a5a2">−3,821 objects</span></div><sc-for list="{{ removedRows }}" as="row" hint-placeholder-count="7"><div style="height:37px;padding:0 12px;display:flex;align-items:center;border-bottom:1px solid #1d2330"><span class="mono" style="font-size:11px;color:#dfe4ec;flex:1">{{ row.name }}</span><span class="mono" style="font-size:11px;color:#e8a5a2">{{ row.value }}</span></div></sc-for></div></div>
+      </div>
+    </section>
+    </sc-if>
+  </main>
+</div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:1000},&quot;initialRasterMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;changes&quot;,&quot;snapshot&quot;],&quot;default&quot;:&quot;changes&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Raster&quot;},&quot;artifactState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ready&quot;,&quot;loading&quot;,&quot;missing&quot;,&quot;stale&quot;,&quot;unavailable&quot;],&quot;default&quot;:&quot;ready&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Raster states&quot;}}">
+class Component extends DCLogic {
+  mapRef = React.createRef();
+  state = { page: 'world', rasterMode: null, rasterOn: true, absoluteLayer: 0, deltaLayer: 0, cell: 320, opacity: 78, ramp: 0, fromIndex: 2, toIndex: 0 };
+
+  componentDidMount() { this.drawMap(); }
+  componentDidUpdate() { this.drawMap(); }
+
+  mode() { return this.state.rasterMode || this.props.initialRasterMode || 'changes'; }
+
+  drawMap() {
+    const canvas = this.mapRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
+    const hash = (x,y) => { const n=Math.sin(x*127.1+y*311.7)*43758.5453; return n-Math.floor(n); };
+    const sm = t => t*t*(3-2*t);
+    const noise = (x,y) => { const xi=Math.floor(x),yi=Math.floor(y),xf=sm(x-xi),yf=sm(y-yi),a=hash(xi,yi),b=hash(xi+1,yi),c=hash(xi,yi+1),d=hash(xi+1,yi+1); return (a+(b-a)*xf)+((c+(d-c)*xf)-(a+(b-a)*xf))*yf; };
+    const fbm = (x,y) => noise(x,y)*.57+noise(x*2.1,y*2.1)*.27+noise(x*4.3,y*4.3)*.16;
+    const R=10000, world=(px,py)=>[(px/W)*R*2.1-R*1.05,(py/H)*R*1.44-R*.72];
+    const land=(x,z)=>fbm(x/2400+8.3,z/2400+4.7)-Math.pow(Math.sqrt(x*x+z*z)/R,2)*1.02-.055;
+    const img=ctx.createImageData(W,H), biomes=[[36,52,40],[25,39,33],[41,41,32],[57,63,71],[57,53,39],[34,31,44]];
+    for(let py=0;py<H;py++){for(let px=0;px<W;px++){const [x,z]=world(px,py),e=land(x,z);let c;if(e>.004){const b=fbm(x/1150+31.7,z/1150+12.1);let i=0;if(e>.115)i=3;else if(b>.62)i=4;else if(b>.5)i=1;else if(b<.36)i=2;else if(b<.42)i=5;const sh=.84+fbm(x/260,z/260)*.31;c=biomes[i].map(v=>v*sh);}else{const t=Math.max(0,Math.min(1,(e+.09)/.094));c=[9+6*t,15+10*t,22+14*t];}const o=(py*W+px)*4;img.data[o]=c[0];img.data[o+1]=c[1];img.data[o+2]=c[2];img.data[o+3]=255;}}
+    ctx.putImageData(img,0,0);
+    const artifact=this.props.artifactState||'ready';
+    if(this.state.rasterOn && artifact!=='missing' && artifact!=='unavailable'){
+      const cell=this.state.cell,cw=cell/(R*2.1)*W,ch=cell/(R*1.44)*H;
+      const add=[[-1250,2100,900,1],[600,-900,620,.75],[3100,900,560,.63],[-3400,-1500,720,.58],[2100,3000,430,.45]];
+      const rem=[[-820,1880,740,.68],[1150,-700,610,.56],[-2950,-1450,650,.72],[2450,2730,500,.42],[1500,-3900,560,.46]];
+      const abs=[[-1250,2100,950,1],[600,-900,670,.72],[3100,900,570,.55],[-3400,-1500,730,.62],[2100,3000,480,.4],[-5200,600,500,.3],[1500,-4200,540,.34]];
+      ctx.globalAlpha=this.state.opacity/100*(artifact==='loading'?.55:1);
+      const influence=(sites,x,z)=>sites.reduce((v,s)=>v+s[3]*Math.exp(-((x-s[0])**2+(z-s[1])**2)/(2*s[2]**2)),0)*(0.68+fbm(x/700+3.1,z/700+9.4)*.64);
+      const ramps=[[[20,36,60],[47,90,168],[111,168,221],[240,217,160],[217,99,95]],[[16,28,24],[31,74,58],[95,174,127],[185,223,168],[238,246,216]],[[28,18,53],[59,82,139],[33,145,140],[94,201,98],[253,231,37]]];
+      const ramp=ramps[this.state.ramp],rampAt=t=>{const q=Math.max(0,Math.min(.999,t))*(ramp.length-1),i=Math.floor(q),f=q-i,a=ramp[i],b=ramp[i+1]||a;return a.map((v,j)=>Math.round(v+(b[j]-v)*f));};
+      for(let py=0;py<H;py+=ch){for(let px=0;px<W;px+=cw){const [x,z]=world(px+cw/2,py+ch/2);if(land(x,z)<=.004)continue;let color,alpha;if(this.mode()==='changes'){const a=influence(add,x,z),r=influence(rem,x,z);if(Math.max(a,r)<.014)continue;const ta=Math.log1p(a*65)/Math.log1p(65),tr=Math.log1p(r*65)/Math.log1p(65),both=Math.min(ta,tr),strong=Math.max(ta,tr);if(both>strong*.48){const q=Math.min(1,strong);color=[238,230,201];alpha=.10+q*.78;}else if(ta>tr){color=[95,174,127];alpha=.08+ta*.82;}else{color=[217,99,95];alpha=.08+tr*.82;}}else{const v=influence(abs,x,z);if(v<.012)continue;const t=Math.log1p(v*60)/Math.log1p(60);color=rampAt(t);alpha=.06+t*.82;}ctx.fillStyle='rgba('+color.join(',')+','+alpha+')';ctx.fillRect(Math.round(px),Math.round(py),Math.ceil(cw),Math.ceil(ch));}}
+      ctx.globalAlpha=1;
+    }
+    ctx.strokeStyle='rgba(125,145,175,.11)';ctx.lineWidth=1;const gx=1000/(R*2.1)*W,gy=1000/(R*1.44)*H;for(let x=W/2%gx;x<W;x+=gx){ctx.beginPath();ctx.moveTo(x+.5,0);ctx.lineTo(x+.5,H);ctx.stroke();}for(let y=H/2%gy;y<H;y+=gy){ctx.beginPath();ctx.moveTo(0,y+.5);ctx.lineTo(W,y+.5);ctx.stroke();}
+    ctx.save();ctx.setLineDash([5,5]);ctx.strokeStyle='rgba(140,160,190,.38)';ctx.beginPath();ctx.ellipse(W/2,H/2,(R/(R*1.05))*W/2,(R/(R*.72))*H/2,0,0,Math.PI*2);ctx.stroke();ctx.restore();
+    const vignette=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*.3,W/2,H/2,Math.max(W,H)*.72);vignette.addColorStop(0,'rgba(0,0,0,0)');vignette.addColorStop(1,'rgba(0,0,0,.44)');ctx.fillStyle=vignette;ctx.fillRect(0,0,W,H);
+  }
+
+  renderVals() {
+    const mode=this.mode(), artifact=this.props.artifactState||'ready', on=this.state.rasterOn;
+    const snapshots=['#0148','#0147','#0146','#0145','#0141','#0138','#0127'];
+    const from=snapshots[this.state.fromIndex],to=snapshots[this.state.toIndex];
+    const isUnavailable=artifact==='unavailable';
+    const pill=(active)=>active?'on':'';
+    const absNames=['Build density','Dropped','All ZDOs','Coins'];
+    const deltaNames=['Build activity','All ZDO change'];
+    const cellNames=[64,320,500,1000];
+    const rampNames=['Ember','Moss','Viridis'];
+    const stateInfo={
+      ready:{color:'#7cc59a',bg:'rgba(95,174,127,.1)',border:'rgba(95,174,127,.28)',dot:'#5fae7f',text:'READY · RECENT 6'},
+      loading:{color:'#8cc4ee',bg:'rgba(95,168,224,.1)',border:'rgba(95,168,224,.28)',dot:'#5fa8e0',text:'LOADING'},
+      missing:{color:'#e8a5a2',bg:'rgba(217,99,95,.1)',border:'rgba(217,99,95,.28)',dot:'#d9635f',text:'MISSING'},
+      stale:{color:'#e4bd76',bg:'rgba(217,163,74,.1)',border:'rgba(217,163,74,.28)',dot:'#d9a34a',text:'STALE'},
+      unavailable:{color:'#e4bd76',bg:'rgba(217,163,74,.1)',border:'rgba(217,163,74,.28)',dot:'#d9a34a',text:'TABLE ONLY'}
+    }[artifact];
+    const layerName=mode==='changes'?deltaNames[this.state.deltaLayer]:absNames[this.state.absoluteLayer];
+    const rampName=rampNames[this.state.ramp];
+    let rasterPillText;if(!on)rasterPillText='Raster off · point overlays only';else if(mode==='changes')rasterPillText=layerName+' · '+this.state.cell+' m · '+from+' → '+to+(artifact==='stale'?' · stale':'');else rasterPillText=layerName+' · '+this.state.cell+' m · snapshot #0148 · '+rampName+(artifact==='stale'?' · stale':'');
+    let mapStateText='';if(artifact==='loading')mapStateText='Loading aligned raster channels…';if(artifact==='missing')mapStateText='Raster artifact missing · points remain available';if(artifact==='stale')mapStateText='Showing last successful raster while publish completes';if(artifact==='unavailable')mapStateText='No spatial raster for this pair · open Changes for tables';
+    const gradients=['linear-gradient(90deg,#14243c,#2f5aa8,#6fa8dd,#f0d9a0,#d9635f)','linear-gradient(90deg,#101c18,#1f4a3a,#5fae7f,#b9dfa8,#eef6d8)','linear-gradient(90deg,#1c1235,#3b528b,#21918c,#5ec962,#fde725)'];
+    return {
+      isWorld:this.state.page==='world',isChangesView:this.state.page==='changes',worldNavClass:this.state.page==='world'?'on':'',changesNavClass:this.state.page==='changes'?'on':'',goMap:()=>this.setState({page:'world',rasterMode:'changes'}),goChanges:()=>this.setState({page:'changes'}),
+      mapRef:this.mapRef,isSnapshotMode:mode==='snapshot',isChangesMode:mode==='changes',snapshotModeClass:pill(mode==='snapshot'),changesModeClass:pill(mode==='changes'),setSnapshotMode:()=>this.setState({rasterMode:'snapshot'}),setChangesMode:()=>this.setState({rasterMode:'changes'}),
+      rasterOn:on,toggleRaster:()=>this.setState(s=>({rasterOn:!s.rasterOn})),rasterTrack:on?'#2a4d78':'#1b2030',rasterTrackBorder:on?'#3a6ea8':'#2b3345',rasterJustify:on?'flex-end':'flex-start',rasterKnob:on?'#dbe8f7':'#5c6678',rasterStateLabel:on?'ON':'OFF',rasterStateColor:on?'#7cc59a':'#6d7789',rasterBodyOpacity:on?1:.42,
+      absoluteLayers:absNames.map((name,i)=>({name,className:pill(this.state.absoluteLayer===i),select:()=>this.setState({absoluteLayer:i})})),buildDeltaClass:pill(this.state.deltaLayer===0),allDeltaClass:pill(this.state.deltaLayer===1),setBuildDelta:()=>this.setState({deltaLayer:0}),setAllDelta:()=>this.setState({deltaLayer:1}),
+      cellSize:this.state.cell,cellSizes:cellNames.map(name=>({name,className:pill(this.state.cell===name),select:()=>this.setState({cell:name})})),opacity:this.state.opacity,opacityLabel:this.state.opacity+'%',setOpacity:e=>this.setState({opacity:Number(e.target.value)}),ramps:rampNames.map((name,i)=>({name,className:pill(this.state.ramp===i),select:()=>this.setState({ramp:i})})),absoluteLegendGradient:gradients[this.state.ramp],
+      fromSnapshot:from,toSnapshot:to,cycleFrom:()=>this.setState(s=>({fromIndex:s.fromIndex>=snapshots.length-1?1:s.fromIndex+1})),cycleTo:()=>this.setState(s=>({toIndex:s.toIndex>=1?0:s.toIndex+1})),pairBadgeColor:stateInfo.color,pairBadgeBg:stateInfo.bg,pairBadgeBorder:stateInfo.border,pairBadgeDot:stateInfo.dot,pairBadgeText:stateInfo.text,
+      rasterPillDot:!on?'#5c6678':artifact==='ready'?'#5fae7f':artifact==='loading'?'#5fa8e0':artifact==='missing'?'#d9635f':'#d9a34a',rasterPillText,showLegend:on&&artifact!=='missing'&&!isUnavailable,showRasterMapState:on&&artifact!=='ready',mapStateText,mapStateColor:stateInfo.color,mapStateBorder:stateInfo.border,
+      showLoading:on&&artifact==='loading',showMissing:on&&artifact==='missing',showStale:on&&artifact==='stale',showUnavailable:on&&isUnavailable,rasterRequestLabel:mode==='changes'?'added + removed channels':'snapshot raster',rasterProvenance:mode==='changes'?from+' → '+to+' · aligned bounds':'snapshot #0148',
+      overlays:[{name:'Portals',count:'218',box:'#4a86c8',fill:'#2a4d78',dot:'#5fa8e0',text:'#dfe4ec',countColor:'#8b95a7'},{name:'Tombstones',count:'1,204',box:'#4a86c8',fill:'#2a4d78',dot:'#d9635f',text:'#dfe4ec',countColor:'#8b95a7'},{name:'Signs',count:'115,402',box:'#2b3345',fill:'transparent',dot:'#d9a34a',text:'#8b95a7',countColor:'#5c6678'},{name:'Containers',count:'74,752',box:'#2b3345',fill:'transparent',dot:'#a98fd4',text:'#8b95a7',countColor:'#5c6678'}],
+      changeStats:[{label:'ADDED',value:'+5,944',color:'#7cc59a',note:'new object identities'},{label:'REMOVED',value:'−3,821',color:'#e8a5a2',note:'missing from newer snapshot'},{label:'NET',value:'+2,123',color:'#dfe4ec',note:'object count change'},{label:'PREFABS TOUCHED',value:'186',color:'#dfe4ec',note:'across both channels'},{label:'SPAN',value:'5 days',color:'#dfe4ec',note:'day 209 → day 214'}],
+      addedRows:['wood_wall','stone_floor','blackmarble_floor','piece_chair','portal_wood','itemstand','bed'].map((name,i)=>({name,value:'+'+(742-i*83)})),removedRows:['wood_floor','stone_wall','workbench','portal_wood','chest_wood','piece_table','sign'].map((name,i)=>({name,value:'−'+(514-i*51)}))
+    };
+  }
+}
+</script>
+</body>
+</html>

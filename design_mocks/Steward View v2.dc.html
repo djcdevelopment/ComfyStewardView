@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"><style>body{margin:0;background:#0e1118;font-family:'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}a{color:#5fa8e0}a:hover{color:#8cc4ee}input,select,button{font-family:inherit}::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:#2a3140;border-radius:5px}</style></helmet>
+<div style="width:1600px;height:1000px;display:flex;flex-direction:column;background:#0e1118;color:#dfe4ec;font-size:13px;overflow:hidden;position:relative">
+
+  <div style="display:flex;align-items:center;gap:20px;height:52px;padding:0 18px;background:#141821;border-bottom:1px solid #232936;flex:none">
+    <div style="display:flex;align-items:baseline;gap:9px">
+      <span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:#f0f3f8">Steward View</span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6d7789;letter-spacing:0.06em">WORLD INTELLIGENCE</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding-left:20px;border-left:1px solid #232936">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6d7789;letter-spacing:0.06em">WORLD</span>
+      <div style="height:28px;padding:0 10px;background:#1b2030;border:1px solid #2b3345;border-radius:5px;font-size:12px;color:#dfe4ec;display:flex;align-items:center;gap:7px">world_alpha<span style="color:#5c6678;font-size:9px">▾</span></div>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6d7789;letter-spacing:0.06em;margin-left:8px">SNAPSHOT</span>
+      <div style="height:28px;padding:0 10px;background:#1b2030;border:1px solid #2b3345;border-radius:5px;font-size:12px;color:#dfe4ec;display:flex;align-items:center;gap:7px"><span style="width:6px;height:6px;border-radius:50%;background:#5fae7f"></span>#0148 · latest<span style="color:#5c6678;font-size:9px">▾</span></div>
+      <sc-if value="{{ showScope }}" hint-placeholder-val="{{ true }}">
+      <div onClick="{{ toggleScope }}" style="height:22px;padding:0 8px 0 7px;background:rgba(217,163,74,0.1);border:1px solid rgba(217,163,74,0.3);border-radius:11px;font-size:10.5px;color:#d9a34a;display:flex;align-items:center;gap:5px;cursor:pointer" style-hover="background:rgba(217,163,74,0.18)"><span style="width:5px;height:5px;border-radius:50%;background:#d9a34a"></span>scopes 3 of 14 views<span style="font-size:8px;opacity:0.8">▾</span></div>
+      </sc-if>
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;gap:22px;align-items:center">
+      <div style="display:flex;flex-direction:column;gap:1px"><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.06em">ZDOS</span><span style="font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:500;color:#e7ecf4">412,908</span></div>
+      <div style="display:flex;flex-direction:column;gap:1px"><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.06em">PLAYERS</span><span style="font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:500;color:#e7ecf4">37</span></div>
+      <div style="display:flex;flex-direction:column;gap:1px"><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.06em">PORTALS</span><span style="font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:500;color:#e7ecf4">218</span></div>
+    </div>
+  </div>
+
+  <sc-if value="{{ scopeOpen }}">
+  <div style="position:absolute;left:430px;top:56px;z-index:40;width:328px;background:#161b26;border:1px solid #2b3345;border-radius:8px;box-shadow:0 14px 40px rgba(0,0,0,0.6);overflow:hidden">
+    <div style="padding:11px 13px;border-bottom:1px solid #232936;display:flex;flex-direction:column;gap:4px">
+      <span style="font-size:12.5px;font-weight:600;color:#f0f3f8">What snapshot #0148 controls</span>
+      <span style="font-size:11.5px;line-height:1.5;color:#8b95a7">Three views read the snapshot you pick. The rest read the world the server parsed at boot.</span>
+    </div>
+    <div style="padding:6px 0;max-height:300px;overflow-y:auto">
+      <sc-for list="{{ scopeList }}" as="s" hint-placeholder-count="14">
+        <div style="display:flex;align-items:center;gap:9px;padding:6px 13px">
+          <span style="flex:1;font-size:12px;color:{{ s.color }}">{{ s.name }}</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:0.07em;padding:2px 6px;border-radius:9px;color:{{ s.tagColor }};background:{{ s.tagBg }};border:1px solid {{ s.tagBorder }}">{{ s.tag }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="padding:9px 13px;border-top:1px solid #232936;display:flex;align-items:center;gap:8px">
+      <span style="font-size:11px;color:#6d7789">Pinned views update when the server re-parses.</span>
+      <div style="flex:1"></div>
+      <span onClick="{{ toggleScope }}" style="font-size:11.5px;color:#5fa8e0;cursor:pointer">Close</span>
+    </div>
+  </div>
+  </sc-if>
+
+  <div style="display:flex;align-items:stretch;gap:2px;height:38px;padding:0 14px;background:#11151d;border-bottom:1px solid #232936;flex:none">
+    <div onClick="{{ goMap }}" style="display:flex;align-items:center;padding:0 14px;font-size:12.5px;font-weight:500;cursor:pointer;border-bottom:2px solid {{ pWorldBorder }};color:{{ pWorldColor }}">World</div>
+    <div onClick="{{ goChanges }}" style="display:flex;align-items:center;padding:0 14px;font-size:12.5px;font-weight:500;cursor:pointer;border-bottom:2px solid {{ pChangesBorder }};color:{{ pChangesColor }}">Changes</div>
+    <div onClick="{{ goHistory }}" style="display:flex;align-items:center;padding:0 14px;font-size:12.5px;font-weight:500;cursor:pointer;border-bottom:2px solid {{ pHistBorder }};color:{{ pHistColor }}">History</div>
+    <div onClick="{{ goExplore }}" style="display:flex;align-items:center;padding:0 14px;font-size:12.5px;font-weight:500;cursor:pointer;border-bottom:2px solid {{ pExploreBorder }};color:{{ pExploreColor }}">Explore</div>
+  </div>
+
+  <sc-if value="{{ inWorld }}" hint-placeholder-val="{{ true }}">
+  <div style="display:flex;align-items:center;gap:16px;height:36px;padding:0 14px;background:#0e1118;border-bottom:1px solid #1c2230;flex:none;overflow-x:auto">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#4e5768;letter-spacing:0.08em;flex:none">SPATIAL</span>
+      <div onClick="{{ goMap }}" style="display:flex;align-items:center;height:24px;padding:0 9px;border-radius:4px;font-size:12px;cursor:pointer;white-space:nowrap;background:{{ sMapBg }};color:{{ sMapColor }}">Map</div>
+      <div onClick="{{ goPortals }}" style="display:flex;align-items:center;height:24px;padding:0 9px;border-radius:4px;font-size:12px;cursor:pointer;white-space:nowrap;background:{{ sPortalsBg }};color:{{ sPortalsColor }}">Portals</div>
+      <div style="display:flex;align-items:center;height:24px;padding:0 9px;border-radius:4px;font-size:12px;cursor:pointer;white-space:nowrap;color:#8b95a7" style-hover="background:#1a1f2b;color:#dfe4ec">Structures</div>
+    </div>
+    <span style="width:1px;height:16px;background:#232936;flex:none"></span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#4e5768;letter-spacing:0.08em;flex:none">INVENTORIES</span>
+      <div onClick="{{ goEcon }}" style="display:flex;align-items:center;height:24px;padding:0 9px;border-radius:4px;font-size:12px;cursor:pointer;white-space:nowrap;background:{{ sEconBg }};color:{{ sEconColor }}">Economy</div>
+      <div style="display:flex;align-items:center;height:24px;padding:0 9px;border-radius:4px;font-size:12px;cursor:pointer;white-space:nowrap;color:#8b95a7" style-hover="background:#1a1f2b;color:#dfe4ec">Dropped</div>
+      <div style="display:flex;align-items:center;height:24px;padding:0 9px;border-radius:4px;font-size:12px;cursor:pointer;white-space:nowrap;color:#8b95a7" style-hover="background:#1a1f2b;color:#dfe4ec">Signs</div>
+      <div style="display:flex;align-items:center;height:24px;padding:0 9px;border-radius:4px;font-size:12px;cursor:pointer;white-space:nowrap;color:#8b95a7" style-hover="background:#1a1f2b;color:#dfe4ec">Tombstones</div>
+    </div>
+    <span style="width:1px;height:16px;background:#232936;flex:none"></span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#4e5768;letter-spacing:0.08em;flex:none">FORENSICS</span>
+      <div onClick="{{ goAlerts }}" style="display:flex;align-items:center;gap:7px;height:24px;padding:0 9px;border-radius:4px;font-size:12px;cursor:pointer;white-space:nowrap;background:{{ sAlertsBg }};color:{{ sAlertsColor }}">Alerts<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:500;padding:1px 5px;border-radius:8px;background:rgba(217,99,95,0.18);border:1px solid rgba(217,99,95,0.45);color:#e8a5a2">7</span></div>
+      <div onClick="{{ goForensics }}" style="display:flex;align-items:center;height:24px;padding:0 9px;border-radius:4px;font-size:12px;cursor:pointer;white-space:nowrap;background:{{ sForBg }};color:{{ sForColor }}">Coin trail</div>
+    </div>
+    <span style="width:1px;height:16px;background:#232936;flex:none"></span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#4e5768;letter-spacing:0.08em;flex:none">POPULATION</span>
+      <div style="display:flex;align-items:center;height:24px;padding:0 9px;border-radius:4px;font-size:12px;cursor:pointer;white-space:nowrap;color:#8b95a7" style-hover="background:#1a1f2b;color:#dfe4ec">Players</div>
+      <div style="display:flex;align-items:center;height:24px;padding:0 9px;border-radius:4px;font-size:12px;cursor:pointer;white-space:nowrap;color:#8b95a7" style-hover="background:#1a1f2b;color:#dfe4ec">Creatures</div>
+    </div>
+  </div>
+  </sc-if>
+
+  <div style="flex:1;min-height:0;display:flex">
+
+    <sc-if value="{{ isMap }}" hint-placeholder-val="{{ true }}">
+    <div style="flex:1;min-width:0;display:flex">
+
+      <sc-if value="{{ sidebarOpen }}" hint-placeholder-val="{{ true }}">
+      <div style="width:286px;flex:none;background:#12161f;border-right:1px solid #232936;overflow-y:auto;padding:12px 14px 24px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#4e5768;letter-spacing:0.08em">MAP CONTROLS</span>
+          <div style="flex:1"></div>
+          <div onClick="{{ toggleSidebar }}" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:4px;border:1px solid #2b3345;background:#1b2030;color:#8b95a7;font-size:11px;cursor:pointer" style-hover="color:#dfe4ec">‹</div>
+        </div>
+
+        <div style="background:#161b26;border:1px solid #242b3a;border-radius:7px;overflow:hidden;flex:none">
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 11px;border-bottom:1px solid #232936">
+            <span style="font-size:11.5px;font-weight:600;letter-spacing:0.04em;color:#c7cfdd">RASTER LAYER</span>
+            <div style="flex:1"></div>
+            <div onClick="{{ toggleRaster }}" style="width:30px;height:16px;border-radius:9px;padding:2px;display:flex;cursor:pointer;background:{{ rasterTrack }};border:1px solid {{ rasterTrackBorder }};justify-content:{{ rasterJustify }}"><span style="width:12px;height:12px;border-radius:50%;background:{{ rasterKnob }}"></span></div>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:{{ rasterStateColor }};width:22px">{{ rasterStateLabel }}</span>
+          </div>
+          <div style="padding:11px;display:flex;flex-direction:column;gap:11px;opacity:{{ rasterBodyOpacity }}">
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">LAYER</span>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+                <div style="height:26px;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:11.5px;background:#2a4d78;color:#dbe8f7;border:1px solid #3a6ea8;cursor:pointer">Build density</div>
+                <div style="height:26px;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:11.5px;background:#1b2030;color:#96a0b1;border:1px solid #2b3345;cursor:pointer">Dropped</div>
+                <div style="height:26px;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:11.5px;background:#1b2030;color:#96a0b1;border:1px solid #2b3345;cursor:pointer">All ZDOs</div>
+                <div style="height:26px;display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:11.5px;background:#1b2030;color:#96a0b1;border:1px solid #2b3345;cursor:pointer">Coins</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">CELL SIZE</span>
+              <div style="display:flex;background:#1b2030;border:1px solid #2b3345;border-radius:5px;padding:2px;gap:2px">
+                <div style="flex:1;height:22px;display:flex;align-items:center;justify-content:center;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#96a0b1;cursor:pointer">64</div>
+                <div style="flex:1;height:22px;display:flex;align-items:center;justify-content:center;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:11px;background:#2a4d78;color:#dbe8f7;cursor:pointer">320</div>
+                <div style="flex:1;height:22px;display:flex;align-items:center;justify-content:center;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#96a0b1;cursor:pointer">500</div>
+                <div style="flex:1;height:22px;display:flex;align-items:center;justify-content:center;border-radius:3px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#96a0b1;cursor:pointer">1000</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;justify-content:space-between"><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">OPACITY</span><span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#c7cfdd">{{ opacityLabel }}</span></div>
+              <input type="range" min="0" max="100" value="{{ opacity }}" onChange="{{ setOpacity }}" style="width:100%;accent-color:#4a86c8;height:4px" />
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">COLOR RAMP</span>
+              <div onClick="{{ setRamp0 }}" style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;border:1px solid {{ r0Border }};background:{{ r0Bg }}">
+                <div style="width:74px;height:14px;border-radius:3px;background:linear-gradient(90deg,#14243c,#2f5aa8,#6fa8dd,#f0d9a0,#d9635f)"></div>
+                <span style="flex:1;font-size:11.5px;color:{{ r0Text }}">Ember</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:{{ r0Check }}">{{ r0Mark }}</span>
+              </div>
+              <div onClick="{{ setRamp1 }}" style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;border:1px solid {{ r1Border }};background:{{ r1Bg }}">
+                <div style="width:74px;height:14px;border-radius:3px;background:linear-gradient(90deg,#101c18,#1f4a3a,#5fae7f,#b9dfa8,#eef6d8)"></div>
+                <span style="flex:1;font-size:11.5px;color:{{ r1Text }}">Moss</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:{{ r1Check }}">{{ r1Mark }}</span>
+              </div>
+              <div onClick="{{ setRamp2 }}" style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;border:1px solid {{ r2Border }};background:{{ r2Bg }}">
+                <div style="width:74px;height:14px;border-radius:3px;background:linear-gradient(90deg,#1c1235,#3b528b,#21918c,#5ec962,#fde725)"></div>
+                <span style="flex:1;font-size:11.5px;color:{{ r2Text }}">Viridis</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:{{ r2Check }}">{{ r2Mark }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#161b26;border:1px solid #242b3a;border-radius:7px;overflow:hidden;flex:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 11px;border-bottom:1px solid #232936"><span style="font-size:11.5px;font-weight:600;letter-spacing:0.04em;color:#c7cfdd">POINT OVERLAYS</span><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789">2 ON</span></div>
+          <div style="padding:5px 0">
+            <sc-for list="{{ overlays }}" as="ov" hint-placeholder-count="6">
+              <div style="padding:6px 11px;cursor:pointer;display:flex;flex-direction:column;gap:3px" style-hover="background:#1a1f2b">
+                <div style="display:flex;align-items:center;gap:9px">
+                  <span style="width:13px;height:13px;border-radius:3px;border:1px solid {{ ov.box }};background:{{ ov.fill }};flex:none"></span>
+                  <span style="width:7px;height:7px;border-radius:50%;background:{{ ov.dot }};flex:none"></span>
+                  <span style="flex:1;font-size:12px;color:{{ ov.text }}">{{ ov.name }}</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:{{ ov.countColor }}">{{ ov.count }}</span>
+                </div>
+                <span style="font-size:10.5px;color:#d9a34a;padding-left:29px">{{ ov.budget }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="background:#161b26;border:1px solid #242b3a;border-radius:7px;overflow:hidden;flex:none">
+          <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-bottom:1px solid #232936"><span style="font-size:11.5px;font-weight:600;letter-spacing:0.04em;color:#c7cfdd">SPAWN TIME FILTER</span><div style="flex:1"></div><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:0.06em;padding:2px 5px;border-radius:8px;color:{{ phaseColor }};background:{{ phaseBg }};border:1px solid {{ phaseBorder }}">{{ phaseTag }}</span></div>
+          <div style="padding:11px;display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;gap:6px;align-items:center">
+              <div style="flex:1;height:26px;display:flex;align-items:center;padding:0 8px;background:#1b2030;border:1px solid #2b3345;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#c7cfdd">day 38</div>
+              <span style="color:#5c6678">–</span>
+              <div style="flex:1;height:26px;display:flex;align-items:center;padding:0 8px;background:#1b2030;border:1px solid #2b3345;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#c7cfdd">day 195</div>
+            </div>
+            <sc-if value="{{ histogramOn }}" hint-placeholder-val="{{ true }}">
+            <div style="height:34px;border-radius:4px;background:#1b2030;border:1px solid #2b3345;position:relative;overflow:hidden">
+              <div style="position:absolute;inset:0;display:flex;align-items:flex-end;gap:1px;padding:3px 4px;opacity:0.45">
+                <sc-for list="{{ spark }}" as="h" hint-placeholder-count="30"><span style="flex:1;background:#7d8ca1;height:{{ h.h }}"></span></sc-for>
+              </div>
+              <div style="position:absolute;left:18%;right:9%;top:0;bottom:0;background:rgba(74,134,200,0.2);border-left:1px solid #5fa8e0;border-right:1px solid #5fa8e0"></div>
+              <div style="position:absolute;left:18%;top:50%;transform:translate(-50%,-50%);width:7px;height:20px;border-radius:3px;background:#5fa8e0;border:1px solid #8cc4ee;cursor:ew-resize"></div>
+              <div style="position:absolute;left:91%;top:50%;transform:translate(-50%,-50%);width:7px;height:20px;border-radius:3px;background:#5fa8e0;border:1px solid #8cc4ee;cursor:ew-resize"></div>
+            </div>
+            <span style="font-size:10.5px;color:#6d7789;line-height:1.45">Drag a handle to move one edge; drag the shaded band to pan the window. Bars are ZDO spawn counts per 7-day bucket.</span>
+            </sc-if>
+            <sc-if value="{{ histogramOff }}">
+            <span style="font-size:10.5px;color:#8b95a7;line-height:1.45">Distribution preview arrives with the spawn-aggregate endpoint. Until then the range applies from the two inputs above.</span>
+            </sc-if>
+            <div style="display:flex;gap:6px">
+              <div style="flex:1;height:28px;display:flex;align-items:center;justify-content:center;border-radius:5px;background:#2a4d78;border:1px solid #3a6ea8;font-size:12px;font-weight:500;color:#e7f0fa;cursor:pointer">Apply filter</div>
+              <div style="height:28px;padding:0 11px;display:flex;align-items:center;border-radius:5px;background:#1b2030;border:1px solid #2b3345;font-size:12px;color:#8b95a7;cursor:pointer">Reset</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ sidebarClosed }}">
+      <div style="width:34px;flex:none;background:#12161f;border-right:1px solid #232936;display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:12px">
+        <div onClick="{{ toggleSidebar }}" style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:4px;border:1px solid #2b3345;background:#1b2030;color:#8b95a7;font-size:11px;cursor:pointer">›</div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#5c6678;letter-spacing:0.12em;writing-mode:vertical-rl">MAP CONTROLS</span>
+      </div>
+      </sc-if>
+
+      <div style="flex:1;min-width:0;position:relative;background:#0b0e14;overflow:hidden">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse 40% 34% at 52% 46%,#1d2a33 0%,#141c24 55%,#0b0e14 100%)"></div>
+        <div style="position:absolute;inset:0;opacity:{{ heatOpacity }};background:radial-gradient(circle 120px at 46% 42%,rgba(231,236,244,0.9),rgba(95,168,224,0.5) 40%,rgba(42,77,120,0.15) 70%,transparent 78%),radial-gradient(circle 90px at 61% 55%,rgba(95,168,224,0.7),rgba(42,77,120,0.2) 60%,transparent 75%),radial-gradient(circle 160px at 38% 62%,rgba(42,77,120,0.55),transparent 72%),radial-gradient(circle 60px at 68% 33%,rgba(95,168,224,0.5),transparent 70%),radial-gradient(circle 200px at 55% 48%,rgba(42,77,120,0.3),transparent 75%)"></div>
+        <div style="position:absolute;inset:0;background-image:linear-gradient(to right,rgba(120,140,170,0.09) 1px,transparent 1px),linear-gradient(to bottom,rgba(120,140,170,0.09) 1px,transparent 1px);background-size:96px 96px"></div>
+        <div style="position:absolute;left:50%;top:50%;width:760px;height:760px;transform:translate(-50%,-50%);border:1px dashed rgba(125,140,161,0.35);border-radius:50%"></div>
+
+        <div style="position:absolute;left:41%;top:38%;width:9px;height:9px;border-radius:50%;background:#d9a34a;box-shadow:0 0 0 3px rgba(217,163,74,0.2)"></div>
+        <div style="position:absolute;left:57%;top:52%;width:9px;height:9px;border-radius:50%;background:#5fae7f;box-shadow:0 0 0 3px rgba(95,174,127,0.2)"></div>
+        <div style="position:absolute;left:63%;top:31%;width:9px;height:9px;border-radius:50%;background:#5fae7f;box-shadow:0 0 0 3px rgba(95,174,127,0.2)"></div>
+        <div style="position:absolute;left:35%;top:60%;width:9px;height:9px;border-radius:50%;background:#d9635f;box-shadow:0 0 0 3px rgba(217,99,95,0.2)"></div>
+
+        <sc-if value="{{ selectionOpen }}">
+        <div style="position:absolute;left:26%;top:44%;width:270px;height:190px;border:1px solid #5fa8e0;background:rgba(95,168,224,0.1);border-radius:2px"></div>
+        </sc-if>
+
+        <div style="position:absolute;left:44%;top:31%;display:flex;flex-direction:column;gap:3px;padding:7px 9px;background:rgba(14,17,24,0.94);border:1px solid #2b3345;border-radius:5px;box-shadow:0 6px 18px rgba(0,0,0,0.5)">
+          <span style="font-size:11.5px;font-weight:600;color:#e7ecf4">Structure cluster</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8b95a7">142 pieces · owner 07</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8b95a7">-1,248 / 2,096</span>
+        </div>
+
+        <div style="position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:8px;padding:5px 10px;background:rgba(18,22,31,0.9);border:1px solid #242b3a;border-radius:16px">
+          <span style="width:6px;height:6px;border-radius:50%;background:{{ rasterPillDot }}"></span>
+          <span style="font-size:11.5px;color:#c7cfdd">{{ rasterPillText }}</span>
+        </div>
+
+        <div style="position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:6px">
+          <div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:rgba(18,22,31,0.92);border:1px solid #2b3345;border-radius:5px;color:#c7cfdd;font-size:15px;cursor:pointer">+</div>
+          <div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:rgba(18,22,31,0.92);border:1px solid #2b3345;border-radius:5px;color:#c7cfdd;font-size:15px;cursor:pointer">−</div>
+          <div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:rgba(18,22,31,0.92);border:1px solid #2b3345;border-radius:5px;color:#c7cfdd;font-size:12px;cursor:pointer">⤢</div>
+        </div>
+
+        <sc-if value="{{ rasterOn }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;bottom:56px;right:12px;width:212px;padding:9px 11px 8px;background:rgba(18,22,31,0.94);border:1px solid #2b3345;border-radius:6px;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:11px;font-weight:600;color:#c7cfdd">Pieces per 320 m cell</span><div style="flex:1"></div><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#6d7789;letter-spacing:0.06em">LOG</span></div>
+          <div style="height:9px;border-radius:2px;background:linear-gradient(90deg,#14243c,#2f5aa8,#6fa8dd,#f0d9a0,#d9635f)"></div>
+          <div style="position:relative;height:11px">
+            <sc-for list="{{ legendTicks }}" as="t" hint-placeholder-count="5">
+              <span style="position:absolute;left:{{ t.at }};transform:translateX(-50%);font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#8b95a7;white-space:nowrap">{{ t.v }}</span>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+        <div style="position:absolute;bottom:12px;left:12px;display:flex;align-items:center;gap:12px;padding:6px 11px;background:rgba(18,22,31,0.92);border:1px solid #242b3a;border-radius:5px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8b95a7">
+          <span>x −1,248</span><span>z 2,096</span><span style="color:#4e5768">|</span><span>zoom 4</span><span style="color:#4e5768">|</span><span>shift+drag to select region</span><span style="color:#4e5768">|</span><span>sidebar auto-collapses &lt; 1360 px</span>
+        </div>
+
+        <sc-if value="{{ selectionOpen }}">
+        <div style="position:absolute;left:0;right:0;bottom:0;height:238px;background:#12161f;border-top:1px solid #2b3345;box-shadow:0 -12px 32px rgba(0,0,0,0.45);display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 15px;border-bottom:1px solid #232936">
+            <span style="font-size:12.5px;font-weight:600;color:#f0f3f8">Region selection</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8b95a7">x −2,400 … −1,100 · z 1,700 … 2,900</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;padding:2px 7px;border-radius:9px;background:#1b2030;border:1px solid #2b3345;color:#c7cfdd">1,284 ZDOs</span>
+            <div style="flex:1"></div>
+            <div style="height:26px;padding:0 11px;display:flex;align-items:center;border-radius:5px;background:#1b2030;border:1px solid #2b3345;font-size:11.5px;color:#c7cfdd;cursor:pointer">Copy bounds</div>
+            <div style="height:26px;padding:0 11px;display:flex;align-items:center;border-radius:5px;background:#1b2030;border:1px solid #3a6ea8;font-size:11.5px;color:#dfe4ec;cursor:pointer">Open in Explore →</div>
+            <div onClick="{{ closeSelection }}" style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:5px;border:1px solid #2b3345;background:#1b2030;color:#8b95a7;font-size:12px;cursor:pointer">✕</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 110px 110px 96px;gap:14px;padding:8px 15px;background:#161b26;border-bottom:1px solid #232936">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">PREFAB</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;text-align:right">COUNT</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;text-align:right">OWNERS</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;text-align:right">ACTION</span>
+          </div>
+          <div style="flex:1;overflow-y:auto">
+            <sc-for list="{{ selRows }}" as="r" hint-placeholder-count="6">
+              <div style="display:grid;grid-template-columns:1fr 110px 110px 96px;gap:14px;padding:8px 15px;border-bottom:1px solid #1a1f2b;align-items:center;cursor:pointer" style-hover="background:#171c27">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#dfe4ec">{{ r.name }}</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#c7cfdd;text-align:right">{{ r.count }}</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8b95a7;text-align:right">{{ r.owners }}</span>
+                <span style="font-size:11px;color:#5fa8e0;text-align:right">Fly to →</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ selectionClosed }}">
+        <div onClick="{{ openSelection }}" style="position:absolute;right:12px;bottom:12px;height:28px;padding:0 12px;display:flex;align-items:center;gap:8px;background:#1b2030;border:1px solid #2b3345;border-radius:5px;font-size:11.5px;color:#8b95a7;cursor:pointer" style-hover="color:#dfe4ec">Last selection · 1,284 ZDOs<span style="color:#5fa8e0">reopen</span></div>
+        </sc-if>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ isPortals }}">
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto">
+      <div style="display:flex;align-items:center;gap:10px;height:46px;padding:0 18px;border-bottom:1px solid #1c2230;flex:none">
+        <span style="font-size:14px;font-weight:600;color:#f0f3f8">Portals</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6d7789">{{ epPortals }}</span>
+        <div style="height:20px;padding:0 7px;display:flex;align-items:center;gap:5px;border-radius:10px;background:rgba(217,163,74,0.09);border:1px solid rgba(217,163,74,0.28);font-size:10.5px;color:#d9a34a"><span style="width:4px;height:4px;border-radius:50%;background:#d9a34a"></span>pinned to boot snapshot</div>
+        <div style="flex:1"></div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6d7789">virtual scroll · 9,417 rows</span>
+      </div>
+      <div style="padding:18px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:9px;padding:9px 13px;background:#161b26;border:1px solid #242b3a;border-radius:7px">
+          <div style="height:28px;padding:0 10px 0 9px;background:#1b2030;border:1px solid #2b3345;border-radius:5px;display:flex;align-items:center;gap:7px;width:200px"><span style="color:#5c6678;font-size:11px">⌕</span><span style="font-size:12px;color:#5c6678">Search tag or owner</span></div>
+          <span style="width:1px;height:20px;background:#232936"></span>
+          <sc-for list="{{ portalChips }}" as="c" hint-placeholder-count="6">
+            <div style="height:24px;padding:0 9px;display:flex;align-items:center;gap:6px;border-radius:12px;font-size:11.5px;cursor:pointer;background:{{ c.bg }};border:1px solid {{ c.border }};color:{{ c.color }}">{{ c.name }}<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;opacity:0.75">{{ c.n }}</span></div>
+          </sc-for>
+          <div style="flex:1"></div>
+          <div style="height:28px;padding:0 10px;background:#1b2030;border:1px solid #2b3345;border-radius:5px;display:flex;align-items:center;gap:7px;font-size:12px;color:#c7cfdd">All biomes<span style="color:#5c6678;font-size:9px">▾</span></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#4e5768;letter-spacing:0.07em">ACTIVE</span>
+          <div style="height:22px;padding:0 6px 0 9px;display:flex;align-items:center;gap:7px;border-radius:11px;background:#1b2030;border:1px solid #3a6ea8;font-size:11px;color:#dfe4ec">status: orphaned<span style="color:#8b95a7;cursor:pointer">✕</span></div>
+          <div style="height:22px;padding:0 6px 0 9px;display:flex;align-items:center;gap:7px;border-radius:11px;background:#1b2030;border:1px solid #3a6ea8;font-size:11px;color:#dfe4ec">tag: “north*”<span style="color:#8b95a7;cursor:pointer">✕</span></div>
+          <span style="font-size:11px;color:#5fa8e0;cursor:pointer">Clear all</span>
+          <div style="flex:1"></div>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8b95a7">128 of 9,417 rows</span>
+        </div>
+        <div style="border:1px solid #242b3a;border-radius:7px;background:#12161f;overflow:hidden">
+          <div style="display:grid;grid-template-columns:1fr 130px 150px 130px 130px 96px;gap:14px;padding:9px 15px;background:#161b26;border-bottom:1px solid #232936">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#c7cfdd;letter-spacing:0.07em;cursor:pointer">TAG <span style="color:#5fa8e0">↑</span></span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;cursor:pointer">STATUS ↕</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;cursor:pointer">PAIRED WITH ↕</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;text-align:right;cursor:pointer">X ↕</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;text-align:right;cursor:pointer">Z ↕</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;text-align:right"></span>
+          </div>
+          <sc-for list="{{ portalRows }}" as="r" hint-placeholder-count="11">
+            <div style="display:grid;grid-template-columns:1fr 130px 150px 130px 130px 96px;gap:14px;padding:8px 15px;border-bottom:1px solid #1a1f2b;align-items:center;cursor:pointer" style-hover="background:#171c27">
+              <span style="font-size:12px;color:#dfe4ec">{{ r.tag }}</span>
+              <span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:{{ r.statusColor }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ r.statusColor }}"></span>{{ r.status }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8b95a7">{{ r.pair }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#c7cfdd;text-align:right">{{ r.x }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#c7cfdd;text-align:right">{{ r.z }}</span>
+              <span style="font-size:11px;color:#5fa8e0;text-align:right">Fly to →</span>
+            </div>
+          </sc-for>
+          <div style="padding:8px 15px;display:flex;align-items:center;gap:9px">
+            <span style="width:10px;height:10px;border-radius:50%;border:2px solid #2b3345;border-top-color:#5fa8e0"></span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6d7789">rendering rows 1–11 of 128 · scroll for more</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ isAlerts }}">
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto">
+      <div style="display:flex;align-items:center;gap:10px;height:46px;padding:0 18px;border-bottom:1px solid #1c2230;flex:none">
+        <span style="font-size:14px;font-weight:600;color:#f0f3f8">Alerts</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6d7789">{{ epAlerts }}</span>
+        <div style="height:20px;padding:0 7px;display:flex;align-items:center;gap:5px;border-radius:10px;background:rgba(217,163,74,0.09);border:1px solid rgba(217,163,74,0.28);font-size:10.5px;color:#d9a34a"><span style="width:4px;height:4px;border-radius:50%;background:#d9a34a"></span>pinned to boot snapshot</div>
+        <div style="flex:1"></div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6d7789">virtual scroll · 1,860 rows</span>
+      </div>
+      <div style="padding:18px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:9px;padding:9px 13px;background:#161b26;border:1px solid #242b3a;border-radius:7px">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">SEVERITY</span>
+          <sc-for list="{{ severityChips }}" as="c" hint-placeholder-count="5">
+            <div style="height:24px;padding:0 9px;display:flex;align-items:center;gap:6px;border-radius:12px;font-size:11.5px;cursor:pointer;background:{{ c.bg }};border:1px solid {{ c.border }};color:{{ c.color }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ c.dot }}"></span>{{ c.name }}<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;opacity:0.8">{{ c.n }}</span></div>
+          </sc-for>
+          <span style="width:1px;height:20px;background:#232936"></span>
+          <div style="height:28px;padding:0 10px;background:#1b2030;border:1px solid #2b3345;border-radius:5px;display:flex;align-items:center;gap:7px;font-size:12px;color:#c7cfdd">All types<span style="color:#5c6678;font-size:9px">▾</span></div>
+          <div style="height:28px;padding:0 10px 0 9px;background:#1b2030;border:1px solid #2b3345;border-radius:5px;display:flex;align-items:center;gap:7px;width:180px"><span style="color:#5c6678;font-size:11px">⌕</span><span style="font-size:12px;color:#5c6678">Search message</span></div>
+          <div style="flex:1"></div>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8b95a7">7 unacknowledged</span>
+        </div>
+        <div style="border:1px solid #242b3a;border-radius:7px;background:#12161f;overflow:hidden">
+          <div style="display:grid;grid-template-columns:118px 150px 1fr 150px 96px;gap:14px;padding:9px 15px;background:#161b26;border-bottom:1px solid #232936">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#c7cfdd;letter-spacing:0.07em;cursor:pointer">SEVERITY <span style="color:#5fa8e0">↓</span></span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;cursor:pointer">TYPE ↕</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">MESSAGE</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;cursor:pointer">POSITION ↕</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;text-align:right"></span>
+          </div>
+          <sc-for list="{{ alertRows }}" as="r" hint-placeholder-count="10">
+            <div style="display:grid;grid-template-columns:118px 150px 1fr 150px 96px;gap:14px;padding:9px 15px;border-bottom:1px solid #1a1f2b;align-items:center;cursor:pointer;border-left:2px solid {{ r.sevColor }}" style-hover="background:#171c27">
+              <span style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:{{ r.sevColor }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ r.sevColor }}"></span>{{ r.sev }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8b95a7">{{ r.type }}</span>
+              <span style="font-size:12px;color:#dfe4ec">{{ r.msg }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8b95a7">{{ r.pos }}</span>
+              <span style="font-size:11px;color:#5fa8e0;text-align:right">Fly to →</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ isEcon }}">
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto">
+      <sc-if value="{{ isStale }}">
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 18px;background:rgba(217,163,74,0.09);border-bottom:1px solid rgba(217,163,74,0.28);flex:none">
+        <span style="width:5px;height:5px;border-radius:50%;background:#d9a34a"></span>
+        <span style="font-size:11.5px;color:#d9a34a">Showing data from 12:04 · refresh failed (503). Retrying in 15 s.</span>
+        <div style="flex:1"></div>
+        <span style="font-size:11.5px;color:#d9a34a;text-decoration:underline;cursor:pointer">Retry now</span>
+      </div>
+      </sc-if>
+      <div style="display:flex;align-items:center;gap:10px;height:46px;padding:0 18px;border-bottom:1px solid #1c2230;flex:none">
+        <span style="font-size:14px;font-weight:600;color:#f0f3f8">Economy</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6d7789">{{ epEcon }}</span>
+        <div style="height:20px;padding:0 7px;display:flex;align-items:center;gap:5px;border-radius:10px;background:rgba(217,163,74,0.09);border:1px solid rgba(217,163,74,0.28);font-size:10.5px;color:#d9a34a"><span style="width:4px;height:4px;border-radius:50%;background:#d9a34a"></span>pinned to boot snapshot</div>
+        <div style="flex:1"></div>
+        <div style="height:28px;padding:0 10px;background:#1b2030;border:1px solid #2b3345;border-radius:5px;display:flex;align-items:center;gap:7px;font-size:12px;color:#c7cfdd">Top 80<span style="color:#5c6678;font-size:9px">▾</span></div>
+        <div style="height:28px;padding:0 10px 0 9px;background:#1b2030;border:1px solid #2b3345;border-radius:5px;display:flex;align-items:center;gap:7px;width:180px"><span style="color:#5c6678;font-size:11px">⌕</span><span style="font-size:12px;color:#5c6678">Filter prefabs</span></div>
+      </div>
+      <div style="padding:18px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+          <sc-for list="{{ econStats }}" as="s" hint-placeholder-count="4">
+            <div style="padding:13px 15px;background:#161b26;border:1px solid #242b3a;border-radius:7px;display:flex;flex-direction:column;gap:6px">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">{{ s.label }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:500;color:#f0f3f8;letter-spacing:-0.01em">{{ s.value }}</span>
+              <span style="font-size:11px;color:{{ s.deltaColor }}">{{ s.delta }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="border:1px solid #242b3a;border-radius:7px;background:#12161f;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 15px;border-bottom:1px solid #232936"><span style="font-size:12.5px;font-weight:600;color:#dfe4ec">Value by prefab</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6d7789">80 rows</span></div>
+          <div style="padding:6px 0">
+            <sc-for list="{{ econRows }}" as="r" hint-placeholder-count="10">
+              <div style="display:grid;grid-template-columns:210px 1fr 92px 78px 78px;align-items:center;gap:14px;padding:7px 15px;cursor:pointer" style-hover="background:#171c27">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#dfe4ec;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.name }}</span>
+                <div style="height:8px;border-radius:2px;background:#1b2030;overflow:hidden"><div style="height:100%;width:{{ r.pct }};background:{{ r.color }};border-radius:2px"></div></div>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#c7cfdd;text-align:right">{{ r.value }}</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6d7789;text-align:right">{{ r.count }}</span>
+                <span style="font-size:11px;color:#5fa8e0;text-align:right">Fly to →</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ isForensics }}">
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto">
+      <div style="display:flex;align-items:center;gap:10px;height:46px;padding:0 18px;border-bottom:1px solid #1c2230;flex:none">
+        <span style="font-size:14px;font-weight:600;color:#f0f3f8">Coin trail</span>
+        <div style="display:flex;background:#1b2030;border:1px solid #2b3345;border-radius:5px;padding:2px;gap:2px;margin-left:8px">
+          <div onClick="{{ setFor0 }}" style="height:22px;display:flex;align-items:center;padding:0 10px;border-radius:3px;font-size:11.5px;cursor:pointer;background:{{ f0bg }};color:{{ f0color }}">Top caches</div>
+          <div onClick="{{ setFor1 }}" style="height:22px;display:flex;align-items:center;padding:0 10px;border-radius:3px;font-size:11.5px;cursor:pointer;background:{{ f1bg }};color:{{ f1color }}">Issuers</div>
+          <div onClick="{{ setFor2 }}" style="height:22px;display:flex;align-items:center;padding:0 10px;border-radius:3px;font-size:11.5px;cursor:pointer;background:{{ f2bg }};color:{{ f2color }}">Guild gear</div>
+        </div>
+        <div style="height:20px;padding:0 7px;display:flex;align-items:center;gap:5px;border-radius:10px;background:rgba(217,163,74,0.09);border:1px solid rgba(217,163,74,0.28);font-size:10.5px;color:#d9a34a"><span style="width:4px;height:4px;border-radius:50%;background:#d9a34a"></span>pinned to boot snapshot</div>
+        <div style="flex:1"></div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6d7789">{{ forEndpoint }}</span>
+      </div>
+      <div style="padding:18px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 13px;background:#161b26;border:1px solid #242b3a;border-radius:7px">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">SCOPE</span>
+          <div style="height:26px;padding:0 9px;background:#1b2030;border:1px solid #2b3345;border-radius:4px;display:flex;align-items:center;gap:7px;font-size:12px;color:#c7cfdd">{{ forScope }}<span style="color:#5c6678;font-size:9px">▾</span></div>
+          <div style="height:26px;padding:0 9px 0 8px;background:#1b2030;border:1px solid #2b3345;border-radius:4px;display:flex;align-items:center;gap:7px;width:180px"><span style="color:#5c6678;font-size:11px">⌕</span><span style="font-size:12px;color:#5c6678">Search</span></div>
+          <div style="flex:1"></div>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8b95a7">{{ forCount }}</span>
+        </div>
+        <div style="border:1px solid #242b3a;border-radius:7px;background:#12161f;overflow:hidden">
+          <div style="display:grid;grid-template-columns:56px 1fr 150px 110px 110px 96px;gap:14px;padding:9px 15px;background:#161b26;border-bottom:1px solid #232936">
+            <sc-for list="{{ forHead }}" as="h" hint-placeholder-count="6"><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;text-align:{{ h.align }}">{{ h.t }}</span></sc-for>
+          </div>
+          <sc-for list="{{ forRows }}" as="r" hint-placeholder-count="9">
+            <div style="display:grid;grid-template-columns:56px 1fr 150px 110px 110px 96px;gap:14px;padding:9px 15px;border-bottom:1px solid #1a1f2b;cursor:pointer;align-items:center" style-hover="background:#171c27">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#5c6678">{{ r.i }}</span>
+              <span style="font-size:12px;color:#dfe4ec">{{ r.a }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8b95a7">{{ r.b }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#c7cfdd;text-align:right">{{ r.c }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#d9a34a;text-align:right">{{ r.d }}</span>
+              <span style="font-size:11px;color:#5fa8e0;text-align:right">{{ r.e }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ isChanges }}">
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto">
+      <div style="display:flex;align-items:center;gap:10px;height:46px;padding:0 18px;border-bottom:1px solid #1c2230;flex:none">
+        <span style="font-size:14px;font-weight:600;color:#f0f3f8">Changes</span>
+        <div style="height:20px;padding:0 7px;display:flex;align-items:center;gap:5px;border-radius:10px;background:rgba(95,174,127,0.1);border:1px solid rgba(95,174,127,0.3);font-size:10.5px;color:#7cc59a"><span style="width:4px;height:4px;border-radius:50%;background:#5fae7f"></span>snapshot-aware</div>
+        <div style="flex:1"></div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">FROM</span>
+        <div style="height:28px;padding:0 10px;background:#1b2030;border:1px solid #2b3345;border-radius:5px;display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#dfe4ec">#0141 · 6 d ago<span style="color:#5c6678;font-size:9px">▾</span></div>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">TO</span>
+        <div style="height:28px;padding:0 10px;background:#1b2030;border:1px solid #2b3345;border-radius:5px;display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#dfe4ec">#0148 · latest<span style="color:#5c6678;font-size:9px">▾</span></div>
+        <div style="height:28px;padding:0 13px;border-radius:5px;background:#2a4d78;border:1px solid #3a6ea8;font-size:12px;font-weight:500;color:#e7f0fa;display:flex;align-items:center;cursor:pointer">Compare</div>
+      </div>
+      <div style="padding:18px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+          <sc-for list="{{ chStats }}" as="s" hint-placeholder-count="8">
+            <div style="padding:13px 15px;background:#161b26;border:1px solid #242b3a;border-radius:7px;display:flex;flex-direction:column;gap:5px">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">{{ s.label }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:500;color:{{ s.color }};letter-spacing:-0.01em">{{ s.value }}</span>
+              <span style="font-size:11px;color:#6d7789">{{ s.note }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="border:1px solid rgba(217,99,95,0.4);border-left:3px solid #d9635f;border-radius:7px;background:rgba(217,99,95,0.07);padding:12px 15px;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="width:5px;height:5px;border-radius:50%;background:#d9635f"></span><span style="font-size:12.5px;font-weight:600;color:#e8a5a2">These snapshots use different prefab dictionaries</span></div>
+          <span style="font-size:12px;line-height:1.5;color:#c99a97">#0141 was parsed with dictionary <span style="font-family:'IBM Plex Mono',monospace">v3.2.1</span> and #0148 with <span style="font-family:'IBM Plex Mono',monospace">v3.4.0</span>. Per-prefab counts below may be incomparable — the same object can appear under two names. Totals remain valid.</span>
+          <div style="display:flex;gap:8px;margin-top:2px">
+            <div style="height:26px;padding:0 11px;display:flex;align-items:center;border-radius:5px;background:#1b2030;border:1px solid #3a6ea8;font-size:11.5px;color:#dfe4ec;cursor:pointer">Show only shared prefabs</div>
+            <div style="height:26px;padding:0 11px;display:flex;align-items:center;border-radius:5px;border:1px solid #2b3345;font-size:11.5px;color:#8b95a7;cursor:pointer">Dictionary diff</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;padding:9px 13px;background:rgba(217,163,74,0.07);border:1px solid rgba(217,163,74,0.28);border-radius:6px">
+          <span style="width:5px;height:5px;border-radius:50%;background:#d9a34a;flex:none"></span>
+          <span style="font-size:12px;color:#d9a34a">2 prefab ids in the newer snapshot are unresolved. Compare counts may be incomplete.</span>
+          <div style="flex:1"></div>
+          <span style="font-size:11.5px;color:#d9a34a;text-decoration:underline;cursor:pointer">View unresolved</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <sc-for list="{{ chTables }}" as="t" hint-placeholder-count="2">
+            <div style="border:1px solid #242b3a;border-radius:7px;background:#12161f;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:8px;padding:11px 15px;border-bottom:1px solid #232936"><span style="width:6px;height:6px;border-radius:50%;background:{{ t.dot }}"></span><span style="font-size:12.5px;font-weight:600;color:#dfe4ec">{{ t.title }}</span><div style="flex:1"></div><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6d7789">{{ t.count }}</span></div>
+              <div style="display:grid;grid-template-columns:1fr 90px 90px;gap:12px;padding:8px 15px;background:#161b26;border-bottom:1px solid #232936">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;cursor:pointer">PREFAB ↕</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#c7cfdd;letter-spacing:0.07em;text-align:right;cursor:pointer">COUNT <span style="color:#5fa8e0">↓</span></span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;text-align:right">SHARE</span>
+              </div>
+              <sc-for list="{{ t.rows }}" as="r" hint-placeholder-count="7">
+                <div style="display:grid;grid-template-columns:1fr 90px 90px;gap:12px;padding:8px 15px;border-bottom:1px solid #1a1f2b;align-items:center">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#dfe4ec">{{ r.name }}</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:{{ t.dot }};text-align:right">{{ r.count }}</span>
+                  <div style="height:6px;border-radius:2px;background:#1b2030;overflow:hidden;align-self:center"><div style="height:100%;width:{{ r.pct }};background:{{ t.dot }};opacity:0.65"></div></div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ isHistory }}">
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto">
+      <div style="display:flex;align-items:center;gap:10px;height:46px;padding:0 18px;border-bottom:1px solid #1c2230;flex:none">
+        <span style="font-size:14px;font-weight:600;color:#f0f3f8">History</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6d7789">{{ epHistory }}</span>
+        <div style="height:20px;padding:0 7px;display:flex;align-items:center;gap:5px;border-radius:10px;background:rgba(95,174,127,0.1);border:1px solid rgba(95,174,127,0.3);font-size:10.5px;color:#7cc59a"><span style="width:4px;height:4px;border-radius:50%;background:#5fae7f"></span>provenance · all snapshots</div>
+        <div style="flex:1"></div>
+        <div style="height:28px;padding:0 10px;background:#1b2030;border:1px solid #2b3345;border-radius:5px;display:flex;align-items:center;gap:7px;font-size:12px;color:#c7cfdd">All sources<span style="color:#5c6678;font-size:9px">▾</span></div>
+      </div>
+      <div style="padding:18px;display:flex;flex-direction:column;gap:14px">
+        <div style="background:#161b26;border:1px solid #242b3a;border-radius:7px;padding:13px 15px;display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;align-items:baseline;gap:9px"><span style="font-size:12.5px;font-weight:600;color:#dfe4ec">ZDO count across 18 snapshots</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6d7789">day 12 → day 214</span></div>
+          <div style="height:56px;display:flex;align-items:flex-end;gap:5px">
+            <sc-for list="{{ histBars }}" as="b" hint-placeholder-count="18">
+              <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;cursor:pointer"><div style="border-radius:2px 2px 0 0;background:{{ b.color }};height:{{ b.h }}"></div></div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column">
+          <sc-for list="{{ histRows }}" as="s" hint-placeholder-count="6">
+            <div style="display:flex;gap:14px;align-items:stretch">
+              <div style="width:22px;flex:none;display:flex;flex-direction:column;align-items:center;padding-top:16px">
+                <span style="width:9px;height:9px;border-radius:50%;background:{{ s.nodeColor }};border:2px solid #0e1118;box-shadow:0 0 0 2px {{ s.nodeRing }}"></span>
+                <span style="flex:1;width:1px;background:#232936"></span>
+              </div>
+              <div style="flex:1;margin-bottom:10px;background:#12161f;border:1px solid {{ s.cardBorder }};border-radius:7px;padding:12px 15px;display:grid;grid-template-columns:150px 1fr 150px 130px 140px;gap:16px;align-items:center;cursor:pointer" style-hover="background:#171c27">
+                <div style="display:flex;flex-direction:column;gap:3px">
+                  <div style="display:flex;align-items:center;gap:7px"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500;color:#f0f3f8">{{ s.id }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:0.06em;padding:1px 5px;border-radius:8px;color:{{ s.badgeColor }};background:{{ s.badgeBg }};border:1px solid {{ s.badgeBorder }}">{{ s.badge }}</span></div>
+                  <span style="font-size:11px;color:#6d7789">{{ s.when }}</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:3px">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#4e5768;letter-spacing:0.07em">FILE HASH</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8b95a7">{{ s.hash }}</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:3px">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#4e5768;letter-spacing:0.07em">ZDOS</span>
+                  <div style="display:flex;align-items:baseline;gap:7px"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#dfe4ec">{{ s.zdos }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:{{ s.deltaColor }}">{{ s.delta }}</span></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:3px">
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#4e5768;letter-spacing:0.07em">PARSE</span>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8b95a7">{{ s.parse }}</span>
+                </div>
+                <div style="display:flex;gap:7px;justify-content:flex-end">
+                  <span style="font-size:11px;color:#5fa8e0;cursor:pointer">Compare →</span>
+                  <span style="font-size:11px;color:{{ s.activateColor }};cursor:pointer">{{ s.activate }}</span>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ isState }}">
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;height:46px;padding:0 18px;border-bottom:1px solid #1c2230;flex:none">
+        <span style="font-size:14px;font-weight:600;color:#f0f3f8">{{ stateViewName }}</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6d7789">{{ stateEndpoint }}</span>
+        <div style="flex:1"></div>
+      </div>
+      <sc-if value="{{ isLoading }}">
+      <div style="padding:18px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+          <sc-for list="{{ skeletonCards }}" as="c" hint-placeholder-count="4">
+            <div style="padding:13px 15px;background:#161b26;border:1px solid #242b3a;border-radius:7px;display:flex;flex-direction:column;gap:9px">
+              <div style="height:8px;width:52%;border-radius:2px;background:#1f2634"></div>
+              <div style="height:20px;width:74%;border-radius:3px;background:#232b3b"></div>
+              <div style="height:7px;width:38%;border-radius:2px;background:#1c2331"></div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="border:1px solid #242b3a;border-radius:7px;background:#12161f;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:9px;padding:11px 15px;border-bottom:1px solid #232936">
+            <span style="width:11px;height:11px;border-radius:50%;border:2px solid #2b3345;border-top-color:#5fa8e0"></span>
+            <span style="font-size:12px;color:#8b95a7">Loading {{ stateViewLower }}…</span>
+          </div>
+          <sc-for list="{{ skeletonRows }}" as="r" hint-placeholder-count="9">
+            <div style="display:grid;grid-template-columns:210px 1fr 92px;gap:14px;padding:11px 15px;border-bottom:1px solid #1a1f2b;align-items:center">
+              <div style="height:8px;border-radius:2px;background:#1f2634;width:{{ r.a }}"></div>
+              <div style="height:8px;border-radius:2px;background:#1a2130;width:{{ r.b }}"></div>
+              <div style="height:8px;border-radius:2px;background:#1f2634;justify-self:end;width:{{ r.c }}"></div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+      <sc-if value="{{ isEmpty }}">
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px">
+        <div style="max-width:400px;display:flex;flex-direction:column;align-items:center;gap:11px;text-align:center">
+          <div style="width:40px;height:40px;border-radius:9px;border:1px dashed #2b3345;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:15px;color:#4e5768">∅</div>
+          <span style="font-size:13.5px;font-weight:600;color:#dfe4ec">No rows for this filter</span>
+          <span style="font-size:12px;line-height:1.55;color:#8b95a7">Snapshot #0148 has no {{ stateViewLower }} data matching the current filters. Widen the filter, or switch snapshot.</span>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <div style="height:28px;padding:0 13px;display:flex;align-items:center;border-radius:5px;background:#2a4d78;border:1px solid #3a6ea8;font-size:12px;font-weight:500;color:#e7f0fa;cursor:pointer">Clear filters</div>
+            <div style="height:28px;padding:0 13px;display:flex;align-items:center;border-radius:5px;background:#1b2030;border:1px solid #2b3345;font-size:12px;color:#c7cfdd;cursor:pointer">Change snapshot</div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+      <sc-if value="{{ isError }}">
+      <div style="padding:18px">
+        <div style="border:1px solid rgba(217,99,95,0.35);border-left:3px solid #d9635f;border-radius:7px;background:rgba(217,99,95,0.06);padding:15px 17px;display:flex;flex-direction:column;gap:9px">
+          <span style="font-size:13px;font-weight:600;color:#e8a5a2">Request failed</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#c99a97">GET {{ stateEndpointRaw }} → 503 · reader busy rebuilding snapshot index</span>
+          <span style="font-size:12px;line-height:1.55;color:#a8b0be">Views that already have data keep showing it behind a stale-data strip. This panel retries automatically in 15 s.</span>
+          <div style="display:flex;gap:8px;margin-top:2px">
+            <div style="height:28px;padding:0 13px;display:flex;align-items:center;border-radius:5px;background:#1b2030;border:1px solid #3a6ea8;font-size:12px;color:#dfe4ec;cursor:pointer">Retry now</div>
+            <div style="height:28px;padding:0 13px;display:flex;align-items:center;border-radius:5px;background:transparent;border:1px solid #2b3345;font-size:12px;color:#8b95a7;cursor:pointer">Copy request</div>
+          </div>
+        </div>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ isExplore }}">
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto">
+      <div style="display:flex;align-items:center;gap:10px;height:46px;padding:0 18px;border-bottom:1px solid #1c2230;flex:none">
+        <span style="font-size:14px;font-weight:600;color:#f0f3f8">Explore</span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#6d7789">{{ epExplore }}</span>
+        <div style="height:20px;padding:0 7px;display:flex;align-items:center;gap:5px;border-radius:10px;background:rgba(95,174,127,0.1);border:1px solid rgba(95,174,127,0.3);font-size:10.5px;color:#7cc59a"><span style="width:4px;height:4px;border-radius:50%;background:#5fae7f"></span>snapshot-aware</div>
+      </div>
+      <div style="padding:18px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;gap:10px;padding:11px 13px;background:#161b26;border:1px solid #242b3a;border-radius:7px">
+          <div style="display:flex;flex-direction:column;gap:4px;width:260px"><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">PREFAB</span><div style="height:28px;display:flex;align-items:center;padding:0 9px;background:#1b2030;border:1px solid #3a6ea8;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#dfe4ec">prefab_alpha_*<span style="width:1px;height:14px;background:#5fa8e0;margin-left:2px"></span></div></div>
+          <div style="display:flex;flex-direction:column;gap:4px;width:220px"><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">OWNER</span><div style="height:28px;display:flex;align-items:center;padding:0 9px;background:#1b2030;border:1px solid #2b3345;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#5c6678">any</div></div>
+          <div style="display:flex;flex-direction:column;gap:4px"><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em">LIMIT</span><div style="height:28px;display:flex;align-items:center;padding:0 9px;background:#1b2030;border:1px solid #2b3345;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#c7cfdd">100</div></div>
+          <div style="align-self:flex-end;height:28px;padding:0 13px;border-radius:5px;background:#2a4d78;border:1px solid #3a6ea8;font-size:12px;font-weight:500;color:#e7f0fa;cursor:pointer;display:flex;align-items:center;gap:7px">Run query<span style="font-family:'IBM Plex Mono',monospace;font-size:10px;opacity:0.7">↵</span></div>
+          <div style="flex:1"></div>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8b95a7;align-self:flex-end;padding-bottom:7px">4,812 matches · server paging</span>
+        </div>
+        <div style="border:1px solid #242b3a;border-radius:7px;background:#12161f;overflow:hidden">
+          <div style="display:grid;grid-template-columns:120px 1fr 130px 130px 120px;gap:14px;padding:9px 15px;background:#161b26;border-bottom:1px solid #232936">
+            <sc-for list="{{ expHead }}" as="h" hint-placeholder-count="5"><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#6d7789;letter-spacing:0.07em;text-align:{{ h.align }}">{{ h.t }}</span></sc-for>
+          </div>
+          <sc-for list="{{ expRows }}" as="r" hint-placeholder-count="12">
+            <div style="display:grid;grid-template-columns:120px 1fr 130px 130px 120px;gap:14px;padding:8px 15px;border-bottom:1px solid #1a1f2b;align-items:center;cursor:pointer" style-hover="background:#171c27">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#5c6678">{{ r.id }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#dfe4ec">{{ r.prefab }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8b95a7;text-align:right">{{ r.x }}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#8b95a7;text-align:right">{{ r.z }}</span>
+              <span style="font-size:11px;color:#5fa8e0;text-align:right">Fly to →</span>
+            </div>
+          </sc-for>
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 15px">
+            <div style="height:26px;padding:0 10px;display:flex;align-items:center;border-radius:4px;border:1px solid #2b3345;background:#1b2030;font-size:11.5px;color:#5c6678">Prev</div>
+            <div style="height:26px;padding:0 10px;display:flex;align-items:center;border-radius:4px;border:1px solid #2b3345;background:#1b2030;font-size:11.5px;color:#c7cfdd;cursor:pointer">Next</div>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#6d7789">page 1 / 49 · limit/offset, server-side</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:1000},&quot;viewState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ready&quot;,&quot;loading&quot;,&quot;empty&quot;,&quot;error&quot;,&quot;stale&quot;],&quot;default&quot;:&quot;ready&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;States&quot;},&quot;histogramShipped&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Phasing&quot;},&quot;showScopeChip&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Honesty&quot;},&quot;showEndpoints&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Honesty&quot;}}">
+class Component extends DCLogic {
+  state = { view: 'map', opacity: 72, forensics: 0, rasterOn: true, sidebar: true, scope: false, selection: true, ramp: 0 };
+
+  renderVals() {
+    const v = this.state.view;
+    const inWorld = ['map', 'portals', 'econ', 'alerts', 'forensics'].includes(v);
+    const on = '#e7ecf4', off = '#8b95a7';
+    const pill = (a) => a ? '#2a4d78' : 'transparent';
+    const sel = (a) => a ? '#dbe8f7' : off;
+    const f = this.state.forensics;
+    const ep = this.props.showEndpoints !== false;
+    const vs = this.props.viewState ?? 'ready';
+    const ready = vs === 'ready' || vs === 'stale';
+    const names = { map: 'Map', portals: 'Portals', econ: 'Economy', alerts: 'Alerts', forensics: 'Coin trail', changes: 'Changes', history: 'History', explore: 'Explore' };
+    const eps = { map: 'api/v1/rendered/build-density', portals: 'api/v1/portals', econ: 'api/v1/economy?topN=80', alerts: 'api/v1/alerts?limit=2000', forensics: 'api/v1/forensics/top-coin-caches', changes: 'api/v1/db/snapshots/compare', history: 'api/v1/db/snapshots', explore: 'api/v1/db/zdo/query?limit=100' };
+    const echo = (k) => ep ? '/' + eps[k].replace('api/v1/', '') : '';
+    const r = this.state.ramp;
+    const rampSel = (i) => ({
+      border: r === i ? '#3a6ea8' : 'transparent',
+      bg: r === i ? '#1b2434' : 'transparent',
+      text: r === i ? '#dfe4ec' : '#96a0b1',
+      check: r === i ? '#5fa8e0' : 'transparent',
+      mark: r === i ? '✓' : ''
+    });
+    const r0 = rampSel(0), r1 = rampSel(1), r2 = rampSel(2);
+    const histOn = this.props.histogramShipped !== false;
+    const forSets = [
+      { endpoint: '/forensics/top-coin-caches', scope: 'All containers', count: '412 containers with coins',
+        head: [{t:'#',align:'left'},{t:'CONTAINER',align:'left'},{t:'POSITION',align:'left'},{t:'STACKS',align:'right'},{t:'COINS',align:'right'},{t:'',align:'right'}],
+        rows: [1,2,3,4,5,6,7,8,9].map((i) => ({ i: String(i), a: 'container_' + String(i).padStart(2,'0'), b: (-4000 + i*713) + ' / ' + (1200 - i*211), c: String(3 + (i*7)%9), d: (48000 - i*4100).toLocaleString(), e: 'Fly to →' })) },
+      { endpoint: '/forensics/server-issuers', scope: 'All issuers', count: '19 issuers',
+        head: [{t:'#',align:'left'},{t:'ISSUER',align:'left'},{t:'FIRST SEEN',align:'left'},{t:'ITEMS',align:'right'},{t:'VALUE',align:'right'},{t:'',align:'right'}],
+        rows: [1,2,3,4,5,6,7].map((i) => ({ i: String(i), a: 'issuer_' + String(i).padStart(2,'0'), b: 'day ' + (12 + i*19), c: String(140 - i*13), d: (91000 - i*9400).toLocaleString(), e: 'Guild gear →' })) },
+      { endpoint: '/forensics/guild-gear?issuer=issuer_01', scope: 'issuer_01', count: '64 items from issuer_01',
+        head: [{t:'#',align:'left'},{t:'ITEM',align:'left'},{t:'HOLDER',align:'left'},{t:'QUALITY',align:'right'},{t:'VALUE',align:'right'},{t:'',align:'right'}],
+        rows: [1,2,3,4,5,6,7,8].map((i) => ({ i: String(i), a: 'item_' + String(i).padStart(2,'0'), b: 'player_' + String((i*3)%12+1).padStart(2,'0'), c: String(1 + i%4), d: (7400 - i*620).toLocaleString(), e: 'Fly to →' })) }
+    ];
+    const cur = forSets[f];
+    const chRows = (seed) => [1,2,3,4,5,6,7].map((i) => ({ name: 'prefab_' + String(i*seed%17+1).padStart(2,'0'), count: (seed > 1 ? '−' : '+') + (420 - i*47), pct: (96 - i*11) + '%' }));
+    const tag = (live) => live
+      ? { tag: 'LIVE', tagColor: '#7cc59a', tagBg: 'rgba(95,174,127,0.12)', tagBorder: 'rgba(95,174,127,0.3)', color: '#dfe4ec' }
+      : { tag: 'PINNED', tagColor: '#d9a34a', tagBg: 'rgba(217,163,74,0.1)', tagBorder: 'rgba(217,163,74,0.28)', color: '#8b95a7' };
+    const scopeNames = [['Map rasters', true], ['Changes', true], ['Explore', true], ['Map point overlays', false], ['Portals', false], ['Structures', false], ['Economy', false], ['Dropped', false], ['Signs', false], ['Tombstones', false], ['Alerts', false], ['Coin trail', false], ['Players', false], ['Creatures', false]];
+
+    return {
+      inWorld,
+      showScope: this.props.showScopeChip !== false,
+      scopeOpen: this.state.scope,
+      toggleScope: () => this.setState((s) => ({ scope: !s.scope })),
+      scopeList: scopeNames.map(([name, live]) => Object.assign({ name }, tag(live))),
+
+      isState: !ready,
+      isLoading: vs === 'loading', isEmpty: vs === 'empty', isError: vs === 'error', isStale: vs === 'stale',
+      stateViewName: names[v], stateViewLower: names[v].toLowerCase(),
+      stateEndpoint: echo(v), stateEndpointRaw: eps[v],
+      skeletonCards: [1, 2, 3, 4].map((i) => ({ i })),
+      skeletonRows: [1,2,3,4,5,6,7,8,9].map((i) => ({ a: (78 - i * 4) + '%', b: (94 - i * 7) + '%', c: (70 - i * 3) + '%' })),
+
+      isMap: ready && v === 'map', isPortals: ready && v === 'portals', isEcon: ready && v === 'econ',
+      isAlerts: ready && v === 'alerts', isForensics: ready && v === 'forensics',
+      isChanges: ready && v === 'changes', isHistory: ready && v === 'history', isExplore: ready && v === 'explore',
+      goMap: () => this.setState({ view: 'map' }),
+      goPortals: () => this.setState({ view: 'portals' }),
+      goEcon: () => this.setState({ view: 'econ' }),
+      goAlerts: () => this.setState({ view: 'alerts' }),
+      goForensics: () => this.setState({ view: 'forensics' }),
+      goChanges: () => this.setState({ view: 'changes' }),
+      goHistory: () => this.setState({ view: 'history' }),
+      goExplore: () => this.setState({ view: 'explore' }),
+      epPortals: echo('portals'), epEcon: echo('econ'), epAlerts: echo('alerts'), epHistory: echo('history'), epExplore: echo('explore'),
+
+      pWorldBorder: inWorld ? '#5fa8e0' : 'transparent', pWorldColor: inWorld ? on : off,
+      pChangesBorder: v === 'changes' ? '#5fa8e0' : 'transparent', pChangesColor: v === 'changes' ? on : off,
+      pHistBorder: v === 'history' ? '#5fa8e0' : 'transparent', pHistColor: v === 'history' ? on : off,
+      pExploreBorder: v === 'explore' ? '#5fa8e0' : 'transparent', pExploreColor: v === 'explore' ? on : off,
+      sMapBg: pill(v === 'map'), sMapColor: sel(v === 'map'),
+      sPortalsBg: pill(v === 'portals'), sPortalsColor: sel(v === 'portals'),
+      sEconBg: pill(v === 'econ'), sEconColor: sel(v === 'econ'),
+      sAlertsBg: pill(v === 'alerts'), sAlertsColor: sel(v === 'alerts'),
+      sForBg: pill(v === 'forensics'), sForColor: sel(v === 'forensics'),
+
+      sidebarOpen: this.state.sidebar, sidebarClosed: !this.state.sidebar,
+      toggleSidebar: () => this.setState((s) => ({ sidebar: !s.sidebar })),
+      opacity: this.state.opacity,
+      opacityLabel: this.state.opacity + '%',
+      heatOpacity: this.state.rasterOn ? this.state.opacity / 100 : 0,
+      setOpacity: (e) => this.setState({ opacity: Number(e.target.value) }),
+      rasterOn: this.state.rasterOn,
+      toggleRaster: () => this.setState((s) => ({ rasterOn: !s.rasterOn })),
+      rasterTrack: this.state.rasterOn ? '#2a4d78' : '#1b2030',
+      rasterTrackBorder: this.state.rasterOn ? '#3a6ea8' : '#2b3345',
+      rasterJustify: this.state.rasterOn ? 'flex-end' : 'flex-start',
+      rasterKnob: this.state.rasterOn ? '#dbe8f7' : '#5c6678',
+      rasterStateLabel: this.state.rasterOn ? 'ON' : 'OFF',
+      rasterStateColor: this.state.rasterOn ? '#7cc59a' : '#6d7789',
+      rasterBodyOpacity: this.state.rasterOn ? 1 : 0.42,
+      rasterPillDot: this.state.rasterOn ? '#5fae7f' : '#5c6678',
+      rasterPillText: this.state.rasterOn ? 'Build density · 320 m cells · snapshot #0148 · Ember' : 'Raster hidden · point overlays only',
+      setRamp0: () => this.setState({ ramp: 0 }),
+      setRamp1: () => this.setState({ ramp: 1 }),
+      setRamp2: () => this.setState({ ramp: 2 }),
+      r0Border: r0.border, r0Bg: r0.bg, r0Text: r0.text, r0Check: r0.check, r0Mark: r0.mark,
+      r1Border: r1.border, r1Bg: r1.bg, r1Text: r1.text, r1Check: r1.check, r1Mark: r1.mark,
+      r2Border: r2.border, r2Bg: r2.bg, r2Text: r2.text, r2Check: r2.check, r2Mark: r2.mark,
+      legendTicks: [{ at: '2%', v: '1' }, { at: '27%', v: '12' }, { at: '52%', v: '140' }, { at: '76%', v: '1.6k' }, { at: '96%', v: '15,275' }],
+
+      overlays: [
+        { name: 'Portals', count: '218', box: '#4a86c8', fill: '#2a4d78', dot: '#5fa8e0', text: '#dfe4ec', countColor: '#8b95a7', budget: '' },
+        { name: 'Tombstones', count: '1,204', box: '#4a86c8', fill: '#2a4d78', dot: '#d9635f', text: '#dfe4ec', countColor: '#8b95a7', budget: '' },
+        { name: 'Signs', count: '5,000 of 115,402', box: '#2b3345', fill: 'transparent', dot: '#d9a34a', text: '#8b95a7', countColor: '#d9a34a', budget: 'over budget · zoom in to load the rest' },
+        { name: 'Beds', count: '332', box: '#2b3345', fill: 'transparent', dot: '#5fae7f', text: '#8b95a7', countColor: '#5c6678', budget: '' },
+        { name: 'Containers', count: '5,000 of 74,752', box: '#2b3345', fill: 'transparent', dot: '#a98fd4', text: '#8b95a7', countColor: '#d9a34a', budget: 'over budget · zoom in to load the rest' },
+        { name: 'Interiors', count: '2,088', box: '#2b3345', fill: 'transparent', dot: '#7d8ca1', text: '#8b95a7', countColor: '#5c6678', budget: '' }
+      ],
+      histogramOn: histOn, histogramOff: !histOn,
+      phaseTag: histOn ? 'PHASE 1' : 'PHASE 2',
+      phaseColor: histOn ? '#7cc59a' : '#8b95a7',
+      phaseBg: histOn ? 'rgba(95,174,127,0.12)' : '#1b2030',
+      phaseBorder: histOn ? 'rgba(95,174,127,0.3)' : '#2b3345',
+      spark: [12,18,26,22,34,44,38,52,61,48,66,74,58,80,71,64,88,79,92,70,61,84,73,66,58,49,42,36,28,20].map((n) => ({ h: n + '%' })),
+
+      selectionOpen: this.state.selection, selectionClosed: !this.state.selection,
+      openSelection: () => this.setState({ selection: true }),
+      closeSelection: () => this.setState({ selection: false }),
+      selRows: [
+        { name: 'prefab_03', count: '412', owners: '4' },
+        { name: 'prefab_07', count: '288', owners: '2' },
+        { name: 'prefab_11', count: '196', owners: '6' },
+        { name: 'prefab_02', count: '148', owners: '1' },
+        { name: 'prefab_19', count: '124', owners: '3' },
+        { name: 'prefab_24', count: '116', owners: '2' }
+      ],
+
+      portalChips: [
+        { name: 'All', n: '9,417', bg: '#2a4d78', border: '#3a6ea8', color: '#dbe8f7' },
+        { name: 'Paired', n: '8,912', bg: '#1b2030', border: '#2b3345', color: '#96a0b1' },
+        { name: 'Orphaned', n: '128', bg: '#1b2030', border: '#2b3345', color: '#96a0b1' },
+        { name: 'Hub', n: '41', bg: '#1b2030', border: '#2b3345', color: '#96a0b1' },
+        { name: 'Blank tag', n: '304', bg: '#1b2030', border: '#2b3345', color: '#96a0b1' },
+        { name: 'Mismatch', n: '32', bg: '#1b2030', border: '#2b3345', color: '#96a0b1' }
+      ],
+      portalRows: [1,2,3,4,5,6,7,8,9,10,11].map((i) => {
+        const kind = i % 4;
+        const st = kind === 0 ? ['orphaned', '#d9a34a', '—'] : (kind === 1 ? ['paired', '#5fae7f', 'portal_' + String(i + 20)] : (kind === 2 ? ['hub', '#5fa8e0', '4 links'] : ['blank tag', '#7d8ca1', '—']));
+        return { tag: i % 4 === 3 ? '(no tag)' : 'north-gate-' + String(i).padStart(2, '0'), status: st[0], statusColor: st[1], pair: st[2], x: (-3800 + i * 517).toLocaleString(), z: (2400 - i * 313).toLocaleString() };
+      }),
+
+      severityChips: [
+        { name: 'Critical', n: '2', dot: '#d9635f', bg: 'rgba(217,99,95,0.14)', border: 'rgba(217,99,95,0.45)', color: '#e8a5a2' },
+        { name: 'High', n: '5', dot: '#d9a34a', bg: 'rgba(217,163,74,0.12)', border: 'rgba(217,163,74,0.4)', color: '#e0bd80' },
+        { name: 'Medium', n: '38', dot: '#5fa8e0', bg: '#1b2030', border: '#2b3345', color: '#96a0b1' },
+        { name: 'Low', n: '1,815', dot: '#7d8ca1', bg: '#1b2030', border: '#2b3345', color: '#96a0b1' }
+      ],
+      alertRows: [
+        { sev: 'critical', sevColor: '#d9635f', type: 'coin_spike', msg: 'Container gained 41,200 coins between snapshots', pos: '−1,248 / 2,096' },
+        { sev: 'critical', sevColor: '#d9635f', type: 'issuer_unknown', msg: 'Item issued by an id not present in any snapshot', pos: '3,104 / −812' },
+        { sev: 'high', sevColor: '#d9a34a', type: 'portal_orphan', msg: 'Hub portal lost 3 of 4 paired links', pos: '−604 / 1,488' },
+        { sev: 'high', sevColor: '#d9a34a', type: 'structure_overlap', msg: '142 build pieces share one cell', pos: '2,210 / 940' },
+        { sev: 'high', sevColor: '#d9a34a', type: 'gear_quality', msg: 'Quality above craftable maximum for prefab', pos: '−2,880 / 3,050' },
+        { sev: 'medium', sevColor: '#5fa8e0', type: 'dropped_cluster', msg: '1,880 dropped items within 40 m', pos: '512 / −2,140' },
+        { sev: 'medium', sevColor: '#5fa8e0', type: 'bed_owner', msg: 'Bed owner id no longer present in players', pos: '1,704 / 260' },
+        { sev: 'low', sevColor: '#7d8ca1', type: 'prefab_unresolved', msg: 'Prefab hash missing from dictionary v3.4.0', pos: '−418 / −1,902' },
+        { sev: 'low', sevColor: '#7d8ca1', type: 'sign_empty', msg: 'Sign carries no text', pos: '2,960 / 1,118' },
+        { sev: 'low', sevColor: '#7d8ca1', type: 'tomb_stale', msg: 'Tombstone older than 120 in-game days', pos: '−3,320 / 604' }
+      ],
+
+      econStats: [
+        { label: 'TOTAL VALUE', value: '4.81 M', delta: '+3.2% vs #0141', deltaColor: '#5fae7f' },
+        { label: 'CONTAINERS', value: '9,417', delta: '+112 vs #0141', deltaColor: '#5fae7f' },
+        { label: 'DISTINCT PREFABS', value: '284', delta: 'no change', deltaColor: '#6d7789' },
+        { label: 'TOP-10 SHARE', value: '61%', delta: '−1.4% vs #0141', deltaColor: '#d9635f' }
+      ],
+      econRows: [1,2,3,4,5,6,7,8,9,10,11,12].map((i) => ({
+        name: 'prefab_' + String(i).padStart(2,'0'),
+        pct: Math.max(6, 100 - i * 8) + '%',
+        value: (620000 - i * 47000).toLocaleString(),
+        count: (14000 - i * 900).toLocaleString(),
+        color: i <= 3 ? '#5fa8e0' : (i <= 7 ? '#4a86c8' : '#3a6ea8')
+      })),
+
+      forEndpoint: cur.endpoint, forScope: cur.scope, forHead: cur.head, forRows: cur.rows, forCount: cur.count,
+      setFor0: () => this.setState({ forensics: 0 }),
+      setFor1: () => this.setState({ forensics: 1 }),
+      setFor2: () => this.setState({ forensics: 2 }),
+      f0bg: pill(f === 0), f0color: sel(f === 0),
+      f1bg: pill(f === 1), f1color: sel(f === 1),
+      f2bg: pill(f === 2), f2color: sel(f === 2),
+
+      chStats: [
+        { label: 'ZDOS ADDED', value: '+8,412', color: '#5fae7f', note: 'across 162 prefabs' },
+        { label: 'ZDOS REMOVED', value: '−3,109', color: '#d9635f', note: 'across 66 prefabs' },
+        { label: 'NET', value: '+5,303', color: '#f0f3f8', note: '412,908 total' },
+        { label: 'SPAN', value: '6 d', color: '#f0f3f8', note: '#0141 → #0148' },
+        { label: 'CONTAINER ITEMS', value: '+21,470', color: '#5fae7f', note: 'net stacks across 9,417 containers' },
+        { label: 'NEW PORTALS', value: '+14', color: '#5fae7f', note: '2 still orphaned' },
+        { label: 'NEW TOMBSTONES', value: '+38', color: '#d9a34a', note: '11 players affected' },
+        { label: 'PREFABS TOUCHED', value: '162', color: '#f0f3f8', note: '2 unresolved' }
+      ],
+      chTables: [
+        { title: 'Added prefabs', count: '96 rows', dot: '#5fae7f', rows: chRows(1) },
+        { title: 'Removed prefabs', count: '66 rows', dot: '#d9635f', rows: chRows(2) }
+      ],
+
+      histBars: [34,38,41,45,44,49,52,56,55,61,64,68,71,70,76,81,88,94].map((n, i) => ({ h: n + '%', color: i === 17 ? '#5fa8e0' : '#2f5580' })),
+      histRows: [
+        { id: '#0148', badge: 'AM4', when: 'day 214 · 2 h ago', hash: 'e4a1…9c02', zdos: '412,908', delta: '+5,303', deltaColor: '#5fae7f', parse: '38.2 s · v3.4.0', nodeColor: '#5fa8e0', nodeRing: 'rgba(95,168,224,0.3)', cardBorder: '#2f4a6b', badgeColor: '#7cc59a', badgeBg: 'rgba(95,174,127,0.12)', badgeBorder: 'rgba(95,174,127,0.3)', activate: 'active', activateColor: '#7cc59a' },
+        { id: '#0147', badge: 'AM4', when: 'day 212 · 1 d ago', hash: 'b7d3…41ff', zdos: '407,605', delta: '+1,904', deltaColor: '#5fae7f', parse: '37.8 s · v3.4.0', nodeColor: '#3f4a5c', nodeRing: 'rgba(63,74,92,0.4)', cardBorder: '#242b3a', badgeColor: '#7cc59a', badgeBg: 'rgba(95,174,127,0.12)', badgeBorder: 'rgba(95,174,127,0.3)', activate: 'Set active', activateColor: '#8b95a7' },
+        { id: '#0146', badge: 'OMEN', when: 'day 209 · 3 d ago', hash: '10c8…7a5b', zdos: '405,701', delta: '+8,112', deltaColor: '#5fae7f', parse: '41.0 s · v3.4.0', nodeColor: '#3f4a5c', nodeRing: 'rgba(63,74,92,0.4)', cardBorder: '#242b3a', badgeColor: '#a98fd4', badgeBg: 'rgba(169,143,212,0.12)', badgeBorder: 'rgba(169,143,212,0.3)', activate: 'Set active', activateColor: '#8b95a7' },
+        { id: '#0145', badge: 'OMEN', when: 'day 205 · 5 d ago', hash: '9f22…c3d1', zdos: '397,589', delta: '−1,240', deltaColor: '#d9635f', parse: '39.4 s · v3.2.1', nodeColor: '#3f4a5c', nodeRing: 'rgba(63,74,92,0.4)', cardBorder: '#242b3a', badgeColor: '#a98fd4', badgeBg: 'rgba(169,143,212,0.12)', badgeBorder: 'rgba(169,143,212,0.3)', activate: 'Set active', activateColor: '#8b95a7' },
+        { id: '#0141', badge: 'AM4', when: 'day 198 · 6 d ago', hash: '55ea…08b4', zdos: '398,829', delta: '+3,006', deltaColor: '#5fae7f', parse: '36.1 s · v3.2.1', nodeColor: '#3f4a5c', nodeRing: 'rgba(63,74,92,0.4)', cardBorder: '#242b3a', badgeColor: '#7cc59a', badgeBg: 'rgba(95,174,127,0.12)', badgeBorder: 'rgba(95,174,127,0.3)', activate: 'Set active', activateColor: '#8b95a7' },
+        { id: '#0138', badge: 'AM4', when: 'day 190 · 9 d ago', hash: '2ab0…ee79', zdos: '395,823', delta: '+2,411', deltaColor: '#5fae7f', parse: '35.7 s · v3.2.1', nodeColor: '#3f4a5c', nodeRing: 'rgba(63,74,92,0.4)', cardBorder: '#242b3a', badgeColor: '#7cc59a', badgeBg: 'rgba(95,174,127,0.12)', badgeBorder: 'rgba(95,174,127,0.3)', activate: 'Set active', activateColor: '#8b95a7' }
+      ],
+
+      expHead: [{t:'ZDO ID',align:'left'},{t:'PREFAB',align:'left'},{t:'X',align:'right'},{t:'Z',align:'right'},{t:'',align:'right'}],
+      expRows: [1,2,3,4,5,6,7,8,9,10,11,12].map((i) => ({
+        id: '0x' + (0x4a1c00 + i * 977).toString(16),
+        prefab: 'prefab_alpha_' + String(i).padStart(2,'0'),
+        x: (-6000 + i * 811).toLocaleString(),
+        z: (3400 - i * 419).toLocaleString()
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

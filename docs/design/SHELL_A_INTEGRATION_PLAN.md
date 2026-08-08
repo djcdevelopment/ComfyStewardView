@@ -1,15 +1,29 @@
-# Shell A ("Two-level tabs") integration plan
+# Shell A ("Two-level tabs") integration plan — historical
 
-Source mock: `Shell A - Two-level tabs.dc.html` (repo root). It is a design-component
+> Superseded by the [Steward View v4 unified UI and raster comparison roadmap](STEWARD_VIEW_V4_INTEGRATION_PLAN.md).
+> Keep this document as the implementation history for the original two-level shell. The v4
+> mock is canonical for current shell, Map, provenance, raster-mode, and milestone decisions.
+
+Source mock: `design_mocks/Shell A - Two-level tabs.dc.html`. It is a design-component
 prototype (`sc-if`/`sc-for` templates + a `DCLogic` mock class), not usable HTML — this
 plan translates its visual system and information architecture into the real app at
 `viewer/src/main/resources/static/index.html` (Alpine.js + Leaflet + Tabulator, no build
 step). The heatmap raster consolidation (2026-08-08) is a prerequisite and is already in;
 the mock's RASTER LAYER card maps 1:1 onto the consolidated controls.
 
+## Outcome
+
+- Phases 1–3 shipped and now form the v4 shell/workbench baseline: the two-level navigation,
+  Map cards and chrome, view headers, table styling, and Coin trail merge are in production.
+- Phase 4 shipped for the snapshot-aware and DB-backed surfaces (Map, Changes, History, and
+  Explore), including loading/error/retry and stale-raster behavior. Applying that state model
+  consistently to every boot-pinned leaf remains part of v4 M6.
+- The v4 work added snapshot and Changes raster modes beyond this mock's original absolute-raster
+  design. Current behavior and remaining work are tracked only in the v4 plan.
+
 ## What the mock changes, structurally
 
-| Mock | Today | Kind of change |
+| Mock | Pre-integration UI | Kind of change |
 |---|---|---|
 | Two-level nav: 4 primary tabs + grouped pill row inside World | One flat strip of ~18 tabs | Nav restructure |
 | SPATIAL / INVENTORIES / FORENSICS / POPULATION groups | Ungrouped | Nav restructure |
@@ -97,27 +111,29 @@ Each phase below leaves the app fully functional and is a natural commit.
   changes, explore; false for the in-memory views until they're migrated). Cheap to
   ship and matches the design brief's honesty theme.
 
-## Explicitly deferred / open questions
-1. **Forensics merge** — confirm the 3→1 Coin trail merge is wanted (recommended: yes,
-   with `#tab=` redirects).
-2. **Spawn-time sparkline** — needs a data source; defer until a small aggregate endpoint
-   exists. Card restyle ships without it.
-3. **Economy deltas vs previous snapshot** — needs the compare wiring in the Economy
-   loader; defer to a follow-up.
-4. **History tab** — no mock provided; restyle the current snapshot table with Phase 3
-   patterns.
-5. The mock's fixed 1600×1000 frame is a canvas artifact; the real app stays fluid.
+## Historical deferrals and disposition
+
+1. **Forensics merge — delivered.** Top caches, Issuers, and Guild gear are Coin trail
+   segments; the old `#tab=` targets redirect to the correct segment.
+2. **Spawn-time sparkline — still deferred.** It needs a bounded aggregate endpoint. Numeric
+   range inputs remain usable without it.
+3. **Economy deltas vs previous snapshot — still deferred.** The Changes surface owns the
+   implemented comparison workflow.
+4. **History tab — delivered.** It uses the v4 header, provenance, raster-availability, and
+   loading/error patterns.
+5. The mock's fixed 1600×1000 frame remains a canvas artifact; the real app is fluid.
 
 ## Files
 - `viewer/src/main/resources/static/index.html` — all four phases (single-file app).
 - `viewer/HANDOFF.md` — nav/IA notes after Phase 1 and the Coin trail merge.
-- `Shell A - Two-level tabs.dc.html` — reference only; consider moving to
-  `docs/design/` so the repo root stays clean.
+- `design_mocks/Shell A - Two-level tabs.dc.html` — historical reference only.
 
-## Verification per phase
+## Original verification checklist
+
 Run the local server against a rendered cache (`--cache … --render-dir … --port 8013`),
-then: Phase 1 — all 15 leaf views reachable through the new nav, `#tab=` deep links
-land correctly; Phase 2 — raster layer/cell/opacity/scheme all drive the overlay, counts
-match the summary payload; Phase 3 — Coin trail segments hit all three forensics
-endpoints, Tabulator sort/scroll intact; Phase 4 — kill the server mid-session and
-confirm error cards + retry, empty snapshot shows the empty state.
+then: Phase 1 — all leaf views are reachable through the new nav and `#tab=` deep links
+land correctly; Phase 2 — raster layer/cell/opacity/scheme all drive the overlay and counts
+match the summary payload; Phase 3 — Coin trail segments hit all three forensics endpoints
+and Tabulator sort/scroll remains intact; Phase 4 — interrupt a request and confirm error,
+retry, stale-last-success, and empty states. The shipped v4 release additionally passed a live
+AM4 browser smoke of Map and Changes after its code and data publishes.
