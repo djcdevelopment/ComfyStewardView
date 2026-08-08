@@ -32,6 +32,8 @@ import org.slf4j.LoggerFactory;
 import java.awt.Desktop;
 import java.io.File;
 import java.net.URI;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.time.Instant;
 
 /**
@@ -197,12 +199,23 @@ public class Main {
         }
 
         if (renderLayers) {
-            try (AnalyticsCacheReader reader = new AnalyticsCacheReader(cacheFile, renderRoot)) {
-                log.info("Rendering static layers for snapshot {} into {}",
-                    reader.snapshotId(), renderRoot.getAbsolutePath());
-                File manifest = new RenderedLayerBuilder(cacheFile, renderRoot, reader.snapshotId())
-                    .renderDefaults();
-                log.info("Rendered layer manifest: {}", manifest.getAbsolutePath());
+            // Render every snapshot missing a manifest, not just the latest — keeps
+            // multi-snapshot caches (publish appends, ingests) fully rendered and is idempotent.
+            try (AnalyticsCacheReader reader = new AnalyticsCacheReader(cacheFile, renderRoot);
+                 Statement st = reader.connection().createStatement();
+                 ResultSet rs = st.executeQuery("SELECT snapshot_id FROM world_snapshot ORDER BY snapshot_id")) {
+                while (rs.next()) {
+                    long snapId = rs.getLong(1);
+                    if (reader.manifestFile(snapId).exists()) {
+                        log.info("Rendered layers already present for snapshot {}; skipping", snapId);
+                        continue;
+                    }
+                    log.info("Rendering static layers for snapshot {} into {}",
+                        snapId, renderRoot.getAbsolutePath());
+                    File manifest = new RenderedLayerBuilder(cacheFile, renderRoot, snapId)
+                        .renderDefaults();
+                    log.info("Rendered layer manifest: {}", manifest.getAbsolutePath());
+                }
             } catch (Exception e) {
                 log.error("Failed to render static layers", e);
                 System.exit(1);

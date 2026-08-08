@@ -165,16 +165,16 @@
 
     <!-- Sidebar -->
     <aside id="sidebar" class="bg-gray-800 border-r border-gray-700 flex flex-col overflow-hidden flex-shrink-0">
-      <div class="p-3 border-b border-gray-700">
-        <div class="text-sm font-semibold text-gray-300 mb-2">Heatmap Layer</div>
+      <div class="p-3 border-b border-gray-700" x-show="rasterLayerGroups.length > 0">
+        <div class="text-sm font-semibold text-gray-300 mb-2">Heatmap</div>
         <div class="flex gap-2 flex-wrap">
-          <template x-for="layer in heatmapLayers" :key="layer.id">
+          <template x-for="group in rasterLayerGroups" :key="group.layer">
             <button class="px-2 py-1 text-xs rounded border"
-                    :class="activeLayer === layer.id
+                    :class="activeRasterLayer === group.layer
                       ? 'bg-blue-600 border-blue-500 text-white'
                       : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'"
-                    @click="switchHeatmapLayer(layer.id)"
-                    x-text="layer.label"></button>
+                    @click="activeRasterLayer = group.layer; applyRasterLayer()"
+                    x-text="group.label"></button>
           </template>
           <button class="px-2 py-1 text-xs rounded border bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600"
                   :class="showHeatmap ? '' : 'opacity-50'"
@@ -182,26 +182,28 @@
                   x-text="showHeatmap ? 'Hide' : 'Show'"></button>
         </div>
         <div class="mt-2">
+          <label class="text-xs text-gray-400">Resolution</label>
+          <!-- x-effect: the options render after x-model initializes, and if rasterCellSize
+               never changes Alpine never pushes it into the DOM, leaving the first option shown. -->
+          <select x-model.number="rasterCellSize" @change="applyRasterLayer()"
+                  x-effect="rasterCellSizes; rasterCellSize; $nextTick(() => $el.value = String(rasterCellSize))"
+                  class="w-full bg-gray-700 text-gray-200 text-xs rounded px-2 py-1 mt-1">
+            <template x-for="size in rasterCellSizes" :key="size">
+              <option :value="size" x-text="size + 'm cells'"></option>
+            </template>
+          </select>
+        </div>
+        <div class="mt-2">
           <label class="text-xs text-gray-400">Opacity</label>
           <input type="range" min="0.1" max="1" step="0.05" x-model.number="heatmapOpacity"
-                 @input="redrawHeatmap()" class="w-full accent-blue-500"/>
+                 @input="renderedOverlay && renderedOverlay.setOpacity(heatmapOpacity)" class="w-full accent-blue-500"/>
         </div>
         <div class="mt-1">
           <label class="text-xs text-gray-400">Color Scheme</label>
-          <select x-model="heatmapScheme" @change="redrawHeatmap()" class="w-full bg-gray-700 text-gray-200 text-xs rounded px-2 py-1 mt-1">
+          <select x-model="heatmapScheme" @change="recolorizeRaster()" class="w-full bg-gray-700 text-gray-200 text-xs rounded px-2 py-1 mt-1">
             <option value="hot">Hot (blue→red)</option>
             <option value="green">Green density</option>
             <option value="viridis">Viridis</option>
-          </select>
-        </div>
-        <div class="mt-2" x-show="renderedLayers.length > 0">
-          <label class="text-xs text-gray-400">Rendered Layer</label>
-          <select x-model="renderedLayerId" @change="switchRenderedLayer(renderedLayerId)"
-                  class="w-full bg-gray-700 text-gray-200 text-xs rounded px-2 py-1 mt-1">
-            <option value="">None</option>
-            <template x-for="layer in renderedLayers" :key="layer.id">
-              <option :value="layer.id" x-text="layer.label"></option>
-            </template>
           </select>
         </div>
       </div>
@@ -929,23 +931,18 @@ function app() {
 
     // Map state
     map: null,
-    heatmapCanvas: null,
-    heatmapLayer: null,
-    heatmapData: null,
     renderedManifest: null,
     renderedLayers: [],
-    renderedLayerId: '',
     renderedOverlay: null,
-    activeLayer: 'BUILDING',
+    activeRasterLayer: 'build-density',
+    rasterCellSize: 500,
+    rasterLayerGroups: [],
+    rasterCellSizes: [],
+    _rasterImageCache: {},
     showHeatmap: true,
     heatmapOpacity: 0.65,
     heatmapScheme: 'hot',
     mapCoords: '',
-    heatmapLayers: [
-      { id: 'BUILDING',     label: 'Buildings' },
-      { id: 'DROPPED_ITEM', label: 'Dropped' },
-      { id: 'ALL',          label: 'All' },
-    ],
     pointOverlays: [
       { id: 'PORTAL',    label: 'Portals',    color: '#818cf8', active: false, layer: null },
       { id: 'BED',       label: 'Beds',       color: '#fb923c', active: false, layer: null },
@@ -1011,13 +1008,14 @@ function app() {
       await this.pollUntilReady();
       document.getElementById('loading-overlay').classList.add('hidden');
       this.initMap();
-      this.loadRenderedManifest();
       this.loadSummary();
       this.loadWorldSummary();
       // Populate the World Selector up front. It reads its options from the world_ids present
       // in the cache, and those only arrive with the snapshot list -- without this the header
       // dropdown sits empty until someone happens to open the History tab.
-      this.loadSnapshots();
+      // Awaited so the rendered-layer manifest fetch below carries the selected snapshot.
+      await this.loadSnapshots();
+      this.loadRenderedManifest();
       this.switchTab('map');
       // PB6 / screenshot capture: deep-link tabs via URL hash `#tab=<id>`.
       // Also useful for sharing links to specific views.
@@ -1133,38 +1131,6 @@ function app() {
         }
       });
 
-      // Canvas heatmap layer — placed directly in the map container (NOT overlayPane)
-      // so it is NOT subject to leaflet-map-pane's CSS transform during pan.
-      // Content is drawn in container coordinates via latLngToContainerPoint(),
-      // which is always correct regardless of which Leaflet pane is being translated.
-      this.heatmapCanvas = document.createElement('canvas');
-      this.heatmapCanvas.style.position = 'absolute';
-      this.heatmapCanvas.style.left = '0';
-      this.heatmapCanvas.style.top  = '0';
-      this.heatmapCanvas.style.pointerEvents = 'none';
-      this.heatmapCanvas.style.zIndex = '410'; // above overlayPane (400), below markerPane (600)
-      this._heatmapRafPending = false;
-      this.heatmapLayer = new (L.Layer.extend({
-        onAdd: (map) => {
-          map.getContainer().appendChild(this.heatmapCanvas);
-          map.on('move zoomend resize', () => {
-            if (this._heatmapRafPending) return;
-            this._heatmapRafPending = true;
-            requestAnimationFrame(() => {
-              this._heatmapRafPending = false;
-              this.repositionCanvas();
-            });
-          });
-          this.repositionCanvas();
-        },
-        onRemove: (map) => {
-          map.getContainer().removeChild(this.heatmapCanvas);
-          map.off('move zoomend resize');
-        }
-      }))();
-      this.map.addLayer(this.heatmapLayer);
-
-      this.loadHeatmap();
     },
 
     drawGrid() {
@@ -1187,16 +1153,11 @@ function app() {
       L.tooltip(labelStyle).setLatLng(worldToLatLng(0, WORLD_Z_MIN + 1000)).setContent('SOUTH').addTo(this.map);
     },
 
-    async loadHeatmap() {
-      const d = await fetchJson(`${API}/heatmap?type=${this.activeLayer}`);
-      this.heatmapData = d;
-      this.redrawHeatmap();
-    },
-
     async loadRenderedManifest() {
       try {
-        const r = await fetch(`${API}/rendered/manifest`);
-        if (!r.ok) return;
+        const snapParam = this.selectedSnapshotId ? `?snapshot=${this.selectedSnapshotId}` : '';
+        const r = await fetch(`${API}/rendered/manifest${snapParam}`);
+        if (!r.ok) throw new Error(r.status);
         const d = await r.json();
         this.renderedManifest = d;
         this.renderedLayers = d.layers || [];
@@ -1204,80 +1165,104 @@ function app() {
         this.renderedManifest = null;
         this.renderedLayers = [];
       }
+      const labels = { 'build-density': 'Buildings', 'dropped-items': 'Dropped',
+                       'all-zdos': 'All', 'coins': 'Coins' };
+      const seen = [];
+      for (const l of this.renderedLayers) {
+        if (!seen.some(g => g.layer === l.layer)) {
+          seen.push({ layer: l.layer, label: labels[l.layer] || l.label.replace(/ \d+m$/, '') });
+        }
+      }
+      this.rasterLayerGroups = seen;
+      if (seen.length && !seen.some(g => g.layer === this.activeRasterLayer)) {
+        this.activeRasterLayer = seen[0].layer;
+      }
+      this.applyRasterLayer();
     },
 
-    async switchRenderedLayer(layerId) {
+    applyRasterLayer() {
       if (this.renderedOverlay) {
         this.map.removeLayer(this.renderedOverlay);
         this.renderedOverlay = null;
       }
-      if (!layerId) return;
-      const layer = this.renderedLayers.find(l => l.id === layerId);
+      const sizes = this.renderedLayers
+        .filter(l => l.layer === this.activeRasterLayer)
+        .map(l => l.cellSize).sort((a, b) => a - b);
+      this.rasterCellSizes = sizes;
+      if (!sizes.length) return;
+      if (!sizes.includes(this.rasterCellSize)) this.rasterCellSize = sizes.includes(500) ? 500 : sizes[0];
+      if (!this.showHeatmap) return;
+
+      const layer = this.renderedLayers.find(
+        l => l.layer === this.activeRasterLayer && l.cellSize === this.rasterCellSize);
       if (!layer || !layer.bounds) return;
       const b = layer.bounds;
-      this.renderedOverlay = L.imageOverlay(`${API}/rendered/${layer.file}`, [
-        [b.minZ, b.minX],
-        [b.maxZ, b.maxX]
-      ], { opacity: 0.75, interactive: false });
-      this.renderedOverlay.addTo(this.map);
-    },
+      const snapParam = this.selectedSnapshotId ? `?snapshot=${this.selectedSnapshotId}` : '';
+      const url = `${API}/rendered/${layer.file}${snapParam}`;
+      const overlayBounds = [[b.minZ, b.minX], [b.maxZ, b.maxX]];
 
-    repositionCanvas() {
-      if (!this.map || !this.heatmapCanvas || !this.heatmapData) return;
-      const size = this.map.getSize();
-      this.heatmapCanvas.width  = size.x;
-      this.heatmapCanvas.height = size.y;
-      this.redrawHeatmap();
-    },
-
-    redrawHeatmap() {
-      if (!this.map || !this.heatmapData || !this.heatmapCanvas) return;
-      if (!this.showHeatmap) {
-        const ctx = this.heatmapCanvas.getContext('2d');
-        ctx.clearRect(0, 0, this.heatmapCanvas.width, this.heatmapCanvas.height);
+      if (layer.encoding !== 'gray8') {
+        // Legacy pre-colorized raster: show it directly.
+        this.renderedOverlay = L.imageOverlay(url, overlayBounds,
+          { opacity: this.heatmapOpacity, interactive: false }).addTo(this.map);
         return;
       }
 
-      const ctx    = this.heatmapCanvas.getContext('2d');
-      const cells  = this.heatmapData.cells;
-      const maxCnt = this.heatmapData.maxCount || 1;
-      const cs     = this.heatmapData.cellSize;
-      const opacity = this.heatmapOpacity;
-
-      ctx.clearRect(0, 0, this.heatmapCanvas.width, this.heatmapCanvas.height);
-
-      for (const [cx, cz, count] of cells) {
-        if (count === 0) continue;
-        const t = Math.pow(count / maxCnt, 0.4); // gamma compress
-
-        // World corners of this cell
-        const wx0 = cx * cs, wz0 = cz * cs;
-        const wx1 = wx0 + cs, wz1 = wz0 + cs;
-
-        const p0 = this.map.latLngToContainerPoint(worldToLatLng(wx0, wz0));
-        const p1 = this.map.latLngToContainerPoint(worldToLatLng(wx1, wz1));
-
-        const px = Math.min(p0.x, p1.x);
-        const py = Math.min(p0.y, p1.y);
-        const pw = Math.abs(p1.x - p0.x) + 1;
-        const ph = Math.abs(p1.y - p0.y) + 1;
-
-        ctx.globalAlpha = opacity * Math.max(0.05, t);
-        ctx.fillStyle = heatColor(t, this.heatmapScheme);
-        ctx.fillRect(px, py, pw, ph);
-      }
-      ctx.globalAlpha = 1;
+      // Unique token per invocation: two quick calls with the same URL must not both
+      // complete, or their overlays stack. A primitive, because Alpine proxy-wraps
+      // stored objects and identity comparison would always fail.
+      const token = this._rasterToken = (this._rasterToken || 0) + 1;
+      this.colorizeRaster(url).then(dataUrl => {
+        if (this._rasterToken !== token || !dataUrl) return;
+        if (this.renderedOverlay) this.map.removeLayer(this.renderedOverlay);
+        this.renderedOverlay = L.imageOverlay(dataUrl, overlayBounds,
+          { opacity: this.heatmapOpacity, interactive: false }).addTo(this.map);
+      });
     },
 
-    async switchHeatmapLayer(layerId) {
-      this.activeLayer = layerId;
-      this.heatmapData = null;
-      await this.loadHeatmap();
+    // Fetch a gray8 intensity PNG (cached), apply the active color ramp per-pixel,
+    // and return a data URL at native cell resolution — browser upscaling of the
+    // imageOverlay provides the smoothing.
+    async colorizeRaster(url) {
+      let gray = this._rasterImageCache[url];
+      if (!gray) {
+        try {
+          // fetch + createImageBitmap rather than Image.decode(): decode() can stall
+          // indefinitely in throttled/hidden tabs, and a bitmap never touches layout.
+          const resp = await fetch(url);
+          if (!resp.ok) return null;
+          const bmp = await createImageBitmap(await resp.blob());
+          const c = document.createElement('canvas');
+          c.width = bmp.width; c.height = bmp.height;
+          const ctx = c.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(bmp, 0, 0);
+          gray = this._rasterImageCache[url] = ctx.getImageData(0, 0, c.width, c.height);
+        } catch(e) { console.warn('Raster colorize failed:', url, e); return null; }
+      }
+      const lut = buildLut(this.heatmapScheme);
+      const out = new ImageData(gray.width, gray.height);
+      const src = gray.data, dst = out.data;
+      for (let i = 0; i < src.length; i += 4) {
+        if (src[i + 3] === 0) continue; // empty cell stays transparent
+        const o = src[i] * 4;
+        dst[i]     = lut[o];
+        dst[i + 1] = lut[o + 1];
+        dst[i + 2] = lut[o + 2];
+        dst[i + 3] = lut[o + 3];
+      }
+      const c = document.createElement('canvas');
+      c.width = gray.width; c.height = gray.height;
+      c.getContext('2d').putImageData(out, 0, 0);
+      return c.toDataURL();
+    },
+
+    recolorizeRaster() {
+      if (this.renderedOverlay) this.applyRasterLayer();
     },
 
     toggleHeatmap() {
       this.showHeatmap = !this.showHeatmap;
-      this.redrawHeatmap();
+      this.applyRasterLayer();
     },
 
     async toggleOverlay(overlay) {
@@ -1741,6 +1726,8 @@ function app() {
 
     async switchSnapshot(snapshotId) {
       this.selectedSnapshotId = snapshotId;
+      // Raster layers are per-snapshot; swap the manifest (which re-applies the overlay).
+      await this.loadRenderedManifest();
       if (this.primaryTab === 'changes') {
         await this.loadDelta();
       }
@@ -1789,24 +1776,36 @@ function app() {
   };
 }
 
-// Color functions
-function heatColor(t, scheme) {
+// Color functions — the single palette definition; rasters are baked grayscale
+// and colorized in the browser through a LUT built from this ramp.
+function heatColorRgb(t, scheme) {
   switch (scheme) {
     case 'green':
-      return `rgb(${Math.round(20*t)},${Math.round(100 + 155*t)},${Math.round(20*t)})`;
+      return [Math.round(20*t), Math.round(100 + 155*t), Math.round(20*t)];
     case 'viridis': {
       // Simplified viridis approximation
-      const r = Math.round(68 + t * (253 - 68));
-      const g = Math.round(1  + t * (231 - 1));
-      const b = Math.round(84 - t * (84 - 37));
-      return `rgb(${r},${g},${b})`;
+      return [Math.round(68 + t * (253 - 68)),
+              Math.round(1  + t * (231 - 1)),
+              Math.round(84 - t * (84 - 37))];
     }
     default: // hot: blue→cyan→green→yellow→red
-      if (t < 0.25) return `rgb(0,0,${Math.round(255*t*4)})`;
-      if (t < 0.5)  return `rgb(0,${Math.round(255*(t-0.25)*4)},255)`;
-      if (t < 0.75) return `rgb(${Math.round(255*(t-0.5)*4)},255,${Math.round(255*(1-(t-0.5)*4))})`;
-      return `rgb(255,${Math.round(255*(1-(t-0.75)*4))},0)`;
+      if (t < 0.25) return [0, 0, Math.round(255*t*4)];
+      if (t < 0.5)  return [0, Math.round(255*(t-0.25)*4), 255];
+      if (t < 0.75) return [Math.round(255*(t-0.5)*4), 255, Math.round(255*(1-(t-0.5)*4))];
+      return [255, Math.round(255*(1-(t-0.75)*4)), 0];
   }
+}
+
+function buildLut(scheme) {
+  const lut = new Uint8ClampedArray(256 * 4);
+  for (let v = 0; v < 256; v++) {
+    const t = v / 255;
+    const [r, g, b] = heatColorRgb(t, scheme);
+    const o = v * 4;
+    lut[o] = r; lut[o + 1] = g; lut[o + 2] = b;
+    lut[o + 3] = Math.round(50 + 205 * t); // faint floor so sparse cells stay visible
+  }
+  return lut;
 }
 
 // Tabulator number formatter

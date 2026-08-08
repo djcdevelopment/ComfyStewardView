@@ -133,7 +133,8 @@ All endpoints return JSON. Legacy endpoints (portals, players, etc.) use a `{ ap
 | GET | `/api/v1/status` | — | Parse progress; polled by frontend during load |
 | GET | `/api/v1/summary` | — | Store-level stats (ZDOs, categories, player/portal counts) |
 | GET | `/api/v1/world-summary` | — | Full WorldSummary contract with nested stats |
-| GET | `/api/v1/heatmap` | `type=BUILDING\|DROPPED_ITEM\|ALL` | Cell array `[[cx,cz,count],...]` |
+| GET | `/api/v1/rendered/manifest` | `snapshot=N` (optional) | Manifest of pre-rendered raster layers (gray8 PNGs) |
+| GET | `/api/v1/rendered/{file}` | `snapshot=N` (optional) | Raster layer PNG; colorized client-side |
 | GET | `/api/v1/points` | `cat=PORTAL\|BED\|TOMBSTONE\|CONTAINER` `minX/maxX/minZ/maxZ` `limit` | Map overlay points |
 | GET | `/api/v1/portals` | — | Full portal list with pairing info and status |
 | GET | `/api/v1/players` | `sortBy=beds\|deaths\|builds\|portals` | Player records |
@@ -163,7 +164,7 @@ Single HTML file, all dependencies via CDN. No build step. Tech stack:
 
 | Tab | Data Source | Notes |
 |-----|-------------|-------|
-| 🗺 Map | `/api/v1/heatmap` + `/api/v1/points` | Canvas heatmap overlay; point overlays for portals/beds/tombstones/containers/structures |
+| 🗺 Map | `/api/v1/rendered/*` + `/api/v1/points` | Pre-rendered raster heatmap (snapshot-aware, colorized in-browser); point overlays for portals/beds/tombstones/containers/structures |
 | 🌀 Portals | `/api/v1/portals` | Filter by status; click row → fly to map |
 | 👤 Players | `/api/v1/players` | Sort by beds/deaths/builds/portals; click → jump to tombstones |
 | 💰 Economy | `/api/v1/economy` | Bar chart of top 80 items in chests |
@@ -186,9 +187,9 @@ function latLngToWorld(ll)    { return { x: ll.lng, z: ll.lat }; }
 World bounds for ComfyEra14: X [-26500, 26500], Z [-20500, 27500].
 Grid lines every 5000 units. NORTH label = positive Z.
 
-### Heatmap Canvas
+### Heatmap Rasters
 
-The heatmap canvas is placed **directly in the map container** (not in Leaflet's overlay pane). This prevents the CSS transform applied to `leaflet-map-pane` during panning from double-transforming the canvas. Cells are drawn using `latLngToContainerPoint()` which is always correct regardless of pan state. Redrawn on `move`, `zoomend`, `resize` events via `requestAnimationFrame` (deduplicated).
+The map heatmap is a pre-rendered raster: `RenderedLayerBuilder` bakes one grayscale intensity PNG per layer × cell size (per snapshot) from the DuckDB cache, and the frontend colorizes it client-side through a LUT built from the active color scheme, then shows it as an `L.imageOverlay`. Opacity changes call `setOpacity()`; scheme changes re-run the LUT against a cached decode — neither refetches. The in-memory `HeatmapGrid`s still exist server-side for `/status` totals and dropped-item density metrics, but no longer feed the UI.
 
 ---
 
@@ -379,7 +380,7 @@ Brute-force `StableHashCode` matching is no longer the way to resolve a hash —
 and if it is absent there, `GET /api/v1/prefabs/unresolved` is the live worklist.
 
 ### Feature Ideas
-- **Sector density overlay on map** — render hotspot/high sectors as colored rectangles on the heatmap canvas (data already in `/api/v1/sectors`)
+- **Sector density overlay on map** — render hotspot/high sectors as colored rectangles on the map (data already in `/api/v1/sectors`)
 - **Alert suppression / config** — toggle alert types in the UI or config file
 - **Portal map overlay cleanup** — currently shows all 9k portals; could add a "paired only" filter
 - **Player detail page** — click a player → show all their portals, beds, tombstones on the map simultaneously

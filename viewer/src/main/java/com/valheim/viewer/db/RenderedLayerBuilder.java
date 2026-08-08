@@ -21,6 +21,13 @@ public final class RenderedLayerBuilder {
 
     private static final int[] DEFAULT_CELL_SIZES = {64, 320, 500, 1000};
 
+    private static final String[][] LAYERS = {
+        {"build-density", "Build Density"},
+        {"dropped-items", "Dropped Items"},
+        {"all-zdos", "All ZDOs"},
+        {"coins", "Container Coins"},
+    };
+
     private final File cacheFile;
     private final File renderRoot;
     private final long snapshotId;
@@ -46,8 +53,9 @@ public final class RenderedLayerBuilder {
 
         try (Connection conn = DriverManager.getConnection("jdbc:duckdb:" + cacheFile.getAbsolutePath())) {
             for (int cellSize : DEFAULT_CELL_SIZES) {
-                renderLayer(conn, outDir, layers, "build-density", "Build Density", cellSize);
-                renderLayer(conn, outDir, layers, "coins", "Container Coins", cellSize);
+                for (String[] layer : LAYERS) {
+                    renderLayer(conn, outDir, layers, layer[0], layer[1], cellSize);
+                }
             }
         }
 
@@ -87,7 +95,11 @@ public final class RenderedLayerBuilder {
                     int px = cx - bounds.minCx;
                     int py = bounds.maxCz - cz;
                     if (px >= 0 && px < width && py >= 0 && py < height) {
-                        image.setRGB(px, py, heatColor(t));
+                        // Intensity-only pixels: the viewer applies the color ramp client-side.
+                        // Alpha is binary (255 occupied / 0 empty) — partial alpha would quantize
+                        // the gray value through premultiplication when the canvas reads it back.
+                        int v = Math.max(1, (int) Math.round(255 * Math.max(0.0, Math.min(1.0, t))));
+                        image.setRGB(px, py, 0xFF000000 | (v << 16) | (v << 8) | v);
                     }
                 }
             }
@@ -108,7 +120,9 @@ public final class RenderedLayerBuilder {
         b.put("minZ", bounds.minCz * (double) cellSize);
         b.put("maxZ", (bounds.maxCz + 1) * (double) cellSize);
         n.put("maxLog", bounds.maxLog);
+        n.put("maxRaw", bounds.maxRaw);
         n.put("cellCount", bounds.cellCount);
+        n.put("encoding", "gray8");
     }
 
     private void populateCells(Connection conn, String layer, int cellSize) throws SQLException {
@@ -121,12 +135,15 @@ public final class RenderedLayerBuilder {
         }
 
         String sql;
-        if ("build-density".equals(layer)) {
+        if ("build-density".equals(layer) || "dropped-items".equals(layer) || "all-zdos".equals(layer)) {
+            String categoryFilter =
+                "build-density".equals(layer) ? "AND category = 'BUILDING' " :
+                "dropped-items".equals(layer) ? "AND category = 'DROPPED_ITEM' " : "";
             sql =
                 "INSERT INTO render_cell " +
                 "SELECT ?, ?, ?, CAST(FLOOR(x / ?) AS INTEGER) AS cx, CAST(FLOOR(z / ?) AS INTEGER) AS cz, " +
                 "COUNT(*) AS count_value, CAST(COUNT(*) AS DOUBLE) AS sum_value, LN(1 + COUNT(*)) AS log_value " +
-                "FROM zdo WHERE snapshot_id = ? AND category = 'BUILDING' " +
+                "FROM zdo WHERE snapshot_id = ? " + categoryFilter +
                 "AND ABS(x) < 100000 AND ABS(z) < 100000 " +
                 "GROUP BY cx, cz";
         } else if ("coins".equals(layer)) {
@@ -155,7 +172,7 @@ public final class RenderedLayerBuilder {
     private Bounds loadBounds(Connection conn, String layer, int cellSize) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
                 "SELECT MIN(cx) AS min_cx, MAX(cx) AS max_cx, MIN(cz) AS min_cz, MAX(cz) AS max_cz, " +
-                "MAX(log_value) AS max_log, COUNT(*) AS cell_count " +
+                "MAX(log_value) AS max_log, MAX(sum_value) AS max_raw, COUNT(*) AS cell_count " +
                 "FROM render_cell WHERE snapshot_id = ? AND layer = ? AND cell_size = ?")) {
             ps.setLong(1, snapshotId);
             ps.setString(2, layer);
@@ -168,36 +185,11 @@ public final class RenderedLayerBuilder {
                 b.minCz = rs.getInt("min_cz");
                 b.maxCz = rs.getInt("max_cz");
                 b.maxLog = rs.getDouble("max_log");
+                b.maxRaw = rs.getDouble("max_raw");
                 b.cellCount = rs.getLong("cell_count");
                 return b;
             }
         }
-    }
-
-    private static int heatColor(double tRaw) {
-        double t = Math.max(0.0, Math.min(1.0, tRaw));
-        int alpha = (int) Math.round(50 + 205 * t);
-        int r;
-        int g;
-        int b;
-        if (t < 0.25) {
-            r = 0;
-            g = 0;
-            b = (int) Math.round(255 * t * 4);
-        } else if (t < 0.5) {
-            r = 0;
-            g = (int) Math.round(255 * (t - 0.25) * 4);
-            b = 255;
-        } else if (t < 0.75) {
-            r = (int) Math.round(255 * (t - 0.5) * 4);
-            g = 255;
-            b = (int) Math.round(255 * (1 - (t - 0.5) * 4));
-        } else {
-            r = 255;
-            g = (int) Math.round(255 * (1 - (t - 0.75) * 4));
-            b = 0;
-        }
-        return ((alpha & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
     }
 
     private static final class Bounds {
@@ -206,6 +198,7 @@ public final class RenderedLayerBuilder {
         int minCz;
         int maxCz;
         double maxLog;
+        double maxRaw;
         long cellCount;
     }
 }

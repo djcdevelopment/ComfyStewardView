@@ -110,16 +110,28 @@ public final class AnalyticsCacheReader implements AutoCloseable {
         return root;
     }
 
+    public File renderDir() {
+        return renderDir;
+    }
+
     public File manifestFile() {
-        return new File(new File(renderDir, String.valueOf(snapshotId)), "manifest.json");
+        return manifestFile(snapshotId);
+    }
+
+    public File manifestFile(long targetSnapshotId) {
+        return new File(new File(renderDir, String.valueOf(targetSnapshotId)), "manifest.json");
     }
 
     public File renderedFile(String fileName) {
+        return renderedFile(snapshotId, fileName);
+    }
+
+    public File renderedFile(long targetSnapshotId, String fileName) {
         String clean = fileName.replace('\\', '/');
         if (clean.contains("/") || clean.contains("..")) {
             return null;
         }
-        return new File(new File(renderDir, String.valueOf(snapshotId)), clean);
+        return new File(new File(renderDir, String.valueOf(targetSnapshotId)), clean);
     }
 
     public ObjectNode queryZdos(

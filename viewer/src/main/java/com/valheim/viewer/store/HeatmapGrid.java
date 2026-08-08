@@ -75,18 +75,4 @@ public class HeatmapGrid {
         return result;
     }
 
-    /**
-     * Returns top N cells by count, sorted descending.
-     */
-    public List<int[]> getTopCells(int n) {
-        List<int[]> all = getCells();
-        all.sort((a, b) -> Integer.compare(b[2], a[2]));
-        return all.subList(0, Math.min(n, all.size()));
-    }
-
-    /**
-     * Converts cell coordinates back to world coordinates (center of cell).
-     */
-    public float cellToWorldX(int cx) { return cx * cellSize + cellSize / 2.0f; }
-    public float cellToWorldZ(int cz) { return cz * cellSize + cellSize / 2.0f; }
 }

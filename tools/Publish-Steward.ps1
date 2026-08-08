@@ -171,9 +171,9 @@ if (-not $omenWorld) { throw "no rotated backup found in $OmenWorldDir" }
 Write-Host ("      {0} ({1:n1} MB, {2})" -f $omenWorld.Name, ($omenWorld.Length / 1MB), $omenWorld.LastWriteTime)
 
 # --- 4. Build artifacts on OMEN ------------------------------------------
-# The AM4 world goes first and carries --render-layers: RenderedLayerBuilder
-# renders for the cache's current snapshot, and the layers must match the world
-# AM4 parses in memory. The lab world is appended afterwards without rendering.
+# Every run carries --render-layers: it renders each snapshot that is missing a
+# manifest, so both the AM4 world and the appended lab world get raster layers
+# and the viewer's snapshot selector can swap between them.
 # Measured on a 9.16M-ZDO world: ~53s for the first (--rebuild-cache) world, which uses the
 # DuckDB Appender against an empty, unindexed database. Appending a second world is far slower
 # because finish() has already built the indexes and the append writes through them.
@@ -192,11 +192,11 @@ $omenArgs = @(
     $omenWorld.FullName,
     $(if ($first) { '--rebuild-cache' } else { '--build-cache' }),
     '--cache', $cacheFile,
+    '--render-layers', '--render-dir', $renderDir,
     '--world-id', $WorldId, '--world-name', $WorldName,
     '--source', 'omen', '--backup-id', [IO.Path]::GetFileNameWithoutExtension($omenWorld.Name),
     '--batch-only', '--no-browser')
-if ($first) { $omenArgs += @('--render-layers', '--render-dir', $renderDir) }
-Invoke-Batch -Label "omen copy: parse + cache" -Arguments $omenArgs
+Invoke-Batch -Label "omen copy: parse + cache + render" -Arguments $omenArgs
 
 # --- 5. Verify ------------------------------------------------------------
 # Fail closed. The published cache must contain the expected worlds, and the
@@ -231,6 +231,8 @@ if (-not $rows) { throw 'verification failed: no snapshots in the built cache' }
 foreach ($r in $rows) {
     if ($r.ZdoRows -le 0) { throw "snapshot $($r.SnapshotId) (source=$($r.Source)) has no ZDO rows" }
     if (-not $r.Dict)     { throw "snapshot $($r.SnapshotId) (source=$($r.Source)) has no prefab dictionary recorded" }
+    $manifest = Join-Path $renderDir "$($r.SnapshotId)\manifest.json"
+    if (-not (Test-Path $manifest)) { throw "snapshot $($r.SnapshotId) (source=$($r.Source)) has no rendered layer manifest at $manifest" }
 }
 if ($am4World) {
     # Selected by source, not world_id: every snapshot shares one world_id by design.

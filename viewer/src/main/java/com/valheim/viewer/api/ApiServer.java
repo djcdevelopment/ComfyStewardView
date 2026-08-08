@@ -8,6 +8,7 @@ import com.valheim.viewer.contract.Structure;
 import com.valheim.viewer.contract.WorldContracts;
 import com.valheim.viewer.db.AnalyticsCache;
 import com.valheim.viewer.db.AnalyticsCacheReader;
+import com.valheim.viewer.db.RenderedLayerBuilder;
 import com.valheim.viewer.db.SnapshotDeltaEngine;
 import com.valheim.viewer.db.SnapshotIngestService;
 import com.valheim.viewer.db.SnapshotProvenance;
@@ -15,7 +16,6 @@ import com.valheim.viewer.extractor.AlertResult;
 import com.valheim.viewer.extractor.ClassificationStore;
 import com.valheim.viewer.extractor.MetricsResult;
 import com.valheim.viewer.extractor.SectorResult;
-import com.valheim.viewer.store.HeatmapGrid;
 import com.valheim.viewer.store.ZdoFlatStore;
 import com.valheim.viewer.store.ZdoFlatStore.Categories;
 import com.valheim.viewer.store.ZdoFlatStore.PlayerRecord;
@@ -106,9 +106,6 @@ public class ApiServer {
         // Summary stats
         app.get("/api/v1/summary", this::handleSummary);
         app.get("/api/v1/prefabs/unresolved", this::handleUnresolvedPrefabs);
-
-        // Heatmap data — query: ?type=BUILDING|DROPPED_ITEM|ALL&cellSize=500
-        app.get("/api/v1/heatmap", this::handleHeatmap);
 
         // Portal list with pairing info
         app.get("/api/v1/portals", this::handlePortals);
@@ -275,43 +272,6 @@ public class ApiServer {
             ObjectNode n = arr.addObject();
             n.put("hash", e.getKey());
             n.put("count", e.getValue());
-        }
-        ctx.json(root.toString());
-    }
-
-    private void handleHeatmap(Context ctx) {
-        ZdoFlatStore s = requireStore(ctx);
-        if (s == null)
-            return;
-
-        String type = ctx.queryParamAsClass("type", String.class).getOrDefault("BUILDING");
-        HeatmapGrid grid;
-        switch (type.toUpperCase()) {
-            case "DROPPED_ITEM":
-                grid = s.droppedItemHeatmap;
-                break;
-            case "ALL":
-                grid = s.allHeatmap;
-                break;
-            default:
-                grid = s.buildingHeatmap;
-                break;
-        }
-
-        ObjectNode root = envelope(s);
-        root.put("type", type);
-        root.put("cellSize", grid.cellSize);
-        root.put("maxCount", grid.getMaxCount());
-        root.put("totalCount", grid.getTotalCount());
-        root.put("cellCount", grid.getCellCount());
-
-        // All cells: [[cx, cz, count], ...]
-        ArrayNode cellsArr = root.putArray("cells");
-        for (int[] cell : grid.getCells()) {
-            ArrayNode row = cellsArr.addArray();
-            row.add(cell[0]);
-            row.add(cell[1]);
-            row.add(cell[2]);
         }
         ctx.json(root.toString());
     }
@@ -1058,11 +1018,23 @@ public class ApiServer {
 
     // ----- Batch analytics cache handlers -----
 
+    /** Optional ?snapshot=N on rendered routes; absent falls back to the reader's pinned latest. */
+    private Long renderedSnapshotParam(Context ctx) {
+        Long snapshot = longQueryParam(ctx, "snapshot");
+        if (snapshot != null && snapshot <= 0) {
+            ctx.status(400).json("{\"error\":\"snapshot must be positive\"}");
+            return -1L;
+        }
+        return snapshot;
+    }
+
     private void handleRenderedManifest(Context ctx) {
         AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
         if (reader == null) return;
         try {
-            File manifest = reader.manifestFile();
+            Long snapshot = renderedSnapshotParam(ctx);
+            if (snapshot != null && snapshot == -1L) return;
+            File manifest = snapshot != null ? reader.manifestFile(snapshot) : reader.manifestFile();
             if (!manifest.exists()) {
                 ctx.status(404).json("{\"error\":\"rendered manifest not found\"}");
                 return;
@@ -1078,7 +1050,11 @@ public class ApiServer {
         AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
         if (reader == null) return;
         try {
-            File file = reader.renderedFile(ctx.pathParam("file"));
+            Long snapshot = renderedSnapshotParam(ctx);
+            if (snapshot != null && snapshot == -1L) return;
+            File file = snapshot != null
+                ? reader.renderedFile(snapshot, ctx.pathParam("file"))
+                : reader.renderedFile(ctx.pathParam("file"));
             if (file == null) {
                 ctx.status(400).json("{\"error\":\"invalid rendered file\"}");
                 return;
@@ -1177,10 +1153,25 @@ public class ApiServer {
             );
 
             // Run ingestion through writable cache
+            ObjectNode receipt;
             try (AnalyticsCache cache = new AnalyticsCache(reader.dbFile(), false)) {
-                ObjectNode receipt = SnapshotIngestService.processIngest(saveFile, prov, cache);
-                ctx.json(receipt.toString());
+                receipt = SnapshotIngestService.processIngest(saveFile, prov, cache);
             }
+
+            // Render map raster layers for the new snapshot after the writable cache closes.
+            // The snapshot data is already committed, so a render failure degrades, not fails.
+            long newSnapshotId = receipt.path("snapshotId").asLong(0);
+            boolean rendered = false;
+            if (newSnapshotId > 0) {
+                try {
+                    new RenderedLayerBuilder(reader.dbFile(), reader.renderDir(), newSnapshotId).renderDefaults();
+                    rendered = true;
+                } catch (Exception renderEx) {
+                    log.error("Rendered layer build failed for snapshot {}", newSnapshotId, renderEx);
+                }
+            }
+            receipt.put("renderedLayers", rendered);
+            ctx.json(receipt.toString());
         } catch (Exception e) {
             log.error("Snapshot ingestion failed", e);
             ctx.status(500).json("{\"error\":\"snapshot ingestion failed: " + e.getMessage() + "\"}");
