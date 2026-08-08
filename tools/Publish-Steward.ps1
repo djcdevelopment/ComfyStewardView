@@ -274,10 +274,10 @@ foreach ($r in $rows) {
 # its latest six snapshots (at most 15). Validate the manifest contract and every advertised PNG
 # before any artifact can be transferred to AM4.
 $expectedDeltaIds = @(
-    'build-activity-64', 'all-zdos-64',
-    'build-activity-320', 'all-zdos-320',
-    'build-activity-500', 'all-zdos-500',
-    'build-activity-1000', 'all-zdos-1000'
+    'build-activity-64', 'all-zdos-64', 'dropped-items-64', 'coins-64',
+    'build-activity-320', 'all-zdos-320', 'dropped-items-320', 'coins-320',
+    'build-activity-500', 'all-zdos-500', 'dropped-items-500', 'coins-500',
+    'build-activity-1000', 'all-zdos-1000', 'dropped-items-1000', 'coins-1000'
 )
 $deltaPairCount = 0
 foreach ($worldGroup in @($rows | Group-Object WorldId)) {
@@ -297,7 +297,7 @@ foreach ($worldGroup in @($rows | Group-Object WorldId)) {
             if ([long]$deltaManifest.fromSnapshotId -ne $fromId -or [long]$deltaManifest.toSnapshotId -ne $toId) {
                 throw "delta manifest $deltaManifestPath identifies $($deltaManifest.fromSnapshotId) -> $($deltaManifest.toSnapshotId), expected $fromId -> $toId"
             }
-            if ([int]$deltaManifest.schemaVersion -ne 1) {
+            if ([int]$deltaManifest.schemaVersion -ne 2) {
                 throw "delta manifest $deltaManifestPath has unsupported schemaVersion '$($deltaManifest.schemaVersion)'"
             }
             if ([string]$deltaManifest.worldId -ne [string]$worldGroup.Name) {
@@ -345,7 +345,7 @@ foreach ($worldGroup in @($rows | Group-Object WorldId)) {
                 }
                 $layerFields = @($layer.PSObject.Properties.Name)
                 foreach ($requiredField in @('addedMaxRaw', 'removedMaxRaw', 'addedMaxLog',
-                        'removedMaxLog', 'width', 'height', 'empty')) {
+                        'removedMaxLog', 'width', 'height', 'empty', 'units', 'identity')) {
                     if ($layerFields -notcontains $requiredField) {
                         throw "delta layer '$($layer.id)' in $deltaManifestPath does not declare $requiredField"
                     }

@@ -485,9 +485,9 @@
           <div class="flex justify-between endpoint mt-1"><template x-for="(tick,tickIndex) in rasterLegendTicks()" :key="tickIndex"><span x-text="tick.toLocaleString()"></span></template></div>
         </div>
         <div x-show="mapRasterMode==='changes'" class="flex flex-col gap-1.5">
-          <div><div class="flex justify-between endpoint mb-1"><span style="color:#e8a5a2">removed</span><span x-text="deltaLegendMax('removed').toLocaleString()"></span></div><div class="h-2 rounded-sm" style="background:linear-gradient(90deg,#24191d,#743837,#d9635f)"></div></div>
+          <div><div class="flex justify-between endpoint mb-1"><span style="color:#e8a5a2" x-text="deltaChannelCaption('removed')"></span><span x-text="deltaLegendMax('removed').toLocaleString()"></span></div><div class="h-2 rounded-sm" style="background:linear-gradient(90deg,#24191d,#743837,#d9635f)"></div></div>
           <div><div class="flex justify-between endpoint mb-1"><span style="color:#e7dfbd">overlap</span><span>both channels</span></div><div class="h-1.5 rounded-sm" style="background:#e7dfbd"></div></div>
-          <div><div class="flex justify-between endpoint mb-1"><span style="color:#7cc59a">added</span><span x-text="deltaLegendMax('added').toLocaleString()"></span></div><div class="h-2 rounded-sm" style="background:linear-gradient(90deg,#16221c,#2f6948,#5fae7f)"></div></div>
+          <div><div class="flex justify-between endpoint mb-1"><span style="color:#7cc59a" x-text="deltaChannelCaption('added')"></span><span x-text="deltaLegendMax('added').toLocaleString()"></span></div><div class="h-2 rounded-sm" style="background:linear-gradient(90deg,#16221c,#2f6948,#5fae7f)"></div></div>
           <div class="flex justify-between endpoint"><span>1</span><span>independent channel maxima</span><span>MAX</span></div>
         </div>
       </div>
@@ -1689,7 +1689,7 @@ function app() {
 
     activeRasterGroups() {
       if (this.mapRasterMode === 'snapshot') return this.rasterLayerGroups;
-      const labels = { 'build-activity':'Build activity', 'all-zdos':'All ZDOs' };
+      const labels = { 'build-activity':'Build activity', 'all-zdos':'All ZDOs', 'dropped-items':'Dropped', 'coins':'Coins' };
       const groups = [];
       for (const layer of this.deltaRenderedLayers) if (!groups.some(g => g.layer === layer.layer)) groups.push({ layer:layer.layer, label:labels[layer.layer] || layer.label || layer.layer });
       return groups;
@@ -1823,7 +1823,14 @@ function app() {
       const entry = this.activeRasterEntry();
       if (!entry) return 'Raster intensity';
       const label = this.activeRasterGroups().find(g => g.layer === this.activeRasterLayer)?.label || entry.label || this.activeRasterLayer;
-      return `${label} per ${entry.cellSize} m cell`;
+      const units = entry.units === 'coins' ? ' (coin stacks)' : '';
+      return `${label}${units} per ${entry.cellSize} m cell`;
+    },
+
+    deltaChannelCaption(channel) {
+      const entry = this.activeRasterEntry();
+      if (entry?.units === 'coins') return channel === 'removed' ? 'stacks removed' : 'stacks gained';
+      return channel;
     },
 
     rasterLegendTicks() {

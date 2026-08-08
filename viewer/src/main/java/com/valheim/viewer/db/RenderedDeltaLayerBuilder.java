@@ -42,10 +42,15 @@ public final class RenderedDeltaLayerBuilder {
 
     public static final int RECENT_SNAPSHOT_LIMIT = 6;
     public static final int[] CELL_SIZES = {64, 320, 500, 1000};
+    public static final int SCHEMA_VERSION = 2;
 
     private static final Pattern PAIR_DIR = Pattern.compile("[1-9][0-9]*-[1-9][0-9]*");
     private static final String BUILD_ACTIVITY = "build-activity";
     private static final String ALL_ZDOS = "all-zdos";
+    private static final String DROPPED_ITEMS = "dropped-items";
+    private static final String COINS = "coins";
+    private static final String OBJECT_IDENTITY = "prefab-hash+position-cm";
+    private static final String COIN_IDENTITY = "cell-coin-stack-sum";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final File cacheFile;
@@ -140,9 +145,10 @@ public final class RenderedDeltaLayerBuilder {
 
         ChangeSet added = collectChanges(conn, to.snapshotId, from.snapshotId);
         ChangeSet removed = collectChanges(conn, from.snapshotId, to.snapshotId);
+        CoinDelta coins = collectCoinDelta(conn, from.snapshotId, to.snapshotId);
 
         ObjectNode manifest = MAPPER.createObjectNode();
-        manifest.put("schemaVersion", 1);
+        manifest.put("schemaVersion", SCHEMA_VERSION);
         manifest.put("fromSnapshotId", from.snapshotId);
         manifest.put("toSnapshotId", to.snapshotId);
         putNullable(manifest, "worldId", from.worldId);
@@ -169,9 +175,17 @@ public final class RenderedDeltaLayerBuilder {
 
         for (int cellSize : CELL_SIZES) {
             writeLayer(outDir, layers, BUILD_ACTIVITY, "Build Activity", cellSize,
-                added.buildCells.get(cellSize), removed.buildCells.get(cellSize));
+                added.buildCells.get(cellSize), removed.buildCells.get(cellSize),
+                "objects", OBJECT_IDENTITY);
             writeLayer(outDir, layers, ALL_ZDOS, "All ZDO Change", cellSize,
-                added.allCells.get(cellSize), removed.allCells.get(cellSize));
+                added.allCells.get(cellSize), removed.allCells.get(cellSize),
+                "objects", OBJECT_IDENTITY);
+            writeLayer(outDir, layers, DROPPED_ITEMS, "Dropped Item Change", cellSize,
+                added.droppedCells.get(cellSize), removed.droppedCells.get(cellSize),
+                "objects", OBJECT_IDENTITY);
+            writeLayer(outDir, layers, COINS, "Coin Stack Change", cellSize,
+                coins.gained.get(cellSize), coins.lost.get(cellSize),
+                "coins", COIN_IDENTITY);
         }
 
         // The manifest is the completeness marker and is deliberately written last.
@@ -203,6 +217,8 @@ public final class RenderedDeltaLayerBuilder {
                         changes.allCells.get(cellSize).merge(cell, 1L, Long::sum);
                         if ("BUILDING".equals(category)) {
                             changes.buildCells.get(cellSize).merge(cell, 1L, Long::sum);
+                        } else if ("DROPPED_ITEM".equals(category)) {
+                            changes.droppedCells.get(cellSize).merge(cell, 1L, Long::sum);
                         }
                     }
                 }
@@ -211,8 +227,58 @@ public final class RenderedDeltaLayerBuilder {
         return changes;
     }
 
+    /**
+     * Coin stack changes use a per-cell net diff rather than object identity: a partially
+     * emptied container is a stack change on the same object, which the identity predicate
+     * cannot see. Positive net deltas paint the added channel, negative the removed channel.
+     */
+    private CoinDelta collectCoinDelta(Connection conn, long fromSnapshotId, long toSnapshotId)
+            throws SQLException {
+        Map<Integer, Map<Cell, Long>> fromSums = coinCellSums(conn, fromSnapshotId);
+        Map<Integer, Map<Cell, Long>> toSums = coinCellSums(conn, toSnapshotId);
+        CoinDelta delta = new CoinDelta();
+        for (int cellSize : CELL_SIZES) {
+            Map<Cell, Long> from = fromSums.get(cellSize);
+            Map<Cell, Long> to = toSums.get(cellSize);
+            Set<Cell> union = new HashSet<>(from.keySet());
+            union.addAll(to.keySet());
+            for (Cell cell : union) {
+                long net = to.getOrDefault(cell, 0L) - from.getOrDefault(cell, 0L);
+                if (net > 0) delta.gained.get(cellSize).put(cell, net);
+                else if (net < 0) delta.lost.get(cellSize).put(cell, -net);
+            }
+        }
+        return delta;
+    }
+
+    private Map<Integer, Map<Cell, Long>> coinCellSums(Connection conn, long snapshotId)
+            throws SQLException {
+        Map<Integer, Map<Cell, Long>> sums = ChangeSet.cellMaps();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT container_x, container_z, SUM(stack) AS coins FROM container_item " +
+                "WHERE snapshot_id = ? AND item_name = 'Coins' " +
+                "AND ABS(container_x) < 100000 AND ABS(container_z) < 100000 " +
+                "GROUP BY container_x, container_z")) {
+            ps.setLong(1, snapshotId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    double x = rs.getDouble("container_x");
+                    double z = rs.getDouble("container_z");
+                    long coins = rs.getLong("coins");
+                    if (coins <= 0 || !Double.isFinite(x) || !Double.isFinite(z)) continue;
+                    for (int cellSize : CELL_SIZES) {
+                        sums.get(cellSize).merge(
+                            new Cell(gridCoord(x, cellSize), gridCoord(z, cellSize)), coins, Long::sum);
+                    }
+                }
+            }
+        }
+        return sums;
+    }
+
     private void writeLayer(File outDir, ArrayNode layers, String layer, String label, int cellSize,
-            Map<Cell, Long> added, Map<Cell, Long> removed) throws IOException {
+            Map<Cell, Long> added, Map<Cell, Long> removed, String units, String identity)
+            throws IOException {
         Bounds bounds = unionBounds(added, removed);
         boolean empty = bounds == null;
         if (empty) bounds = new Bounds(0, 0, 0, 0);
@@ -259,6 +325,8 @@ public final class RenderedDeltaLayerBuilder {
         n.put("addedRawTotal", addedStats.rawTotal);
         n.put("removedRawTotal", removedStats.rawTotal);
         n.put("encoding", "gray8");
+        n.put("units", units);
+        n.put("identity", identity);
         n.put("empty", empty);
     }
 
@@ -333,7 +401,7 @@ public final class RenderedDeltaLayerBuilder {
         if (!manifestFile.isFile()) return false;
         try {
             var root = MAPPER.readTree(manifestFile);
-            if (root.path("schemaVersion").asInt() != 1 ||
+            if (root.path("schemaVersion").asInt() != SCHEMA_VERSION ||
                     root.path("fromSnapshotId").asLong() != fromSnapshotId ||
                     root.path("toSnapshotId").asLong() != toSnapshotId ||
                     root.path("worldId").asText("").isBlank() ||
@@ -343,17 +411,21 @@ public final class RenderedDeltaLayerBuilder {
                     !validDictionaryCompatibility(root) ||
                     !nonNegativeNumber(root.get("zdosAdded")) ||
                     !nonNegativeNumber(root.get("zdosRemoved")) ||
-                    root.path("layers").size() != CELL_SIZES.length * 2) return false;
+                    root.path("layers").size() != CELL_SIZES.length * 4) return false;
             Set<String> expected = new HashSet<>();
             for (int cellSize : CELL_SIZES) {
                 expected.add(BUILD_ACTIVITY + "-" + cellSize);
                 expected.add(ALL_ZDOS + "-" + cellSize);
+                expected.add(DROPPED_ITEMS + "-" + cellSize);
+                expected.add(COINS + "-" + cellSize);
             }
             for (var layer : root.path("layers")) {
                 JsonNode bounds = layer.path("bounds");
                 int cellSize = layer.path("cellSize").asInt();
                 String layerName = layer.path("layer").asText();
-                if (!"gray8".equals(layer.path("encoding").asText()) ||
+                if (layer.path("units").asText("").isBlank() ||
+                        layer.path("identity").asText("").isBlank() ||
+                        !"gray8".equals(layer.path("encoding").asText()) ||
                         !bounds.isObject() || !finiteNumber(bounds.get("minX")) ||
                         !finiteNumber(bounds.get("maxX")) || !finiteNumber(bounds.get("minZ")) ||
                         !finiteNumber(bounds.get("maxZ")) ||
@@ -479,12 +551,18 @@ public final class RenderedDeltaLayerBuilder {
         long spatialTotal;
         final Map<Integer, Map<Cell, Long>> buildCells = cellMaps();
         final Map<Integer, Map<Cell, Long>> allCells = cellMaps();
+        final Map<Integer, Map<Cell, Long>> droppedCells = cellMaps();
 
-        private static Map<Integer, Map<Cell, Long>> cellMaps() {
+        static Map<Integer, Map<Cell, Long>> cellMaps() {
             Map<Integer, Map<Cell, Long>> result = new HashMap<>();
             for (int cellSize : CELL_SIZES) result.put(cellSize, new HashMap<>());
             return result;
         }
+    }
+
+    private static final class CoinDelta {
+        final Map<Integer, Map<Cell, Long>> gained = ChangeSet.cellMaps();
+        final Map<Integer, Map<Cell, Long>> lost = ChangeSet.cellMaps();
     }
 
     private record SnapshotMetadata(long snapshotId, String worldId, String dictionaryVersion) {}
