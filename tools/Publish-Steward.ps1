@@ -20,15 +20,20 @@
   steward-data volume and touching that marker makes the container skip the
   build entirely and go straight to serve mode. No application change required.
 
-  Two worlds are published under distinct world_ids, so the viewer's World
-  Selector can switch between them:
+  Two copies of the world are published as two snapshots of ONE world_id:
 
-    am4-prod   AM4's live server world, snapshotted on AM4 and pulled to OMEN
-    omen-lab   OMEN's own comfy-valheim-lab world, read from local disk
+    source=am4    the copy on AM4, snapshotted there and pulled to OMEN
+    source=omen   OMEN's own copy, read from a rotated backup on local disk
+
+  These are all copies of the same Era16 save with slight testing drift, not
+  distinct worlds, so they share a world_id and differ by source and backup_id.
+  That is what makes them comparable: the Changes view diffs snapshots within a
+  world, and splitting them into parallel world_ids would make the one
+  interesting question -- what actually differs between the copies -- unaskable.
 
   AM4 still parses a world .db at startup for the in-memory endpoints (about 20
   routes read ZdoFlatStore rather than DuckDB), so the frozen world file stays on
-  AM4. That file is what -Am4WorldId's snapshot must be built from, and the run
+  AM4. That file is what the am4-sourced snapshot must be built from, and the run
   fails closed if the SHA-256 of the two disagree.
 
 .PARAMETER Push
@@ -38,7 +43,7 @@
 
 .PARAMETER SkipAm4World
   Process only OMEN's local world. Useful when AM4 is unreachable; the published
-  cache then contains omen-lab only.
+  cache then contains the omen-sourced snapshot only.
 
 .EXAMPLE
   # Dry run: build both worlds on OMEN, verify, report. Nothing published.
@@ -55,8 +60,12 @@ param(
     [string]$RemoteRoot      = '/home/derek/steward',
     [string]$Am4WorldSource  = '/home/derek/comfy-valheim-lab/server-state/config/worlds_local/ComfyEra16.db',
     [string]$OmenWorldDir    = 'C:\work\baseline\fieldlab\autonomous\state\server\config\worlds_local',
-    [string]$Am4WorldId      = 'am4-prod',
-    [string]$OmenWorldId     = 'omen-lab',
+    # One world id, because these are all copies of the same Era16 save. What differs between
+    # them is which host the copy came from and when, which is what `source` and `backup_id`
+    # record. Giving them separate world_ids would split one world's history into parallel
+    # timelines and make the Changes view unable to diff them.
+    [string]$WorldId         = 'ComfyEra16',
+    [string]$WorldName       = 'Comfy Era 16',
     [string]$WorkDir         = "$env:LOCALAPPDATA\steward-publish",
     [string]$JavaHome        = '',
     [string]$JavaOpts        = '-Xmx8g -Djava.awt.headless=true',
@@ -137,7 +146,7 @@ if (-not $SkipAm4World) {
     if ($localSha -ne $am4Sha) { throw "AM4 world transfer corrupted: remote $am4Sha, local $localSha" }
     Write-Host ("      transfer verified ({0:n1} MB)" -f ((Get-Item $am4World).Length / 1MB))
 } else {
-    Write-Host '[2/7] -SkipAm4World: publishing omen-lab only.'
+    Write-Host '[2/7] -SkipAm4World: publishing the omen-sourced copy only.'
 }
 
 # --- 3. Pick OMEN's world -------------------------------------------------
@@ -159,11 +168,11 @@ Write-Host ("      {0} ({1:n1} MB, {2})" -f $omenWorld.Name, ($omenWorld.Length 
 Write-Host '[4/7] Building analytics cache on OMEN...'
 $first = $true
 if ($am4World) {
-    Invoke-Batch -Label "am4-prod: parse + cache + render" -Arguments @(
+    Invoke-Batch -Label "am4 copy: parse + cache + render" -Arguments @(
         $am4World, '--rebuild-cache', '--cache', $cacheFile,
         '--render-layers', '--render-dir', $renderDir,
-        '--world-id', $Am4WorldId, '--world-name', 'AM4 Production',
-        '--source', 'am4', '--backup-id', ("bak_{0}" -f (Get-Date -Format 'yyyyMMddHHmmss')),
+        '--world-id', $WorldId, '--world-name', $WorldName,
+        '--source', 'am4', '--backup-id', ("am4_{0}" -f (Get-Date -Format 'yyyyMMddHHmmss')),
         '--batch-only', '--no-browser')
     $first = $false
 }
@@ -171,15 +180,15 @@ $omenArgs = @(
     $omenWorld.FullName,
     $(if ($first) { '--rebuild-cache' } else { '--build-cache' }),
     '--cache', $cacheFile,
-    '--world-id', $OmenWorldId, '--world-name', 'OMEN Lab',
+    '--world-id', $WorldId, '--world-name', $WorldName,
     '--source', 'omen', '--backup-id', [IO.Path]::GetFileNameWithoutExtension($omenWorld.Name),
     '--batch-only', '--no-browser')
 if ($first) { $omenArgs += @('--render-layers', '--render-dir', $renderDir) }
-Invoke-Batch -Label "omen-lab: parse + cache" -Arguments $omenArgs
+Invoke-Batch -Label "omen copy: parse + cache" -Arguments $omenArgs
 
 # --- 5. Verify ------------------------------------------------------------
 # Fail closed. The published cache must contain the expected worlds, and the
-# am4-prod snapshot must have been built from the exact bytes AM4 will serve.
+# am4-sourced snapshot must have been built from the exact bytes AM4 will serve.
 Write-Host '[5/7] Verifying built artifacts...'
 $duckJar = Join-Path $repoRoot 'viewer\lib\duckdb_jdbc-1.5.4.0.jar'
 $verifyScript = Join-Path $WorkDir 'verify.jsh'
@@ -187,12 +196,12 @@ $verifyScript = Join-Path $WorkDir 'verify.jsh'
 var url = "jdbc:duckdb:" + System.getProperty("dbpath");
 try (var c = java.sql.DriverManager.getConnection(url); var st = c.createStatement()) {
   var rs = st.executeQuery(
-    "SELECT w.snapshot_id, w.world_id, w.file_hash, w.prefab_dictionary_version, COUNT(z.zdo_index) " +
+    "SELECT w.snapshot_id, w.world_id, w.source, w.file_hash, w.prefab_dictionary_version, COUNT(z.zdo_index) " +
     "FROM world_snapshot w LEFT JOIN zdo z ON z.snapshot_id = w.snapshot_id " +
-    "GROUP BY 1,2,3,4 ORDER BY 1");
+    "GROUP BY 1,2,3,4,5 ORDER BY 1");
   while (rs.next())
-    System.out.println("SNAP\t" + rs.getLong(1) + "\t" + rs.getString(2) + "\t" +
-                       rs.getString(3) + "\t" + rs.getString(4) + "\t" + rs.getLong(5));
+    System.out.println("SNAP\t" + rs.getLong(1) + "\t" + rs.getString(2) + "\t" + rs.getString(3) +
+                       "\t" + rs.getString(4) + "\t" + rs.getString(5) + "\t" + rs.getLong(6));
 }
 /exit
 '@ | Set-Content -Path $verifyScript -Encoding ascii
@@ -201,18 +210,20 @@ $jshell = Join-Path $JavaHome 'bin\jshell.exe'
 $rows = & $jshell --class-path $duckJar "-R-Ddbpath=$cacheFile" -q $verifyScript 2>&1 |
         Where-Object { $_ -match '^SNAP\t' } | ForEach-Object {
             $f = $_ -split "`t"
-            [pscustomobject]@{ SnapshotId=$f[1]; WorldId=$f[2]; FileHash=$f[3]; Dict=$f[4]; ZdoRows=[long]$f[5] }
+            [pscustomobject]@{ SnapshotId=$f[1]; WorldId=$f[2]; Source=$f[3]
+                               FileHash=$f[4]; Dict=$f[5]; ZdoRows=[long]$f[6] }
         }
 $rows | Format-Table -AutoSize | Out-String | Write-Host
 
 if (-not $rows) { throw 'verification failed: no snapshots in the built cache' }
 foreach ($r in $rows) {
-    if ($r.ZdoRows -le 0)      { throw "snapshot $($r.SnapshotId) ($($r.WorldId)) has no ZDO rows" }
-    if (-not $r.Dict)          { throw "snapshot $($r.SnapshotId) ($($r.WorldId)) has no prefab dictionary recorded" }
+    if ($r.ZdoRows -le 0) { throw "snapshot $($r.SnapshotId) (source=$($r.Source)) has no ZDO rows" }
+    if (-not $r.Dict)     { throw "snapshot $($r.SnapshotId) (source=$($r.Source)) has no prefab dictionary recorded" }
 }
 if ($am4World) {
-    $am4Row = $rows | Where-Object { $_.WorldId -eq $Am4WorldId } | Select-Object -First 1
-    if (-not $am4Row) { throw "no $Am4WorldId snapshot in the built cache" }
+    # Selected by source, not world_id: every snapshot shares one world_id by design.
+    $am4Row = $rows | Where-Object { $_.Source -eq 'am4' } | Select-Object -First 1
+    if (-not $am4Row) { throw "no am4-sourced snapshot in the built cache" }
     if ($am4Row.FileHash -ne $am4Sha) {
         throw "consistency gate failed: cache was built from $($am4Row.FileHash) but AM4 serves $am4Sha"
     }

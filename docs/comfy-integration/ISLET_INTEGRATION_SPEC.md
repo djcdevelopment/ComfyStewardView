@@ -62,13 +62,20 @@ straight to serve mode, so moving processing to OMEN needed no application chang
 DuckDB, so the container parses a `.db` at every start (seconds, not minutes). The frozen world
 copy stays on AM4; only the expensive batch build moved.
 
-**Two worlds, two ids.** `am4-prod` is AM4's live server world, snapshotted on AM4 with an
-mtime-stable copy and pulled to OMEN. `omen-lab` is OMEN's own `comfy-valheim-lab` world, read
-from a rotated `*_backup_auto-*.db` on local disk — immutable once written, so it needs no
-torn-copy protection. The viewer's World Selector switches between them.
+**One world, several copies.** Every save in this lab is a copy of the same ComfyEra16 world with
+slight testing drift — AM4's, OMEN's, and the frozen `erasave` copy alike. They therefore share a
+single `world_id` and are distinguished by `source` (`am4`, `omen`) and `backup_id`, not by
+separate world ids. Splitting them would scatter one world's history across parallel timelines
+and make the Changes view unable to diff them, which is the only interesting question to ask of
+two copies. The AM4 copy is snapshotted there with an mtime-stable copy and pulled; OMEN's is read
+from a rotated `*_backup_auto-*.db`, immutable once written and so needing no torn-copy protection.
+
+Measured between two such copies: 43 objects added, 43 removed, 2,366 ownership changes, no net
+item change — wandering fauna and little else. That is what "slight drift" looks like, and it is
+the shape a healthy delta should have here.
 
 **The consistency gate.** `Publish-Steward.ps1` refuses to publish unless the `file_hash` recorded
-in the `am4-prod` snapshot equals the SHA-256 of the world file AM4 will actually serve. Otherwise
+in the am4-sourced snapshot equals the SHA-256 of the world file AM4 will actually serve. Otherwise
 the DuckDB view and the in-memory view would describe different saves. It also fails closed if any
 snapshot has zero ZDO rows or no prefab dictionary recorded.
 
@@ -83,7 +90,8 @@ world pull:
 powershell -ExecutionPolicy Bypass -File .\tools\Publish-Steward.ps1
 ```
 
-Then publish with `-Push`. `-SkipAm4World` builds `omen-lab` only, for when AM4 is unreachable.
+Then publish with `-Push`. `-SkipAm4World` builds the omen-sourced copy only, for when AM4 is
+unreachable.
 
 `Deploy-Steward.ps1` remains the lane for shipping *code* to AM4 (image build + compose up).
 `Publish-Steward.ps1` ships *data*. Deploy when the jar changes; publish when the world changes.
@@ -103,7 +111,7 @@ Because Valheim `.db` save files frequently exceed 1GB, save files are **not** s
 ```json
 {
   "filePath": "C:\\work\\comfy\\erasave\\ComfyEra16.db",
-  "worldId": "am4-prod",
+  "worldId": "ComfyEra16",
   "worldName": "ComfyEra16",
   "source": "am4",
   "backupId": "bak_20260807_020000",
@@ -117,7 +125,7 @@ Because Valheim `.db` save files frequently exceed 1GB, save files are **not** s
 {
   "status": "success",
   "snapshotId": 184,
-  "worldId": "am4-prod",
+  "worldId": "ComfyEra16",
   "worldName": "ComfyEra16",
   "source": "am4",
   "backupId": "bak_20260807_020000",
@@ -192,7 +200,7 @@ Islet renders a summary card on its `Operate -> World History Pipeline` dashboar
 ## 3. Querying History & Snapshot Diffs from Steward
 
 ### List Retained Snapshots
-`GET /api/v1/db/snapshots?worldId=am4-prod`
+`GET /api/v1/db/snapshots?worldId=ComfyEra16`
 
 ### Query Snapshot Delta Summary
 `GET /api/v1/db/snapshots/delta?snapshotId=184`

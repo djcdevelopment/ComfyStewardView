@@ -1,17 +1,17 @@
 ﻿{
-    "started_at":  "2026-08-08T04:40:42.6779848Z",
-    "finished_at":  "2026-08-08T04:41:36.8358560Z",
+    "started_at":  "2026-08-08T07:25:12.4693321Z",
+    "finished_at":  "2026-08-08T07:26:01.1653261Z",
     "pushed":  false,
     "ssh_target":  "am4",
-    "git_sha":  "58055a5",
+    "git_sha":  "5fe79de",
     "am4_world_sha256":  null,
-    "omen_world":  "ComfyEra16_backup_auto-20260807211142.db",
-    "cache_mb":  1197.8,
+    "omen_world":  "ComfyEra16_backup_auto-20260807231143.db",
+    "cache_mb":  1197.5,
     "rendered_mb":  0.1,
     "snapshots":  [
                       {
                           "snapshot_id":  "1",
-                          "world_id":  "omen-lab",
+                          "world_id":  "ComfyEra16",
                           "dictionary":  "0.221.12",
                           "zdo_rows":  9155594
                       }
