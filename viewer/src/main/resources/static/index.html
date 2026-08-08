@@ -343,9 +343,10 @@
           </div>
 
           <div class="flex flex-col gap-1.5" x-show="rasterCellSizes.length">
-            <span class="eyebrow">CELL SIZE</span>
+            <span class="eyebrow">RESOLUTION</span>
             <div class="segmented">
-              <template x-for="size in rasterCellSizes" :key="size"><button class="segment flex-1" :class="{active:Number(rasterCellSize)===Number(size)}" @click="rasterCellSize=Number(size);applyRasterLayer()" x-text="size"></button></template>
+              <button class="segment flex-1" x-show="rasterCellSizes.length > 1" :class="{active:rasterCellSizeMode==='auto'}" @click="rasterCellSizeMode='auto';updateAutoResolution(true)">Auto</button>
+              <template x-for="size in rasterCellSizes" :key="size"><button class="segment flex-1" :class="{active:rasterCellSizeMode!=='auto'&&Number(rasterCellSize)===Number(size)}" @click="rasterCellSizeMode=Number(size);rasterCellSize=Number(size);applyRasterLayer()" x-text="size"></button></template>
             </div>
           </div>
 
@@ -1307,6 +1308,7 @@ function app() {
     renderedOverlay: null,
     activeRasterLayer: 'build-density',
     rasterCellSize: 500,
+    rasterCellSizeMode: 'auto',
     rasterLayerGroups: [],
     rasterCellSizes: [],
     _rasterImageCache: {},
@@ -1542,6 +1544,7 @@ function app() {
         zoomControl: true,
       });
       this.map.fitBounds(bounds.pad(0.2));
+      this.map.on('zoomend', () => this.updateAutoResolution());
 
       // Grid lines (every 5000 units)
       this.drawGrid();
@@ -1748,7 +1751,8 @@ function app() {
         }
         return;
       }
-      if (!sizes.includes(this.rasterCellSize)) this.rasterCellSize = sizes.includes(500) ? 500 : sizes[0];
+      if (this.rasterCellSizeMode === 'auto') this.rasterCellSize = this.autoCellSize(sizes);
+      else if (!sizes.includes(this.rasterCellSize)) this.rasterCellSize = sizes.includes(500) ? 500 : sizes[0];
       if (!this.showHeatmap) { this.removeRasterOverlay(); return; }
 
       const layer = entries.find(l => l.layer === this.activeRasterLayer && Number(l.cellSize) === Number(this.rasterCellSize));
@@ -1896,12 +1900,34 @@ function app() {
       if (!entry) return this.rasterState === 'empty' ? 'Raster has no data' : 'Raster manifest unavailable';
       const label = this.activeRasterGroups().find(g => g.layer === this.activeRasterLayer)?.label || this.activeRasterLayer;
       const source = this.mapRasterMode === 'changes' ? `#${this.deltaFromId} → #${this.deltaToId}` : `snapshot #${this.renderedManifest?.snapshotId ?? this.selectedSnapshotId}`;
-      return `${label} · ${entry.cellSize} m cells · ${source}${this.mapRasterMode === 'snapshot' ? ` · ${this.colorRamps.find(r => r.id === this.heatmapScheme)?.label || 'Ember'}` : ''}${this.rasterState === 'stale' ? ' · stale' : ''}`;
+      const resolution = `${this.rasterCellSizeMode === 'auto' ? 'Auto · ' : ''}${entry.cellSize} m cells`;
+      return `${label} · ${resolution} · ${source}${this.mapRasterMode === 'snapshot' ? ` · ${this.colorRamps.find(r => r.id === this.heatmapScheme)?.label || 'Ember'}` : ''}${this.rasterState === 'stale' ? ' · stale' : ''}`;
     },
     rasterStateColor() { return ({ready:'#5fae7f',loading:'#d9a34a',stale:'#d9a34a',error:'#d9635f',unavailable:'#d9a34a',empty:'#6d7789'})[this.rasterState] || '#6d7789'; },
 
     recolorizeRaster() {
       if (this.mapRasterMode === 'snapshot') this.applyRasterLayer();
+    },
+
+    // CRS.Simple: meters-per-pixel is 2^-zoom, so cellSize * 2^zoom is a cell's on-screen
+    // pixel span. Target ~8 px per cell (log2 = 3) — finer looks noisy, coarser looks blocky.
+    autoCellSize(sizes) {
+      const zoom = this.map ? this.map.getZoom() : 0;
+      let best = sizes[0], bestScore = Infinity;
+      for (const size of sizes) {
+        const score = Math.abs(Math.log2(size * Math.pow(2, zoom)) - 3);
+        if (score < bestScore) { bestScore = score; best = size; }
+      }
+      return best;
+    },
+
+    updateAutoResolution(force) {
+      if (this.rasterCellSizeMode !== 'auto' || !this.rasterCellSizes.length) return;
+      const best = this.autoCellSize(this.rasterCellSizes);
+      if (force || Number(best) !== Number(this.rasterCellSize)) {
+        this.rasterCellSize = best;
+        this.applyRasterLayer();
+      }
     },
 
     toggleHeatmap() {
