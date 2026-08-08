@@ -50,6 +50,12 @@
   powershell -ExecutionPolicy Bypass -File .\tools\Publish-Steward.ps1
 
 .EXAMPLE
+  # Also write each snapshot out as Parquet: lossless, ~10.5x smaller than the
+  # DuckDB cache (113.7 MB vs 1,196 MB measured), and queryable in place --
+  #   SELECT * FROM '<archive>/snapshot-*/zdo.parquet'
+  powershell -ExecutionPolicy Bypass -File .\tools\Publish-Steward.ps1 -Archive
+
+.EXAMPLE
   # Full pipeline including publish to AM4.
   powershell -ExecutionPolicy Bypass -File .\tools\Publish-Steward.ps1 -Push
 #>
@@ -71,7 +77,13 @@ param(
     [string]$JavaOpts        = '-Xmx8g -Djava.awt.headless=true',
     [int]   $TimeoutMinutes  = 30,
     [switch]$SkipAm4World,
-    [switch]$Push
+    [switch]$Push,
+    # Write each snapshot out as Parquet alongside the DuckDB cache. Lossless -- every column of
+    # every row -- but ~10x smaller, and DuckDB reads Parquet directly, so an archived snapshot
+    # stays queryable without an import step. Where the files go afterwards is your business;
+    # this only writes them locally.
+    [switch]$Archive,
+    [string]$ArchiveDir = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -235,6 +247,52 @@ $renderMB = [math]::Round(((Get-ChildItem $renderDir -Recurse -File -ErrorAction
              Measure-Object Length -Sum).Sum / 1MB), 1)
 Write-Host "      artifacts: cache ${cacheMB} MB, rendered ${renderMB} MB"
 
+# --- 5b. Archive ----------------------------------------------------------
+$archiveTotalMB = 0
+if ($Archive) {
+    if (-not $ArchiveDir) { $ArchiveDir = Join-Path $WorkDir 'archive' }
+    Write-Host "[5b/7] Archiving snapshots as Parquet to $ArchiveDir ..."
+    New-Item -ItemType Directory -Force -Path $ArchiveDir | Out-Null
+
+    $stmts = @()
+    foreach ($r in $rows) {
+        $src = if ($r.Source) { $r.Source } else { 'unknown' }   # no ternary: Windows PowerShell 5.1
+        $snapDirName = "snapshot-{0}-{1}" -f $r.SnapshotId, $src
+        $snapDir = Join-Path $ArchiveDir $snapDirName
+        New-Item -ItemType Directory -Force -Path $snapDir | Out-Null
+        $p = $snapDir -replace '\\', '/'
+        $id = $r.SnapshotId
+        # zdo_field is normally empty (--cache-fields is off); skipped deliberately rather than
+        # writing an empty file per snapshot.
+        $stmts += "  st.execute(`"COPY (SELECT * FROM zdo WHERE snapshot_id = $id) TO '$p/zdo.parquet' (FORMAT PARQUET, COMPRESSION ZSTD)`");"
+        $stmts += "  st.execute(`"COPY (SELECT * FROM container_item WHERE snapshot_id = $id) TO '$p/container_item.parquet' (FORMAT PARQUET, COMPRESSION ZSTD)`");"
+        $stmts += "  st.execute(`"COPY (SELECT * FROM world_snapshot WHERE snapshot_id = $id) TO '$p/world_snapshot.parquet' (FORMAT PARQUET, COMPRESSION ZSTD)`");"
+    }
+    $archScript = Join-Path $WorkDir 'archive.jsh'
+    @(
+        'var url = "jdbc:duckdb:" + System.getProperty("dbpath");'
+        'try (var c = java.sql.DriverManager.getConnection(url); var st = c.createStatement()) {'
+        $stmts
+        '  System.out.println("archive-ok");'
+        '}'
+        '/exit'
+    ) | Set-Content -Path $archScript -Encoding ascii
+
+    $archOut = & $jshell --class-path $duckJar "-R-Ddbpath=$cacheFile" -q $archScript 2>&1
+    if ("$archOut" -notmatch 'archive-ok') { throw "parquet archive failed:`n$archOut" }
+
+    $archiveTotalMB = [math]::Round(((Get-ChildItem $ArchiveDir -Recurse -File -Filter '*.parquet' |
+                       Measure-Object Length -Sum).Sum / 1MB), 1)
+    Get-ChildItem $ArchiveDir -Directory | ForEach-Object {
+        $mb = [math]::Round(((Get-ChildItem $_.FullName -File -Filter '*.parquet' |
+               Measure-Object Length -Sum).Sum / 1MB), 1)
+        Write-Host ("      {0}: {1} MB" -f $_.Name, $mb)
+    }
+    Write-Host ("      archive total {0} MB vs {1} MB live cache ({2:n1}x smaller)" -f `
+        $archiveTotalMB, $cacheMB, ($(if ($archiveTotalMB -gt 0) { $cacheMB / $archiveTotalMB } else { 0 })))
+    Write-Host "      Parquet is queryable in place: SELECT * FROM '$($ArchiveDir -replace '\\','/')/snapshot-*/zdo.parquet'"
+}
+
 # --- 6. Publish -----------------------------------------------------------
 if (-not $Push) {
     Write-Host ''
@@ -304,6 +362,9 @@ $receipt = [ordered]@{
     omen_world      = $omenWorld.Name
     cache_mb        = $cacheMB
     rendered_mb     = $renderMB
+    archived        = [bool]$Archive
+    archive_dir     = $(if ($Archive) { $ArchiveDir } else { $null })
+    archive_mb      = $archiveTotalMB
     snapshots       = @($rows | ForEach-Object { [ordered]@{
         snapshot_id = $_.SnapshotId; world_id = $_.WorldId
         dictionary  = $_.Dict;       zdo_rows = $_.ZdoRows } })

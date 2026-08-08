@@ -1,13 +1,16 @@
 ﻿{
-    "started_at":  "2026-08-08T07:25:12.4693321Z",
-    "finished_at":  "2026-08-08T07:26:01.1653261Z",
+    "started_at":  "2026-08-08T07:47:15.0068350Z",
+    "finished_at":  "2026-08-08T07:48:04.1967545Z",
     "pushed":  false,
     "ssh_target":  "am4",
-    "git_sha":  "5fe79de",
+    "git_sha":  "c5cd447",
     "am4_world_sha256":  null,
     "omen_world":  "ComfyEra16_backup_auto-20260807231143.db",
-    "cache_mb":  1197.5,
+    "cache_mb":  1195.5,
     "rendered_mb":  0.1,
+    "archived":  true,
+    "archive_dir":  "C:\\Users\\derek\\AppData\\Local\\Temp\\claude\\C--work-ComfyStewardView\\6610f873-1fd0-4508-a450-aecef14f0684\\scratchpad\\publish3\\archive",
+    "archive_mb":  113.7,
     "snapshots":  [
                       {
                           "snapshot_id":  "1",

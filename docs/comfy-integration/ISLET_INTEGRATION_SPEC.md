@@ -79,9 +79,27 @@ in the am4-sourced snapshot equals the SHA-256 of the world file AM4 will actual
 the DuckDB view and the in-memory view would describe different saves. It also fails closed if any
 snapshot has zero ZDO rows or no prefab dictionary recorded.
 
-**Retention splits by host.** History costs ~1.5 GB per snapshot and belongs on OMEN. AM4 receives
-only the snapshots it serves, so its volume stays bounded. This is the part of "publish the results
-where they are needed" that keeps AM4's disk from growing without limit.
+**Retention splits by host.** History belongs on OMEN; AM4 receives only the snapshots it serves,
+so its volume stays bounded.
+
+**Archive with `-Archive`, which is lossless.** A snapshot costs ~1,196 MB as live DuckDB but
+**113.7 MB as Parquet + zstd — 10.5x smaller with every column of every row retained**, written in
+about three seconds. Files land in `<ArchiveDir>/snapshot-<id>-<source>/{zdo,container_item,
+world_snapshot}.parquet`.
+
+Archived does not mean unreadable. DuckDB queries Parquet in place, so an archive is still a
+first-class dataset with no import step:
+
+```sql
+SELECT category, COUNT(*) FROM '<archive>/snapshot-*/zdo.parquet' GROUP BY 1;
+```
+
+Verified round-trip on a real snapshot: 9,155,594 ZDO rows and 406,511 container items readable
+through that glob, provenance intact, category counts identical to the live cache.
+
+At 113.7 MB a snapshot, storage stops being a planning constraint — 15 GB is roughly 130 snapshots.
+Where the Parquet goes afterwards (cold storage, cloud drive) is outside this tool's remit; it
+writes locally and stops there.
 
 Run it dry first — it builds and verifies locally, touching nothing on AM4 beyond the read-only
 world pull:
@@ -91,7 +109,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\Publish-Steward.ps1
 ```
 
 Then publish with `-Push`. `-SkipAm4World` builds the omen-sourced copy only, for when AM4 is
-unreachable.
+unreachable. `-Archive` additionally writes each snapshot out as Parquet.
 
 `Deploy-Steward.ps1` remains the lane for shipping *code* to AM4 (image build + compose up).
 `Publish-Steward.ps1` ships *data*. Deploy when the jar changes; publish when the world changes.
