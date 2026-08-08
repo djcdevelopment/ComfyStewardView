@@ -1,0 +1,35 @@
+# Architecture diagrams
+
+Hand-authored SVG — no toolchain, no export step. Edit the file directly; the text
+is the source. Each carries `role="img"` and an `aria-label` stating its claim, and
+each is self-contained (a painted background, no external fonts or images), so it
+renders the same in a browser, an IDE preview, or embedded in Markdown.
+
+## Current set
+
+| File | Answers |
+|---|---|
+| [10-system-overview.svg](10-system-overview.svg) | Which host does what, and how artifacts get from OMEN to AM4 |
+| [11-data-flow.svg](11-data-flow.svg) | How a save file becomes an API response, and where prefab names are resolved |
+| [12-contracts.svg](12-contracts.svg) | What crosses every boundary — file formats, DuckDB schema, REST surface, ingest contract |
+| [13-tech-stack.svg](13-tech-stack.svg) | Every runtime dependency with its pinned version, and the constraints behind two of them |
+| [14-tooling-and-lanes.svg](14-tooling-and-lanes.svg) | The code lane vs the data lane, their gates, and why order matters |
+
+Read `10` for orientation, `11` for the mechanism most of the system depends on.
+
+## Superseded
+
+`01-architecture.svg` through `05-extension-map.svg` predate the prefab dictionary,
+the snapshot ingest and delta engine, and the OMEN/AM4 processing split. They are
+kept as a record of the earlier design and should not be trusted as current — in
+particular they show prefab names resolved from a hardcoded table, which is no
+longer how it works.
+
+## Keeping them honest
+
+These carry measured numbers (parse rate, coverage percentage, artifact sizes,
+deploy timings). When a number changes, change it here too — a diagram with a stale
+figure is worse than one with none, because the figure looks authoritative. The
+numbers currently shown were measured on ComfyEra16 at 9,155,594 ZDOs; the
+provenance for each is in [PREFAB_DICTIONARY.md](../PREFAB_DICTIONARY.md) and
+[ISLET_INTEGRATION_SPEC.md](../ISLET_INTEGRATION_SPEC.md).

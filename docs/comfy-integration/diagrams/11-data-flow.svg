@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 720" role="img"
+     aria-label="Data flow from a Valheim world save through the parser. Prefab names are resolved once during parsing, from a verified dictionary loaded before the hand-maintained table; everything downstream keys off that name, which is why an unresolved hash used to degrade five classifiers to unknown."
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <title>Data flow: one parse, and the name resolution everything depends on</title>
+  <style>
+    .bg     { fill: #0d1320; }
+    .box    { fill: #1a2336; stroke: #2a3450; stroke-width: 1; rx: 4; }
+    .accent { fill: #2a1820; stroke: #c66; stroke-width: 1.5; rx: 4; }
+    .sink   { fill: #16241c; stroke: #4a7; stroke-width: 1.2; rx: 4; }
+    .band   { fill: #111a2a; stroke: #232c44; stroke-width: 1; rx: 6; }
+    .hdr    { fill: #fff; font-size: 15px; font-weight: 600; }
+    .title  { fill: #fff; font-size: 12.5px; font-weight: 600; }
+    .label  { fill: #cdd; font-size: 11.5px; }
+    .sub    { fill: #8a94ab; font-size: 10.5px; }
+    .code   { fill: #9c9; font-size: 10.5px; font-family: ui-monospace, monospace; }
+    .arrow  { stroke: #667; stroke-width: 1.5; fill: none; marker-end: url(#arw-df); }
+    .hot    { stroke: #c66; stroke-width: 2; fill: none; marker-end: url(#arw-df-hot); }
+    .edge   { fill: #aab; font-size: 10.5px; }
+    .edgeh  { fill: #d88; font-size: 10.5px; font-weight: 600; }
+  </style>
+  <defs>
+    <marker id="arw-df" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#667"/>
+    </marker>
+    <marker id="arw-df-hot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c66"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1180" height="720"/>
+  <text class="hdr" x="30" y="34">Data flow — one parse feeds an in-memory store and a DuckDB cache</text>
+  <text class="sub" x="30" y="54">A ZDO stores its prefab as an int hash; the name is never in the save file. Resolving it is the hinge the rest of the system turns on.</text>
+
+  <!-- input -->
+  <rect class="box" x="30" y="82" width="210" height="86"/>
+  <text class="title" x="44" y="104">World save (.db)</text>
+  <text class="code"  x="44" y="124">ComfyEra16.db · 1.27 GB</text>
+  <text class="label" x="44" y="142">9,155,594 ZDOs, world v37</text>
+  <text class="sub"   x="44" y="159">read whole into a byte[]</text>
+
+  <!-- name resolution band -->
+  <rect class="band" x="290" y="76" width="330" height="250"/>
+  <text class="title" x="306" y="98">Name resolution — first writer wins</text>
+
+  <rect class="accent" x="306" y="110" width="298" height="76"/>
+  <text class="title" x="320" y="130">1. PrefabDictionary</text>
+  <text class="code"  x="320" y="149">classpath:/prefab-dump.json</text>
+  <text class="label" x="320" y="166">3,458 entries, game 0.221.12</text>
+  <text class="sub"   x="320" y="181">every entry checked: sh(name) == hash</text>
+
+  <rect class="box" x="306" y="196" width="298" height="60"/>
+  <text class="title" x="320" y="216">2. registerKnownNames()</text>
+  <text class="label" x="320" y="234">~90 hand entries — gap-fill only</text>
+  <text class="sub"   x="320" y="250">WARNs when it contradicts the dictionary</text>
+
+  <rect class="box" x="306" y="266" width="298" height="48"/>
+  <text class="title" x="320" y="286">3. dynamic registerHashName()</text>
+  <text class="sub"   x="320" y="303">item names discovered while parsing</text>
+
+  <!-- parser -->
+  <rect class="box" x="290" y="350" width="330" height="104"/>
+  <text class="title" x="306" y="372">WorldParser</text>
+  <text class="label" x="306" y="392">hand-rolled ByteBuffer ZDO reader</text>
+  <text class="sub"   x="306" y="410">~260,000 ZDO/s · the kakoen jar only opens the file</text>
+  <text class="label" x="306" y="431">classifies each ZDO into 14 categories</text>
+  <text class="code"  x="306" y="448">nameForHash(hash) → name  |  "hash:N"</text>
+
+  <!-- stores -->
+  <rect class="box" x="680" y="96" width="290" height="112"/>
+  <text class="title" x="696" y="118">ZdoFlatStore (in memory)</text>
+  <text class="label" x="696" y="138">11 parallel arrays, 884k kept</text>
+  <text class="sub"   x="696" y="156">nature and plain building pieces are counted,</text>
+  <text class="sub"   x="696" y="171">not stored — heatmaps built inline</text>
+  <text class="code"  x="696" y="192">hashToName · players · category index lists</text>
+
+  <rect class="box" x="680" y="228" width="290" height="112"/>
+  <text class="title" x="696" y="250">AnalyticsCache (DuckDB)</text>
+  <text class="code"  x="696" y="270">zdo · container_item · world_snapshot</text>
+  <text class="code"  x="696" y="286">render_cell · snapshot_delta · zdo_field</text>
+  <text class="sub"   x="696" y="304">Appender fast path; indexes built at finish()</text>
+  <text class="sub"   x="696" y="320">zdo_field stays empty unless --cache-fields</text>
+
+  <!-- downstream -->
+  <rect class="box" x="680" y="360" width="290" height="94"/>
+  <text class="title" x="696" y="382">Extractors</text>
+  <text class="label" x="696" y="402">ContractBuilder · TaxonomyClassifier</text>
+  <text class="label" x="696" y="419">EntityClassifier · ContainerClassifier</text>
+  <text class="label" x="696" y="436">StructureDetector · AlertBuilder · Sectors</text>
+  <text class="sub"   x="696" y="450"> </text>
+
+  <rect class="sink" x="1000" y="360" width="150" height="94"/>
+  <text class="title" x="1014" y="382">ApiServer</text>
+  <text class="label" x="1014" y="402">Javalin, 31 routes</text>
+  <text class="sub"   x="1014" y="420">/api/v1/*</text>
+  <text class="sub"   x="1014" y="438">→ Alpine + Leaflet SPA</text>
+
+  <rect class="sink" x="1000" y="228" width="150" height="112"/>
+  <text class="title" x="1014" y="250">RenderedLayer</text>
+  <text class="title" x="1014" y="266">Builder</text>
+  <text class="label" x="1014" y="288">PNG map layers</text>
+  <text class="sub"   x="1014" y="306">build + coins</text>
+  <text class="sub"   x="1014" y="322">64/320/500/1000 m</text>
+
+  <!-- the failure path -->
+  <rect class="accent" x="290" y="490" width="680" height="92"/>
+  <text class="title" x="306" y="512">When a hash has no name, nameForHash returns the literal string "hash:N"</text>
+  <text class="label" x="306" y="534">Five classifiers key off that prefix and degrade to "unknown"; the SPA greys the row out.</text>
+  <text class="label" x="306" y="552">Before the dictionary that was 84% of ZDOs on ComfyEra16 — 7,730,680 of 9,155,594.</text>
+  <text class="code"  x="306" y="572">coverage 15.6% → 99.5%   ·   residual 49,385 ZDOs across 129 hashes, exposed at /api/v1/prefabs/unresolved</text>
+
+  <!-- edges -->
+  <path class="arrow" d="M240 125 L290 125"/>
+  <path class="hot"   d="M455 326 L455 350"/>
+  <text class="edgeh" x="466" y="343">names loaded before the first ZDO is read</text>
+
+  <path class="arrow" d="M620 390 L680 390"/>
+  <path class="arrow" d="M620 380 L650 380 L650 152 L680 152"/>
+  <text class="edge"  x="556" y="172">interesting ZDOs</text>
+  <path class="arrow" d="M620 400 L650 400 L650 284 L680 284"/>
+  <text class="edge"  x="556" y="300">every ZDO</text>
+
+  <path class="arrow" d="M970 407 L1000 407"/>
+  <path class="arrow" d="M970 284 L1000 284"/>
+  <path class="arrow" d="M825 208 L825 228"/>
+  <path class="arrow" d="M825 340 L825 360"/>
+
+  <path class="hot" d="M630 536 L676 536 L676 460"/>
+  <text class="edgeh" x="990" y="500">the fix removes this path</text>
+</svg>

@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 740" role="img"
+     aria-label="Two independent shipping lanes. The code lane tars a whitelist and builds the image on AM4; the data lane builds artifacts on OMEN, gates on a SHA-256 match, then installs them into AM4's volume and touches the cache marker. Deploy when the jar changes, publish when the world changes."
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <title>Tooling: the code lane, the data lane, and the gates on each</title>
+  <style>
+    .bg     { fill: #0d1320; }
+    .band   { fill: #111a2a; stroke: #232c44; stroke-width: 1; rx: 6; }
+    .box    { fill: #1a2336; stroke: #2a3450; stroke-width: 1; rx: 4; }
+    .gate   { fill: #2a1820; stroke: #c66; stroke-width: 1.5; rx: 4; }
+    .ok     { fill: #16241c; stroke: #4a7; stroke-width: 1.2; rx: 4; }
+    .hdr    { fill: #fff; font-size: 15px; font-weight: 600; }
+    .band-t { fill: #fff; font-size: 13px; font-weight: 600; }
+    .title  { fill: #fff; font-size: 12px; font-weight: 600; }
+    .label  { fill: #cdd; font-size: 11px; }
+    .sub    { fill: #8a94ab; font-size: 10.5px; }
+    .code   { fill: #9c9; font-size: 10.5px; font-family: ui-monospace, monospace; }
+    .arrow  { stroke: #667; stroke-width: 1.5; fill: none; marker-end: url(#arw-tl); }
+    .hot    { stroke: #c66; stroke-width: 2; fill: none; marker-end: url(#arw-tl-hot); }
+    .edge   { fill: #aab; font-size: 10.5px; }
+    .n      { fill: #7d86a8; font-size: 15px; font-weight: 700; }
+  </style>
+  <defs>
+    <marker id="arw-tl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#667"/>
+    </marker>
+    <marker id="arw-tl-hot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c66"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1180" height="740"/>
+  <text class="hdr" x="30" y="34">Tooling — two lanes that ship different things</text>
+  <text class="sub" x="30" y="54">Deploy when the jar changes. Publish when the world changes. The code lane must go first: published data built by a new jar served by an old one gives a viewer whose map and DuckDB views disagree.</text>
+
+  <!-- local dev -->
+  <rect class="band" x="30" y="76" width="250" height="270"/>
+  <text class="band-t" x="46" y="98">Local / dev</text>
+
+  <rect class="box" x="46" y="110" width="218" height="72"/>
+  <text class="title" x="60" y="130">Start-Viewer.ps1</text>
+  <text class="label" x="60" y="149">one-step launcher</text>
+  <text class="sub"   x="60" y="166">downloads Maven into .tools/,</text>
+  <text class="sub"   x="60" y="178">builds, opens the browser</text>
+
+  <rect class="box" x="46" y="194" width="218" height="62"/>
+  <text class="title" x="60" y="214">mvn package</text>
+  <text class="code"  x="60" y="232">-DskipTests</text>
+  <text class="sub"   x="60" y="248">→ world-viewer-1.0.0.jar (89 MB)</text>
+
+  <rect class="box" x="46" y="268" width="218" height="62"/>
+  <text class="title" x="60" y="288">--probe-hash</text>
+  <text class="label" x="60" y="306">identity diagnostic</text>
+  <text class="sub"   x="60" y="322">property presence with denominators</text>
+
+  <!-- code lane -->
+  <rect class="band" x="310" y="76" width="410" height="270"/>
+  <text class="band-t" x="326" y="98">Code lane — Deploy-Steward.ps1</text>
+
+  <text class="n" x="326" y="128">1</text>
+  <rect class="box" x="348" y="110" width="356" height="40"/>
+  <text class="label" x="362" y="128">tar a 9-file whitelist → scp → AM4</text>
+  <text class="sub"   x="362" y="143">source only; the image is built on the target</text>
+
+  <text class="n" x="326" y="176">2</text>
+  <rect class="box" x="348" y="158" width="356" height="52"/>
+  <text class="label" x="362" y="176">−RefreshWorld: mtime-stable world snapshot</text>
+  <text class="sub"   x="362" y="192">retries up to 3× if the live server saves mid-copy;</text>
+  <text class="sub"   x="362" y="205">wipes steward-data so the cache rebuilds</text>
+
+  <text class="n" x="326" y="236">3</text>
+  <rect class="box" x="348" y="218" width="356" height="40"/>
+  <text class="code"  x="362" y="236">docker compose up -d --build</text>
+  <text class="sub"   x="362" y="251">port collision check first, via ss -ltn</text>
+
+  <text class="n" x="326" y="284">4</text>
+  <rect class="ok" x="348" y="266" width="356" height="62"/>
+  <text class="label" x="362" y="284">poll /api/v1/status until done:true</text>
+  <text class="sub"   x="362" y="300">30 min budget; measured 1 m 43 s</text>
+  <text class="sub"   x="362" y="316">verify public URL → deploy-steward-receipt.json</text>
+
+  <!-- data lane -->
+  <rect class="band" x="750" y="76" width="400" height="466"/>
+  <text class="band-t" x="766" y="98">Data lane — Publish-Steward.ps1</text>
+  <text class="sub" x="766" y="115">dry-run by default; −Push to publish</text>
+
+  <text class="n" x="766" y="146">1</text>
+  <rect class="box" x="788" y="128" width="346" height="52"/>
+  <text class="label" x="802" y="146">acquire both copies of the world</text>
+  <text class="sub"   x="802" y="162">AM4's pulled frozen; OMEN's read from a rotated</text>
+  <text class="sub"   x="802" y="175">backup_auto — immutable once written</text>
+
+  <text class="n" x="766" y="206">2</text>
+  <rect class="box" x="788" y="188" width="346" height="52"/>
+  <text class="label" x="802" y="206">build cache + rendered layers on OMEN</text>
+  <text class="sub"   x="802" y="222">~47 s and ~1.2 GB per snapshot</text>
+  <text class="sub"   x="802" y="235">one world_id; copies differ by source</text>
+
+  <text class="n" x="766" y="266">3</text>
+  <rect class="gate" x="788" y="248" width="346" height="66"/>
+  <text class="title" x="802" y="266">SHA-256 gate — fails closed</text>
+  <text class="sub"   x="802" y="284">cache must be built from the exact bytes AM4 serves</text>
+  <text class="sub"   x="802" y="298">also refuses on 0 ZDO rows or no dictionary recorded</text>
+  <text class="sub"   x="802" y="311">selects the AM4 snapshot by source, not world_id</text>
+
+  <text class="n" x="766" y="340">4</text>
+  <rect class="box" x="788" y="322" width="346" height="52"/>
+  <text class="label" x="802" y="340">−Archive → Parquet + zstd</text>
+  <text class="sub"   x="802" y="356">113.7 MB vs 1,196 MB, lossless, ~3 s</text>
+  <text class="sub"   x="802" y="369">readable in place via a glob — no import step</text>
+
+  <text class="n" x="766" y="400">5</text>
+  <rect class="box" x="788" y="382" width="346" height="66"/>
+  <text class="label" x="802" y="400">scp → install into steward-data</text>
+  <text class="sub"   x="802" y="416">via a throwaway alpine container mounting the</text>
+  <text class="sub"   x="802" y="429">volume — no sudo, no host path assumptions</text>
+  <text class="code"  x="802" y="444">touch /data/.cache-complete</text>
+
+  <text class="n" x="766" y="474">6</text>
+  <rect class="ok" x="788" y="456" width="346" height="66"/>
+  <text class="label" x="802" y="474">restart → serve mode, no rebuild</text>
+  <text class="sub"   x="802" y="490">the marker is the whole mechanism: it is why moving</text>
+  <text class="sub"   x="802" y="503">processing to OMEN needed no application change</text>
+  <text class="sub"   x="802" y="516">→ publish-steward-receipt.json</text>
+
+  <!-- verification -->
+  <rect class="band" x="310" y="368" width="410" height="174"/>
+  <text class="band-t" x="326" y="390">Verification</text>
+
+  <rect class="box" x="326" y="402" width="378" height="60"/>
+  <text class="title" x="340" y="422">smoke-test.ps1 — 21 checks</text>
+  <text class="sub"   x="340" y="439">endpoint assertions against a running daemon</text>
+  <text class="sub"   x="340" y="453">2 fail on Era16: they assert Era14-specific alerts</text>
+
+  <rect class="box" x="326" y="474" width="378" height="56"/>
+  <text class="title" x="340" y="494">no unit tests, by omission not design</text>
+  <text class="sub"   x="340" y="511">no src/test, no JUnit in the pom; the smoke test</text>
+  <text class="sub"   x="340" y="524">and measured A/B parses are the safety net</text>
+
+  <!-- flow -->
+  <path class="arrow" d="M264 146 L310 146"/>
+  <path class="arrow" d="M264 225 L290 225 L290 128 L310 128"/>
+  <path class="hot"   d="M720 300 L736 300 L736 200 L750 200"/>
+  <text class="edge"  x="600" y="360">code first</text>
+  <path class="arrow" d="M515 346 L515 368"/>
+
+  <text class="sub" x="30" y="584">Both lanes emit a JSON receipt into tools/. Receipts are tracked in git — they are the audit record of what was shipped and whether the public URL verified.</text>
+  <text class="sub" x="30" y="604">Neither lane touches tailscale funnel or Caddy configuration. Mounting the public route was a one-time manual sudo step, and the scripts only print it.</text>
+
+  <rect class="gate" x="30" y="626" width="1120" height="82"/>
+  <text class="title" x="46" y="648">Ordering constraint</text>
+  <text class="label" x="46" y="670">The data lane builds its DuckDB with the new jar's corrected prefab names, but AM4's in-memory endpoints come from its own parse with whatever jar it is running.</text>
+  <text class="label" x="46" y="687">Publishing data onto an old jar therefore yields a viewer where the map and the DuckDB views disagree — right names in one, wrong in the other. Deploy, verify, then publish.</text>
+</svg>

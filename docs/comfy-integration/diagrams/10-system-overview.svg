@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1140 660" role="img"
+     aria-label="ComfyStewardView runs processing on OMEN and serving on AM4. OMEN parses world saves into a DuckDB cache and rendered layers, then copies them into AM4's volume and touches a marker file so the container skips its own build and starts in serve mode."
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <title>System overview: processing on OMEN, serving on AM4</title>
+  <style>
+    .bg     { fill: #0d1320; }
+    .host   { fill: #131c2e; stroke: #2a3450; stroke-width: 1.5; rx: 6; }
+    .box    { fill: #1a2336; stroke: #2a3450; stroke-width: 1; rx: 4; }
+    .accent { fill: #2a1820; stroke: #c66; stroke-width: 1.5; rx: 4; }
+    .pub    { fill: #16241c; stroke: #4a7; stroke-width: 1.5; rx: 4; }
+    .hdr    { fill: #fff; font-size: 15px; font-weight: 600; }
+    .title  { fill: #fff; font-size: 13px; font-weight: 600; }
+    .label  { fill: #cdd; font-size: 12px; }
+    .sub    { fill: #8a94ab; font-size: 11px; }
+    .code   { fill: #9c9; font-size: 10.5px; font-family: ui-monospace, monospace; }
+    .arrow  { stroke: #667; stroke-width: 1.5; fill: none; marker-end: url(#arw-ov); }
+    .hot    { stroke: #c66; stroke-width: 2; fill: none; marker-end: url(#arw-ov-hot); }
+    .edge   { fill: #aab; font-size: 11px; }
+    .edgeh  { fill: #d88; font-size: 11px; font-weight: 600; }
+  </style>
+  <defs>
+    <marker id="arw-ov" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#667"/>
+    </marker>
+    <marker id="arw-ov-hot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c66"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1140" height="660"/>
+  <text class="hdr" x="30" y="34">ComfyStewardView — where the work runs</text>
+  <text class="sub" x="30" y="54">Valheim world intelligence for high-player-count servers. Processing and serving are split across hosts.</text>
+
+  <!-- OMEN -->
+  <rect class="host" x="30" y="80" width="440" height="470"/>
+  <text class="hdr" x="50" y="108">OMEN</text>
+  <text class="sub" x="115" y="108">workstation — processing</text>
+
+  <rect class="box" x="50" y="126" width="400" height="60"/>
+  <text class="title" x="66" y="148">comfy-valheim-lab (live server)</text>
+  <text class="code"  x="66" y="168">worlds_local/ComfyEra16.db + *_backup_auto-*.db</text>
+
+  <rect class="box" x="50" y="204" width="400" height="128"/>
+  <text class="title" x="66" y="226">Publish-Steward.ps1 — data lane</text>
+  <text class="label" x="66" y="248">parse → DuckDB cache → rendered PNG layers</text>
+  <text class="sub"   x="66" y="268">9,155,594 ZDOs · ~47 s · ~1.2 GB per snapshot</text>
+  <text class="label" x="66" y="292">SHA-256 gate: refuses unless the cache was built</text>
+  <text class="label" x="66" y="308">from the exact bytes AM4 will serve</text>
+  <text class="sub"   x="66" y="326">dry-run by default; −Push to publish</text>
+
+  <rect class="box" x="50" y="350" width="400" height="66"/>
+  <text class="title" x="66" y="372">−Archive → Parquet + zstd</text>
+  <text class="sub"   x="66" y="392">113.7 MB vs 1,196 MB · lossless · queryable in place</text>
+  <text class="code"  x="66" y="410">SELECT * FROM 'snapshot-*/zdo.parquet'</text>
+
+  <rect class="box" x="50" y="434" width="400" height="96"/>
+  <text class="title" x="66" y="456">Deploy-Steward.ps1 — code lane</text>
+  <text class="label" x="66" y="478">tars a 9-file whitelist → scp → builds the image</text>
+  <text class="label" x="66" y="494">on AM4 → polls /api/v1/status → receipt</text>
+  <text class="sub"   x="66" y="514">deploy when the jar changes; publish when the world does</text>
+
+  <!-- AM4 -->
+  <rect class="host" x="660" y="80" width="450" height="380"/>
+  <text class="hdr" x="680" y="108">AM4</text>
+  <text class="sub" x="722" y="108">lab server — serving only</text>
+
+  <rect class="box" x="680" y="126" width="410" height="58"/>
+  <text class="title" x="696" y="148">its own comfy-valheim-lab world</text>
+  <text class="sub"   x="696" y="168">frozen mtime-stable copy → /home/derek/steward/world</text>
+
+  <rect class="accent" x="680" y="202" width="410" height="76"/>
+  <text class="title" x="696" y="224">steward-data volume</text>
+  <text class="code"  x="696" y="244">world-cache.duckdb · rendered/ · .cache-complete</text>
+  <text class="sub"   x="696" y="264">the marker is why AM4 skips its own batch build</text>
+
+  <rect class="box" x="680" y="296" width="410" height="86"/>
+  <text class="title" x="696" y="318">comfy-steward-view (container)</text>
+  <text class="label" x="696" y="340">serve mode: parses the .db in ~4 s for the</text>
+  <text class="label" x="696" y="356">in-memory endpoints, reads DuckDB for the rest</text>
+  <text class="sub"   x="696" y="374">127.0.0.1:7080 · mem_limit 8g</text>
+
+  <rect class="pub" x="680" y="398" width="410" height="46"/>
+  <text class="title" x="696" y="420">tailscale funnel → /steward</text>
+  <text class="code"  x="696" y="437">https://am4.tail8e749c.ts.net/steward/</text>
+
+  <!-- Islet -->
+  <rect class="box" x="660" y="500" width="450" height="86"/>
+  <text class="title" x="680" y="522">Islet — control plane</text>
+  <text class="label" x="680" y="544">discovers backups, verifies SHA-256, calls the ingest</text>
+  <text class="label" x="680" y="560">API, records receipts</text>
+  <text class="code"  x="680" y="578">POST /api/v1/db/snapshots/ingest</text>
+
+  <!-- edges -->
+  <path class="hot" d="M450 268 L560 268 L560 234 L676 234"/>
+  <text class="edgeh" x="486" y="260">scp artifacts + touch marker</text>
+  <text class="edge"  x="486" y="290">restart → serve mode</text>
+
+  <path class="arrow" d="M450 478 L580 478 L580 340 L676 340"/>
+  <text class="edge" x="490" y="470">image build on AM4</text>
+
+  <path class="arrow" d="M884 500 L884 448"/>
+  <text class="edge" x="898" y="480">ingest</text>
+
+  <path class="arrow" d="M250 186 L250 204"/>
+  <path class="arrow" d="M250 332 L250 350"/>
+
+  <text class="sub" x="30" y="608">Measured: a fresh cache build is ~47 s, not the 12–13 min an append into an existing cache costs — indexes exist by then, so the appender writes through them.</text>
+  <text class="sub" x="30" y="628">Moving processing off AM4 is therefore not about CPU: it keeps gigabytes of disk churn away from the box running a live game server, and keeps the growing history on OMEN.</text>
+</svg>

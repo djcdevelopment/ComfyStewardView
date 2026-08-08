@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 720" role="img"
+     aria-label="The runtime stack: a single Java 17 shaded jar containing Javalin on embedded Jetty, DuckDB JDBC and Jackson, serving a CDN-only Alpine and Leaflet single page app, packaged in a Debian-based JRE image because DuckDB needs glibc."
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+  <title>Tech stack: one fat jar, pinned versions, and the constraints behind two of them</title>
+  <style>
+    .bg     { fill: #0d1320; }
+    .layer  { fill: #131c2e; stroke: #2a3450; stroke-width: 1.2; rx: 5; }
+    .box    { fill: #1a2336; stroke: #2a3450; stroke-width: 1; rx: 4; }
+    .accent { fill: #2a1820; stroke: #c66; stroke-width: 1.5; rx: 4; }
+    .hdr    { fill: #fff; font-size: 15px; font-weight: 600; }
+    .lyr    { fill: #fff; font-size: 13px; font-weight: 600; }
+    .title  { fill: #fff; font-size: 12px; font-weight: 600; }
+    .ver    { fill: #9c9; font-size: 11px; font-family: ui-monospace, monospace; }
+    .label  { fill: #cdd; font-size: 11px; }
+    .sub    { fill: #8a94ab; font-size: 10.5px; }
+    .arrow  { stroke: #667; stroke-width: 1.5; fill: none; marker-end: url(#arw-ts); }
+    .edge   { fill: #aab; font-size: 10.5px; }
+  </style>
+  <defs>
+    <marker id="arw-ts" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#667"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1120" height="720"/>
+  <text class="hdr" x="30" y="34">Tech stack</text>
+  <text class="sub" x="30" y="54">One shaded fat jar, no application server, no ORM, no build step for the frontend. Versions are pinned in viewer/pom.xml properties.</text>
+
+  <!-- browser layer -->
+  <rect class="layer" x="30" y="76" width="1060" height="118"/>
+  <text class="lyr" x="46" y="98">Browser — single page app, no build step</text>
+  <text class="sub" x="330" y="98">one 1,800-line index.html served from the jar's classpath</text>
+
+  <rect class="box" x="46" y="110" width="248" height="70"/>
+  <text class="title" x="60" y="130">Alpine.js</text>
+  <text class="ver"   x="130" y="130">3.13.5</text>
+  <text class="label" x="60" y="150">reactivity, 4-view nav</text>
+  <text class="sub"   x="60" y="168">x-data / x-show / x-for</text>
+
+  <rect class="box" x="310" y="110" width="248" height="70"/>
+  <text class="title" x="324" y="130">Leaflet</text>
+  <text class="ver"   x="386" y="130">1.9.4</text>
+  <text class="label" x="324" y="150">world map + PNG overlays</text>
+  <text class="sub"   x="324" y="168">CRS.Simple, not geographic</text>
+
+  <rect class="box" x="574" y="110" width="248" height="70"/>
+  <text class="title" x="588" y="130">Tabulator</text>
+  <text class="ver"   x="666" y="130">6.2.1</text>
+  <text class="label" x="588" y="150">sortable forensics tables</text>
+  <text class="sub"   x="588" y="168">midnight theme</text>
+
+  <rect class="box" x="838" y="110" width="236" height="70"/>
+  <text class="title" x="852" y="130">Tailwind</text>
+  <text class="ver"   x="916" y="130">CDN JIT</text>
+  <text class="label" x="852" y="150">utility styling</text>
+  <text class="sub"   x="852" y="168">unpkg + cdn.tailwindcss.com</text>
+
+  <!-- jvm layer -->
+  <rect class="layer" x="30" y="216" width="1060" height="286"/>
+  <text class="lyr" x="46" y="238">JVM — world-viewer-1.0.0.jar (shaded)</text>
+  <text class="sub" x="330" y="238">Java 17 · maven-shade-plugin 3.6.0 · main = com.valheim.viewer.Main</text>
+
+  <rect class="box" x="46" y="250" width="330" height="112"/>
+  <text class="title" x="60" y="270">HTTP</text>
+  <text class="title" x="60" y="292">Javalin</text>
+  <text class="ver"   x="122" y="292">6.3.0</text>
+  <text class="label" x="60" y="311">embedded Jetty — no servlet container</text>
+  <text class="title" x="60" y="333">Kotlin stdlib</text>
+  <text class="ver"   x="150" y="333">2.0.21</text>
+  <text class="sub"   x="60" y="350">transitive via Javalin, not used directly</text>
+
+  <rect class="box" x="392" y="250" width="330" height="112"/>
+  <text class="title" x="406" y="270">Data</text>
+  <text class="title" x="406" y="292">DuckDB JDBC</text>
+  <text class="ver"   x="500" y="292">1.5.4.0</text>
+  <text class="label" x="406" y="311">embedded OLAP — Appender bulk path</text>
+  <text class="title" x="406" y="333">Jackson databind</text>
+  <text class="ver"   x="518" y="333">2.17.2</text>
+  <text class="sub"   x="406" y="350">JSON in and out; no ORM anywhere</text>
+
+  <rect class="box" x="738" y="250" width="336" height="112"/>
+  <text class="title" x="752" y="270">Logging</text>
+  <text class="title" x="752" y="292">SLF4J</text>
+  <text class="ver"   x="806" y="292">2.0.13</text>
+  <text class="title" x="752" y="314">Logback classic</text>
+  <text class="ver"   x="858" y="314">1.5.6</text>
+  <text class="sub"   x="752" y="334">slf4j-simple also on the path via the</text>
+  <text class="sub"   x="752" y="350">kakoen jar — Logback wins, warns at boot</text>
+
+  <rect class="accent" x="46" y="378" width="1028" height="106"/>
+  <text class="title" x="60" y="398">Parsing is hand-rolled — the library is not in the hot path</text>
+  <text class="label" x="60" y="420">valheim-save-tools 1.0-fixed (kakoen) is a dependency, but only to locate and open the save. Every ZDO is read by WorldParser</text>
+  <text class="label" x="60" y="437">directly off a ByteBuffer: precomputed StableHashCode ints for property names, zero allocation on the nature fast path.</text>
+  <text class="sub"   x="60" y="457">That choice is why the parse runs at ~260,000 ZDO/s and why a sign-extension bug in the library's numItems reader — which caused</text>
+  <text class="sub"   x="60" y="472">mid-file stream drift in the older probe tools — never affected the shipping parser.</text>
+
+  <!-- container layer -->
+  <rect class="layer" x="30" y="524" width="1060" height="118"/>
+  <text class="lyr" x="46" y="546">Container — two stages</text>
+
+  <rect class="box" x="46" y="558" width="500" height="68"/>
+  <text class="title" x="60" y="578">build stage</text>
+  <text class="ver"   x="132" y="578">maven:3.9-eclipse-temurin-17</text>
+  <text class="label" x="60" y="598">installs the bundled kakoen jar, then mvn package</text>
+  <text class="sub"   x="60" y="615">.dockerignore is a deny-all whitelist: viewer/src, two JSONs, entrypoint</text>
+
+  <rect class="accent" x="562" y="558" width="512" height="68"/>
+  <text class="title" x="576" y="578">runtime stage</text>
+  <text class="ver"   x="654" y="578">eclipse-temurin:17-jre-jammy</text>
+  <text class="label" x="576" y="598">Debian, not Alpine — DuckDB's native lib needs glibc</text>
+  <text class="sub"   x="576" y="615">JAVA_OPTS -Xmx6g -Djava.awt.headless=true (headless AWT renders the PNG layers)</text>
+
+  <path class="arrow" d="M560 194 L560 216"/>
+  <text class="edge" x="572" y="210">fetch /api/v1/*</text>
+  <path class="arrow" d="M560 502 L560 524"/>
+  <text class="edge" x="572" y="518">packaged into</text>
+
+  <text class="sub" x="30" y="672">Not present, deliberately: no ORM, no message broker, no frontend toolchain, no test framework. Verification is a 21-check smoke test against a running daemon.</text>
+  <text class="sub" x="30" y="692">PowerShell 5.1 carries the operational lanes — so no ternaries, no &amp;&amp;/||, and native-command stderr wrapping to work around.</text>
+</svg>
