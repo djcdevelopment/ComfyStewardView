@@ -32,12 +32,82 @@ public final class AnalyticsCacheReader implements AutoCloseable {
         this.snapshotId = latestSnapshotId(conn);
     }
 
+    public Connection connection() {
+        return conn;
+    }
+
     public File dbFile() {
         return dbFile;
     }
 
     public long snapshotId() {
         return snapshotId;
+    }
+
+    public ObjectNode listSnapshots(ObjectMapper mapper, String worldIdFilter) throws SQLException {
+        ObjectNode root = mapper.createObjectNode();
+        ArrayNode arr = root.putArray("snapshots");
+
+        StringBuilder sql = new StringBuilder(
+                "SELECT snapshot_id, source_path, file_size, parsed_at, world_version, " +
+                "world_id, world_name, source, backup_id, save_timestamp, file_hash, parser_version, " +
+                // COLUMNS(...) would be cleaner but these must degrade on a pre-migration cache,
+                // so they are read defensively below rather than assumed present.
+                "COALESCE(prefab_dictionary_version, '') AS prefab_dictionary_version, " +
+                "COALESCE(prefab_dictionary_entries, 0) AS prefab_dictionary_entries " +
+                "FROM world_snapshot ");
+        if (worldIdFilter != null && !worldIdFilter.isBlank()) {
+            sql.append("WHERE world_id = ? ");
+        }
+        sql.append("ORDER BY snapshot_id DESC");
+
+        try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+            if (worldIdFilter != null && !worldIdFilter.isBlank()) {
+                ps.setString(1, worldIdFilter);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    ObjectNode n = arr.addObject();
+                    n.put("snapshotId", rs.getLong("snapshot_id"));
+                    putNullable(n, "sourcePath", rs.getString("source_path"));
+                    n.put("fileSize", rs.getLong("file_size"));
+                    putNullable(n, "parsedAt", rs.getString("parsed_at"));
+                    n.put("worldVersion", rs.getInt("world_version"));
+                    putNullable(n, "worldId", rs.getString("world_id"));
+                    putNullable(n, "worldName", rs.getString("world_name"));
+                    putNullable(n, "source", rs.getString("source"));
+                    putNullable(n, "backupId", rs.getString("backup_id"));
+                    putNullable(n, "saveTimestamp", rs.getString("save_timestamp"));
+                    putNullable(n, "fileHash", rs.getString("file_hash"));
+                    putNullable(n, "parserVersion", rs.getString("parser_version"));
+                    putNullable(n, "prefabDictionaryVersion", rs.getString("prefab_dictionary_version"));
+                    n.put("prefabDictionaryEntries", rs.getInt("prefab_dictionary_entries"));
+                }
+            }
+        }
+        return root;
+    }
+
+    public ObjectNode getSnapshotDelta(ObjectMapper mapper, long targetSnapshotId) throws SQLException {
+        ObjectNode root = mapper.createObjectNode();
+        root.put("snapshotId", targetSnapshotId);
+
+        String sql = "SELECT prev_snapshot_id, zdos_added, zdos_removed, zdos_modified, " +
+                     "container_items_delta, computed_at FROM snapshot_delta WHERE snapshot_id = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, targetSnapshotId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    root.put("prevSnapshotId", rs.getLong("prev_snapshot_id"));
+                    root.put("zdosAdded", rs.getInt("zdos_added"));
+                    root.put("zdosRemoved", rs.getInt("zdos_removed"));
+                    root.put("zdosModified", rs.getInt("zdos_modified"));
+                    root.put("containerItemsDelta", rs.getInt("container_items_delta"));
+                    putNullable(root, "computedAt", rs.getString("computed_at"));
+                }
+            }
+        }
+        return root;
     }
 
     public File manifestFile() {

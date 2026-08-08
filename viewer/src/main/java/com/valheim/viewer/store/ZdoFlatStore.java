@@ -53,7 +53,28 @@ public class ZdoFlatStore {
     public long   parseDurationMs;
 
     // ----- Prefab hash → name -----
-    private final Map<Integer, String> hashToName = new HashMap<>(2048);
+    private final Map<Integer, String> hashToName = new HashMap<>(8192);
+
+    // ----- Prefab name coverage (accumulated inline during parse) -----
+    // Counts EVERY ZDO, not just the ones kept in the flat arrays, so the
+    // percentage is comparable to the "42% of all ZDOs" figure in the docs.
+    public long resolvedZdoCount   = 0;
+    public long unresolvedZdoCount = 0;
+    /** hash → ZDO count, for hashes with no name. The worklist for the next dictionary refresh. */
+    public final Map<Integer, Integer> unknownHashCounts = new HashMap<>(512);
+
+    /**
+     * ZDOs per category, indexed by the Categories constants. Counts every ZDO, including the
+     * NATURE and BUILDING ones that are never added to the flat arrays, so it is the census to
+     * diff when a classification rule changes.
+     */
+    public final long[] categoryCounts = new long[16];
+
+    // ----- Prefab dictionary provenance (set by WorldParser once at load) -----
+    public int    dictionaryEntries     = 0;
+    public String dictionaryGameVersion = null;
+    public String dictionaryGeneratedAt = null;
+    public String dictionarySource      = null;
 
     // ----- Player registry (built from beds + tombstones) -----
     public final Map<Long, PlayerRecord> players = new LinkedHashMap<>();
@@ -158,12 +179,52 @@ public class ZdoFlatStore {
 
     public int size() { return size; }
 
-    public void registerHashName(int hash, String name) {
-        hashToName.put(hash, name);
+    /**
+     * Register a name for a prefab hash. First writer wins.
+     *
+     * The verified dictionary is loaded first, so hand-maintained and dynamically
+     * discovered names only fill gaps and can never overwrite a name whose
+     * {@code sh(name) == hash} was checked at load.
+     *
+     * @return true if this call actually took the slot, false if a name was already present.
+     */
+    public boolean registerHashName(int hash, String name) {
+        return hashToName.putIfAbsent(hash, name) == null;
     }
 
+    /** Resolved name, or null when the hash is unknown. */
+    public String rawNameForHash(int hash) {
+        return hashToName.get(hash);
+    }
+
+    /** Display name; falls back to the {@code hash:N} placeholder that downstream code keys off. */
     public String nameForHash(int hash) {
-        return hashToName.getOrDefault(hash, "hash:" + hash);
+        String n = hashToName.get(hash);
+        return n != null ? n : "hash:" + hash;
+    }
+
+    /** Count one ZDO toward prefab-name coverage. Called exactly once per ZDO during parse. */
+    public void noteHashSeen(int hash) {
+        if (hashToName.containsKey(hash)) {
+            resolvedZdoCount++;
+        } else {
+            unresolvedZdoCount++;
+            unknownHashCounts.merge(hash, 1, Integer::sum);
+        }
+    }
+
+    public long zdosSeen() { return resolvedZdoCount + unresolvedZdoCount; }
+
+    public double resolvedPct() {
+        long total = zdosSeen();
+        return total == 0 ? 0.0 : (double) resolvedZdoCount / total * 100.0;
+    }
+
+    /** Unresolved hashes by ZDO count, descending, capped at {@code limit}. */
+    public List<Map.Entry<Integer, Integer>> topUnresolvedHashes(int limit) {
+        List<Map.Entry<Integer, Integer>> out = new ArrayList<>(unknownHashCounts.entrySet());
+        out.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+        return out.size() > limit ? out.subList(0, limit) : out;
     }
 
     /** Initialize heatmap grids. Call before parse begins. */

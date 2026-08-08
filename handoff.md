@@ -71,6 +71,22 @@ hasCreator && (hasSupport || hasHealth)
 ```
 
 ### 5. Unknown hash classification
+
+> **CORRECTED 2026-08-07 — read `docs/comfy-integration/PREFAB_DICTIONARY.md` before using this table.**
+>
+> All 20 hashes below are now resolved by the prefab dictionary. The generic inferences here held
+> up (`-2129458801` "Pickable item" really is `Pickable_Tin`; the "Building piece" rows really are
+> `Piece_grausten_wall_4x2`, `blackmarble_2x2_enforced`, `Piece_flametal_beam`, `blackmarble_base_2`),
+> and the six unresolvable Ashlands drops turned out to be a contiguous `Fish3/5/7/8/9/12` family.
+>
+> **The two rows marked "confirmed" are wrong.** `686545676` is `Piece_grausten_floor_4x4`, not a
+> sign — a re-probe on ComfyEra16 found `text` on 1 of its 79,881 ZDOs (0.001%). `-1195767551` is
+> `blackmarble_1x1`, not a ballista — `ammoType` appeared on 9 of 41,651 (0.022%). Both readings
+> came from `DeepProbe.java:194`, whose key-capture latch merges key sets across different ZDOs;
+> the same output attributes `BarleyFlour` and `TrophyGoblinKing` to the "ballista".
+>
+> Kept as written because the investigation is the record; the correction is the interesting part.
+
 | Hash | Count | Classification |
 |------|-------|----------------|
 | 1703108136 | 155k | Nature/terrain (no properties) |

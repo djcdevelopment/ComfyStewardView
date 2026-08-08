@@ -6,7 +6,11 @@ import com.valheim.viewer.contract.Alert;
 import com.valheim.viewer.contract.Sector;
 import com.valheim.viewer.contract.Structure;
 import com.valheim.viewer.contract.WorldContracts;
+import com.valheim.viewer.db.AnalyticsCache;
 import com.valheim.viewer.db.AnalyticsCacheReader;
+import com.valheim.viewer.db.SnapshotDeltaEngine;
+import com.valheim.viewer.db.SnapshotIngestService;
+import com.valheim.viewer.db.SnapshotProvenance;
 import com.valheim.viewer.extractor.AlertResult;
 import com.valheim.viewer.extractor.ClassificationStore;
 import com.valheim.viewer.extractor.MetricsResult;
@@ -101,6 +105,7 @@ public class ApiServer {
 
         // Summary stats
         app.get("/api/v1/summary", this::handleSummary);
+        app.get("/api/v1/prefabs/unresolved", this::handleUnresolvedPrefabs);
 
         // Heatmap data — query: ?type=BUILDING|DROPPED_ITEM|ALL&cellSize=500
         app.get("/api/v1/heatmap", this::handleHeatmap);
@@ -169,12 +174,18 @@ public class ApiServer {
         // Items issued by a specific server identity (query: ?issuer=<name>)
         app.get("/api/v1/forensics/guild-gear", this::handleGuildGear);
 
-        // Batch analytics cache endpoints
+        // Batch analytics cache & snapshot history endpoints
         app.get("/api/v1/rendered/manifest", this::handleRenderedManifest);
         app.get("/api/v1/rendered/{file}", this::handleRenderedFile);
         app.get("/api/v1/db/zdo/query", this::handleDbZdoQuery);
         app.get("/api/v1/db/containers/items", this::handleDbContainerItems);
         app.get("/api/v1/db/selection-summary", this::handleDbSelectionSummary);
+
+        // World Intelligence & Ingest endpoints
+        app.post("/api/v1/db/snapshots/ingest", this::handleDbSnapshotIngest);
+        app.get("/api/v1/db/snapshots", this::handleDbSnapshotsList);
+        app.get("/api/v1/db/snapshots/delta", this::handleDbSnapshotDelta);
+        app.get("/api/v1/db/snapshots/compare", this::handleDbSnapshotsCompare);
     }
 
     // ----- Handlers -----
@@ -225,6 +236,46 @@ public class ApiServer {
         root.put("bedCount", s.bedIndices.size());
         root.put("droppedItemCount", s.droppedItemCounts.values().stream().mapToInt(Integer::intValue).sum());
 
+        ObjectNode cov = root.putObject("prefabCoverage");
+        cov.put("dictionaryEntries",       s.dictionaryEntries);
+        cov.put("dictionaryGameVersion",   s.dictionaryGameVersion);
+        cov.put("dictionaryGeneratedAt",   s.dictionaryGeneratedAt);
+        cov.put("dictionarySource",        s.dictionarySource);
+        cov.put("zdosTotal",               s.zdosSeen());
+        cov.put("zdosResolved",            s.resolvedZdoCount);
+        cov.put("zdosUnresolved",          s.unresolvedZdoCount);
+        cov.put("pctResolved",             Math.round(s.resolvedPct() * 100.0) / 100.0);
+        cov.put("distinctUnresolvedHashes", s.unknownHashCounts.size());
+
+        ctx.json(root.toString());
+    }
+
+    /**
+     * Unresolved prefab hashes by ZDO count. This is the worklist for the next dictionary
+     * refresh — the vanilla dump cannot name modded prefabs or ZoneSystem location prefabs,
+     * and this endpoint is what makes that residue visible rather than invisible.
+     */
+    private void handleUnresolvedPrefabs(Context ctx) {
+        ZdoFlatStore s = requireStore(ctx);
+        if (s == null)
+            return;
+
+        int limit = 100;
+        String raw = ctx.queryParam("limit");
+        if (raw != null) {
+            try { limit = Math.max(1, Math.min(5000, Integer.parseInt(raw))); }
+            catch (NumberFormatException ignored) {}
+        }
+
+        ObjectNode root = envelope(s);
+        root.put("distinctUnresolvedHashes", s.unknownHashCounts.size());
+        root.put("zdosUnresolved", s.unresolvedZdoCount);
+        ArrayNode arr = root.putArray("unresolved");
+        for (Map.Entry<Integer, Integer> e : s.topUnresolvedHashes(limit)) {
+            ObjectNode n = arr.addObject();
+            n.put("hash", e.getKey());
+            n.put("count", e.getValue());
+        }
         ctx.json(root.toString());
     }
 
@@ -1099,6 +1150,127 @@ public class ApiServer {
         } catch (Exception e) {
             log.error("Failed DB selection summary", e);
             ctx.status(500).json("{\"error\":\"db selection summary failure\"}");
+        }
+    }
+
+    private void handleDbSnapshotIngest(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            ObjectNode body = (ObjectNode) mapper.readTree(ctx.body());
+            String filePath = body.has("filePath") ? body.get("filePath").asText() : "";
+            if (filePath.isBlank()) {
+                ctx.status(400).json("{\"error\":\"missing required 'filePath' parameter\"}");
+                return;
+            }
+
+            File saveFile = new File(filePath);
+            SnapshotProvenance prov = new SnapshotProvenance(
+                    body.has("worldId") ? body.get("worldId").asText() : saveFile.getName().replace(".db", ""),
+                    body.has("worldName") ? body.get("worldName").asText() : saveFile.getName().replace(".db", ""),
+                    body.has("source") ? body.get("source").asText() : "local",
+                    body.has("backupId") ? body.get("backupId").asText() : "bak_manual",
+                    body.has("saveTimestamp") ? body.get("saveTimestamp").asText() : null,
+                    body.has("fileHash") ? body.get("fileHash").asText() : "",
+                    SnapshotProvenance.DEFAULT_PARSER_VERSION,
+                    SnapshotProvenance.CURRENT_SCHEMA_VERSION
+            );
+
+            // Run ingestion through writable cache
+            try (AnalyticsCache cache = new AnalyticsCache(reader.dbFile(), false)) {
+                ObjectNode receipt = SnapshotIngestService.processIngest(saveFile, prov, cache);
+                ctx.json(receipt.toString());
+            }
+        } catch (Exception e) {
+            log.error("Snapshot ingestion failed", e);
+            ctx.status(500).json("{\"error\":\"snapshot ingestion failed: " + e.getMessage() + "\"}");
+        }
+    }
+
+    private void handleDbSnapshotsList(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            String worldId = ctx.queryParam("worldId");
+            ctx.json(mapper.writeValueAsString(reader.listSnapshots(mapper, worldId)));
+        } catch (Exception e) {
+            log.error("Failed listing snapshots", e);
+            ctx.status(500).json("{\"error\":\"failed listing snapshots\"}");
+        }
+    }
+
+    private void handleDbSnapshotDelta(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            Long snapshotId = longQueryParam(ctx, "snapshotId");
+            if (snapshotId == null) {
+                snapshotId = reader.snapshotId();
+            }
+            ctx.json(mapper.writeValueAsString(reader.getSnapshotDelta(mapper, snapshotId)));
+        } catch (Exception e) {
+            log.error("Failed fetching snapshot delta", e);
+            ctx.status(500).json("{\"error\":\"failed fetching snapshot delta\"}");
+        }
+    }
+
+    private void handleDbSnapshotsCompare(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            Long fromId = longQueryParam(ctx, "from");
+            Long toId = longQueryParam(ctx, "to");
+            if (fromId == null || toId == null) {
+                ctx.status(400).json("{\"error\":\"both 'from' and 'to' snapshot parameters are required\"}");
+                return;
+            }
+
+            SnapshotDeltaEngine.DeltaResult delta = SnapshotDeltaEngine.computeDelta(reader.connection(), fromId, toId);
+            ObjectNode root = mapper.createObjectNode();
+            root.put("fromSnapshotId", delta.fromSnapshotId());
+            root.put("toSnapshotId", delta.toSnapshotId());
+            root.put("zdosAdded", delta.zdosAdded());
+            root.put("zdosRemoved", delta.zdosRemoved());
+            root.put("zdosModified", delta.zdosModified());
+            root.put("containerItemsDelta", delta.containerItemsDelta());
+            root.put("newPortals", delta.newPortals());
+            root.put("newTombstones", delta.newTombstones());
+
+            ObjectNode addedObj = root.putObject("addedPrefabs");
+            delta.addedPrefabs().forEach(addedObj::put);
+
+            ObjectNode removedObj = root.putObject("removedPrefabs");
+            delta.removedPrefabs().forEach(removedObj::put);
+
+            // Per-category breakdown: CREATURE and DROPPED_ITEM churn between any two saves
+            // because those objects move. Surfacing it keeps movement out of "build activity".
+            ObjectNode addedCat = root.putObject("addedByCategory");
+            delta.addedByCategory().forEach(addedCat::put);
+            ObjectNode removedCat = root.putObject("removedByCategory");
+            delta.removedByCategory().forEach(removedCat::put);
+
+            root.put("zdoCountFrom", delta.zdoCountFrom());
+            root.put("zdoCountTo",   delta.zdoCountTo());
+            root.put("reconciles",   delta.reconciles());
+            if (!delta.reconciles()) {
+                root.put("reconcileWarning", "added - removed != countTo - countFrom. Some objects share "
+                    + "identical coordinates, and a change in how many sit at one spot is invisible to a "
+                    + "presence-based comparison. Treat these counts as a lower bound on real churn.");
+            }
+
+            root.put("fromDictionaryVersion", delta.fromDictionaryVersion());
+            root.put("toDictionaryVersion",   delta.toDictionaryVersion());
+            root.put("dictionaryMismatch",    delta.dictionaryMismatch());
+            if (delta.dictionaryMismatch()) {
+                root.put("warning", "These snapshots were named by different prefab dictionaries ("
+                    + delta.fromDictionaryVersion() + " vs " + delta.toDictionaryVersion()
+                    + "). Prefab breakdowns are not comparable — renames will read as world changes.");
+            }
+
+            ctx.json(root.toString());
+        } catch (Exception e) {
+            log.error("Failed comparing snapshots", e);
+            ctx.status(500).json("{\"error\":\"failed comparing snapshots\"}");
         }
     }
 

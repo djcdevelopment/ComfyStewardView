@@ -353,19 +353,30 @@ Auto-generated with defaults on first run. Lives in the working directory.
 
 ## Known Gaps and Potential Next Work
 
-### Unresolved Hashes
-These prefab names haven't been identified yet (they appear in ZdoFlatStore as `hash:NNNN`):
+### ~~Unresolved Hashes~~ — RESOLVED 2026-08-07
 
-| Hash | Count | Type | Notes |
-|------|-------|------|-------|
-| 538325542 | ~120k | building piece | Unknown vanilla piece |
-| -2119951934 | ~98k | building piece | Unknown vanilla piece |
-| 1411875912 | ~166k | item stand variant | Empty item stand |
-| -494364525 | ~99k | container variant | Has TCData field |
-| 109649212 | ~50k | dropped item | Ashlands region (z≈-8000) |
-| 1272849455 | ~46k | dropped item | Ashlands, quality=2 |
+All six are named by the prefab dictionary now bundled at
+`viewer/src/main/resources/prefab-dump.json`. Prefab-name coverage on ComfyEra16 went from
+**15.6% to 99.5%** of 9,155,594 ZDOs. See `docs/comfy-integration/PREFAB_DICTIONARY.md`.
 
-To resolve: cross-reference against the Valheim game files or try brute-force StableHashCode matching against the full prefab name list.
+| Hash | Count | Was recorded as | Actually |
+|------|-------|-----------------|----------|
+| 538325542 | ~120k | building piece | `Piece_grausten_wall_4x2` ✓ |
+| -2119951934 | ~98k | building piece | `Ashlands_Wall_2x2` ✓ |
+| 1411875912 | ~166k | item stand variant | **`cliff_mistlands2`** — a cliff; 98.5% carry `scaleScalar`, none carry `item` |
+| -494364525 | ~99k | container variant | **`caverock_ice_stalagtite`** — 98.4% carry no properties at all |
+| 109649212 | ~50k | Ashlands dropped item | `Fish8` |
+| 1272849455 | ~46k | Ashlands dropped item | `Fish12` |
+
+The last four "could not resolve via 500+ candidate names" Ashlands drops are the rest of the same
+family: `Fish3`, `Fish5`, `Fish7`, `Fish9`.
+
+The two rows that were *wrong* (`1411875912`, `-494364525`) had been added to `ITEM_STAND_HASHES`
+and `CONTAINER_HASHES`, so ~255k ZDOs were being classified as furniture and storage. Those hash
+sets are corrected; `docs/comfy-integration/PREFAB_DICTIONARY.md` has the measured deltas.
+
+Brute-force `StableHashCode` matching is no longer the way to resolve a hash — check the dictionary,
+and if it is absent there, `GET /api/v1/prefabs/unresolved` is the live worklist.
 
 ### Feature Ideas
 - **Sector density overlay on map** — render hotspot/high sectors as colored rectangles on the heatmap canvas (data already in `/api/v1/sectors`)

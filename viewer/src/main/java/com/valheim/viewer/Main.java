@@ -20,7 +20,10 @@ import com.valheim.viewer.extractor.StructureDetector;
 import com.valheim.viewer.parser.WorldParser;
 import com.valheim.viewer.store.ZdoFlatStore;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,6 +54,7 @@ public class Main {
         boolean cacheFields = false;
         String cachePath = "world-cache.duckdb";
         String renderDirPath = "rendered";
+        String probeHashArg = null;
 
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -82,6 +86,9 @@ public class Main {
                 case "--render-dir":
                     if (i + 1 < args.length) renderDirPath = args[++i];
                     break;
+                case "--probe-hash":
+                    if (i + 1 < args.length) probeHashArg = args[++i];
+                    break;
                 default:
                     if (!args[i].startsWith("--")) dbPath = args[i];
             }
@@ -99,6 +106,15 @@ public class Main {
         log.info("Loading: {}", dbFile.getAbsolutePath());
 
         WorldParser parser = new WorldParser();
+        if (probeHashArg != null) {
+            Set<Integer> probes = new LinkedHashSet<>();
+            for (String s : probeHashArg.split(",")) {
+                s = s.trim();
+                if (!s.isEmpty()) probes.add(Integer.parseInt(s));
+            }
+            parser.setProbeHashes(probes);
+            log.info("Reconciliation probe active for {} hashes: {}", probes.size(), probes);
+        }
         File cacheFile = new File(cachePath);
         File renderRoot = new File(renderDirPath);
         AnalyticsCache analyticsCache = null;
@@ -131,7 +147,9 @@ public class Main {
         }
         if (analyticsCache != null) {
             try {
-                analyticsCache.finish();
+                // close(), not finish() — finish() no longer releases the connection, and the
+                // AnalyticsCacheReader opened further down needs the write handle released first.
+                analyticsCache.close();
                 log.info("Analytics cache ready: {}", cacheFile.getAbsolutePath());
             } catch (Exception e) {
                 log.error("Failed to finalize analytics cache", e);
@@ -140,6 +158,12 @@ public class Main {
             }
         }
         log.info("Parse complete: {} ZDOs (interesting) in {}ms", store.size(), store.parseDurationMs);
+
+        if (probeHashArg != null) {
+            printProbeReport(parser, store);
+            System.exit(0);
+            return;
+        }
 
         if (renderLayers) {
             try (AnalyticsCacheReader reader = new AnalyticsCacheReader(cacheFile, renderRoot)) {
@@ -314,5 +338,47 @@ public class Main {
         } catch (Exception e) {
             log.warn("Could not open browser: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Print the reconciliation probe report.
+     *
+     * The load-bearing column is the PERCENTAGE, not the count. A property present on
+     * a handful of a hash's ZDOs identifies nothing; that is how "ammoType=TurretBolt"
+     * on 12 of 40,889 ZDOs became a "confirmed" ballista.
+     */
+    private static void printProbeReport(WorldParser parser, ZdoFlatStore store) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n");
+        sb.append("================ RECONCILIATION PROBE ================\n");
+        sb.append("world ZDOs: ").append(String.format("%,d", store.zdosSeen())).append("\n");
+
+        for (Map.Entry<Integer, WorldParser.ProbeStats> e : parser.getProbeResults().entrySet()) {
+            int hash = e.getKey();
+            WorldParser.ProbeStats st = e.getValue();
+            String resolved = store.rawNameForHash(hash);
+            sb.append("\n--- hash ").append(hash)
+              .append("  count=").append(String.format("%,d", st.count))
+              .append("  name=").append(resolved != null ? resolved : "<unresolved>")
+              .append("\n");
+
+            if (st.count == 0) {
+                sb.append("    (no ZDOs with this hash in this world)\n");
+                continue;
+            }
+            if (st.fieldPresence.isEmpty()) {
+                sb.append("    NO PROPERTIES on any of its ZDOs\n");
+            }
+            for (Map.Entry<String, Long> f : st.fieldPresence.entrySet()) {
+                double pct = (double) f.getValue() / st.count * 100.0;
+                sb.append(String.format("    %-22s %10s  %7.3f%%%n",
+                    f.getKey(), String.format("%,d", f.getValue()), pct));
+            }
+            for (int i = 0; i < st.samples.size(); i++) {
+                sb.append("    sample[").append(i).append("]: ").append(st.samples.get(i)).append("\n");
+            }
+        }
+        sb.append("\n======================================================\n");
+        System.out.println(sb);
     }
 }

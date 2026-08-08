@@ -3,6 +3,8 @@ package com.valheim.viewer.db;
 import com.valheim.viewer.store.ZdoFlatStore.Categories;
 import org.duckdb.DuckDBAppender;
 import org.duckdb.DuckDBConnection;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.sql.Connection;
@@ -23,6 +25,8 @@ import java.time.Instant;
  */
 public final class AnalyticsCache implements AutoCloseable {
 
+    private static final Logger log = LoggerFactory.getLogger(AnalyticsCache.class);
+
     private static final int BATCH_LIMIT = 100_000;
 
     private final File dbFile;
@@ -30,6 +34,22 @@ public final class AnalyticsCache implements AutoCloseable {
     private final boolean captureFields;
 
     private long snapshotId = -1;
+
+    private boolean finished = false;
+    private boolean closed   = false;
+
+    /**
+     * Provenance to attach to the next {@link #beginSnapshot} call, consumed once.
+     *
+     * <p>{@code WorldParser.parse()} opens the snapshot itself, part-way through parsing, so an
+     * ingest caller cannot supply provenance by calling {@code beginSnapshot} afterwards — that
+     * would open a <em>second</em>, empty snapshot. The caller stages provenance here instead.
+     */
+    private SnapshotProvenance pendingProvenance;
+
+    /** Prefab dictionary identity, recorded per snapshot so cross-dictionary deltas are detectable. */
+    private String prefabDictionaryVersion = null;
+    private int    prefabDictionaryEntries = 0;
 
     private PreparedStatement zdoStmt;
     private PreparedStatement fieldStmt;
@@ -67,11 +87,40 @@ public final class AnalyticsCache implements AutoCloseable {
         return dbFile;
     }
 
+    public Connection connection() {
+        return conn;
+    }
+
     public long snapshotId() {
         return snapshotId;
     }
 
+    /** Stage provenance for the snapshot the parser is about to open. Consumed once. */
+    public void setPendingProvenance(SnapshotProvenance provenance) {
+        this.pendingProvenance = provenance;
+    }
+
+    /** Record which prefab dictionary named this snapshot's ZDOs. Call before the parse opens it. */
+    public void setPrefabDictionaryInfo(String version, int entries) {
+        this.prefabDictionaryVersion = version;
+        this.prefabDictionaryEntries = entries;
+    }
+
     public void beginSnapshot(File sourceFile, int worldVersion, double netTimeSeconds) throws SQLException {
+        SnapshotProvenance staged = pendingProvenance;
+        pendingProvenance = null;
+        beginSnapshot(sourceFile, worldVersion, netTimeSeconds, staged);
+    }
+
+    public void beginSnapshot(File sourceFile, int worldVersion, double netTimeSeconds, SnapshotProvenance provenance) throws SQLException {
+        if (provenance == null) {
+            String defaultWorld = sourceFile.getName().replace(".db", "");
+            provenance = new SnapshotProvenance(
+                defaultWorld, defaultWorld, "local", "bak_manual",
+                Instant.ofEpochMilli(sourceFile.lastModified()).toString(), "",
+                SnapshotProvenance.DEFAULT_PARSER_VERSION, SnapshotProvenance.CURRENT_SCHEMA_VERSION);
+        }
+
         try (Statement st = conn.createStatement();
              ResultSet rs = st.executeQuery("SELECT COALESCE(MAX(snapshot_id), 0) + 1 FROM world_snapshot")) {
             rs.next();
@@ -80,8 +129,10 @@ public final class AnalyticsCache implements AutoCloseable {
 
         try (PreparedStatement ps = conn.prepareStatement(
                 "INSERT INTO world_snapshot " +
-                "(snapshot_id, source_path, file_size, file_mtime, parsed_at, world_version, net_time_seconds) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                "(snapshot_id, source_path, file_size, file_mtime, parsed_at, world_version, net_time_seconds, " +
+                "world_id, world_name, source, backup_id, save_timestamp, file_hash, parser_version, steward_schema_version, " +
+                "prefab_dictionary_version, prefab_dictionary_entries) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             ps.setLong(1, snapshotId);
             ps.setString(2, sourceFile.getAbsolutePath());
             ps.setLong(3, sourceFile.length());
@@ -89,10 +140,37 @@ public final class AnalyticsCache implements AutoCloseable {
             ps.setString(5, Instant.now().toString());
             ps.setInt(6, worldVersion);
             ps.setDouble(7, netTimeSeconds);
+            ps.setString(8, provenance.worldId());
+            ps.setString(9, provenance.worldName());
+            ps.setString(10, provenance.source());
+            ps.setString(11, provenance.backupId());
+            ps.setString(12, provenance.saveTimestamp() != null ? provenance.saveTimestamp() : Instant.ofEpochMilli(sourceFile.lastModified()).toString());
+            ps.setString(13, provenance.fileHash() != null ? provenance.fileHash() : "");
+            ps.setString(14, provenance.parserVersion());
+            ps.setInt(15, provenance.schemaVersion());
+            ps.setString(16, prefabDictionaryVersion);
+            ps.setInt(17, prefabDictionaryEntries);
             ps.executeUpdate();
         }
         conn.commit();
         prepareStatements();
+    }
+
+    public void recordDelta(long prevSnapshotId, int zdosAdded, int zdosRemoved, int zdosModified, int itemsDelta) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "INSERT INTO snapshot_delta " +
+                "(snapshot_id, prev_snapshot_id, zdos_added, zdos_removed, zdos_modified, container_items_delta, computed_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+            ps.setLong(1, snapshotId);
+            ps.setLong(2, prevSnapshotId);
+            ps.setInt(3, zdosAdded);
+            ps.setInt(4, zdosRemoved);
+            ps.setInt(5, zdosModified);
+            ps.setInt(6, itemsDelta);
+            ps.setString(7, Instant.now().toString());
+            ps.executeUpdate();
+        }
+        conn.commit();
     }
 
     public void insertZdo(
@@ -197,10 +275,25 @@ public final class AnalyticsCache implements AutoCloseable {
 
     @Override
     public void close() throws SQLException {
-        finish();
+        if (closed) return;
+        try {
+            finish();
+        } finally {
+            closed = true;
+            conn.close();
+        }
     }
 
+    /**
+     * Flush, index and commit everything written so far, leaving the connection usable.
+     *
+     * <p>This deliberately does not close the connection. The ingest path has to query what it
+     * just wrote — to compute a delta against the previous snapshot — and closing here made that
+     * fail with "Connection was closed" after a ten-minute parse. Releasing the connection is
+     * {@link #close()}'s job. Idempotent.
+     */
     public void finish() throws SQLException {
+        if (finished) return;
         flushBatches();
         createIndexes();
         conn.commit();
@@ -209,7 +302,12 @@ public final class AnalyticsCache implements AutoCloseable {
         closeQuietly(itemStmt);
         closeQuietly(zdoAppender);
         closeQuietly(itemAppender);
-        conn.close();
+        zdoStmt = null;
+        fieldStmt = null;
+        itemStmt = null;
+        zdoAppender = null;
+        itemAppender = null;
+        finished = true;
     }
 
     private void insertField(
@@ -250,7 +348,30 @@ public final class AnalyticsCache implements AutoCloseable {
                 "file_mtime BIGINT, " +
                 "parsed_at VARCHAR, " +
                 "world_version INTEGER, " +
-                "net_time_seconds DOUBLE)");
+                "net_time_seconds DOUBLE, " +
+                "world_id VARCHAR, " +
+                "world_name VARCHAR, " +
+                "source VARCHAR, " +
+                "backup_id VARCHAR, " +
+                "save_timestamp VARCHAR, " +
+                "file_hash VARCHAR, " +
+                "parser_version VARCHAR, " +
+                "steward_schema_version INTEGER, " +
+                // Which prefab dictionary named this snapshot's ZDOs. Deltas group by
+                // prefab_name, so comparing snapshots built with different dictionaries would
+                // otherwise report a naming change as a world change.
+                "prefab_dictionary_version VARCHAR, " +
+                "prefab_dictionary_entries INTEGER)");
+
+            st.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS snapshot_delta (" +
+                "snapshot_id BIGINT PRIMARY KEY, " +
+                "prev_snapshot_id BIGINT, " +
+                "zdos_added INTEGER, " +
+                "zdos_removed INTEGER, " +
+                "zdos_modified INTEGER, " +
+                "container_items_delta INTEGER, " +
+                "computed_at VARCHAR)");
 
             st.executeUpdate(
                 "CREATE TABLE IF NOT EXISTS zdo (" +
@@ -304,6 +425,17 @@ public final class AnalyticsCache implements AutoCloseable {
                 "count_value BIGINT, " +
                 "sum_value DOUBLE, " +
                 "log_value DOUBLE)");
+
+            // Migrations. CREATE TABLE IF NOT EXISTS is a no-op on a cache built by an earlier
+            // build, so columns added later have to be applied separately or every INSERT against
+            // an existing cache fails on the missing column.
+            for (String ddl : new String[] {
+                "ALTER TABLE world_snapshot ADD COLUMN IF NOT EXISTS prefab_dictionary_version VARCHAR",
+                "ALTER TABLE world_snapshot ADD COLUMN IF NOT EXISTS prefab_dictionary_entries INTEGER",
+            }) {
+                try { st.executeUpdate(ddl); }
+                catch (SQLException e) { log.warn("Schema migration skipped ({}): {}", ddl, e.getMessage()); }
+            }
         }
         conn.commit();
     }

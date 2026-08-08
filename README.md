@@ -4,6 +4,8 @@ Valheim world-file (`.db`) parser, steward API, and browser viewer for high-play
 
 The app runs as a single Java fat JAR. In normal mode it parses the world into an in-memory steward dashboard. In batch analytics mode it also writes a full-fidelity DuckDB cache and pre-rendered map layers for large-world GM investigations.
 
+It also acts as the world intelligence and read model for the wider server stack: it retains a history of ingested saves with provenance, computes deltas between them, and serves a four-view UI (World / Changes / History / Explore). The ingest contract is in [ISLET_INTEGRATION_SPEC.md](docs/comfy-integration/ISLET_INTEGRATION_SPEC.md); prefab naming, which everything downstream depends on, is in [PREFAB_DICTIONARY.md](docs/comfy-integration/PREFAB_DICTIONARY.md).
+
 ## Quick start
 
 Recommended path for Windows users:
@@ -142,7 +144,7 @@ This is the consolidated backlog pulled from the handoff docs and batch analytic
 - Local bounded 3D prefab viewer.
 - Per-container inventory drill-down in the live UI.
 - Alert noise reduction for orphaned portals.
-- Unresolved prefab/hash identification for several building, container, item-stand, and Ashlands dropped-item variants.
+- Naming the residual unresolved prefab hashes (129 hashes / 0.54% of ZDOs on ComfyEra16, mostly modded and ZoneSystem location prefabs). The bundled dictionary resolves 99.5%; `GET /api/v1/prefabs/unresolved` is the live worklist. See [docs/comfy-integration/PREFAB_DICTIONARY.md](docs/comfy-integration/PREFAB_DICTIONARY.md).
 
 ## Repo layout
 

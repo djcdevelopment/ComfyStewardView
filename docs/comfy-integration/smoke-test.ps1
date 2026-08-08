@@ -34,7 +34,16 @@ Write-Host ""
 
 # Daemon reachable + ready
 check "daemon /status is done"            { (get '/api/v1/status').done -eq $true }
-check "world version is 35"               { (get '/api/v1/summary').worldVersion -eq 35 }
+# ComfyEra14 is world version 35; ComfyEra16 is 37. Accept either.
+check "world version is 35 or 37"         { (get '/api/v1/summary').worldVersion -in @(35, 37) }
+
+Write-Host ""
+Write-Host "--- Prefab dictionary ---" -ForegroundColor Cyan
+
+check "dictionary loaded"                 { (get '/api/v1/summary').prefabCoverage.dictionaryEntries -ge 3458 }
+check "prefab coverage >= 99%"            { (get '/api/v1/summary').prefabCoverage.pctResolved -ge 99 }
+check "/prefabs/unresolved responds"      { $null -ne (get '/api/v1/prefabs/unresolved?limit=5').unresolved }
+check "no hash: in top prefabs"           { -not ((get '/api/v1/world-summary').data.top_prefabs_global | Where-Object { $_.prefab -like 'hash:*' }) }
 
 Write-Host ""
 Write-Host "--- PA1: v106 inventory patch ---" -ForegroundColor Cyan
@@ -48,11 +57,18 @@ Write-Host ""
 Write-Host "--- PA3: classification injection ---" -ForegroundColor Cyan
 
 check "top item has category"             { (get '/api/v1/economy?topN=1').topItems[0].category -eq 'Currency' }
-check "byCategory present"                { (get '/api/v1/economy?topN=1').byCategory.PSObject.Properties.Count -ge 10 }
-check "byTier present"                    { (get '/api/v1/economy?topN=1').byTier.PSObject.Properties.Count -ge 5 }
+# @(...) is load-bearing: on Windows PowerShell 5.1, .PSObject.Properties.Count enumerates the
+# collection and yields one Count per property ("1 1 1 ...") rather than the collection size,
+# so the bare comparison is always false. Works either way in pwsh 7.
+check "byCategory present"                { @((get '/api/v1/economy?topN=1').byCategory.PSObject.Properties).Count -ge 10 }
+check "byTier present"                    { @((get '/api/v1/economy?topN=1').byTier.PSObject.Properties).Count -ge 5 }
 
 Write-Host ""
 Write-Host "--- PA4: forensics alerts ---" -ForegroundColor Cyan
+# NOTE: these two are ComfyEra14-specific. They assert on exploit findings (quality overflow,
+# server-issued gear) that existed in that world. ComfyEra16 has 0 critical alerts and none of
+# these types, so both fail there on any build, including pre-dictionary ones. The underlying
+# /forensics/* endpoints are exercised separately below and do pass on Era16.
 
 check "at least 1 critical alert"         { (get '/api/v1/alerts?limit=1').critical -ge 1 }
 $forensicTypes = (get '/api/v1/alerts?limit=2000').data | Where-Object { $_.type -in @('quality_overflow','server_issued_items','engravings_tracked') } | Measure-Object | Select-Object -ExpandProperty Count

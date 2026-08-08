@@ -17,28 +17,37 @@ import java.util.Set;
  */
 public class ContainerClassifier {
 
+    // Names verified against the prefab dictionary (comfy-prefab-dump/v1, game 0.221.12).
+    // Removed piece_chest_trailer, Longship, Sailraftr and piece_chest_cart — none of them are
+    // prefabs in any Valheim build, so they could never match a resolved name.
     private static final Set<String> CHEST_PREFABS = new HashSet<>(Arrays.asList(
         "piece_chest_wood",
         "piece_chest",
         "piece_chest_blackmetal",
         "piece_chest_private",
-        "piece_chest_trailer",    // Hearth & Home cart companion chest (if present)
+        "piece_chest_barrel",
+        "piece_chest_treasure",
         "loot_chest_wood",
-        "loot_chest_stone"
+        "loot_chest_stone",
+        "stonechest",
+        "crypt_skeleton_chest",
+        "shipwreck_karve_chest",
+        "chest_hildir1", "chest_hildir2", "chest_hildir3"
     ));
 
     private static final Set<String> SHIP_PREFABS = new HashSet<>(Arrays.asList(
         "VikingShip",
+        "VikingShip_Ashlands",
         "Karve",
-        "Raft",
-        "Longship",
-        "Sailraftr"               // Raft variant
+        "Raft"
     ));
 
     private static final Set<String> CART_PREFABS = new HashSet<>(Arrays.asList(
-        "Cart",
-        "piece_chest_cart"        // Cart storage container ZDO
+        "Cart"
     ));
+
+    /** World-generated loot chests: 22 TreasureChest_* variants, matched by prefix. */
+    private static final String TREASURE_CHEST_PREFIX = "TreasureChest_";
 
     public void classify(List<ContractContainer> containers) {
         for (ContractContainer c : containers) {
@@ -49,9 +58,10 @@ public class ContainerClassifier {
     private String resolveType(String prefab) {
         if (prefab == null) return "unknown";
 
-        if (CHEST_PREFABS.contains(prefab)) return "chest";
-        if (SHIP_PREFABS.contains(prefab))  return "ship";
-        if (CART_PREFABS.contains(prefab))  return "cart";
+        if (CHEST_PREFABS.contains(prefab))            return "chest";
+        if (SHIP_PREFABS.contains(prefab))             return "ship";
+        if (CART_PREFABS.contains(prefab))             return "cart";
+        if (prefab.startsWith(TREASURE_CHEST_PREFIX))  return "chest";
 
         // Unresolved hash — no name registered
         if (prefab.startsWith("hash:")) return "unknown";

@@ -55,18 +55,31 @@ public class WorldParser {
     private static final int HASH_TOMBSTONE    = sh("Player_tombstone");
     private static final int HASH_SIGN1        = sh("sign");
     private static final int HASH_SIGN2        = sh("sign_notext");
-    private static final int HASH_SIGN3        = 686545676;
-    private static final int HASH_BALLISTA     = -1195767551;
+    // Was the literal -1195767551, labelled "turret". The dictionary names that hash
+    // blackmarble_1x1, and a probe found ammoType on 9 of its 41,651 ZDOs (0.022%) while
+    // 99.8% carry health+support — a building piece. The real ballista is piece_turret.
+    private static final int HASH_BALLISTA     = sh("piece_turret");   // -816396091
 
+    // Every hash below is a name the verified dictionary confirms is a real prefab.
+    // Three literals were removed here — 1411875912 (cliff_mistlands2, 173k ZDOs, 98.5%
+    // scaleScalar), 650075310 (crystal_wall_1x1) and -1161852777 (blackmarble_2x2x2) — none of
+    // which carried an "item" property on more than 0.02% of their ZDOs.
     private static final Set<Integer> ITEM_STAND_HASHES = new HashSet<>(Arrays.asList(
-        sh("itemstand"), 1411875912, 650075310, -1161852777
+        sh("itemstand"), sh("itemstandh"),
+        sh("ArmorStand"), sh("ArmorStand_Male"), sh("ArmorStand_Female")
     ));
+    // Removed: -494364525 (caverock_ice_stalagtite — 0% carried "items") and piece_chest_cart,
+    // which is not a prefab in any Valheim build. Added the remaining vanilla containers so
+    // that an *empty* one is still counted; a non-empty one was already caught by hasItems.
     private static final Set<Integer> CONTAINER_HASHES = new HashSet<>(Arrays.asList(
         sh("piece_chest_wood"), sh("piece_chest"), sh("piece_chest_blackmetal"),
-        sh("piece_chest_private"), sh("piece_chest_cart"), -494364525
+        sh("piece_chest_private"), sh("piece_chest_barrel"), sh("piece_chest_treasure"),
+        sh("loot_chest_wood"), sh("loot_chest_stone"), sh("stonechest"), sh("Cart")
     ));
     private static final Set<Integer> BED_HASHES = new HashSet<>(Arrays.asList(HASH_BED, HASH_BED02));
-    private static final Set<Integer> SIGN_HASHES = new HashSet<>(Arrays.asList(HASH_SIGN1, HASH_SIGN2, HASH_SIGN3));
+    // 686545676 was HASH_SIGN3 "sign_hmHildir"; it is Piece_grausten_floor_4x4 and carried
+    // text on 1 of 79,881 ZDOs. Signs now also match on content — see the classification below.
+    private static final Set<Integer> SIGN_HASHES = new HashSet<>(Arrays.asList(HASH_SIGN1, HASH_SIGN2));
 
     private static final Set<String> KNOWN_CREATURES = new HashSet<>(Arrays.asList(
         "Seagal","Skeleton","Deer","Leech","Greydwarf","Crow","Draugr","Surtling",
@@ -138,6 +151,53 @@ public class WorldParser {
         this.analyticsCache = analyticsCache;
     }
 
+    // ----- Reconciliation probe (diagnostic; empty = off) -------------------
+    // Measures, for a set of prefab hashes, what FRACTION of their ZDOs actually
+    // carries each property. Prior hash identifications were made from probes that
+    // reported presence without a denominator, which is how a property occurring on
+    // 12 of 40,889 ZDOs got recorded as "confirmed".
+
+    private Set<Integer> probeHashes = Collections.emptySet();
+    private final Map<Integer, ProbeStats> probeResults = new LinkedHashMap<>();
+
+    /** Field names worth naming in a probe report. Anything else is shown as its raw hash. */
+    private static final String[] PROBE_FIELD_NAMES = {
+        "creator", "owner", "spawntime", "health", "support", "stack", "quality",
+        "ownerName", "text", "author", "tag", "item", "items", "crafterName",
+        "crafterID", "ammoType", "ammo", "targets", "TCData", "picked", "enabled",
+        "scaleScalar", "durability", "fuel", "lastTime", "variant", "worldLevel",
+        "pickedUp", "dataCount", "seed", "level", "haveTarget", "InUse"
+    };
+    private static final Map<Integer, String> PROBE_FIELD_BY_HASH = new HashMap<>();
+    static {
+        for (String n : PROBE_FIELD_NAMES) PROBE_FIELD_BY_HASH.put(sh(n), n);
+    }
+
+    public static final class ProbeStats {
+        public long count = 0;
+        /** field name → number of ZDOs of this hash that carried it */
+        public final Map<String, Long> fieldPresence = new TreeMap<>();
+        /** up to 3 full property dumps */
+        public final List<String> samples = new ArrayList<>();
+    }
+
+    public void setProbeHashes(Set<Integer> hashes) {
+        this.probeHashes = (hashes == null) ? Collections.emptySet() : hashes;
+        this.probeResults.clear();
+        for (Integer h : this.probeHashes) this.probeResults.put(h, new ProbeStats());
+    }
+
+    public Map<Integer, ProbeStats> getProbeResults() { return probeResults; }
+
+    private static String probeFieldName(int hash) {
+        String n = PROBE_FIELD_BY_HASH.get(hash);
+        return n != null ? n : ("hash:" + hash);
+    }
+
+    private static void probeNote(Map<String, String> props, int fieldHash, String value) {
+        props.put(probeFieldName(fieldHash), value);
+    }
+
     public ParseProgress getProgress() {
         int parsed = zdosParsed.get(), total = totalZdos.get();
         return new ParseProgress(statusMsg.get(), parsed, total,
@@ -160,7 +220,14 @@ public class WorldParser {
 
         ZdoFlatStore store = new ZdoFlatStore(1_100_000);
         store.initHeatmaps(500);
+        // Order matters: the verified dictionary claims its hashes first, so the
+        // hand-maintained table below can only fill gaps, never overwrite.
+        registerDictionaryNames(store, dbFile.getParentFile());
         registerKnownNames(store);
+        // Stamp the snapshot with the dictionary that named it — deltas group by prefab_name.
+        if (analyticsCache != null) {
+            analyticsCache.setPrefabDictionaryInfo(store.dictionaryGameVersion, store.dictionaryEntries);
+        }
 
         statusMsg.set("Reading " + dbFile.length() / 1048576 + "MB save file...");
         long readStart = System.currentTimeMillis();
@@ -222,72 +289,124 @@ public class WorldParser {
             totalZdos.get(), store.parseDurationMs, store.size(),
             store.buildingCount,
             store.droppedItemCounts.values().stream().mapToInt(Integer::intValue).sum());
+        logPrefabCoverage(store);
         return store;
+    }
+
+    /**
+     * Report how many ZDOs got a real prefab name. Makes the dictionary's contribution
+     * measurable rather than asserted, and prints the worklist for the next refresh.
+     */
+    private static void logPrefabCoverage(ZdoFlatStore store) {
+        log.info("Prefab name coverage: {} / {} ZDOs resolved ({}%) — {} unresolved across {} distinct hashes",
+            String.format("%,d", store.resolvedZdoCount),
+            String.format("%,d", store.zdosSeen()),
+            String.format("%.1f", store.resolvedPct()),
+            String.format("%,d", store.unresolvedZdoCount),
+            String.format("%,d", store.unknownHashCounts.size()));
+
+        if (store.dictionarySource != null) {
+            log.info("  Dictionary: {} entries, game {}, {}",
+                store.dictionaryEntries, store.dictionaryGameVersion, store.dictionarySource);
+        } else {
+            log.info("  Dictionary: not loaded — hardcoded names only");
+        }
+
+        StringBuilder cats = new StringBuilder();
+        for (byte c = 0; c < store.categoryCounts.length; c++) {
+            if (store.categoryCounts[c] == 0) continue;
+            if (cats.length() > 0) cats.append(", ");
+            cats.append(Categories.name(c)).append('=').append(String.format("%,d", store.categoryCounts[c]));
+        }
+        log.info("Category census: {}", cats);
+
+        List<Map.Entry<Integer, Integer>> top = store.topUnresolvedHashes(10);
+        if (!top.isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            for (Map.Entry<Integer, Integer> e : top) {
+                if (sb.length() > 0) sb.append(", ");
+                sb.append("hash:").append(e.getKey()).append(" (")
+                  .append(String.format("%,d", e.getValue())).append(")");
+            }
+            log.info("  Top unresolved: {}", sb);
+        }
     }
 
     // ----- Pre-register all known prefab hashes so nameForHash returns real names -----
 
+    /** Load the verified dictionary and claim its hashes before anything hand-written runs. */
+    private static void registerDictionaryNames(ZdoFlatStore store, File saveFileDir) {
+        PrefabDictionary dict = PrefabDictionary.load(saveFileDir);
+        for (PrefabDictionary.Entry e : dict.entries()) {
+            store.registerHashName(e.hash, e.name);
+        }
+        store.dictionaryEntries     = dict.size();
+        store.dictionaryGameVersion = dict.gameVersion();
+        store.dictionaryGeneratedAt = dict.generatedAt();
+        store.dictionarySource      = dict.sourceDescription();
+    }
+
+    /**
+     * Register a hand-maintained name, reporting rather than silently losing a disagreement.
+     *
+     * <p>The dictionary has already claimed its hashes, so a false return means this hand entry
+     * contradicts a name whose {@code sh(name) == hash} was verified at load. Historically eight
+     * of these were wrong; a probe measured the "confirming" property on as few as 1 of 79,881
+     * ZDOs. The WARN keeps that class of drift visible instead of letting it accumulate.
+     */
+    private static void reg(ZdoFlatStore store, int hash, String name) {
+        if (!store.registerHashName(hash, name)) {
+            String existing = store.rawNameForHash(hash);
+            if (!name.equals(existing)) {
+                log.warn("Hand-registered name for hash {} is '{}' but the verified dictionary "
+                    + "says '{}' — ignoring the hand entry", hash, name, existing);
+            }
+        }
+    }
+
     private static void registerKnownNames(ZdoFlatStore store) {
         // Portals / beds / signs / tombstones
-        store.registerHashName(HASH_PORTAL_WOOD, "portal_wood");
-        store.registerHashName(HASH_BED,         "bed");
-        store.registerHashName(HASH_BED02,       "piece_bed02");
-        store.registerHashName(HASH_SIGN1,       "sign");
-        store.registerHashName(HASH_SIGN2,       "sign_notext");
-        store.registerHashName(HASH_SIGN3,       "sign_hmHildir");   // Hildir sign
-        store.registerHashName(HASH_BALLISTA,    "turret");           // Dvergr ballista
-        store.registerHashName(HASH_TOMBSTONE,   "Player_tombstone");
+        reg(store, HASH_PORTAL_WOOD, "portal_wood");
+        reg(store, HASH_BED,         "bed");
+        reg(store, HASH_BED02,       "piece_bed02");
+        reg(store, HASH_SIGN1,       "sign");
+        reg(store, HASH_SIGN2,       "sign_notext");
+        reg(store, HASH_TOMBSTONE,   "Player_tombstone");
 
         // Item stands
-        store.registerHashName(sh("itemstand"),       "itemstand");
-        store.registerHashName(1411875912,             "itemstandh");      // horizontal stand
-        store.registerHashName(650075310,              "itemstand_rooster");
-        store.registerHashName(-1161852777,            "ArmorStand");
+        reg(store, sh("itemstand"),  "itemstand");
+        reg(store, sh("itemstandh"), "itemstandh");
 
         // Containers (chests)
-        store.registerHashName(sh("piece_chest_wood"),        "piece_chest_wood");
-        store.registerHashName(sh("piece_chest"),             "piece_chest");
-        store.registerHashName(sh("piece_chest_blackmetal"),  "piece_chest_blackmetal");
-        store.registerHashName(sh("piece_chest_private"),     "piece_chest_private");
-        store.registerHashName(sh("piece_chest_cart"),        "piece_chest_cart");
+        reg(store, sh("piece_chest_wood"),       "piece_chest_wood");
+        reg(store, sh("piece_chest"),            "piece_chest");
+        reg(store, sh("piece_chest_blackmetal"), "piece_chest_blackmetal");
+        reg(store, sh("piece_chest_private"),    "piece_chest_private");
 
         // Ships (their ZDOs carry the "items" property = container category)
-        store.registerHashName(sh("VikingShip"), "VikingShip");
-        store.registerHashName(sh("Karve"),      "Karve");
-        store.registerHashName(sh("Raft"),       "Raft");
-        store.registerHashName(sh("Longship"),   "Longship");
-        store.registerHashName(sh("Cart"),       "Cart");
+        reg(store, sh("VikingShip"), "VikingShip");
+        reg(store, sh("Karve"),      "Karve");
+        reg(store, sh("Raft"),       "Raft");
+        reg(store, sh("Cart"),       "Cart");
 
         // Creatures
         for (String name : KNOWN_CREATURES) {
-            store.registerHashName(sh(name), name);
+            reg(store, sh(name), name);
         }
 
-        // Dungeon / boss-site entrances
+        // Dungeon / boss-site entrances.
+        // These are ZoneSystem *location* prefabs — a separate namespace from ZNetScene, so the
+        // dictionary does not contain them and this block remains the only source for them.
         for (String name : KNOWN_ENTRANCES) {
-            store.registerHashName(sh(name), name);
+            reg(store, sh(name), name);
         }
 
-        // Dungeon interiors / crypt components
-        store.registerHashName((int)3800928356L, "Burial Crypt Chest");
-        store.registerHashName((int)4104329089L, "Crypt Chest");
-        store.registerHashName((int)4252449299L, "Muddy Scrap Pile");
-        store.registerHashName((int)1756993846L, "Muddy Scrap Pile");
-        store.registerHashName((int)3848155824L, "Crypt Exit");
-        store.registerHashName((int)3955100387L, "Crypt Gate");
-        store.registerHashName((int)849594011L,  "Crypt Loot");
-        store.registerHashName((int)2275296700L, "Iron Gate");
-        store.registerHashName((int)2952831755L, "Yellow Mushroom");
-        store.registerHashName((int)1520650186L, "Mushroom");
-        store.registerHashName((int)2823374043L, "Vegvisir (Boss Stone)");
-        store.registerHashName(2034747966,       "Barrel");
-        store.registerHashName(757858766,        "Burial Crypt Item");
-        store.registerHashName(1577361568,       "Burial Crypt Item");
-        store.registerHashName(449644523,        "Skeletal Remains");
-        store.registerHashName(449644525,        "Skeletal Remains");
-        store.registerHashName((int)4036512582L, "Crypt Decoration");
-        store.registerHashName((int)1620622954L, "Crypt Decoration");
-        store.registerHashName(951398868,        "Crypt Decoration");
+        // NOTE: the former "dungeon interiors / crypt components" block was removed. Its ~20
+        // entries were hand-applied display labels, and the dictionary supplies the real prefab
+        // names for the same hashes — several of which the labels got wrong, e.g.
+        // -1471593253 was labelled "Vegvisir (Boss Stone)" but is Pickable_Stone (the 3rd most
+        // common prefab in the world), and 1620622954 was labelled "Crypt Decoration" but is
+        // Spawner_Draugr. See docs/comfy-integration/PREFAB_DICTIONARY.md.
     }
 
     // ----- Direct ZDO parser -----
@@ -305,6 +424,13 @@ public class WorldParser {
 
         // Read prefab hash
         int hash = buf.getInt();
+        store.noteHashSeen(hash);
+
+        // Probe bookkeeping: count EVERY ZDO of a probed hash, including the ones that
+        // return early below with no properties at all — an empty property set is a result.
+        ProbeStats probe = probeResults.isEmpty() ? null : probeResults.get(hash);
+        if (probe != null) probe.count++;
+        Map<String, String> probeProps = (probe != null) ? new LinkedHashMap<>() : null;
 
         // Skip rotation if present
         if ((flags & FLAG_ROTATION) != 0) {
@@ -314,11 +440,14 @@ public class WorldParser {
         boolean validPos = Math.abs(x) < 100_000f && Math.abs(z) < 100_000f;
         boolean cacheEnabled = analyticsCache != null;
         boolean cacheFields = cacheEnabled && analyticsCache.capturesFields();
+        // A probe run has to read the full property block for every ZDO, so the
+        // hash fast-paths below (which skip properties wholesale) must be disabled.
+        boolean fullRead = cacheFields || probe != null;
         boolean isEntrance = ENTRANCE_HASHES.contains(hash);
 
         // Dungeon / boss-site entrance — check BEFORE property-flag early return
         // because some entrance ZDOs (Crypt*, FrostCaves) have no property flags
-        if (isEntrance && (!cacheFields || (flags & 0xFF) == 0)) {
+        if (isEntrance && (!fullRead || (flags & 0xFF) == 0)) {
             if ((flags & 0xFF) != 0) skipProperties(buf, flags, worldVersion);
             store.structureIndices.add(
                 store.add(hash, x, y, z, Categories.STRUCTURE, 0L, 0L, null, null, 0, 0));
@@ -347,7 +476,7 @@ public class WorldParser {
         // ---- Fast-path checks based on prefab hash ----
 
         // Goblin bed: NPC
-        if (!cacheFields && hash == HASH_GOBLIN_BED) {
+        if (!fullRead && hash == HASH_GOBLIN_BED) {
             skipProperties(buf, flags, worldVersion);
             if (validPos) store.allHeatmap.increment(x, z);
             recordCacheZdo(zdoIndex, store, hash, Categories.UNKNOWN, x, y, z, 0L, 0L, 0L, flags);
@@ -355,7 +484,7 @@ public class WorldParser {
         }
 
         // Known creature
-        if (!cacheFields && CREATURE_HASHES.contains(hash)) {
+        if (!fullRead && CREATURE_HASHES.contains(hash)) {
             skipProperties(buf, flags, worldVersion);
             store.creatureIndices.add(
                 store.add(hash, x, y, z, Categories.CREATURE, 0L, 0L, null, null, 0, 0));
@@ -365,7 +494,7 @@ public class WorldParser {
         }
 
         // Ballista
-        if (!cacheFields && hash == HASH_BALLISTA) {
+        if (!fullRead && hash == HASH_BALLISTA) {
             skipProperties(buf, flags, worldVersion);
             store.add(hash, x, y, z, Categories.BALLISTA, 0L, 0L, null, null, 0, 0);
             if (validPos) store.allHeatmap.increment(x, z);
@@ -411,6 +540,7 @@ public class WorldParser {
                 int h = buf.getInt();
                 float v = buf.getFloat();
                 if (cacheEnabled) analyticsCache.insertFloatField(zdoIndex, "float", h, fieldName(h), v);
+                if (probeProps != null) probeNote(probeProps, h, Float.toString(v));
                 if      (h == H_HEALTH)  { health = v;  hasHealth  = true; }
                 else if (h == H_SUPPORT) { support = v; hasSupport = true; }
             }
@@ -459,6 +589,7 @@ public class WorldParser {
                 int h = buf.getInt();
                 int v = buf.getInt();
                 if (cacheEnabled) analyticsCache.insertIntField(zdoIndex, "int", h, fieldName(h), v);
+                if (probeProps != null) probeNote(probeProps, h, Integer.toString(v));
                 if      (h == H_STACK)   { stack   = v; hasStack   = true; }
                 else if (h == H_QUALITY) quality = v;
             }
@@ -471,6 +602,7 @@ public class WorldParser {
                 int  h = buf.getInt();
                 long v = buf.getLong();
                 if (cacheEnabled) analyticsCache.insertLongField(zdoIndex, "long", h, fieldName(h), v);
+                if (probeProps != null) probeNote(probeProps, h, Long.toString(v));
                 if      (h == H_CREATOR)   { creator   = v; hasCreator   = true; }
                 else if (h == H_OWNER)     { owner     = v; }
                 else if (h == H_SPAWNTIME) { spawntime = v; hasSpawntime = true; }
@@ -486,6 +618,12 @@ public class WorldParser {
                 if (cacheEnabled) {
                     if (h == H_ITEMS) analyticsCache.insertBlobField(zdoIndex, "string", h, fieldName(h), v.length());
                     else analyticsCache.insertStringField(zdoIndex, "string", h, fieldName(h), v);
+                }
+                if (probeProps != null) {
+                    // Empty strings are recorded as absent — a zero-length "text" is not a sign.
+                    if (v != null && !v.isEmpty()) {
+                        probeNote(probeProps, h, v.length() > 60 ? v.substring(0, 60) + "..." : v);
+                    }
                 }
                 if      (h == H_OWNER_NAME)   { ownerName   = nullIfEmpty(v); }
                 else if (h == H_TAG)          { tag         = nullIfEmpty(v); }
@@ -504,8 +642,15 @@ public class WorldParser {
                 int h = buf.getInt();
                 int len = buf.getInt();
                 if (cacheEnabled) analyticsCache.insertBlobField(zdoIndex, "bytearray", h, fieldName(h), len);
+                if (probeProps != null) probeNote(probeProps, h, "<" + len + " bytes>");
                 buf.position(buf.position() + len);
             }
+        }
+
+        // Probe: fold this ZDO's property set into the per-hash presence histogram.
+        if (probe != null) {
+            for (String key : probeProps.keySet()) probe.fieldPresence.merge(key, 1L, Long::sum);
+            if (probe.samples.size() < 3) probe.samples.add(probeProps.toString());
         }
 
         // ----- Classification -----
@@ -580,7 +725,12 @@ public class WorldParser {
             return;
         }
 
-        if (isSign) {
+        // Signs were the only category with no content-based fallback, so dropping a hash from
+        // SIGN_HASHES would have lost real signs. Match on content instead: the component atlas
+        // (valheim-component-atlas.json, ZdoKeyIndex) records Sign.SetText as the only writer of
+        // "text" and Sign.UpdateText as the only writer of "author" — nothing else in the game
+        // writes either key. This also picks up hanging signs, Hildir boards and modded signs.
+        if (isSign || text != null || author != null) {
             store.signIndices.add(
                 store.add(hash, x, y, z, Categories.SIGN,
                     spawntime, creator, text, author, 0, 0));
@@ -651,6 +801,9 @@ public class WorldParser {
 
     private void recordCacheZdo(int zdoIndex, ZdoFlatStore store, int hash, byte category,
             float x, float y, float z, long creator, long owner, long spawntime, int flags) throws Exception {
+        // Census first: every classification path funnels through here, and the count must not
+        // depend on whether the analytics cache happens to be enabled.
+        if (category >= 0 && category < store.categoryCounts.length) store.categoryCounts[category]++;
         if (analyticsCache == null) return;
         analyticsCache.insertZdo(zdoIndex, hash, store.nameForHash(hash), category,
             x, y, z, creator, owner, spawntime, flags);

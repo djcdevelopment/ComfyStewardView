@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Valheim World Viewer</title>
 
+  <!-- Reverse proxies (e.g. tailscale funnel --set-path=/steward) strip the mount
+       prefix, so all app URLs are relative and only resolve under a trailing slash. -->
+  <script>
+    if (!location.pathname.endsWith('/') && !/\.[a-z0-9]+$/i.test(location.pathname))
+      location.replace(location.pathname + '/' + location.search + location.hash);
+  </script>
+
   <!-- Tailwind CDN (dark mode) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { darkMode: 'class' }</script>
@@ -90,16 +97,52 @@
 </div>
 
 <!-- Top nav bar -->
+<!-- Top nav bar -->
 <nav class="flex items-center gap-3 bg-gray-800 px-4 py-2 border-b border-gray-700 flex-shrink-0">
-  <span class="text-blue-400 font-bold text-lg mr-2">⚔ Valheim Viewer</span>
+  <span class="text-blue-400 font-bold text-lg mr-2">⚔ Valheim World Intelligence</span>
 
-  <!-- Tab buttons -->
-  <template x-for="tab in tabs" :key="tab.id">
-    <button class="tab-btn px-3 py-1 rounded text-sm bg-gray-700 hover:bg-gray-600"
-            :class="{ active: activeTab === tab.id }"
-            @click="switchTab(tab.id)"
-            x-text="tab.label"></button>
-  </template>
+  <!-- World Selector -->
+  <!-- Options come from the world_ids actually present in the cache. A fixed list hid every
+       snapshot the app writes itself, whose world_id is derived from the save filename. -->
+  <select x-model="selectedWorldId" @change="switchWorld(selectedWorldId)" class="bg-gray-700 text-xs font-semibold rounded px-2 py-1 text-blue-300 border border-gray-600">
+    <option value="">All worlds</option>
+    <template x-for="w in knownWorldIds" :key="w">
+      <option :value="w" x-text="`World: ${w}`"></option>
+    </template>
+  </select>
+
+  <!-- Snapshot Selector -->
+  <select x-model="selectedSnapshotId" @change="switchSnapshot(selectedSnapshotId)" class="bg-gray-700 text-xs rounded px-2 py-1 text-gray-200 border border-gray-600">
+    <template x-for="snap in snapshots" :key="snap.snapshotId">
+      <option :value="snap.snapshotId" x-text="`Snap #${snap.snapshotId} (${snap.saveTimestamp || snap.parsedAt || 'Unknown'})`"></option>
+    </template>
+  </select>
+
+  <!-- Primary 4-Tab Navigation -->
+  <div class="flex gap-1 bg-gray-900 p-1 rounded border border-gray-700 ml-2">
+    <button class="px-3 py-1 rounded text-xs font-semibold"
+            :class="primaryTab === 'world' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'"
+            @click="primaryTab = 'world'">🌍 World</button>
+    <button class="px-3 py-1 rounded text-xs font-semibold"
+            :class="primaryTab === 'changes' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'"
+            @click="primaryTab = 'changes'; loadDelta()">🔄 Changes</button>
+    <button class="px-3 py-1 rounded text-xs font-semibold"
+            :class="primaryTab === 'history' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'"
+            @click="primaryTab = 'history'; loadSnapshots()">📜 History</button>
+    <button class="px-3 py-1 rounded text-xs font-semibold"
+            :class="primaryTab === 'explore' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'"
+            @click="primaryTab = 'explore'">🔍 Explore</button>
+  </div>
+
+  <!-- Sub-tab buttons when World is active -->
+  <div class="flex items-center gap-1 border-l border-gray-700 pl-2" x-show="primaryTab === 'world'">
+    <template x-for="tab in tabs" :key="tab.id">
+      <button class="tab-btn px-2 py-0.5 rounded text-xs bg-gray-700 hover:bg-gray-600"
+              :class="{ active: activeTab === tab.id }"
+              @click="switchTab(tab.id)"
+              x-text="tab.label"></button>
+    </template>
+  </div>
 
   <!-- Spacer -->
   <div class="flex-1"></div>
@@ -110,21 +153,6 @@
       <span>ZDOs: <b class="text-gray-200" x-text="summary.totalZdos?.toLocaleString()"></b></span>
       <span>Players: <b class="text-gray-200" x-text="summary.playerCount"></b></span>
       <span>Portals: <b class="text-gray-200" x-text="summary.portalCount?.toLocaleString()"></b></span>
-      <span>Parse: <b class="text-gray-200" x-text="`${summary.parseDurationMs}ms`"></b></span>
-    </div>
-  </template>
-  <template x-if="worldSummary">
-    <div class="flex gap-3 text-xs text-gray-400 border-l border-gray-600 pl-3">
-      <span>Structs: <b class="text-yellow-400" x-text="worldSummary.data?.stats?.structures?.total || 0"></b></span>
-      <template x-if="(worldSummary.data?.stats?.alerts?.critical || 0) > 0">
-        <span class="font-bold text-red-400" x-text="`🚨 ${worldSummary.data.stats.alerts.critical} crit`"></span>
-      </template>
-      <span>
-        Alerts:
-        <b class="text-orange-400" x-text="worldSummary.data?.stats?.alerts?.high || 0"></b>H /
-        <b class="text-yellow-400" x-text="worldSummary.data?.stats?.alerts?.medium || 0"></b>M /
-        <b class="text-blue-400"   x-text="worldSummary.data?.stats?.alerts?.low || 0"></b>L
-      </span>
     </div>
   </template>
 </nav>
@@ -651,12 +679,205 @@
         </template>
       </div>
     </div>
+  </div><!-- /SELECTION TAB -->
+
+  <!-- =========== CHANGES TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col p-4 overflow-y-auto" x-show="primaryTab === 'changes'">
+    <div class="mb-4 flex items-center justify-between bg-gray-800 p-4 rounded border border-gray-700">
+      <div>
+        <div class="text-base font-bold text-blue-400">Snapshot Comparator & Delta Analysis</div>
+        <div class="text-xs text-gray-400">Compare pre-calculated deltas and changes between world save points</div>
+      </div>
+      <div class="flex gap-3 items-center">
+        <span class="text-xs text-gray-400">From:</span>
+        <select x-model="deltaFromId" class="bg-gray-700 text-xs rounded px-2 py-1 text-gray-200">
+          <template x-for="snap in snapshots" :key="snap.snapshotId">
+            <option :value="snap.snapshotId" x-text="`Snap #${snap.snapshotId}`"></option>
+          </template>
+        </select>
+        <span class="text-xs text-gray-400">To:</span>
+        <select x-model="deltaToId" class="bg-gray-700 text-xs rounded px-2 py-1 text-gray-200">
+          <template x-for="snap in snapshots" :key="snap.snapshotId">
+            <option :value="snap.snapshotId" x-text="`Snap #${snap.snapshotId}`"></option>
+          </template>
+        </select>
+        <button @click="compareSnapshots()" class="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-xs font-semibold rounded text-white">Compare</button>
+      </div>
+    </div>
+
+    <template x-if="deltaResult">
+      <div class="space-y-4">
+        <!-- Comparability warnings. Both describe conditions under which the numbers below
+             do not mean what they appear to mean, so they sit above the stat cards. -->
+        <div x-show="deltaResult.dictionaryMismatch"
+             class="bg-amber-900/40 border border-amber-600 text-amber-200 text-sm rounded p-3">
+          <b>Prefab dictionaries differ</b>
+          (<span x-text="deltaResult.fromDictionaryVersion || 'unknown'"></span>
+           &rarr; <span x-text="deltaResult.toDictionaryVersion || 'unknown'"></span>).
+          Prefab breakdowns are not comparable across a dictionary change &mdash; a rename reads
+          as a build and a demolition. Re-ingest both snapshots with the same dictionary.
+        </div>
+        <div x-show="deltaResult.reconciles === false"
+             class="bg-amber-900/40 border border-amber-600 text-amber-200 text-sm rounded p-3">
+          <b>Counts are a lower bound.</b>
+          Added minus removed does not equal the change in total ZDOs, which happens when the
+          number of objects sharing one exact position changes. Real churn is higher than shown.
+        </div>
+
+        <!-- Stat Cards -->
+        <div class="grid grid-cols-5 gap-4">
+          <div class="bg-gray-800 p-4 rounded border border-gray-700">
+            <div class="text-xs text-gray-400">ZDOs Added</div>
+            <div class="text-2xl font-bold text-green-400" x-text="`+${deltaResult.zdosAdded?.toLocaleString() || 0}`"></div>
+          </div>
+          <div class="bg-gray-800 p-4 rounded border border-gray-700">
+            <div class="text-xs text-gray-400">ZDOs Removed</div>
+            <div class="text-2xl font-bold text-red-400" x-text="`-${deltaResult.zdosRemoved?.toLocaleString() || 0}`"></div>
+          </div>
+          <div class="bg-gray-800 p-4 rounded border border-gray-700">
+            <div class="text-xs text-gray-400">Container Items Shift</div>
+            <div class="text-2xl font-bold text-yellow-400" x-text="deltaResult.containerItemsDelta?.toLocaleString() || 0"></div>
+          </div>
+          <div class="bg-gray-800 p-4 rounded border border-gray-700">
+            <div class="text-xs text-gray-400">New Portals</div>
+            <div class="text-2xl font-bold text-purple-400" x-text="`+${deltaResult.newPortals || 0}`"></div>
+          </div>
+          <div class="bg-gray-800 p-4 rounded border border-gray-700">
+            <div class="text-xs text-gray-400">New Player Deaths</div>
+            <div class="text-2xl font-bold text-orange-400" x-text="`+${deltaResult.newTombstones || 0}`"></div>
+          </div>
+        </div>
+
+        <!-- Breakdown Tables -->
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-gray-800 p-4 rounded border border-gray-700">
+            <div class="text-sm font-semibold text-green-400 mb-2">Added Prefabs Breakdown</div>
+            <table class="w-full text-xs">
+              <thead class="text-gray-400 border-b border-gray-700">
+                <tr><th class="text-left p-1">Prefab</th><th class="text-right p-1">Count Added</th></tr>
+              </thead>
+              <tbody>
+                <template x-for="(count, prefab) in deltaResult.addedPrefabs" :key="prefab">
+                  <tr class="border-b border-gray-800">
+                    <td class="p-1 text-gray-200" x-text="prefab"></td>
+                    <td class="p-1 text-green-400 font-bold text-right" x-text="`+${count}`"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="bg-gray-800 p-4 rounded border border-gray-700">
+            <div class="text-sm font-semibold text-red-400 mb-2">Removed Prefabs Breakdown</div>
+            <table class="w-full text-xs">
+              <thead class="text-gray-400 border-b border-gray-700">
+                <tr><th class="text-left p-1">Prefab</th><th class="text-right p-1">Count Removed</th></tr>
+              </thead>
+              <tbody>
+                <template x-for="(count, prefab) in deltaResult.removedPrefabs" :key="prefab">
+                  <tr class="border-b border-gray-800">
+                    <td class="p-1 text-gray-200" x-text="prefab"></td>
+                    <td class="p-1 text-red-400 font-bold text-right" x-text="`-${count}`"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- =========== HISTORY TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col p-4 overflow-y-auto" x-show="primaryTab === 'history'">
+    <div class="mb-4 bg-gray-800 p-4 rounded border border-gray-700 flex justify-between items-center">
+      <div>
+        <div class="text-base font-bold text-blue-400">Snapshot Retained Timeline & Provenance</div>
+        <div class="text-xs text-gray-400">Complete provenance record for all ingested world save snapshots</div>
+      </div>
+      <button @click="loadSnapshots()" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-xs rounded text-gray-200">Refresh Timeline</button>
+    </div>
+
+    <div class="space-y-3">
+      <template x-for="snap in snapshots" :key="snap.snapshotId">
+        <div class="bg-gray-800 p-4 rounded border border-gray-700 flex items-center justify-between">
+          <div>
+            <div class="flex items-center gap-2 mb-1">
+              <span class="px-2 py-0.5 bg-blue-900 text-blue-300 text-xs rounded font-bold" x-text="`Snapshot #${snap.snapshotId}`"></span>
+              <span class="px-2 py-0.5 bg-purple-900 text-purple-300 text-xs rounded" x-text="`Source: ${snap.source || 'local'}`"></span>
+              <span class="px-2 py-0.5 bg-gray-700 text-gray-300 text-xs rounded" x-text="`World: ${snap.worldId}`"></span>
+            </div>
+            <div class="text-xs text-gray-300">
+              <span class="text-gray-400">Backup ID:</span> <span class="font-mono text-gray-200" x-text="snap.backupId"></span> |
+              <span class="text-gray-400">Save Time:</span> <span x-text="snap.saveTimestamp || snap.parsedAt"></span>
+            </div>
+            <div class="text-xs text-gray-500 font-mono mt-1" x-text="`SHA-256: ${snap.fileHash || 'N/A'}`"></div>
+          </div>
+          <div class="text-right text-xs text-gray-400">
+            <div>Size: <b class="text-gray-200" x-text="`${(snap.fileSize / 1024 / 1024).toFixed(1)} MB`"></b></div>
+            <div>Ver: <b class="text-gray-200" x-text="`v${snap.worldVersion}`"></b></div>
+            <!-- Which prefab dictionary named this snapshot's ZDOs. Prefab-level comparisons
+                 between snapshots with different values are not meaningful. -->
+            <div x-show="snap.prefabDictionaryVersion">
+              Dict: <b class="text-gray-200" x-text="snap.prefabDictionaryVersion"></b>
+              <span class="text-gray-500" x-text="`(${snap.prefabDictionaryEntries})`"></span>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- =========== EXPLORE TAB =========== -->
+  <div class="flex flex-1 overflow-hidden flex-col p-4 overflow-y-auto" x-show="primaryTab === 'explore'">
+    <div class="mb-4 bg-gray-800 p-4 rounded border border-gray-700">
+      <div class="text-base font-bold text-blue-400 mb-2">DuckDB SQL Workbench & ZDO Query Engine</div>
+      <div class="flex gap-2 mb-3">
+        <input type="text" x-model="exploreQueryPrefab" placeholder="Prefab name (e.g. portal_wood, Fireplace)..." class="bg-gray-700 text-xs rounded px-3 py-2 text-gray-200 w-64 border border-gray-600"/>
+        <input type="text" x-model="exploreQueryCategory" placeholder="Category (e.g. BUILDING, PORTAL)..." class="bg-gray-700 text-xs rounded px-3 py-2 text-gray-200 w-48 border border-gray-600"/>
+        <button @click="runExploreQuery()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-xs font-semibold rounded text-white">Run Query</button>
+      </div>
+
+      <template x-if="exploreResults">
+        <div>
+          <div class="text-xs text-gray-400 mb-2" x-text="`Found ${exploreResults.total} total matching ZDO records (showing page)`"></div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead class="text-gray-400 border-b border-gray-700">
+                <tr>
+                  <th class="text-left p-1">ZDO Index</th>
+                  <th class="text-left p-1">Prefab</th>
+                  <th class="text-left p-1">Category</th>
+                  <th class="text-right p-1">X</th>
+                  <th class="text-right p-1">Y</th>
+                  <th class="text-right p-1">Z</th>
+                  <th class="text-left p-1">Creator ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="row in exploreResults.data" :key="row.zdoIndex">
+                  <tr class="border-b border-gray-800 hover:bg-gray-800">
+                    <td class="p-1 text-gray-400 font-mono" x-text="row.zdoIndex"></td>
+                    <td class="p-1 text-gray-200" x-text="row.prefab"></td>
+                    <td class="p-1 text-purple-400" x-text="row.category"></td>
+                    <td class="p-1 text-right text-gray-300" x-text="row.x.toFixed(1)"></td>
+                    <td class="p-1 text-right text-gray-300" x-text="row.y.toFixed(1)"></td>
+                    <td class="p-1 text-right text-gray-300" x-text="row.z.toFixed(1)"></td>
+                    <td class="p-1 text-gray-400 font-mono" x-text="row.creatorId || '—'"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+    </div>
   </div>
 
 </div><!-- /main content -->
 
 <script>
-const API = '/api/v1';
+const API = 'api/v1';
 
 // World coordinate helpers
 const WORLD_Z_MIN = -20500, WORLD_Z_MAX = 27500;
@@ -667,6 +888,19 @@ function latLngToWorld(ll)    { return { x: ll.lng, z: ll.lat }; }
 
 function app() {
   return {
+    // Primary 4-Tab Navigation & World/Snapshot selection
+    primaryTab: 'world',
+    selectedWorldId: '',
+    knownWorldIds: [],
+    selectedSnapshotId: null,
+    snapshots: [],
+    deltaResult: null,
+    deltaFromId: null,
+    deltaToId: null,
+    exploreResults: null,
+    exploreQueryPrefab: '',
+    exploreQueryCategory: '',
+
     // Loading
     loadStatus: 'Connecting...', loadPct: 0, loadParsed: 0, loadTotal: 0,
     isSelectionLoading: false,
@@ -1473,6 +1707,71 @@ function app() {
           .map(([prefab, count]) => ({ prefab, count }));
       } finally {
         this.isSelectionLoading = false;
+      }
+    },
+
+    // ===== HISTORY & SNAPSHOTS =====
+
+    async loadSnapshots() {
+      try {
+        // Always fetch unfiltered first so the selector can offer the world_ids that exist,
+        // then narrow client-side. Filtering server-side by a world_id nobody ingested under
+        // returned an empty timeline with no hint as to why.
+        const all = (await fetchJson(`${API}/db/snapshots`)).snapshots || [];
+        this.knownWorldIds = [...new Set(all.map(s => s.worldId).filter(Boolean))].sort();
+        this.snapshots = this.selectedWorldId
+          ? all.filter(s => s.worldId === this.selectedWorldId)
+          : all;
+        if (this.snapshots.length > 0 && !this.selectedSnapshotId) {
+          this.selectedSnapshotId = this.snapshots[0].snapshotId;
+        }
+      } catch (e) {
+        console.warn('Failed loading snapshots:', e);
+      }
+    },
+
+    async switchWorld(worldId) {
+      this.selectedWorldId = worldId;
+      await this.loadSnapshots();
+    },
+
+    async switchSnapshot(snapshotId) {
+      this.selectedSnapshotId = snapshotId;
+      if (this.primaryTab === 'changes') {
+        await this.loadDelta();
+      }
+    },
+
+    async loadDelta() {
+      await this.loadSnapshots();
+      if (this.snapshots.length >= 2) {
+        this.deltaFromId = this.snapshots[1].snapshotId;
+        this.deltaToId = this.snapshots[0].snapshotId;
+        await this.compareSnapshots();
+      } else if (this.snapshots.length === 1) {
+        try {
+          this.deltaResult = await fetchJson(`${API}/db/snapshots/delta?snapshotId=${this.snapshots[0].snapshotId}`);
+        } catch(e) {}
+      }
+    },
+
+    async compareSnapshots() {
+      if (!this.deltaFromId || !this.deltaToId) return;
+      try {
+        this.deltaResult = await fetchJson(`${API}/db/snapshots/compare?from=${this.deltaFromId}&to=${this.deltaToId}`);
+      } catch(e) {
+        console.error('Failed comparing snapshots', e);
+      }
+    },
+
+    async runExploreQuery() {
+      let url = `${API}/db/zdo/query?limit=100`;
+      if (this.exploreQueryPrefab) url += `&prefab=${encodeURIComponent(this.exploreQueryPrefab)}`;
+      if (this.exploreQueryCategory) url += `&category=${encodeURIComponent(this.exploreQueryCategory)}`;
+      try {
+        this.exploreResults = await fetchJson(url);
+      } catch(e) {
+        console.error('Failed explore query', e);
       }
     },
 
