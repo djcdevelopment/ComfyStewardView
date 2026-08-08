@@ -422,6 +422,90 @@ public final class AnalyticsCacheReader implements AutoCloseable {
         return root;
     }
 
+    /**
+     * Bounded spawn-time distribution: counts of zdo spawn fractions
+     * ({@code spawn_time_micros/1e6/net_time_seconds}) grouped into at most 80 buckets over the
+     * 0..2 domain the map filter uses. One snapshot-filtered scan; out-of-domain fractions clamp
+     * into the edge buckets. A cache without a usable net_time_seconds reports available:false.
+     */
+    public ObjectNode spawnFractionHistogram(ObjectMapper mapper, long snapshotId, int buckets,
+            String category) throws SQLException {
+        ObjectNode root = mapper.createObjectNode();
+        root.put("snapshotId", snapshotId);
+        root.put("domainMin", 0);
+        root.put("domainMax", 2);
+        root.put("buckets", buckets);
+        root.put("bucketWidth", 2.0 / buckets);
+
+        double netTimeSeconds = 0;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT net_time_seconds FROM world_snapshot WHERE snapshot_id = ?")) {
+            ps.setLong(1, snapshotId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) netTimeSeconds = rs.getDouble(1);
+            }
+        } catch (SQLException preMigrationCache) {
+            netTimeSeconds = 0;
+        }
+        root.put("netTimeSeconds", netTimeSeconds);
+
+        ArrayNode counts = root.putArray("counts");
+        if (!(netTimeSeconds > 0) || !Double.isFinite(netTimeSeconds)) {
+            root.put("total", 0);
+            root.put("unknownSpawnCount", 0);
+            root.put("maxCount", 0);
+            root.put("available", false);
+            return root;
+        }
+
+        long[] bucketCounts = new long[buckets];
+        String categoryFilter = category != null && !category.isBlank() ? " AND category = ?" : "";
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT GREATEST(0, LEAST(? - 1, " +
+                "CAST(FLOOR(((spawn_time_micros / 1000000.0) / ?) / (2.0 / ?)) AS INTEGER))) AS bucket, " +
+                "COUNT(*) AS n FROM zdo " +
+                "WHERE snapshot_id = ? AND spawn_time_micros IS NOT NULL AND spawn_time_micros > 0" +
+                categoryFilter + " GROUP BY bucket")) {
+            ps.setInt(1, buckets);
+            ps.setDouble(2, netTimeSeconds);
+            ps.setInt(3, buckets);
+            ps.setLong(4, snapshotId);
+            if (!categoryFilter.isEmpty()) ps.setString(5, category);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int bucket = rs.getInt("bucket");
+                    if (bucket >= 0 && bucket < buckets) bucketCounts[bucket] = rs.getLong("n");
+                }
+            }
+        }
+
+        long total = 0;
+        long maxCount = 0;
+        for (long n : bucketCounts) {
+            counts.add(n);
+            total += n;
+            maxCount = Math.max(maxCount, n);
+        }
+
+        long unknown;
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT COUNT(*) FROM zdo WHERE snapshot_id = ? " +
+                "AND (spawn_time_micros IS NULL OR spawn_time_micros <= 0)" + categoryFilter)) {
+            ps.setLong(1, snapshotId);
+            if (!categoryFilter.isEmpty()) ps.setString(2, category);
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                unknown = rs.getLong(1);
+            }
+        }
+
+        root.put("total", total);
+        root.put("unknownSpawnCount", unknown);
+        root.put("maxCount", maxCount);
+        root.put("available", true);
+        return root;
+    }
+
     @Override
     public void close() throws SQLException {
         conn.close();

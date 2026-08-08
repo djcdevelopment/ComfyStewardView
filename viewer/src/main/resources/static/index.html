@@ -105,6 +105,12 @@
 
     #sidebar { width: 286px; min-width: 286px; background: var(--sv-surface); border-right: 1px solid var(--sv-border); overflow-y: auto; padding: 12px 14px 24px; }
     .legacy-nav, .legacy-map-sidebar { display: none !important; }
+    .spawn-histo { position: relative; height: 44px; border: 1px solid var(--sv-border-2); border-radius: 4px; background: var(--sv-inset, #1b2030); overflow: hidden; touch-action: none; }
+    .spawn-bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 1px; padding: 3px 4px; opacity: .55; }
+    .spawn-bar { flex: 1; background: #7d8ca1; border-radius: 1px 1px 0 0; }
+    .spawn-range { position: absolute; top: 0; bottom: 0; background: rgba(74,134,200,.22); border-left: 1px solid #4a86c8; border-right: 1px solid #4a86c8; pointer-events: none; }
+    .spawn-handle { position: absolute; top: 0; bottom: 0; width: 12px; margin-left: -6px; cursor: ew-resize; }
+    .spawn-handle::after { content: ''; position: absolute; left: 5px; top: 0; bottom: 0; width: 2px; background: #5fa8e0; }
     #map-wrapper { position: relative; flex: 1; min-width: 0; }
     #map { width: 100%; height: 100%; background: #151b27; }
     .map-sidebar-toggle { position: absolute; left: 10px; top: 10px; z-index: 1100; width: 30px; height: 30px; border-radius: 5px; border: 1px solid var(--sv-border-2); background: rgba(18,22,31,.94); color: #c7cfdd; cursor: pointer; }
@@ -377,7 +383,30 @@
       </section>
 
       <section class="card p-3">
-        <div class="eyebrow mb-2">SPAWN FRACTION</div>
+        <div class="flex items-center gap-2 mb-2"><span class="eyebrow">SPAWN FRACTION</span><span class="flex-1"></span><span class="endpoint" x-show="spawnHistogram && spawnHistogram.available" x-text="spawnHistogram ? `distribution · snapshot #${spawnHistogram.snapshotId}` : ''"></span></div>
+        <div x-cloak x-show="spawnHistogram && spawnHistogram.available" class="mb-2">
+          <div class="spawn-histo" x-ref="spawnHisto">
+            <div class="spawn-bars">
+              <template x-for="(n, i) in (spawnHistogram ? spawnHistogram.counts : [])" :key="i">
+                <span class="spawn-bar" :style="`height:${spawnHistogram.maxCount ? Math.max(n > 0 ? 6 : 0, Math.round(n / spawnHistogram.maxCount * 100)) : 0}%`"></span>
+              </template>
+            </div>
+            <div class="spawn-range" :style="`left:${filterSpawnAfter / 2 * 100}%;right:${100 - filterSpawnBefore / 2 * 100}%`"></div>
+            <div class="spawn-handle" role="slider" tabindex="0" aria-label="Spawn range start"
+                 aria-valuemin="0" aria-valuemax="2" :aria-valuenow="filterSpawnAfter"
+                 :style="`left:${filterSpawnAfter / 2 * 100}%`"
+                 @pointerdown="startSpawnDrag($event, 'after')"
+                 @keydown.left.prevent="nudgeSpawn('after', $event.shiftKey ? -0.25 : -0.05)"
+                 @keydown.right.prevent="nudgeSpawn('after', $event.shiftKey ? 0.25 : 0.05)"></div>
+            <div class="spawn-handle" role="slider" tabindex="0" aria-label="Spawn range end"
+                 aria-valuemin="0" aria-valuemax="2" :aria-valuenow="filterSpawnBefore"
+                 :style="`left:${filterSpawnBefore / 2 * 100}%`"
+                 @pointerdown="startSpawnDrag($event, 'before')"
+                 @keydown.left.prevent="nudgeSpawn('before', $event.shiftKey ? -0.25 : -0.05)"
+                 @keydown.right.prevent="nudgeSpawn('before', $event.shiftKey ? 0.25 : 0.05)"></div>
+          </div>
+          <div class="endpoint mt-1" style="color:var(--sv-warn,#d9a34a)" x-show="spawnMismatchWarning()" x-text="spawnMismatchWarning()"></div>
+        </div>
         <div class="flex items-center gap-2"><input aria-label="Spawn fraction from" type="number" x-model.number="filterSpawnAfter" step=".05" min="0" max="2" class="sv-input w-20"/><span style="color:var(--sv-dim)">→</span><input aria-label="Spawn fraction to" type="number" x-model.number="filterSpawnBefore" step=".05" min="0" max="2" class="sv-input w-20"/><button @click="applyFilters()" class="btn-primary">Apply</button></div>
       </section>
 
@@ -1309,6 +1338,8 @@ function app() {
     ],
     filterSpawnAfter:  0,
     filterSpawnBefore: 2,
+    spawnHistogram: null,
+    _spawnHistogramToken: 0,
 
     // Portals
     allPortals: [],
@@ -1367,6 +1398,7 @@ function app() {
       document.getElementById('loading-overlay').classList.add('hidden');
       this.initMap();
       this.loadSummary();
+      this.loadSpawnHistogram();
       this.loadWorldSummary();
       // Populate the World Selector up front. It reads its options from the world_ids present
       // in the cache, and those only arrive with the snapshot list -- without this the header
@@ -1988,6 +2020,60 @@ function app() {
       const summaryFields = { PORTAL:'portalCount', BED:'bedCount', TOMBSTONE:'tombstoneCount', CONTAINER:'containerCount' };
       const summaryValue = Number(this.summary?.[summaryFields[overlay.id]] ?? this.summary?.categoryCounts?.[overlay.id]);
       return Number.isFinite(summaryValue) ? summaryValue : (payload.points || payload.data || []).length;
+    },
+
+    // The histogram describes the boot-pinned points the filter acts on, so it deliberately
+    // does not follow the snapshot selector; the caption carries its own provenance.
+    async loadSpawnHistogram() {
+      const token = ++this._spawnHistogramToken;
+      try {
+        const r = await fetch(`${API}/db/spawn-histogram?buckets=40`);
+        if (!r.ok) throw new Error(r.status);
+        const d = await r.json();
+        if (token !== this._spawnHistogramToken) return;
+        this.spawnHistogram = d && d.available ? d : null;
+      } catch (e) {
+        if (token === this._spawnHistogramToken) this.spawnHistogram = null;
+      }
+    },
+
+    spawnMismatchWarning() {
+      const net = Number(this.spawnHistogram?.netTimeSeconds || 0);
+      const bootNet = Number(this.summary?.snapshotNetTime || 0);
+      if (!(net > 0) || !(bootNet > 0)) return '';
+      return Math.abs(net - bootNet) / net > 0.01
+        ? 'histogram snapshot differs from boot-pinned points' : '';
+    },
+
+    _setSpawnFraction(which, value) {
+      const snapped = Math.max(0, Math.min(2, Math.round(value / 0.05) * 0.05));
+      const rounded = Math.round(snapped * 100) / 100;
+      if (which === 'after') this.filterSpawnAfter = Math.min(rounded, this.filterSpawnBefore);
+      else this.filterSpawnBefore = Math.max(rounded, this.filterSpawnAfter);
+    },
+
+    nudgeSpawn(which, delta) {
+      this._setSpawnFraction(which,
+        (which === 'after' ? this.filterSpawnAfter : this.filterSpawnBefore) + delta);
+    },
+
+    startSpawnDrag(event, which) {
+      const strip = this.$refs.spawnHisto;
+      if (!strip) return;
+      event.target.setPointerCapture(event.pointerId);
+      const move = (e) => {
+        const rect = strip.getBoundingClientRect();
+        this._setSpawnFraction(which, (e.clientX - rect.left) / rect.width * 2);
+      };
+      const up = () => {
+        event.target.removeEventListener('pointermove', move);
+        event.target.removeEventListener('pointerup', up);
+        event.target.removeEventListener('pointercancel', up);
+      };
+      event.target.addEventListener('pointermove', move);
+      event.target.addEventListener('pointerup', up);
+      event.target.addEventListener('pointercancel', up);
+      move(event);
     },
 
     async applyFilters() {

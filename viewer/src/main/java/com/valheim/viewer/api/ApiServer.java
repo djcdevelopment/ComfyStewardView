@@ -180,6 +180,7 @@ public class ApiServer {
         app.get("/api/v1/db/zdo/query", this::handleDbZdoQuery);
         app.get("/api/v1/db/containers/items", this::handleDbContainerItems);
         app.get("/api/v1/db/selection-summary", this::handleDbSelectionSummary);
+        app.get("/api/v1/db/spawn-histogram", this::handleDbSpawnHistogram);
 
         // World Intelligence & Ingest endpoints
         app.post("/api/v1/db/snapshots/ingest", this::handleDbSnapshotIngest);
@@ -1177,6 +1178,33 @@ public class ApiServer {
         } catch (Exception e) {
             log.error("Failed DB selection summary", e);
             ctx.status(500).json("{\"error\":\"db selection summary failure\"}");
+        }
+    }
+
+    private static final Set<String> KNOWN_ZDO_CATEGORIES = Set.of(
+        "NATURE", "BUILDING", "DROPPED_ITEM", "ITEM_STAND", "CONTAINER", "CREATURE",
+        "PORTAL", "BED", "TOMBSTONE", "SIGN", "BALLISTA", "UNKNOWN", "STRUCTURE", "INTERIOR");
+
+    private void handleDbSpawnHistogram(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            Long snapshot = resolveSnapshotParam(ctx, reader, "snapshot", false);
+            if (snapshot == null) return;
+            int buckets = Math.max(8, Math.min(80,
+                ctx.queryParamAsClass("buckets", Integer.class).getOrDefault(40)));
+            String category = ctx.queryParam("category");
+            if (category != null && !category.isBlank() &&
+                    !KNOWN_ZDO_CATEGORIES.contains(category.toUpperCase())) {
+                apiError(ctx, 400, "unknown category: " + category);
+                return;
+            }
+            ctx.json(mapper.writeValueAsString(reader.spawnFractionHistogram(
+                mapper, snapshot, buckets,
+                category == null || category.isBlank() ? null : category.toUpperCase())));
+        } catch (Exception e) {
+            log.error("Failed DB spawn histogram", e);
+            ctx.status(500).json("{\"error\":\"db spawn histogram failure\"}");
         }
     }
 
