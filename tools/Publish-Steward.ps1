@@ -87,6 +87,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Drawing
 $repoRoot  = Split-Path -Parent $PSScriptRoot
 $startedAt = (Get-Date).ToUniversalTime().ToString('o')
 $jar       = Join-Path $repoRoot 'viewer\target\world-viewer-1.0.0.jar'
@@ -115,6 +116,19 @@ function Invoke-Batch {
     & $java $javaArgs
     if ($LASTEXITCODE -ne 0) { throw "$Label failed (exit $LASTEXITCODE)" }
     Write-Host ("      done in {0:n0}s" -f $sw.Elapsed.TotalSeconds)
+}
+
+function Get-ImageDimensions {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    $image = $null
+    try {
+        $image = [System.Drawing.Image]::FromFile($Path)
+        return [pscustomobject]@{ Width = $image.Width; Height = $image.Height }
+    } catch {
+        throw "image decode failed for ${Path}: $($_.Exception.Message)"
+    } finally {
+        if ($image) { $image.Dispose() }
+    }
 }
 
 # --- 1. Preflight ---------------------------------------------------------
@@ -233,7 +247,142 @@ foreach ($r in $rows) {
     if (-not $r.Dict)     { throw "snapshot $($r.SnapshotId) (source=$($r.Source)) has no prefab dictionary recorded" }
     $manifest = Join-Path $renderDir "$($r.SnapshotId)\manifest.json"
     if (-not (Test-Path $manifest)) { throw "snapshot $($r.SnapshotId) (source=$($r.Source)) has no rendered layer manifest at $manifest" }
+    try { $absoluteManifest = Get-Content $manifest -Raw | ConvertFrom-Json }
+    catch { throw "snapshot $($r.SnapshotId) has malformed rendered layer manifest: $($_.Exception.Message)" }
+    if ([long]$absoluteManifest.snapshotId -ne [long]$r.SnapshotId) {
+        throw "rendered manifest $manifest identifies snapshot $($absoluteManifest.snapshotId), expected $($r.SnapshotId)"
+    }
+    if (@($absoluteManifest.layers).Count -eq 0) {
+        throw "snapshot $($r.SnapshotId) rendered manifest advertises no layers"
+    }
+    foreach ($layer in @($absoluteManifest.layers)) {
+        if (-not $layer.file -or [IO.Path]::GetFileName([string]$layer.file) -ne [string]$layer.file) {
+            throw "snapshot $($r.SnapshotId) has an invalid rendered layer filename '$($layer.file)'"
+        }
+        $layerFile = Join-Path (Split-Path -Parent $manifest) ([string]$layer.file)
+        if (-not (Test-Path $layerFile -PathType Leaf)) {
+            throw "snapshot $($r.SnapshotId) manifest references missing layer $layerFile"
+        }
+        $absoluteDimensions = Get-ImageDimensions $layerFile
+        if ($absoluteDimensions.Width -le 0 -or $absoluteDimensions.Height -le 0) {
+            throw "snapshot $($r.SnapshotId) layer has invalid dimensions: $layerFile"
+        }
+    }
 }
+
+# Delta rasters are a bounded, canonical matrix: for each world, every older->newer pair among
+# its latest six snapshots (at most 15). Validate the manifest contract and every advertised PNG
+# before any artifact can be transferred to AM4.
+$expectedDeltaIds = @(
+    'build-activity-64', 'all-zdos-64',
+    'build-activity-320', 'all-zdos-320',
+    'build-activity-500', 'all-zdos-500',
+    'build-activity-1000', 'all-zdos-1000'
+)
+$deltaPairCount = 0
+foreach ($worldGroup in @($rows | Group-Object WorldId)) {
+    $recent = @($worldGroup.Group | Sort-Object { [long]$_.SnapshotId } -Descending | Select-Object -First 6)
+    for ($newer = 0; $newer -lt ($recent.Count - 1); $newer++) {
+        for ($older = $newer + 1; $older -lt $recent.Count; $older++) {
+            $fromId = [long]$recent[$older].SnapshotId
+            $toId   = [long]$recent[$newer].SnapshotId
+            $pairDir = Join-Path (Join-Path $renderDir 'delta') ("{0}-{1}" -f $fromId, $toId)
+            $deltaManifestPath = Join-Path $pairDir 'manifest.json'
+            if (-not (Test-Path $deltaManifestPath -PathType Leaf)) {
+                throw "world $($worldGroup.Name) is missing delta manifest for $fromId -> $toId at $deltaManifestPath"
+            }
+            try { $deltaManifest = Get-Content $deltaManifestPath -Raw | ConvertFrom-Json }
+            catch { throw "delta manifest $deltaManifestPath is malformed: $($_.Exception.Message)" }
+
+            if ([long]$deltaManifest.fromSnapshotId -ne $fromId -or [long]$deltaManifest.toSnapshotId -ne $toId) {
+                throw "delta manifest $deltaManifestPath identifies $($deltaManifest.fromSnapshotId) -> $($deltaManifest.toSnapshotId), expected $fromId -> $toId"
+            }
+            if ([int]$deltaManifest.schemaVersion -ne 1) {
+                throw "delta manifest $deltaManifestPath has unsupported schemaVersion '$($deltaManifest.schemaVersion)'"
+            }
+            if ([string]$deltaManifest.worldId -ne [string]$worldGroup.Name) {
+                throw "delta manifest $deltaManifestPath identifies world '$($deltaManifest.worldId)', expected '$($worldGroup.Name)'"
+            }
+            if ([string]$deltaManifest.identity -ne 'prefab-hash+position-cm') {
+                throw "delta manifest $deltaManifestPath has unsupported identity '$($deltaManifest.identity)'"
+            }
+            $topFields = @($deltaManifest.PSObject.Properties.Name)
+            foreach ($requiredField in @('fromDictionaryVersion', 'toDictionaryVersion',
+                    'dictionaryMismatch', 'dictionaryCompatibility', 'zdosAdded', 'zdosRemoved')) {
+                if ($topFields -notcontains $requiredField) {
+                    throw "delta manifest $deltaManifestPath does not declare $requiredField"
+                }
+            }
+            $expectedFromDictionary = [string]$recent[$older].Dict
+            $expectedToDictionary = [string]$recent[$newer].Dict
+            if ([string]$deltaManifest.fromDictionaryVersion -ne $expectedFromDictionary -or
+                    [string]$deltaManifest.toDictionaryVersion -ne $expectedToDictionary) {
+                throw "delta manifest $deltaManifestPath dictionary versions do not match its snapshots"
+            }
+            $dictionaryCompatibility = [string]$deltaManifest.dictionaryCompatibility
+            $expectedDictionaryMismatch = $expectedFromDictionary -ne $expectedToDictionary
+            if (@('compatible', 'mismatch') -notcontains $dictionaryCompatibility -or
+                    ([bool]$deltaManifest.dictionaryMismatch -ne $expectedDictionaryMismatch) -or
+                    (($dictionaryCompatibility -eq 'mismatch') -ne $expectedDictionaryMismatch)) {
+                throw "delta manifest $deltaManifestPath has inconsistent dictionary compatibility fields"
+            }
+            if ([double]$deltaManifest.zdosAdded -lt 0 -or [double]$deltaManifest.zdosRemoved -lt 0) {
+                throw "delta manifest $deltaManifestPath has negative headline counts"
+            }
+            $deltaLayers = @($deltaManifest.layers)
+            if ($deltaLayers.Count -ne $expectedDeltaIds.Count) {
+                throw "delta manifest $deltaManifestPath advertises $($deltaLayers.Count) layers; expected $($expectedDeltaIds.Count)"
+            }
+            $actualIds = @($deltaLayers | ForEach-Object { [string]$_.id })
+            foreach ($expectedId in $expectedDeltaIds) {
+                if ($actualIds -notcontains $expectedId) {
+                    throw "delta manifest $deltaManifestPath is missing layer '$expectedId'"
+                }
+            }
+            foreach ($layer in $deltaLayers) {
+                if ([string]$layer.encoding -ne 'gray8' -or -not $layer.bounds) {
+                    throw "delta layer '$($layer.id)' in $deltaManifestPath has an invalid encoding or bounds"
+                }
+                $layerFields = @($layer.PSObject.Properties.Name)
+                foreach ($requiredField in @('addedMaxRaw', 'removedMaxRaw', 'addedMaxLog',
+                        'removedMaxLog', 'width', 'height', 'empty')) {
+                    if ($layerFields -notcontains $requiredField) {
+                        throw "delta layer '$($layer.id)' in $deltaManifestPath does not declare $requiredField"
+                    }
+                }
+                if ([double]$layer.addedMaxRaw -lt 0 -or [double]$layer.removedMaxRaw -lt 0 -or
+                        [double]$layer.addedMaxLog -lt 0 -or [double]$layer.removedMaxLog -lt 0 -or
+                        [int]$layer.width -le 0 -or [int]$layer.height -le 0) {
+                    throw "delta layer '$($layer.id)' in $deltaManifestPath has invalid maxima or dimensions"
+                }
+                $channelDimensions = @{}
+                foreach ($channelField in @('addedFile', 'removedFile')) {
+                    $fileName = [string]$layer.$channelField
+                    if (-not $fileName -or [IO.Path]::GetFileName($fileName) -ne $fileName) {
+                        throw "delta layer '$($layer.id)' has invalid $channelField '$fileName'"
+                    }
+                    $channelFile = Join-Path $pairDir $fileName
+                    if (-not (Test-Path $channelFile -PathType Leaf)) {
+                        throw "delta layer '$($layer.id)' references missing channel $channelFile"
+                    }
+                    $channelDimensions[$channelField] = Get-ImageDimensions $channelFile
+                }
+                $addedDimensions = $channelDimensions['addedFile']
+                $removedDimensions = $channelDimensions['removedFile']
+                if ($addedDimensions.Width -ne $removedDimensions.Width -or
+                        $addedDimensions.Height -ne $removedDimensions.Height) {
+                    throw "delta layer '$($layer.id)' channels are not aligned"
+                }
+                if ([int]$layer.width -ne $addedDimensions.Width -or
+                        [int]$layer.height -ne $addedDimensions.Height) {
+                    throw "delta layer '$($layer.id)' PNG dimensions disagree with its manifest"
+                }
+            }
+            $deltaPairCount++
+        }
+    }
+}
+Write-Host "      verified $deltaPairCount canonical delta raster pair(s)."
 if ($am4World) {
     # Selected by source, not world_id: every snapshot shares one world_id by design.
     $am4Row = $rows | Where-Object { $_.Source -eq 'am4' } | Select-Object -First 1
@@ -364,6 +513,7 @@ $receipt = [ordered]@{
     omen_world      = $omenWorld.Name
     cache_mb        = $cacheMB
     rendered_mb     = $renderMB
+    delta_pairs     = $deltaPairCount
     archived        = [bool]$Archive
     archive_dir     = $(if ($Archive) { $ArchiveDir } else { $null })
     archive_mb      = $archiveTotalMB

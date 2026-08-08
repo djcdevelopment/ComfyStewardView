@@ -1,8 +1,8 @@
 ﻿{
-    "deployed_at":  "2026-08-08T09:43:14.1105165Z",
-    "finished_at":  "2026-08-08T09:43:54.6993757Z",
+    "deployed_at":  "2026-08-08T16:40:34.0361624Z",
+    "finished_at":  "2026-08-08T16:41:14.9938966Z",
     "ssh_target":  "am4",
-    "git_sha":  "3d5bcba",
+    "git_sha":  "e544e9a",
     "world_source":  "/home/derek/comfy-valheim-lab/server-state/config/worlds_local/ComfyEra16.db",
     "world_dest":  "/home/derek/steward/world/ComfyEra16.db",
     "world_refreshed":  false,

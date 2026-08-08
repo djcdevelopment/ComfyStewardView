@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Valheim World Viewer</title>
+  <title>Steward View</title>
 
   <!-- Reverse proxies (e.g. tailscale funnel --set-path=/steward) strip the mount
        prefix, so all app URLs are relative and only resolve under a trailing slash. -->
@@ -27,78 +27,218 @@
   <link href="https://unpkg.com/tabulator-tables@6.2.1/dist/css/tabulator_midnight.min.css" rel="stylesheet"/>
   <script src="https://unpkg.com/tabulator-tables@6.2.1/dist/js/tabulator.min.js"></script>
 
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"/>
+
   <style>
-    html, body { height: 100%; margin: 0; background: #111827; color: #e5e7eb; }
-    #map { background: #1a2233; }
-
-    /* Heatmap canvas overlay */
-    .leaflet-heatmap-layer { pointer-events: none; }
-
-    /* Loading overlay */
-    #loading-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      z-index: 9999; transition: opacity 0.5s;
+    :root {
+      --sv-bg: #0e1118; --sv-surface: #12161f; --sv-surface-2: #161b26;
+      --sv-control: #1b2030; --sv-border: #232936; --sv-border-2: #2b3345;
+      --sv-text: #dfe4ec; --sv-bright: #f0f3f8; --sv-muted: #8b95a7;
+      --sv-dim: #6d7789; --sv-faint: #4e5768; --sv-blue: #5fa8e0;
+      --sv-blue-bg: #2a4d78; --sv-blue-border: #3a6ea8; --sv-green: #5fae7f;
+      --sv-red: #d9635f; --sv-amber: #d9a34a; --sv-purple: #a98fd4;
     }
+    * { box-sizing: border-box; }
+    [x-cloak] { display: none !important; }
+    html, body { height: 100%; margin: 0; background: var(--sv-bg); color: var(--sv-text); }
+    body { font-family: 'IBM Plex Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; font-size: 13px; }
+    button, input, select { font: inherit; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--sv-blue); outline-offset: 2px; }
+    ::-webkit-scrollbar { width: 9px; height: 9px; }
+    ::-webkit-scrollbar-thumb { background: #2a3140; border-radius: 5px; }
+    @keyframes sv-spin { to { transform: rotate(360deg); } }
+    @keyframes sv-pulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+
+    #loading-overlay { position: fixed; inset: 0; background: rgba(14,17,24,.96); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; transition: opacity .35s; }
     #loading-overlay.hidden { opacity: 0; pointer-events: none; }
+    .loading-mark { width: 28px; height: 28px; border: 2px solid var(--sv-border-2); border-top-color: var(--sv-blue); border-radius: 50%; animation: sv-spin .9s linear infinite; }
 
-    /* Tab bar */
-    .tab-btn { transition: background 0.15s; }
-    .tab-btn.active { background: #1d4ed8 !important; }
+    .app-header { height: 52px; min-height: 52px; display: flex; align-items: center; gap: 20px; padding: 0 18px; background: #141821; border-bottom: 1px solid var(--sv-border); }
+    .brand { display: flex; align-items: baseline; gap: 9px; white-space: nowrap; }
+    .brand strong { color: var(--sv-bright); font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+    .eyebrow { color: var(--sv-dim); font: 500 9.5px/1 'IBM Plex Mono', monospace; letter-spacing: .07em; text-transform: uppercase; }
+    .selector-group { display: flex; align-items: center; gap: 8px; padding-left: 20px; border-left: 1px solid var(--sv-border); min-width: 0; }
+    .sv-select, .sv-input { height: 28px; padding: 0 9px; background: var(--sv-control); border: 1px solid var(--sv-border-2); border-radius: 5px; color: var(--sv-text); font-size: 12px; }
+    .sv-select:hover, .sv-input:hover { border-color: #3a4459; }
+    .summary-stats { display: flex; gap: 22px; align-items: center; }
+    .summary-stat { display: flex; flex-direction: column; gap: 1px; }
+    .summary-stat b { color: #e7ecf4; font: 500 14px/1.2 'IBM Plex Mono', monospace; }
 
-    /* Portal status badges */
-    .badge-PAIRED  { background: #16a34a; }
-    .badge-ORPHANED { background: #dc2626; }
-    .badge-HUB     { background: #9333ea; }
-    .badge-BLANK_TAG { background: #6b7280; }
-    .badge-MISMATCH { background: #d97706; }
+    .primary-nav { height: 38px; min-height: 38px; display: flex; align-items: stretch; gap: 2px; padding: 0 14px; background: #11151d; border-bottom: 1px solid var(--sv-border); }
+    .primary-tab { display: flex; align-items: center; gap: 7px; padding: 0 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--sv-muted); font-size: 12.5px; font-weight: 500; cursor: pointer; }
+    .primary-tab:hover { color: var(--sv-text); }
+    .primary-tab.active { color: #e7f0fa; border-bottom-color: var(--sv-blue); }
+    .secondary-nav { height: 36px; min-height: 36px; display: flex; align-items: center; gap: 16px; padding: 0 14px; background: var(--sv-bg); border-bottom: 1px solid #1c2230; overflow-x: auto; }
+    .nav-group { display: flex; align-items: center; gap: 7px; flex: none; }
+    .nav-divider { width: 1px; height: 16px; background: var(--sv-border); flex: none; }
+    .tab-btn { height: 24px; padding: 0 9px; border: 0; border-radius: 4px; background: transparent; color: var(--sv-muted); font-size: 12px; white-space: nowrap; cursor: pointer; transition: color .15s, background .15s; }
+    .tab-btn:hover { color: var(--sv-text); background: #1a1f2b; }
+    .tab-btn.active { color: #dbe8f7 !important; background: var(--sv-blue-bg) !important; }
+    .alert-count { min-width: 18px; padding: 1px 5px; border-radius: 8px; background: rgba(217,99,95,.18); border: 1px solid rgba(217,99,95,.45); color: #e8a5a2; font: 500 10px/1.2 'IBM Plex Mono', monospace; }
 
-    /* Alert severity */
-    .sev-critical { color: #ef4444; font-weight: bold; text-transform: uppercase; }
-    .sev-high     { color: #f97316; font-weight: bold; text-transform: uppercase; }
-    .sev-medium   { color: #eab308; text-transform: uppercase; }
-    .sev-low      { color: #60a5fa; text-transform: uppercase; }
+    .scope-trigger, .scope-badge { height: 20px; padding: 0 7px; display: inline-flex; align-items: center; gap: 5px; border-radius: 10px; font-size: 10.5px; white-space: nowrap; }
+    .scope-trigger { height: 22px; background: rgba(217,163,74,.1); border: 1px solid rgba(217,163,74,.3); color: var(--sv-amber); cursor: pointer; }
+    .scope-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: none; }
+    .scope-badge.snapshot, .scope-badge.comparison, .scope-badge.all { background: rgba(95,174,127,.1); border: 1px solid rgba(95,174,127,.3); color: #7cc59a; }
+    .scope-badge.pinned { background: rgba(217,163,74,.09); border: 1px solid rgba(217,163,74,.28); color: var(--sv-amber); }
+    .scope-popover { position: absolute; left: 365px; top: 48px; z-index: 5000; width: 336px; background: var(--sv-surface-2); border: 1px solid var(--sv-border-2); border-radius: 8px; box-shadow: 0 14px 40px rgba(0,0,0,.6); overflow: hidden; }
+    .scope-row { display: flex; align-items: center; gap: 9px; padding: 6px 13px; }
 
-    /* Structure status */
-    .st-active         { color: #22c55e; font-weight: bold; }
-    .st-likely_cleared { color: #9ca3af; }
-    .st-unknown        { color: #6b7280; }
+    .view-header { height: 46px; min-height: 46px; display: flex; align-items: center; gap: 10px; padding: 0 18px; border-bottom: 1px solid #1c2230; background: var(--sv-bg); }
+    .view-title { color: var(--sv-bright); font-size: 14px; font-weight: 600; }
+    .endpoint { color: var(--sv-dim); font: 10.5px/1 'IBM Plex Mono', monospace; }
+    .view-scope-float { position: absolute; right: 14px; top: 8px; z-index: 20; }
+    .panel, .bg-gray-800 { background: linear-gradient(#181d29,#151a24) !important; border-color: #262d3c !important; }
+    .card { background: linear-gradient(#181d29,#151a24); border: 1px solid #262d3c; border-radius: 7px; box-shadow: inset 0 1px rgba(255,255,255,.03), 0 6px 16px rgba(0,0,0,.22); }
+    .card-header { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-bottom: 1px solid var(--sv-border); }
+    .segmented { display: flex; gap: 2px; padding: 2px; background: var(--sv-control); border: 1px solid var(--sv-border-2); border-radius: 5px; }
+    .segment { min-height: 22px; padding: 0 9px; border: 0; border-radius: 3px; background: transparent; color: #96a0b1; font-size: 11px; cursor: pointer; }
+    .segment:hover { color: var(--sv-text); }
+    .segment.active { background: var(--sv-blue-bg); color: #dbe8f7; }
+    .btn-primary, .btn-secondary { height: 28px; padding: 0 12px; border-radius: 5px; font-size: 12px; cursor: pointer; }
+    .btn-primary { background: var(--sv-blue-bg); border: 1px solid var(--sv-blue-border); color: #e7f0fa; }
+    .btn-secondary { background: var(--sv-control); border: 1px solid var(--sv-border-2); color: #c7cfdd; }
+    .state-strip { display: flex; align-items: center; gap: 8px; padding: 8px 11px; border-radius: 5px; font-size: 11px; }
+    .state-strip.error { color: #e8a5a2; background: rgba(217,99,95,.08); border: 1px solid rgba(217,99,95,.35); }
+    .state-strip.warn { color: var(--sv-amber); background: rgba(217,163,74,.08); border: 1px solid rgba(217,163,74,.3); }
+    .state-strip.ok { color: #7cc59a; background: rgba(95,174,127,.08); border: 1px solid rgba(95,174,127,.25); }
 
-    /* Tabulator overrides */
-    .tabulator { font-size: 12px; }
+    #sidebar { width: 286px; min-width: 286px; background: var(--sv-surface); border-right: 1px solid var(--sv-border); overflow-y: auto; padding: 12px 14px 24px; }
+    .legacy-nav, .legacy-map-sidebar { display: none !important; }
+    #map-wrapper { position: relative; flex: 1; min-width: 0; }
+    #map { width: 100%; height: 100%; background: #151b27; }
+    .map-sidebar-toggle { position: absolute; left: 10px; top: 10px; z-index: 1100; width: 30px; height: 30px; border-radius: 5px; border: 1px solid var(--sv-border-2); background: rgba(18,22,31,.94); color: #c7cfdd; cursor: pointer; }
+    .raster-layer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+    .layer-button { height: 26px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--sv-border-2); background: var(--sv-control); color: #96a0b1; font-size: 11.5px; cursor: pointer; }
+    .layer-button.active { background: var(--sv-blue-bg); border-color: var(--sv-blue-border); color: #dbe8f7; }
+    .switch { width: 30px; height: 16px; padding: 2px; border-radius: 9px; display: flex; border: 1px solid var(--sv-border-2); background: var(--sv-control); cursor: pointer; }
+    .switch.on { justify-content: flex-end; background: var(--sv-blue-bg); border-color: var(--sv-blue-border); }
+    .switch span { width: 10px; height: 10px; border-radius: 50%; background: #5c6678; }
+    .switch.on span { background: #dbe8f7; }
+    .ramp-option { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 6px; border-radius: 5px; border: 1px solid transparent; background: transparent; color: #96a0b1; cursor: pointer; }
+    .ramp-option.active { border-color: var(--sv-blue-border); background: rgba(42,77,120,.35); color: var(--sv-text); }
+    .ramp-swatch { width: 74px; height: 14px; border-radius: 3px; flex: none; }
+    .legend-box { position: absolute; bottom: 50px; right: 12px; z-index: 1000; width: 224px; padding: 9px 11px 8px; background: rgba(18,22,31,.94); border: 1px solid var(--sv-border-2); border-radius: 6px; }
+    .map-status-pill { position: absolute; top: 10px; right: 12px; z-index: 1000; display: flex; align-items: center; gap: 7px; max-width: calc(100% - 64px); padding: 6px 10px; background: rgba(18,22,31,.94); border: 1px solid var(--sv-border-2); border-radius: 5px; color: #c7cfdd; font-size: 11px; }
+    #map-tooltip { position: absolute; bottom: 10px; left: 12px; transform: none; background: rgba(18,22,31,.92); border: 1px solid #242b3a; padding: 6px 11px; border-radius: 5px; color: var(--sv-muted); font: 11px/1.2 'IBM Plex Mono', monospace; pointer-events: none; z-index: 1000; }
+    .selection-drawer { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1200; height: 238px; background: var(--sv-surface); border-top: 1px solid var(--sv-border-2); box-shadow: 0 -12px 32px rgba(0,0,0,.45); display: flex; flex-direction: column; }
+    .selection-row { display: grid; grid-template-columns: 1fr 110px; gap: 14px; padding: 8px 15px; border-bottom: 1px solid #1a1f2b; }
+    .selection-row:hover { background: #171c27; }
 
-    /* Sidebar */
-    #sidebar { width: 360px; min-width: 280px; max-width: 480px; resize: horizontal; overflow: auto; }
+    .stat-grid { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 12px; }
+    .stat-card { padding: 13px 15px; background: linear-gradient(#181d29,#151a24); border: 1px solid #262d3c; border-radius: 7px; box-shadow: inset 0 1px rgba(255,255,255,.03),0 6px 16px rgba(0,0,0,.22); }
+    .stat-value { font: 500 22px/1.3 'IBM Plex Mono', monospace; color: var(--sv-bright); }
+    .history-chart { height: 64px; display: flex; align-items: flex-end; gap: 5px; }
+    .history-bar { flex: 1; min-width: 3px; border-radius: 2px 2px 0 0; background: #3a6ea8; cursor: pointer; }
+    .history-row { display: grid; grid-template-columns: 150px 1fr 140px 110px 140px; gap: 16px; align-items: center; padding: 12px 15px; margin-bottom: 9px; background: var(--sv-surface); border: 1px solid #242b3a; border-radius: 7px; }
+    .raster-available { color: #7cc59a; } .raster-missing { color: var(--sv-dim); }
 
-    /* Map container */
-    #map-wrapper { position: relative; flex: 1; }
+    .badge-PAIRED { background:#307553; } .badge-ORPHANED { background:#a64240; }
+    .badge-HUB { background:#7053a3; } .badge-BLANK_TAG { background:#5c6678; } .badge-MISMATCH { background:#a9792e; }
+    .sev-critical { color:#d9635f;font-weight:600;text-transform:uppercase}.sev-high{color:#d98255;font-weight:600;text-transform:uppercase}.sev-medium{color:#d9a34a;text-transform:uppercase}.sev-low{color:#5fa8e0;text-transform:uppercase}
+    .st-active{color:#5fae7f;font-weight:600}.st-likely_cleared{color:#8b95a7}.st-unknown{color:#6d7789}
 
-    /* Tooltip */
-    #map-tooltip {
-      position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,0.7); padding: 4px 12px; border-radius: 4px;
-      font-size: 11px; color: #9ca3af; pointer-events: none; z-index: 1000;
-    }
+    .tabulator { font-family:'IBM Plex Sans',system-ui,sans-serif; font-size:12px; background:var(--sv-surface); border:0; color:var(--sv-text); }
+    .tabulator .tabulator-header { background:linear-gradient(#181d29,#141922); border-color:#262d3c; color:#c7cfdd; }
+    .tabulator .tabulator-header .tabulator-col { background:transparent; border-color:#262d3c; }
+    .tabulator-row { background:var(--sv-surface); border-color:#1a1f2b; }
+    .tabulator-row:nth-child(even) { background:#141923; }
+    .tabulator-row:hover { background:#171c27 !important; }
+    .tabulator-row .tabulator-cell { border-color:#1a1f2b; }
+    .leaflet-heatmap-layer { pointer-events:none; }
+    .leaflet-control-zoom a { background:#12161f !important; border-color:#2b3345 !important; color:#c7cfdd !important; }
+
+    @media (max-width: 1100px) { .summary-stats { display:none; } .selector-group { gap:5px; } .history-row { grid-template-columns:130px 1fr 120px; } .history-row > :nth-child(4),.history-row > :nth-child(5){display:none}.stat-grid{grid-template-columns:repeat(3,1fr)} }
+    @media (max-width: 760px) { .brand span,.eyebrow.world-label,.scope-trigger span.scope-copy { display:none; } .app-header{padding:0 10px;gap:9px}.selector-group{padding-left:8px}.sv-select{max-width:150px}.primary-nav,.secondary-nav{padding-left:5px}.primary-tab{padding:0 9px}.stat-grid{grid-template-columns:1fr 1fr}.view-scope-float{display:none}.selection-drawer{height:55vh}.legend-box{bottom:70px}.scope-popover{left:8px;right:8px;top:48px;width:auto} }
+    @media (prefers-reduced-motion: reduce) { *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important} }
   </style>
 </head>
 <body class="bg-gray-900 text-gray-200 flex flex-col h-screen" x-data="app()" x-init="init()">
 
 <!-- Loading overlay -->
 <div id="loading-overlay">
-  <div class="text-center">
-    <div class="text-2xl font-bold text-blue-400 mb-2">Valheim World Viewer</div>
-    <div class="text-gray-400 mb-6" x-text="loadStatus"></div>
-    <div class="w-80 h-3 bg-gray-700 rounded-full overflow-hidden">
-      <div class="h-full bg-blue-500 rounded-full transition-all duration-300" :style="`width:${loadPct}%`"></div>
+  <div class="text-center flex flex-col items-center gap-3">
+    <div class="loading-mark"></div>
+    <div class="brand"><strong>Steward View</strong><span class="eyebrow">WORLD INTELLIGENCE</span></div>
+    <div class="text-sm text-gray-400" x-text="loadStatus"></div>
+    <div class="w-80 h-2 bg-gray-800 border border-gray-700 rounded-full overflow-hidden">
+      <div class="h-full rounded-full" style="background:#5fa8e0" :style="`width:${loadPct}%`"></div>
     </div>
-    <div class="text-sm text-gray-500 mt-2" x-text="`${loadParsed.toLocaleString()} / ${loadTotal.toLocaleString()} ZDOs`"></div>
+    <div class="endpoint" x-text="`${loadParsed.toLocaleString()} / ${loadTotal.toLocaleString()} ZDOs`"></div>
   </div>
 </div>
 
+<!-- Unified application header -->
+<header class="app-header">
+  <div class="brand"><strong>Steward View</strong><span class="eyebrow">WORLD INTELLIGENCE</span></div>
+  <div class="selector-group">
+    <label class="eyebrow world-label" for="world-select">World</label>
+    <select id="world-select" x-model="selectedWorldId" @change="switchWorld(selectedWorldId)" class="sv-select" aria-label="World">
+      <option value="">All worlds</option>
+      <template x-for="w in knownWorldIds" :key="w"><option :value="w" x-text="w"></option></template>
+    </select>
+    <label class="eyebrow" for="snapshot-select">Snapshot</label>
+    <select id="snapshot-select" x-model="selectedSnapshotId" @change="switchSnapshot(selectedSnapshotId)" class="sv-select" aria-label="Snapshot">
+      <template x-for="(snap,index) in snapshots" :key="snap.snapshotId">
+        <option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${index === 0 ? ' · latest' : ''}${!selectedWorldId && snap.worldId ? ' · ' + snap.worldId : ''} · ${formatSnapshotTime(snap)}`"></option>
+      </template>
+    </select>
+    <button class="scope-trigger" @click="scopeOpen = !scopeOpen" :aria-expanded="scopeOpen" aria-controls="scope-popover">
+      <span class="scope-dot"></span><span class="scope-copy" x-text="`scopes ${snapshotControlledCount()} of ${viewCatalog.length} views`"></span><span aria-hidden="true">▾</span>
+    </button>
+  </div>
+  <div class="flex-1"></div>
+  <template x-if="summary"><div class="summary-stats">
+    <div class="summary-stat"><span class="eyebrow">ZDOS</span><b x-text="summary.totalZdos?.toLocaleString() || '—'"></b></div>
+    <div class="summary-stat"><span class="eyebrow">PLAYERS</span><b x-text="summary.playerCount?.toLocaleString() || '—'"></b></div>
+    <div class="summary-stat"><span class="eyebrow">PORTALS</span><b x-text="summary.portalCount?.toLocaleString() || '—'"></b></div>
+  </div></template>
+</header>
+
+<div id="scope-popover" class="scope-popover" x-cloak x-show="scopeOpen" @click.outside="scopeOpen=false">
+  <div class="p-3 border-b" style="border-color:var(--sv-border)">
+    <div class="text-sm font-semibold" style="color:var(--sv-bright)" x-text="`What snapshot #${selectedSnapshotId || '—'} controls`"></div>
+    <div class="text-xs mt-1" style="color:var(--sv-muted)">DB-backed views follow the selected snapshot. Operational views remain pinned to the world parsed at boot.</div>
+  </div>
+  <div class="py-1 max-h-80 overflow-y-auto">
+    <template x-for="view in viewCatalog" :key="view.id"><div class="scope-row">
+      <span class="flex-1 text-xs" x-text="view.label"></span>
+      <span class="scope-badge" :class="view.scope" x-text="scopeLabel(view.scope)"></span>
+    </div></template>
+  </div>
+  <div class="p-3 border-t flex items-center gap-2 text-xs" style="border-color:var(--sv-border);color:var(--sv-dim)">
+    <span>Pinned views update when the server re-parses.</span><span class="flex-1"></span>
+    <button class="text-blue-400" @click="scopeOpen=false">Close</button>
+  </div>
+</div>
+
+<nav class="primary-nav" aria-label="Primary">
+  <button class="primary-tab" :class="{active:primaryTab === 'world'}" @click="showPrimary('world')">◎ <span>World</span></button>
+  <button class="primary-tab" :class="{active:primaryTab === 'changes'}" @click="showPrimary('changes')">⇄ <span>Changes</span></button>
+  <button class="primary-tab" :class="{active:primaryTab === 'history'}" @click="showPrimary('history')">◷ <span>History</span></button>
+  <button class="primary-tab" :class="{active:primaryTab === 'explore'}" @click="showPrimary('explore')">⌕ <span>Explore</span></button>
+</nav>
+
+<nav class="secondary-nav" x-show="primaryTab === 'world'" aria-label="World views">
+  <template x-for="(group,groupIndex) in tabGroups" :key="group.label">
+    <div class="contents">
+      <span class="nav-divider" x-show="groupIndex > 0"></span>
+      <div class="nav-group">
+        <span class="eyebrow" x-text="group.label"></span>
+        <template x-for="tab in group.tabs" :key="tab.id">
+          <button class="tab-btn" :class="{active:activeTab === tab.id}" @click="switchTab(tab.id)">
+            <span x-text="tab.label"></span>
+            <span x-show="tab.id === 'alerts' && unacknowledgedAlertCount()" class="alert-count" x-text="unacknowledgedAlertCount()"></span>
+          </button>
+        </template>
+      </div>
+    </div>
+  </template>
+</nav>
+
 <!-- Top nav bar -->
 <!-- Top nav bar -->
-<nav class="flex items-center gap-3 bg-gray-800 px-4 py-2 border-b border-gray-700 flex-shrink-0">
+<nav class="legacy-nav flex items-center gap-3 bg-gray-800 px-4 py-2 border-b border-gray-700 flex-shrink-0" hidden>
   <span class="text-blue-400 font-bold text-lg mr-2">⚔ Valheim World Intelligence</span>
 
   <!-- World Selector -->
@@ -158,13 +298,93 @@
 </nav>
 
 <!-- Main content -->
-<div class="flex flex-1 overflow-hidden">
+<div class="relative flex flex-1 overflow-hidden" x-cloak x-show="primaryTab === 'world'">
+  <div x-cloak x-show="primaryTab==='world' && activeTab!=='map'" class="view-scope-float scope-badge" :class="scopeForView(activeTab)" x-text="scopeLabel(scopeForView(activeTab))"></div>
 
   <!-- =========== MAP TAB =========== -->
-  <div class="flex flex-1 overflow-hidden" x-show="activeTab === 'map'">
+  <div class="flex flex-1 overflow-hidden" x-show="primaryTab === 'world' && activeTab === 'map'">
 
     <!-- Sidebar -->
-    <aside id="sidebar" class="bg-gray-800 border-r border-gray-700 flex flex-col overflow-hidden flex-shrink-0">
+    <aside id="sidebar" x-cloak x-show="mapSidebarOpen" class="flex flex-col gap-3 flex-shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="eyebrow">MAP CONTROLS</span><span class="flex-1"></span>
+        <button class="btn-secondary !w-7 !px-0" @click="setMapSidebar(false)" aria-label="Collapse map controls">‹</button>
+      </div>
+
+      <section class="card">
+        <div class="card-header">
+          <span class="eyebrow !text-gray-300">RASTER LAYER</span><span class="flex-1"></span>
+          <button class="switch" :class="{on:showHeatmap}" @click="toggleHeatmap()" :aria-label="showHeatmap ? 'Hide raster layer' : 'Show raster layer'"><span></span></button>
+          <span class="eyebrow !w-7" :style="`color:${showHeatmap ? '#7cc59a' : '#6d7789'}`" x-text="showHeatmap ? 'ON' : 'OFF'"></span>
+        </div>
+        <div class="p-3 flex flex-col gap-3" :class="{'opacity-40 pointer-events-none':!showHeatmap}">
+          <div class="segmented" aria-label="Raster mode">
+            <button class="segment flex-1" :class="{active:mapRasterMode==='snapshot'}" @click="setRasterMode('snapshot')">Snapshot</button>
+            <button class="segment flex-1" :class="{active:mapRasterMode==='changes'}" @click="setRasterMode('changes')">Changes</button>
+          </div>
+
+          <div x-show="mapRasterMode === 'changes'" class="flex flex-col gap-2">
+            <div class="flex items-center gap-2"><span class="eyebrow w-10">FROM</span><select class="sv-select flex-1 min-w-0" x-model="deltaFromId" @change="deltaPairChanged()"><template x-for="snap in snapshots" :key="snap.snapshotId"><option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${!selectedWorldId && snap.worldId ? ' · ' + snap.worldId : ''}`"></option></template></select></div>
+            <div class="flex items-center gap-2"><span class="eyebrow w-10">TO</span><select class="sv-select flex-1 min-w-0" x-model="deltaToId" @change="deltaPairChanged()"><template x-for="snap in snapshots" :key="snap.snapshotId"><option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${!selectedWorldId && snap.worldId ? ' · ' + snap.worldId : ''}`"></option></template></select></div>
+            <button x-show="!deltaPairOrdered()" class="btn-secondary w-full" @click="swapDeltaPair()">Swap to older → newer</button>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <span class="eyebrow">LAYER</span>
+            <div class="raster-layer-grid">
+              <template x-for="group in activeRasterGroups()" :key="group.layer"><button class="layer-button" :class="{active:activeRasterLayer===group.layer}" @click="selectRasterLayer(group.layer)" x-text="group.label"></button></template>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5" x-show="rasterCellSizes.length">
+            <span class="eyebrow">CELL SIZE</span>
+            <div class="segmented">
+              <template x-for="size in rasterCellSizes" :key="size"><button class="segment flex-1" :class="{active:Number(rasterCellSize)===Number(size)}" @click="rasterCellSize=Number(size);applyRasterLayer()" x-text="size"></button></template>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <div class="flex justify-between"><span class="eyebrow">OPACITY</span><span class="endpoint" x-text="`${Math.round(heatmapOpacity*100)}%`"></span></div>
+            <input aria-label="Raster opacity" type="range" min="0.1" max="1" step="0.05" x-model.number="heatmapOpacity" @input="renderedOverlay && renderedOverlay.setOpacity(heatmapOpacity)" class="w-full accent-blue-500"/>
+          </div>
+
+          <div class="flex flex-col gap-1.5" x-show="mapRasterMode==='snapshot'">
+            <span class="eyebrow">COLOR RAMP</span>
+            <template x-for="ramp in colorRamps" :key="ramp.id"><button class="ramp-option" :class="{active:heatmapScheme===ramp.id}" @click="heatmapScheme=ramp.id;recolorizeRaster()"><span class="ramp-swatch" :style="`background:${ramp.gradient}`"></span><span class="flex-1 text-left" x-text="ramp.label"></span><span x-show="heatmapScheme===ramp.id">✓</span></button></template>
+          </div>
+
+          <div x-show="rasterState==='loading'" class="state-strip warn"><span class="loading-mark !w-3 !h-3"></span><span>Loading raster manifest…</span></div>
+          <div x-show="rasterState==='error'" class="state-strip error"><span x-text="rasterError || 'Raster unavailable'"></span><button class="ml-auto underline" @click="reloadActiveRaster()">Retry</button></div>
+          <div x-show="rasterState==='stale'" class="state-strip warn"><span x-text="rasterError || 'Refresh failed; showing last successful raster.'"></span><button class="ml-auto underline" @click="reloadActiveRaster()">Retry</button></div>
+          <div x-show="rasterState==='unavailable'" class="state-strip warn"><span>Spatial raster unavailable for this pair. Tabular comparison is still available.</span></div>
+          <div x-show="rasterState==='empty'" class="state-strip ok"><span x-text="mapRasterMode==='changes' ? 'No changed cells for this layer and pair.' : 'No raster cells are available for this snapshot.'"></span></div>
+          <div x-show="mapRasterMode==='changes' && deltaRenderedManifest?.dictionaryMismatch" class="state-strip warn"><span>Prefab dictionaries differ. Category-level spatial changes may include classification drift.</span></div>
+          <div x-show="rasterManifestSummary()" class="endpoint leading-relaxed" x-text="rasterManifestSummary()"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-header"><span class="eyebrow !text-gray-300">POINT OVERLAYS</span><span class="flex-1"></span><span class="scope-badge pinned">boot snapshot</span></div>
+        <div class="p-3 flex flex-col gap-2">
+          <template x-for="overlay in pointOverlays" :key="overlay.id"><label class="flex items-center gap-2 text-xs cursor-pointer">
+            <input type="checkbox" x-model="overlay.active" @change="toggleOverlay(overlay)" class="accent-blue-500"/>
+            <span class="scope-dot" :style="`color:${overlay.color}`"></span><span class="flex-1" x-text="overlay.label"></span>
+            <span class="endpoint" x-show="overlay.loading">loading…</span>
+            <span class="endpoint" title="Point layers use a 5,000-marker viewport budget. Zoom, then toggle or reapply filters to reload the visible area." x-show="!overlay.loading && overlay.shown != null" x-text="overlayBudgetLabel(overlay)"></span>
+            <span class="endpoint" style="color:#d9635f" x-show="overlay.error" x-text="overlay.error"></span>
+          </label></template>
+        </div>
+      </section>
+
+      <section class="card p-3">
+        <div class="eyebrow mb-2">SPAWN FRACTION</div>
+        <div class="flex items-center gap-2"><input aria-label="Spawn fraction from" type="number" x-model.number="filterSpawnAfter" step=".05" min="0" max="2" class="sv-input w-20"/><span style="color:var(--sv-dim)">→</span><input aria-label="Spawn fraction to" type="number" x-model.number="filterSpawnBefore" step=".05" min="0" max="2" class="sv-input w-20"/><button @click="applyFilters()" class="btn-primary">Apply</button></div>
+      </section>
+
+      <div class="text-xs leading-relaxed mt-auto" style="color:var(--sv-dim)">Shift + drag to select a region.<br/>Click the map to copy coordinates.</div>
+    </aside>
+
+    <aside id="sidebar-legacy" class="legacy-map-sidebar bg-gray-800 border-r border-gray-700 flex flex-col overflow-hidden flex-shrink-0">
       <div class="p-3 border-b border-gray-700" x-show="rasterLayerGroups.length > 0">
         <div class="text-sm font-semibold text-gray-300 mb-2">Heatmap</div>
         <div class="flex gap-2 flex-wrap">
@@ -252,13 +472,48 @@
 
     <!-- Map -->
     <div id="map-wrapper">
+      <button x-cloak x-show="!mapSidebarOpen" class="map-sidebar-toggle" @click="setMapSidebar(true)" aria-label="Open map controls">☰</button>
       <div id="map" class="w-full h-full"></div>
-      <div id="map-tooltip" x-text="mapCoords"></div>
+      <div class="map-status-pill">
+        <span class="scope-dot" :style="`color:${rasterStateColor()}`"></span>
+        <span class="truncate" x-text="mapRasterPill()"></span>
+      </div>
+      <div class="legend-box" x-cloak x-show="showHeatmap && renderedOverlay && activeRasterEntry()">
+        <div class="flex items-baseline gap-2 mb-1.5"><strong class="text-xs" x-text="rasterLegendTitle()"></strong><span class="flex-1"></span><span class="eyebrow">LOG</span></div>
+        <div x-show="mapRasterMode==='snapshot'">
+          <div class="h-2.5 rounded-sm" :style="`background:${activeLegendGradient()}`"></div>
+          <div class="flex justify-between endpoint mt-1"><template x-for="(tick,tickIndex) in rasterLegendTicks()" :key="tickIndex"><span x-text="tick.toLocaleString()"></span></template></div>
+        </div>
+        <div x-show="mapRasterMode==='changes'" class="flex flex-col gap-1.5">
+          <div><div class="flex justify-between endpoint mb-1"><span style="color:#e8a5a2">removed</span><span x-text="deltaLegendMax('removed').toLocaleString()"></span></div><div class="h-2 rounded-sm" style="background:linear-gradient(90deg,#24191d,#743837,#d9635f)"></div></div>
+          <div><div class="flex justify-between endpoint mb-1"><span style="color:#e7dfbd">overlap</span><span>both channels</span></div><div class="h-1.5 rounded-sm" style="background:#e7dfbd"></div></div>
+          <div><div class="flex justify-between endpoint mb-1"><span style="color:#7cc59a">added</span><span x-text="deltaLegendMax('added').toLocaleString()"></span></div><div class="h-2 rounded-sm" style="background:linear-gradient(90deg,#16221c,#2f6948,#5fae7f)"></div></div>
+          <div class="flex justify-between endpoint"><span>1</span><span>independent channel maxima</span><span>MAX</span></div>
+        </div>
+      </div>
+      <div id="map-tooltip"><span x-text="mapCoords || 'Move over map for coordinates'"></span><span> · shift+drag to select</span></div>
+
+      <button x-cloak x-show="selectionData.length && !selectionOpen" class="btn-secondary absolute right-3 bottom-3 z-[1100]" @click="selectionOpen=true" x-text="`Last selection · ${selectionTotal().toLocaleString()} rows · reopen`"></button>
+      <div class="selection-drawer" x-cloak x-show="selectionOpen">
+        <div class="view-header">
+          <span class="view-title">Region selection</span><span class="endpoint" x-text="selectionBoundsLabel()"></span>
+          <span class="scope-badge snapshot">snapshot-aware</span><span class="endpoint" x-text="`#${selectedSnapshotId || '—'}`"></span><span class="flex-1"></span>
+          <button class="btn-secondary" @click="copySelectionBounds()">Copy bounds</button>
+          <button class="btn-primary" @click="openSelectionInExplore()">Open in Explore →</button>
+          <button class="btn-secondary !w-7 !px-0" @click="selectionOpen=false" aria-label="Close selection">×</button>
+        </div>
+        <div class="selection-row" style="background:linear-gradient(#181d29,#141922)"><span class="eyebrow">PREFAB / ITEM</span><span class="eyebrow text-right">COUNT</span></div>
+        <div class="flex-1 overflow-y-auto">
+          <div x-show="isSelectionLoading" class="p-8 text-center endpoint">Scanning selected bounds…</div>
+          <div x-show="!isSelectionLoading && !selectionData.length" class="p-8 text-center text-xs" style="color:var(--sv-dim)">No rows in this region for the selected snapshot.</div>
+          <template x-for="item in selectionData" :key="item.prefab"><div class="selection-row"><span class="font-mono text-xs" x-text="item.prefab"></span><span class="font-mono text-xs text-right" x-text="item.count.toLocaleString()"></span></div></template>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- =========== PORTALS TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'portals'">
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'world' && activeTab === 'portals'">
     <div class="p-4 border-b border-gray-700 flex items-center gap-4">
       <input x-model="portalSearch" @input="filterPortals()" type="text"
              placeholder="Search tag..." class="bg-gray-700 text-sm rounded px-3 py-1 text-gray-200 w-64"/>
@@ -276,7 +531,7 @@
   </div>
 
   <!-- =========== PLAYERS TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'players'">
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'world' && activeTab === 'players'">
     <div class="p-4 border-b border-gray-700 flex items-center gap-4">
       <input x-model="playerSearch" @input="filterPlayers()" type="text"
              placeholder="Search player..." class="bg-gray-700 text-sm rounded px-3 py-1 text-gray-200 w-64"/>
@@ -292,7 +547,7 @@
   </div>
 
   <!-- =========== ECONOMY TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'economy'">
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'world' && activeTab === 'economy'">
     <div class="p-4 flex-1 overflow-y-auto">
       <template x-if="economy">
         <div>
@@ -351,7 +606,7 @@
   </div>
 
   <!-- =========== TOMBSTONES TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'tombstones'">
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'world' && activeTab === 'tombstones'">
     <div class="p-4 border-b border-gray-700 flex items-center gap-4">
       <input x-model="tombstoneSearch" @input="filterTombstones()" type="text"
              placeholder="Filter by player..." class="bg-gray-700 text-sm rounded px-3 py-1 text-gray-200 w-64"/>
@@ -361,7 +616,7 @@
   </div>
 
   <!-- =========== SIGNS TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'signs'">
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'world' && activeTab === 'signs'">
     <div class="p-4 border-b border-gray-700 flex items-center gap-4">
       <input x-model="signSearch" @input="loadSigns()" type="text"
              placeholder="Search sign text..." class="bg-gray-700 text-sm rounded px-3 py-1 text-gray-200 w-64"/>
@@ -377,7 +632,16 @@
   </div>
 
   <!-- =========== PA5/PA6 COIN CACHES TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'caches'">
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'world' && activeTab === 'cointrail' && coinTrailSection === 'caches'">
+    <div class="view-header">
+      <span class="view-title">Coin trail</span>
+      <div class="segmented ml-2">
+        <button class="segment" :class="{active:coinTrailSection==='caches'}" @click="setCoinTrailSection('caches')">Top caches</button>
+        <button class="segment" :class="{active:coinTrailSection==='issuers'}" @click="setCoinTrailSection('issuers')">Issuers</button>
+        <button class="segment" :class="{active:coinTrailSection==='guildgear'}" @click="setCoinTrailSection('guildgear')">Guild gear</button>
+      </div>
+      <span class="scope-badge pinned">pinned to boot snapshot</span><span class="flex-1"></span><span class="endpoint" x-text="coinTrailEndpoint()"></span>
+    </div>
     <div class="p-4 flex-1 overflow-y-auto">
       <template x-if="coinCaches">
         <div>
@@ -409,7 +673,16 @@
   </div>
 
   <!-- =========== PA5/PA6 SERVER ISSUERS TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'issuers'">
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'world' && activeTab === 'cointrail' && coinTrailSection === 'issuers'">
+    <div class="view-header">
+      <span class="view-title">Coin trail</span>
+      <div class="segmented ml-2">
+        <button class="segment" :class="{active:coinTrailSection==='caches'}" @click="setCoinTrailSection('caches')">Top caches</button>
+        <button class="segment" :class="{active:coinTrailSection==='issuers'}" @click="setCoinTrailSection('issuers')">Issuers</button>
+        <button class="segment" :class="{active:coinTrailSection==='guildgear'}" @click="setCoinTrailSection('guildgear')">Guild gear</button>
+      </div>
+      <span class="scope-badge pinned">pinned to boot snapshot</span><span class="flex-1"></span><span class="endpoint" x-text="coinTrailEndpoint()"></span>
+    </div>
     <div class="p-4 flex-1 overflow-y-auto">
       <template x-if="serverIssuers">
         <div>
@@ -441,7 +714,16 @@
   </div>
 
   <!-- =========== PA5/PA6 GUILD GEAR TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'guildgear'">
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'world' && activeTab === 'cointrail' && coinTrailSection === 'guildgear'">
+    <div class="view-header">
+      <span class="view-title">Coin trail</span>
+      <div class="segmented ml-2">
+        <button class="segment" :class="{active:coinTrailSection==='caches'}" @click="setCoinTrailSection('caches')">Top caches</button>
+        <button class="segment" :class="{active:coinTrailSection==='issuers'}" @click="setCoinTrailSection('issuers')">Issuers</button>
+        <button class="segment" :class="{active:coinTrailSection==='guildgear'}" @click="setCoinTrailSection('guildgear')">Guild gear</button>
+      </div>
+      <span class="scope-badge pinned">pinned to boot snapshot</span><span class="flex-1"></span><span class="endpoint" x-text="coinTrailEndpoint()"></span>
+    </div>
     <div class="p-4 flex-1 overflow-y-auto">
       <div class="mb-4 flex items-center gap-2">
         <span class="text-sm text-gray-300">Issuer:</span>
@@ -482,7 +764,7 @@
   </div>
 
   <!-- =========== DROPPED ITEMS TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'dropped'">
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'world' && activeTab === 'dropped'">
     <div class="p-4 flex-1 overflow-y-auto">
       <template x-if="dropped">
         <div>
@@ -509,7 +791,7 @@
   </div>
 
   <!-- =========== ALERTS TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'alerts'">
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'world' && activeTab === 'alerts'">
     <div class="p-4 border-b border-gray-700 flex items-center gap-3 flex-wrap">
       <template x-for="s in ['ALL','CRITICAL','HIGH','MEDIUM','LOW']" :key="s">
         <button class="px-2 py-1 text-xs rounded border"
@@ -537,7 +819,7 @@
   </div>
 
   <!-- =========== STRUCTURES TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'structures'">
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'world' && activeTab === 'structures'">
     <div class="p-4 border-b border-gray-700 flex items-center gap-3 flex-wrap">
       <template x-for="s in ['ALL','ACTIVE','LIKELY_CLEARED','UNKNOWN']" :key="s">
         <button class="px-2 py-1 text-xs rounded border"
@@ -574,7 +856,7 @@
   </div>
 
   <!-- =========== CREATURES TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'creatures'">
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'world' && activeTab === 'creatures'">
     <div class="p-4 flex-1 overflow-y-auto">
       <template x-if="creatureSummary">
         <div>
@@ -647,7 +929,7 @@
   </div>
 
   <!-- =========== SELECTION TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col" x-show="activeTab === 'selection'">
+  <div class="hidden" x-show="false">
     <div class="p-4 border-b border-gray-700 flex items-center justify-between">
       <div class="text-sm border-l-4 border-green-500 pl-3">
         <div class="text-gray-200 font-bold">Dungeon Area Selection</div>
@@ -684,69 +966,75 @@
   </div><!-- /SELECTION TAB -->
 
   <!-- =========== CHANGES TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col p-4 overflow-y-auto" x-show="primaryTab === 'changes'">
-    <div class="mb-4 flex items-center justify-between bg-gray-800 p-4 rounded border border-gray-700">
-      <div>
-        <div class="text-base font-bold text-blue-400">Snapshot Comparator & Delta Analysis</div>
-        <div class="text-xs text-gray-400">Compare pre-calculated deltas and changes between world save points</div>
-      </div>
-      <div class="flex gap-3 items-center">
-        <span class="text-xs text-gray-400">From:</span>
-        <select x-model="deltaFromId" class="bg-gray-700 text-xs rounded px-2 py-1 text-gray-200">
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'changes'">
+    <div class="view-header">
+      <span class="view-title">Changes</span><span class="endpoint">api/v1/db/snapshots/compare</span><span class="scope-badge comparison">comparison pair</span>
+      <div class="flex-1"></div>
+      <div class="flex gap-2 items-center">
+        <span class="eyebrow">FROM</span>
+        <select x-model="deltaFromId" @change="deltaPairChanged()" class="sv-select">
           <template x-for="snap in snapshots" :key="snap.snapshotId">
-            <option :value="snap.snapshotId" x-text="`Snap #${snap.snapshotId}`"></option>
+            <option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${!selectedWorldId && snap.worldId ? ' · ' + snap.worldId : ''}`"></option>
           </template>
         </select>
-        <span class="text-xs text-gray-400">To:</span>
-        <select x-model="deltaToId" class="bg-gray-700 text-xs rounded px-2 py-1 text-gray-200">
+        <span class="eyebrow">TO</span>
+        <select x-model="deltaToId" @change="deltaPairChanged()" class="sv-select">
           <template x-for="snap in snapshots" :key="snap.snapshotId">
-            <option :value="snap.snapshotId" x-text="`Snap #${snap.snapshotId}`"></option>
+            <option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${!selectedWorldId && snap.worldId ? ' · ' + snap.worldId : ''}`"></option>
           </template>
         </select>
-        <button @click="compareSnapshots()" class="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-xs font-semibold rounded text-white">Compare</button>
+        <button x-show="!deltaPairOrdered()" @click="swapDeltaPair()" class="btn-secondary">Swap</button>
+        <button @click="compareSnapshots()" class="btn-primary">Compare</button>
       </div>
     </div>
+    <div class="flex-1 overflow-y-auto p-[18px] flex flex-col gap-4">
+      <div class="flex items-center gap-2">
+        <span class="text-xs" style="color:var(--sv-muted)">Compare precalculated object and inventory deltas between retained world saves.</span><span class="flex-1"></span>
+        <button class="btn-secondary" @click="showDeltaOnMap()">View spatial change →</button>
+      </div>
+      <div x-show="deltaState==='loading'" class="state-strip warn"><span class="loading-mark !w-3 !h-3"></span>Comparing snapshots…</div>
+      <div x-show="deltaState==='error'" class="state-strip error"><span x-text="deltaError || 'Comparison failed.'"></span><button class="ml-auto underline" @click="compareSnapshots()">Retry</button></div>
+      <div x-show="deltaRasterPairAvailable()" class="state-strip ok">Spatial Build activity and All ZDO rasters are available for this pair.</div>
+      <div x-show="deltaState==='ready' && !deltaRasterPairAvailable()" class="state-strip warn">Tabular comparison is available; no published spatial raster is advertised for this pair.</div>
 
     <template x-if="deltaResult">
       <div class="space-y-4">
         <!-- Comparability warnings. Both describe conditions under which the numbers below
              do not mean what they appear to mean, so they sit above the stat cards. -->
-        <div x-show="deltaResult.dictionaryMismatch"
-             class="bg-amber-900/40 border border-amber-600 text-amber-200 text-sm rounded p-3">
+        <div x-show="deltaResult.dictionaryMismatch" class="state-strip error !p-3">
           <b>Prefab dictionaries differ</b>
           (<span x-text="deltaResult.fromDictionaryVersion || 'unknown'"></span>
            &rarr; <span x-text="deltaResult.toDictionaryVersion || 'unknown'"></span>).
           Prefab breakdowns are not comparable across a dictionary change &mdash; a rename reads
           as a build and a demolition. Re-ingest both snapshots with the same dictionary.
         </div>
-        <div x-show="deltaResult.reconciles === false"
-             class="bg-amber-900/40 border border-amber-600 text-amber-200 text-sm rounded p-3">
+        <div x-show="deltaResult.reconciles === false" class="state-strip warn !p-3">
           <b>Counts are a lower bound.</b>
           Added minus removed does not equal the change in total ZDOs, which happens when the
           number of objects sharing one exact position changes. Real churn is higher than shown.
         </div>
 
         <!-- Stat Cards -->
-        <div class="grid grid-cols-5 gap-4">
-          <div class="bg-gray-800 p-4 rounded border border-gray-700">
-            <div class="text-xs text-gray-400">ZDOs Added</div>
-            <div class="text-2xl font-bold text-green-400" x-text="`+${deltaResult.zdosAdded?.toLocaleString() || 0}`"></div>
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="eyebrow">ZDOS ADDED</div>
+            <div class="stat-value" style="color:#5fae7f" x-text="`+${deltaResult.zdosAdded?.toLocaleString() || 0}`"></div>
           </div>
-          <div class="bg-gray-800 p-4 rounded border border-gray-700">
-            <div class="text-xs text-gray-400">ZDOs Removed</div>
-            <div class="text-2xl font-bold text-red-400" x-text="`-${deltaResult.zdosRemoved?.toLocaleString() || 0}`"></div>
+          <div class="stat-card">
+            <div class="eyebrow">ZDOS REMOVED</div>
+            <div class="stat-value" style="color:#d9635f" x-text="`−${deltaResult.zdosRemoved?.toLocaleString() || 0}`"></div>
           </div>
-          <div class="bg-gray-800 p-4 rounded border border-gray-700">
-            <div class="text-xs text-gray-400">Container Items Shift</div>
-            <div class="text-2xl font-bold text-yellow-400" x-text="deltaResult.containerItemsDelta?.toLocaleString() || 0"></div>
+          <div class="stat-card">
+            <div class="eyebrow">CONTAINER ITEMS</div>
+            <div class="stat-value" style="color:#d9a34a" x-text="formatSigned(deltaResult.containerItemsDelta)"></div>
           </div>
-          <div class="bg-gray-800 p-4 rounded border border-gray-700">
-            <div class="text-xs text-gray-400">New Portals</div>
-            <div class="text-2xl font-bold text-purple-400" x-text="`+${deltaResult.newPortals || 0}`"></div>
+          <div class="stat-card">
+            <div class="eyebrow">NEW PORTALS</div>
+            <div class="stat-value" style="color:#a98fd4" x-text="`+${deltaResult.newPortals || 0}`"></div>
           </div>
-          <div class="bg-gray-800 p-4 rounded border border-gray-700">
-            <div class="text-xs text-gray-400">New Player Deaths</div>
-            <div class="text-2xl font-bold text-orange-400" x-text="`+${deltaResult.newTombstones || 0}`"></div>
+          <div class="stat-card">
+            <div class="eyebrow">NEW DEATHS</div>
+            <div class="stat-value" style="color:#d98255" x-text="`+${deltaResult.newTombstones || 0}`"></div>
           </div>
         </div>
 
@@ -788,17 +1076,22 @@
         </div>
       </div>
     </template>
+    </div>
   </div>
 
   <!-- =========== HISTORY TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col p-4 overflow-y-auto" x-show="primaryTab === 'history'">
-    <div class="mb-4 bg-gray-800 p-4 rounded border border-gray-700 flex justify-between items-center">
-      <div>
-        <div class="text-base font-bold text-blue-400">Snapshot Retained Timeline & Provenance</div>
-        <div class="text-xs text-gray-400">Complete provenance record for all ingested world save snapshots</div>
-      </div>
-      <button @click="loadSnapshots()" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-xs rounded text-gray-200">Refresh Timeline</button>
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'history'">
+    <div class="view-header">
+      <span class="view-title">History</span><span class="endpoint">api/v1/db/snapshots</span><span class="scope-badge all">provenance · all snapshots</span><span class="flex-1"></span>
+      <button @click="loadSnapshots()" class="btn-secondary">Refresh timeline</button>
     </div>
+    <div class="flex-1 overflow-y-auto p-[18px] flex flex-col gap-4">
+      <div x-show="snapshotState==='loading'" class="state-strip warn"><span class="loading-mark !w-3 !h-3"></span>Loading snapshot history…</div>
+      <div x-show="snapshotState==='error'" class="state-strip error"><span x-text="snapshotError || 'Snapshot history unavailable.'"></span><button class="ml-auto underline" @click="loadSnapshots()">Retry</button></div>
+      <div class="card p-4" x-show="historyHasCounts()">
+        <div class="flex items-baseline gap-2"><strong class="text-xs" x-text="`ZDO count across ${snapshots.length} snapshots`"></strong><span class="endpoint" x-text="historyRangeLabel()"></span></div>
+        <div class="history-chart mt-2"><template x-for="snap in snapshots.slice().reverse()" :key="snap.snapshotId"><button class="history-bar" :style="`height:${historyBarHeight(snap)}%;background:${String(snap.snapshotId)===String(selectedSnapshotId)?'#5fa8e0':'#304a6b'}`" @click="switchSnapshot(snap.snapshotId)" :title="`#${snap.snapshotId}: ${(snap.zdoCount || 0).toLocaleString()} ZDOs`"></button></template></div>
+      </div>
 
     <div class="space-y-3">
       <template x-for="snap in snapshots" :key="snap.snapshotId">
@@ -814,9 +1107,13 @@
               <span class="text-gray-400">Save Time:</span> <span x-text="snap.saveTimestamp || snap.parsedAt"></span>
             </div>
             <div class="text-xs text-gray-500 font-mono mt-1" x-text="`SHA-256: ${snap.fileHash || 'N/A'}`"></div>
+            <div class="flex items-center gap-3 mt-2">
+              <span class="endpoint" x-text="snap.zdoCount != null ? `${snap.zdoCount.toLocaleString()} ZDOs` : 'ZDO count unavailable'"></span>
+              <span class="endpoint" :class="snap.absoluteRasterAvailable ? 'raster-available' : 'raster-missing'" x-text="snap.absoluteRasterAvailable ? '● raster ready' : '○ no raster'"></span>
+            </div>
           </div>
           <div class="text-right text-xs text-gray-400">
-            <div>Size: <b class="text-gray-200" x-text="`${(snap.fileSize / 1024 / 1024).toFixed(1)} MB`"></b></div>
+            <div>Size: <b class="text-gray-200" x-text="formatFileSize(snap.fileSize)"></b></div>
             <div>Ver: <b class="text-gray-200" x-text="`v${snap.worldVersion}`"></b></div>
             <!-- Which prefab dictionary named this snapshot's ZDOs. Prefab-level comparisons
                  between snapshots with different values are not meaningful. -->
@@ -824,21 +1121,31 @@
               Dict: <b class="text-gray-200" x-text="snap.prefabDictionaryVersion"></b>
               <span class="text-gray-500" x-text="`(${snap.prefabDictionaryEntries})`"></span>
             </div>
+            <div class="flex gap-2 justify-end mt-2">
+              <button class="text-blue-400" @click="compareFromSnapshot(snap.snapshotId)">Compare →</button>
+              <button :style="`color:${String(snap.snapshotId)===String(selectedSnapshotId)?'#7cc59a':'#8b95a7'}`" @click="switchSnapshot(snap.snapshotId)" x-text="String(snap.snapshotId)===String(selectedSnapshotId)?'active':'Set active'"></button>
+            </div>
           </div>
         </div>
       </template>
     </div>
+    </div>
   </div>
 
   <!-- =========== EXPLORE TAB =========== -->
-  <div class="flex flex-1 overflow-hidden flex-col p-4 overflow-y-auto" x-show="primaryTab === 'explore'">
-    <div class="mb-4 bg-gray-800 p-4 rounded border border-gray-700">
-      <div class="text-base font-bold text-blue-400 mb-2">DuckDB SQL Workbench & ZDO Query Engine</div>
-      <div class="flex gap-2 mb-3">
-        <input type="text" x-model="exploreQueryPrefab" placeholder="Prefab name (e.g. portal_wood, Fireplace)..." class="bg-gray-700 text-xs rounded px-3 py-2 text-gray-200 w-64 border border-gray-600"/>
-        <input type="text" x-model="exploreQueryCategory" placeholder="Category (e.g. BUILDING, PORTAL)..." class="bg-gray-700 text-xs rounded px-3 py-2 text-gray-200 w-48 border border-gray-600"/>
-        <button @click="runExploreQuery()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-xs font-semibold rounded text-white">Run Query</button>
+  <div class="flex flex-1 overflow-hidden flex-col" x-show="primaryTab === 'explore'">
+    <div class="view-header"><span class="view-title">Explore</span><span class="endpoint">api/v1/db/zdo/query</span><span class="scope-badge snapshot">snapshot-aware</span><span class="endpoint" x-text="`#${selectedSnapshotId || '—'}`"></span></div>
+    <div class="flex-1 overflow-y-auto p-[18px]">
+    <div class="card p-4">
+      <div class="flex gap-2 mb-3 flex-wrap">
+        <input type="text" x-model="exploreQueryPrefab" @keydown.enter="runExploreQuery()" placeholder="Prefab name (e.g. portal_wood, Fireplace)…" class="sv-input w-64"/>
+        <input type="text" x-model="exploreQueryCategory" @keydown.enter="runExploreQuery()" placeholder="Category (e.g. BUILDING, PORTAL)…" class="sv-input w-52"/>
+        <button @click="runExploreQuery()" class="btn-primary">Run query</button><span class="flex-1"></span>
+        <span class="endpoint self-center" x-text="exploreResults ? `${exploreResults.total?.toLocaleString() || 0} matches` : ''"></span>
       </div>
+      <div x-show="exploreBounds" class="state-strip ok mb-3"><span>Region bounds applied:</span><span class="font-mono" x-text="selectionBoundsLabel(exploreBounds)"></span><button class="ml-auto underline" @click="exploreBounds=null">Clear bounds</button></div>
+      <div x-show="exploreState==='loading'" class="state-strip warn mb-3"><span class="loading-mark !w-3 !h-3"></span>Running snapshot query…</div>
+      <div x-show="exploreState==='error'" class="state-strip error mb-3"><span x-text="exploreError || 'Query failed.'"></span><button class="ml-auto underline" @click="runExploreQuery()">Retry</button></div>
 
       <template x-if="exploreResults">
         <div>
@@ -858,7 +1165,7 @@
               </thead>
               <tbody>
                 <template x-for="row in exploreResults.data" :key="row.zdoIndex">
-                  <tr class="border-b border-gray-800 hover:bg-gray-800">
+                  <tr class="border-b border-gray-800 hover:bg-gray-800 cursor-pointer" @click="flyToExploreRow(row)">
                     <td class="p-1 text-gray-400 font-mono" x-text="row.zdoIndex"></td>
                     <td class="p-1 text-gray-200" x-text="row.prefab"></td>
                     <td class="p-1 text-purple-400" x-text="row.category"></td>
@@ -873,6 +1180,7 @@
           </div>
         </div>
       </template>
+    </div>
     </div>
   </div>
 
@@ -892,16 +1200,48 @@ function app() {
   return {
     // Primary 4-Tab Navigation & World/Snapshot selection
     primaryTab: 'world',
+    scopeOpen: false,
+    viewCatalog: [
+      { id:'map', label:'Map rasters', scope:'snapshot' },
+      { id:'changes', label:'Changes', scope:'comparison' },
+      { id:'history', label:'History', scope:'all' },
+      { id:'explore', label:'Explore', scope:'snapshot' },
+      { id:'portals', label:'Portals', scope:'pinned' },
+      { id:'structures', label:'Structures', scope:'pinned' },
+      { id:'economy', label:'Economy', scope:'pinned' },
+      { id:'dropped', label:'Dropped', scope:'pinned' },
+      { id:'signs', label:'Signs', scope:'pinned' },
+      { id:'tombstones', label:'Tombstones', scope:'pinned' },
+      { id:'alerts', label:'Alerts', scope:'pinned' },
+      { id:'cointrail', label:'Coin trail', scope:'pinned' },
+      { id:'players', label:'Players', scope:'pinned' },
+      { id:'creatures', label:'Creatures', scope:'pinned' },
+    ],
+    tabGroups: [
+      { label:'SPATIAL', tabs:[{id:'map',label:'Map'},{id:'portals',label:'Portals'},{id:'structures',label:'Structures'}] },
+      { label:'INVENTORIES', tabs:[{id:'economy',label:'Economy'},{id:'dropped',label:'Dropped'},{id:'signs',label:'Signs'},{id:'tombstones',label:'Tombstones'}] },
+      { label:'FORENSICS', tabs:[{id:'alerts',label:'Alerts'},{id:'cointrail',label:'Coin trail'}] },
+      { label:'POPULATION', tabs:[{id:'players',label:'Players'},{id:'creatures',label:'Creatures'}] },
+    ],
+    coinTrailSection: 'caches',
     selectedWorldId: '',
     knownWorldIds: [],
     selectedSnapshotId: null,
     snapshots: [],
+    deltaPairs: [],
+    snapshotState: 'idle',
+    snapshotError: '',
     deltaResult: null,
     deltaFromId: null,
     deltaToId: null,
+    deltaState: 'idle',
+    deltaError: '',
     exploreResults: null,
     exploreQueryPrefab: '',
     exploreQueryCategory: '',
+    exploreBounds: null,
+    exploreState: 'idle',
+    exploreError: '',
 
     // Loading
     loadStatus: 'Connecting...', loadPct: 0, loadParsed: 0, loadTotal: 0,
@@ -933,15 +1273,31 @@ function app() {
     map: null,
     renderedManifest: null,
     renderedLayers: [],
+    deltaRenderedManifest: null,
+    deltaRenderedLayers: [],
     renderedOverlay: null,
     activeRasterLayer: 'build-density',
     rasterCellSize: 500,
     rasterLayerGroups: [],
     rasterCellSizes: [],
     _rasterImageCache: {},
+    _rasterToken: 0,
+    _manifestToken: 0,
+    _deltaManifestToken: 0,
+    _deltaCompareToken: 0,
+    mapRasterMode: 'snapshot',
+    mapSidebarOpen: true,
+    rasterState: 'idle',
+    rasterError: '',
+    lastRasterSuccess: null,
     showHeatmap: true,
     heatmapOpacity: 0.65,
-    heatmapScheme: 'hot',
+    heatmapScheme: 'ember',
+    colorRamps: [
+      { id:'ember', label:'Ember', gradient:'linear-gradient(90deg,#14243c,#2f5aa8,#6fa8dd,#f0d9a0,#d9635f)' },
+      { id:'moss', label:'Moss', gradient:'linear-gradient(90deg,#101c18,#1f4a3a,#5fae7f,#b9dfa8,#eef6d8)' },
+      { id:'viridis', label:'Viridis', gradient:'linear-gradient(90deg,#1c1235,#3b528b,#21918c,#5ec962,#fde725)' },
+    ],
     mapCoords: '',
     pointOverlays: [
       { id: 'PORTAL',    label: 'Portals',    color: '#818cf8', active: false, layer: null },
@@ -1003,6 +1359,8 @@ function app() {
     // Selection
     selectionData: [],
     selectionRect: null,
+    selectionOpen: false,
+    selectionBounds: null,
 
     async init() {
       await this.pollUntilReady();
@@ -1015,14 +1373,17 @@ function app() {
       // dropdown sits empty until someone happens to open the History tab.
       // Awaited so the rendered-layer manifest fetch below carries the selected snapshot.
       await this.loadSnapshots();
-      this.loadRenderedManifest();
-      this.switchTab('map');
-      // PB6 / screenshot capture: deep-link tabs via URL hash `#tab=<id>`.
-      // Also useful for sharing links to specific views.
-      const hashTab = (location.hash || '').replace(/^#tab=/, '');
-      if (hashTab && this.tabs.some(t => t.id === hashTab)) {
-        setTimeout(() => this.switchTab(hashTab), 600);
-      }
+      await this.loadRenderedManifest();
+      this.mapSidebarOpen = window.innerWidth >= 1360;
+      let wasWide = window.innerWidth >= 1360;
+      window.addEventListener('resize', () => {
+        const isWide = window.innerWidth >= 1360;
+        if (wasWide && !isWide) this.mapSidebarOpen = false;
+        wasWide = isWide;
+        this.$nextTick(() => this.map?.invalidateSize());
+      });
+      this.navigateFromHash();
+      window.addEventListener('hashchange', () => this.navigateFromHash());
     },
 
     async pollUntilReady() {
@@ -1047,8 +1408,48 @@ function app() {
       this.summary = d;
     },
 
-    switchTab(id) {
+    showPrimary(id) {
+      this.primaryTab = id;
+      if (id === 'world') {
+        this.$nextTick(() => this.activeTab === 'map' && this.map?.invalidateSize());
+      } else if (id === 'changes') {
+        this.loadDelta();
+      } else if (id === 'history') {
+        this.loadSnapshots();
+      }
+      if ((location.hash || '').replace(/^#tab=/, '') !== id) history.replaceState(null, '', `#tab=${id}`);
+    },
+
+    navigateFromHash() {
+      const requested = decodeURIComponent((location.hash || '').replace(/^#tab=/, '').split('&')[0] || 'map');
+      if (['changes','history','explore'].includes(requested)) {
+        this.showPrimary(requested);
+        return;
+      }
+      const legacy = { caches:'caches', issuers:'issuers', guildgear:'guildgear' };
+      if (legacy[requested]) {
+        this.coinTrailSection = legacy[requested];
+        this.switchTab('cointrail', false);
+        history.replaceState(null, '', `#tab=cointrail&segment=${legacy[requested]}`);
+        return;
+      }
+      if (requested === 'cointrail') {
+        const segment = new URLSearchParams((location.hash.split('&')[1] || '')).get('segment');
+        if (['caches','issuers','guildgear'].includes(segment)) this.coinTrailSection = segment;
+      }
+      const allowed = this.tabGroups.flatMap(g => g.tabs).map(t => t.id);
+      this.switchTab(allowed.includes(requested) ? requested : 'map', false);
+    },
+
+    switchTab(id, updateHash = true) {
+      const legacy = { caches:'caches', issuers:'issuers', guildgear:'guildgear' };
+      if (legacy[id]) {
+        this.coinTrailSection = legacy[id];
+        id = 'cointrail';
+      }
+      this.primaryTab = 'world';
       this.activeTab = id;
+      if (updateHash) history.replaceState(null, '', `#tab=${id}${id === 'cointrail' ? `&segment=${this.coinTrailSection}` : ''}`);
       this.$nextTick(() => {
         if (id === 'map' && this.map) this.map.invalidateSize();
         if (id === 'portals' && !this.portalTable) this.loadPortals();
@@ -1057,16 +1458,45 @@ function app() {
         if (id === 'tombstones' && !this.tombstoneTable) this.loadTombstones();
         if (id === 'signs' && !this.signs.length) this.loadSigns();
         if (id === 'dropped'    && !this.dropped)         this.loadDropped();
-        if (id === 'caches'     && !this.coinCaches)      this.loadCoinCaches();
-        if (id === 'issuers'    && !this.serverIssuers)   this.loadServerIssuers();
-        if (id === 'guildgear'  && !this.guildGearMeta)   this.loadServerIssuers();  // populate dropdown
+        if (id === 'cointrail') this.setCoinTrailSection(this.coinTrailSection, false);
         if (id === 'alerts'     && !this.alertTable)      this.loadAlerts();
         if (id === 'structures' && !this.structureTable)  this.loadStructures();
         if (id === 'creatures'  && !this.creatureSummary) this.loadCreatures();
       });
     },
 
+    setCoinTrailSection(section, updateHash = true) {
+      this.coinTrailSection = section;
+      this.activeTab = 'cointrail';
+      this.primaryTab = 'world';
+      if (section === 'caches' && !this.coinCaches) this.loadCoinCaches();
+      if (section === 'issuers' && !this.serverIssuers) this.loadServerIssuers();
+      if (section === 'guildgear') {
+        if (!this.guildGearMeta) this.loadServerIssuers();
+        else if (!this.guildGearItems && this.selectedIssuer) this.loadGuildGear();
+      }
+      if (updateHash) history.replaceState(null, '', `#tab=cointrail&segment=${section}`);
+    },
+
+    coinTrailEndpoint() {
+      return this.coinTrailSection === 'caches' ? 'api/v1/forensics/top-coin-caches' : this.coinTrailSection === 'issuers' ? 'api/v1/forensics/server-issuers' : 'api/v1/forensics/guild-gear';
+    },
+
+    scopeLabel(scope) {
+      return { snapshot:'snapshot-aware', comparison:'comparison pair', all:'all snapshots', pinned:'pinned to boot snapshot' }[scope] || scope;
+    },
+    scopeForView(id) { return this.viewCatalog.find(v => v.id === id)?.scope || 'pinned'; },
+    snapshotControlledCount() { return this.viewCatalog.filter(v => v.scope === 'snapshot' || v.scope === 'comparison').length; },
+    unacknowledgedAlertCount() {
+      return this.worldSummary?.unacknowledgedAlerts ?? this.worldSummary?.alertCount ?? this.allAlerts.filter(a => !a.acknowledged).length;
+    },
+
     // ===== MAP =====
+
+    setMapSidebar(open) {
+      this.mapSidebarOpen = open;
+      this.$nextTick(() => this.map?.invalidateSize());
+    },
 
     initMap() {
       if (this.map) return; // already initialized — guard against Alpine re-init
@@ -1154,91 +1584,179 @@ function app() {
     },
 
     async loadRenderedManifest() {
+      const token = ++this._manifestToken;
+      const hadManifest = Boolean(this.renderedManifest);
+      let loaded = false;
+      this.rasterState = 'loading';
+      this.rasterError = '';
       try {
         const snapParam = this.selectedSnapshotId ? `?snapshot=${this.selectedSnapshotId}` : '';
         const r = await fetch(`${API}/rendered/manifest${snapParam}`);
-        if (!r.ok) throw new Error(r.status);
+        if (!r.ok) { const error = new Error(`Manifest request failed (${r.status})`); error.status = r.status; throw error; }
         const d = await r.json();
+        if (token !== this._manifestToken) return;
         this.renderedManifest = d;
         this.renderedLayers = d.layers || [];
+        this.rasterState = this.renderedLayers.length ? 'ready' : 'empty';
+        loaded = true;
       } catch(e) {
-        this.renderedManifest = null;
-        this.renderedLayers = [];
+        if (token !== this._manifestToken) return;
+        this.rasterError = e.message || 'Raster manifest unavailable.';
+        this.rasterState = hadManifest ? 'stale' : 'error';
+        if (!hadManifest) { this.renderedManifest = null; this.renderedLayers = []; }
       }
-      const labels = { 'build-density': 'Buildings', 'dropped-items': 'Dropped',
-                       'all-zdos': 'All', 'coins': 'Coins' };
+      const labels = { 'build-density': 'Build density', 'dropped-items': 'Dropped',
+                       'all-zdos': 'All ZDOs', 'coins': 'Coins' };
       const seen = [];
       for (const l of this.renderedLayers) {
         if (!seen.some(g => g.layer === l.layer)) {
-          seen.push({ layer: l.layer, label: labels[l.layer] || l.label.replace(/ \d+m$/, '') });
+          seen.push({ layer: l.layer, label: labels[l.layer] || String(l.label || l.layer).replace(/ \d+m$/, '') });
         }
       }
       this.rasterLayerGroups = seen;
-      if (seen.length && !seen.some(g => g.layer === this.activeRasterLayer)) {
+      if (this.mapRasterMode === 'snapshot' && seen.length && !seen.some(g => g.layer === this.activeRasterLayer)) {
         this.activeRasterLayer = seen[0].layer;
       }
-      this.applyRasterLayer();
+      // A failed refresh deliberately keeps the last successful image in place;
+      // never reinterpret its filename or bounds under the newly selected snapshot.
+      if (this.mapRasterMode === 'snapshot' && loaded) await this.applyRasterLayer();
     },
 
-    applyRasterLayer() {
-      if (this.renderedOverlay) {
-        this.map.removeLayer(this.renderedOverlay);
-        this.renderedOverlay = null;
-      }
-      const sizes = this.renderedLayers
-        .filter(l => l.layer === this.activeRasterLayer)
-        .map(l => l.cellSize).sort((a, b) => a - b);
-      this.rasterCellSizes = sizes;
-      if (!sizes.length) return;
-      if (!sizes.includes(this.rasterCellSize)) this.rasterCellSize = sizes.includes(500) ? 500 : sizes[0];
-      if (!this.showHeatmap) return;
-
-      const layer = this.renderedLayers.find(
-        l => l.layer === this.activeRasterLayer && l.cellSize === this.rasterCellSize);
-      if (!layer || !layer.bounds) return;
-      const b = layer.bounds;
-      const snapParam = this.selectedSnapshotId ? `?snapshot=${this.selectedSnapshotId}` : '';
-      const url = `${API}/rendered/${layer.file}${snapParam}`;
-      const overlayBounds = [[b.minZ, b.minX], [b.maxZ, b.maxX]];
-
-      if (layer.encoding !== 'gray8') {
-        // Legacy pre-colorized raster: show it directly.
-        this.renderedOverlay = L.imageOverlay(url, overlayBounds,
-          { opacity: this.heatmapOpacity, interactive: false }).addTo(this.map);
+    async loadDeltaRenderedManifest() {
+      const token = ++this._deltaManifestToken;
+      let loaded = false;
+      if (!this.deltaFromId || !this.deltaToId) { this.rasterState = 'unavailable'; return; }
+      if (!this.deltaPairOrdered()) {
+        this.rasterState = 'unavailable';
+        this.rasterError = 'Spatial rasters require an older From snapshot and newer To snapshot.';
         return;
       }
+      const samePair = this.deltaRenderedManifest && String(this.deltaRenderedManifest.fromSnapshotId) === String(this.deltaFromId) && String(this.deltaRenderedManifest.toSnapshotId) === String(this.deltaToId);
+      this.rasterState = 'loading';
+      this.rasterError = '';
+      try {
+        const r = await fetch(`${API}/rendered/delta/manifest?from=${encodeURIComponent(this.deltaFromId)}&to=${encodeURIComponent(this.deltaToId)}`);
+        if (!r.ok) { const error = new Error(r.status === 404 ? 'Spatial raster unavailable for this pair.' : `Delta manifest request failed (${r.status})`); error.status = r.status; throw error; }
+        const d = await r.json();
+        if (token !== this._deltaManifestToken) return;
+        this.deltaRenderedManifest = d;
+        this.deltaRenderedLayers = d.layers || [];
+        this.rasterState = this.deltaRenderedLayers.length && !this.deltaRenderedLayers.every(l => l.empty) ? 'ready' : 'empty';
+        loaded = true;
+      } catch(e) {
+        if (token !== this._deltaManifestToken) return;
+        this.rasterError = e.message;
+        if (samePair && this.deltaRenderedLayers.length) this.rasterState = 'stale';
+        else {
+          this.deltaRenderedManifest = null;
+          this.deltaRenderedLayers = [];
+          this.rasterState = e.status === 404 || e.status === 400 ? 'unavailable' : 'error';
+          this.removeRasterOverlay();
+        }
+      }
+      const groups = this.activeRasterGroups();
+      if (groups.length && !groups.some(g => g.layer === this.activeRasterLayer)) this.activeRasterLayer = groups[0].layer;
+      // A failed same-pair refresh intentionally leaves the last successful image and
+      // stale state intact instead of recoloring cached files back into a false "ready".
+      if (loaded) await this.applyRasterLayer();
+    },
 
-      // Unique token per invocation: two quick calls with the same URL must not both
-      // complete, or their overlays stack. A primitive, because Alpine proxy-wraps
-      // stored objects and identity comparison would always fail.
-      const token = this._rasterToken = (this._rasterToken || 0) + 1;
-      this.colorizeRaster(url).then(dataUrl => {
+    setRasterMode(mode) {
+      if (this.mapRasterMode === mode) return;
+      // A decoded PNG from the previous semantic source must never attach under the
+      // newly selected mode or its legend/provenance.
+      this._rasterToken++;
+      this.removeRasterOverlay();
+      this.mapRasterMode = mode;
+      this.activeRasterLayer = mode === 'changes' ? 'build-activity' : 'build-density';
+      this.rasterCellSize = 500;
+      if (mode === 'changes') {
+        this._manifestToken++;
+        this.ensureDeltaPair();
+        this.loadDeltaRenderedManifest();
+      } else {
+        this._deltaManifestToken++;
+        this.loadRenderedManifest();
+      }
+    },
+
+    selectRasterLayer(layer) { this.activeRasterLayer = layer; this.applyRasterLayer(); },
+    reloadActiveRaster() { return this.mapRasterMode === 'changes' ? this.loadDeltaRenderedManifest() : this.loadRenderedManifest(); },
+    removeRasterOverlay() {
+      if (this.renderedOverlay && this.map) this.map.removeLayer(this.renderedOverlay);
+      this.renderedOverlay = null;
+    },
+
+    activeRasterGroups() {
+      if (this.mapRasterMode === 'snapshot') return this.rasterLayerGroups;
+      const labels = { 'build-activity':'Build activity', 'all-zdos':'All ZDOs' };
+      const groups = [];
+      for (const layer of this.deltaRenderedLayers) if (!groups.some(g => g.layer === layer.layer)) groups.push({ layer:layer.layer, label:labels[layer.layer] || layer.label || layer.layer });
+      return groups;
+    },
+
+    activeRasterEntry() {
+      const entries = this.mapRasterMode === 'changes' ? this.deltaRenderedLayers : this.renderedLayers;
+      return entries.find(l => l.layer === this.activeRasterLayer && Number(l.cellSize) === Number(this.rasterCellSize)) || null;
+    },
+
+    async applyRasterLayer() {
+      // Allocate before every early return so Off/empty/missing selections also cancel
+      // any image decode that was already in flight for the previous selection.
+      const token = ++this._rasterToken;
+      const entries = this.mapRasterMode === 'changes' ? this.deltaRenderedLayers : this.renderedLayers;
+      const sizes = [...new Set(entries
+        .filter(l => l.layer === this.activeRasterLayer)
+        .map(l => Number(l.cellSize)))].sort((a, b) => a - b);
+      this.rasterCellSizes = sizes;
+      if (!sizes.length) {
+        this.removeRasterOverlay();
+        if (this.rasterState !== 'loading' && this.rasterState !== 'error') {
+          this.rasterState = this.mapRasterMode === 'changes' && !this.deltaRenderedManifest ? 'unavailable' : 'empty';
+        }
+        return;
+      }
+      if (!sizes.includes(this.rasterCellSize)) this.rasterCellSize = sizes.includes(500) ? 500 : sizes[0];
+      if (!this.showHeatmap) { this.removeRasterOverlay(); return; }
+
+      const layer = entries.find(l => l.layer === this.activeRasterLayer && Number(l.cellSize) === Number(this.rasterCellSize));
+      if (!layer || !layer.bounds) return;
+      if (layer.empty) { this.removeRasterOverlay(); this.rasterState = 'empty'; return; }
+      const b = layer.bounds;
+      const overlayBounds = [[b.minZ, b.minX], [b.maxZ, b.maxX]];
+      this.rasterState = 'loading';
+      this.rasterError = '';
+      try {
+        let dataUrl;
+        if (this.mapRasterMode === 'changes') {
+          const pair = `from=${encodeURIComponent(this.deltaFromId)}&to=${encodeURIComponent(this.deltaToId)}`;
+          const addedUrl = `${API}/rendered/delta/${layer.addedFile}?${pair}`;
+          const removedUrl = `${API}/rendered/delta/${layer.removedFile}?${pair}`;
+          dataUrl = await this.compositeDeltaRaster(addedUrl, removedUrl);
+        } else {
+          const snapParam = this.selectedSnapshotId ? `?snapshot=${encodeURIComponent(this.selectedSnapshotId)}` : '';
+          const url = `${API}/rendered/${layer.file}${snapParam}`;
+          if (layer.encoding && layer.encoding !== 'gray8') dataUrl = url;
+          else dataUrl = await this.colorizeRaster(url);
+        }
         if (this._rasterToken !== token || !dataUrl) return;
-        if (this.renderedOverlay) this.map.removeLayer(this.renderedOverlay);
+        this.removeRasterOverlay();
         this.renderedOverlay = L.imageOverlay(dataUrl, overlayBounds,
           { opacity: this.heatmapOpacity, interactive: false }).addTo(this.map);
-      });
+        this.rasterState = 'ready';
+        this.lastRasterSuccess = { mode:this.mapRasterMode, layer:this.activeRasterLayer, cellSize:this.rasterCellSize, snapshotId:this.selectedSnapshotId, from:this.deltaFromId, to:this.deltaToId, at:new Date() };
+      } catch(e) {
+        if (this._rasterToken !== token) return;
+        this.rasterError = e.message || 'Raster image failed to load.';
+        this.rasterState = this.renderedOverlay ? 'stale' : 'error';
+      }
     },
 
     // Fetch a gray8 intensity PNG (cached), apply the active color ramp per-pixel,
     // and return a data URL at native cell resolution — browser upscaling of the
     // imageOverlay provides the smoothing.
     async colorizeRaster(url) {
-      let gray = this._rasterImageCache[url];
-      if (!gray) {
-        try {
-          // fetch + createImageBitmap rather than Image.decode(): decode() can stall
-          // indefinitely in throttled/hidden tabs, and a bitmap never touches layout.
-          const resp = await fetch(url);
-          if (!resp.ok) return null;
-          const bmp = await createImageBitmap(await resp.blob());
-          const c = document.createElement('canvas');
-          c.width = bmp.width; c.height = bmp.height;
-          const ctx = c.getContext('2d', { willReadFrequently: true });
-          ctx.drawImage(bmp, 0, 0);
-          gray = this._rasterImageCache[url] = ctx.getImageData(0, 0, c.width, c.height);
-        } catch(e) { console.warn('Raster colorize failed:', url, e); return null; }
-      }
+      const gray = await this.loadGrayRaster(url);
       const lut = buildLut(this.heatmapScheme);
       const out = new ImageData(gray.width, gray.height);
       const src = gray.data, dst = out.data;
@@ -1256,8 +1774,95 @@ function app() {
       return c.toDataURL();
     },
 
+    async loadGrayRaster(url) {
+      let gray = this._rasterImageCache[url];
+      if (gray) return gray;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`Raster image request failed (${resp.status})`);
+      const bmp = await createImageBitmap(await resp.blob());
+      const canvas = document.createElement('canvas');
+      canvas.width = bmp.width; canvas.height = bmp.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently:true });
+      ctx.drawImage(bmp, 0, 0);
+      gray = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      this._rasterImageCache[url] = gray;
+      if (bmp.close) bmp.close();
+      return gray;
+    },
+
+    async compositeDeltaRaster(addedUrl, removedUrl) {
+      const [added, removed] = await Promise.all([this.loadGrayRaster(addedUrl), this.loadGrayRaster(removedUrl)]);
+      if (added.width !== removed.width || added.height !== removed.height) throw new Error('Delta raster channels are not aligned.');
+      const out = new ImageData(added.width, added.height);
+      const a = added.data, r = removed.data, dst = out.data;
+      for (let i = 0; i < dst.length; i += 4) {
+        const av = a[i + 3] ? a[i] / 255 : 0;
+        const rv = r[i + 3] ? r[i] / 255 : 0;
+        if (!av && !rv) continue;
+        const overlap = Math.min(av, rv), addOnly = av - overlap, removeOnly = rv - overlap;
+        const overlapWeight = overlap * 1.35;
+        const weight = addOnly + removeOnly + overlapWeight || 1;
+        dst[i] = Math.round((addOnly * 95 + removeOnly * 217 + overlapWeight * 239) / weight);
+        dst[i + 1] = Math.round((addOnly * 174 + removeOnly * 99 + overlapWeight * 217) / weight);
+        dst[i + 2] = Math.round((addOnly * 127 + removeOnly * 95 + overlapWeight * 160) / weight);
+        dst[i + 3] = Math.round(55 + 200 * Math.max(av, rv));
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = out.width; canvas.height = out.height;
+      canvas.getContext('2d').putImageData(out, 0, 0);
+      return canvas.toDataURL();
+    },
+
+    activeLegendGradient() {
+      return this.mapRasterMode === 'changes'
+        ? 'linear-gradient(90deg,#d9635f,#e7d9a0,#5fae7f)'
+        : (this.colorRamps.find(r => r.id === this.heatmapScheme)?.gradient || this.colorRamps[0].gradient);
+    },
+
+    rasterLegendTitle() {
+      const entry = this.activeRasterEntry();
+      if (!entry) return 'Raster intensity';
+      const label = this.activeRasterGroups().find(g => g.layer === this.activeRasterLayer)?.label || entry.label || this.activeRasterLayer;
+      return `${label} per ${entry.cellSize} m cell`;
+    },
+
+    rasterLegendTicks() {
+      const entry = this.activeRasterEntry();
+      if (!entry) return [0];
+      const max = this.mapRasterMode === 'changes'
+        ? Math.max(Number(entry.addedMaxRaw || 0), Number(entry.removedMaxRaw || 0))
+        : Number(entry.maxRaw || 0);
+      if (max <= 0) return [0];
+      return [0,.25,.5,.75,1].map(t => Math.round(Math.expm1(Math.log1p(max) * t)));
+    },
+
+    deltaLegendMax(channel) {
+      const entry = this.activeRasterEntry();
+      return Number(entry?.[channel === 'removed' ? 'removedMaxRaw' : 'addedMaxRaw'] || 0);
+    },
+
+    rasterManifestSummary() {
+      if (this.rasterState === 'idle') return '';
+      if (this.mapRasterMode === 'changes' && this.deltaRenderedManifest) return `Pair #${this.deltaRenderedManifest.fromSnapshotId} → #${this.deltaRenderedManifest.toSnapshotId} · ${this.deltaRenderedLayers.length} layers · gray8 aligned channels`;
+      if (this.renderedManifest) return `Snapshot #${this.renderedManifest.snapshotId ?? this.selectedSnapshotId ?? '—'} · ${this.renderedLayers.length} layers · ${this.renderedManifest.generatedAt ? `generated ${this.renderedManifest.generatedAt}` : 'gray8'}`;
+      return '';
+    },
+
+    mapRasterPill() {
+      if (!this.showHeatmap) return 'Raster hidden · point overlays only';
+      if (this.rasterState === 'loading') return 'Loading raster…';
+      if (this.rasterState === 'unavailable') return this.rasterError || 'Spatial raster unavailable';
+      if (this.rasterState === 'error') return this.rasterError || 'Raster request failed';
+      const entry = this.activeRasterEntry();
+      if (!entry) return this.rasterState === 'empty' ? 'Raster has no data' : 'Raster manifest unavailable';
+      const label = this.activeRasterGroups().find(g => g.layer === this.activeRasterLayer)?.label || this.activeRasterLayer;
+      const source = this.mapRasterMode === 'changes' ? `#${this.deltaFromId} → #${this.deltaToId}` : `snapshot #${this.renderedManifest?.snapshotId ?? this.selectedSnapshotId}`;
+      return `${label} · ${entry.cellSize} m cells · ${source}${this.mapRasterMode === 'snapshot' ? ` · ${this.colorRamps.find(r => r.id === this.heatmapScheme)?.label || 'Ember'}` : ''}${this.rasterState === 'stale' ? ' · stale' : ''}`;
+    },
+    rasterStateColor() { return ({ready:'#5fae7f',loading:'#d9a34a',stale:'#d9a34a',error:'#d9635f',unavailable:'#d9a34a',empty:'#6d7789'})[this.rasterState] || '#6d7789'; },
+
     recolorizeRaster() {
-      if (this.renderedOverlay) this.applyRasterLayer();
+      if (this.mapRasterMode === 'snapshot') this.applyRasterLayer();
     },
 
     toggleHeatmap() {
@@ -1267,7 +1872,18 @@ function app() {
 
     async toggleOverlay(overlay) {
       if (overlay.active) {
+        const loadToken = overlay._loadToken = (overlay._loadToken || 0) + 1;
+        overlay.loading = true;
+        overlay.error = '';
+        overlay.shown = 0;
+        overlay.total = null;
+        try {
         const markers = L.layerGroup();
+        const visible = this.map.getBounds();
+        const sw = latLngToWorld(visible.getSouthWest());
+        const ne = latLngToWorld(visible.getNorthEast());
+        const minX = Math.min(sw.x, ne.x), maxX = Math.max(sw.x, ne.x);
+        const minZ = Math.min(sw.z, ne.z), maxZ = Math.max(sw.z, ne.z);
         if (overlay.id === 'STRUCTURE') {
           const typeIcons = {
             boss_altar: '🔥', sunken_crypt: '🟢', burial_chamber: '💀',
@@ -1275,10 +1891,16 @@ function app() {
             dvergr_village: '🧙', fuling_village: '👺', vendor: '💰', 
             ruin: '🧱', ashlands_ruin: '🌋', drake_nest: '🐉', unknown: '❓'
           };
-          const d = await fetchJson(`${API}/structures?limit=5000`);
+          const structureQuery = new URLSearchParams({ limit:'5000', minX:String(minX), maxX:String(maxX), minZ:String(minZ), maxZ:String(maxZ) });
+          const d = await fetchJson(`${API}/structures?${structureQuery}`);
+          if (!overlay.active || overlay._loadToken !== loadToken) return;
+          overlay.total = d.total ?? d.count ?? (d.data || []).length;
           for (const st of (d.data || [])) {
             const x = st.position?.x, z = st.position?.z;
             if (x == null || Math.abs(x) >= 100000 || Math.abs(z) >= 100000) continue;
+            // The current structures contract does not yet consume spatial params, so
+            // enforce the same viewport rule client-side as the generic point endpoint.
+            if (x < minX || x > maxX || z < minZ || z > maxZ) continue;
             const iconStr = typeIcons[st.type] || '🏛️';
             const marker = L.marker(worldToLatLng(x, z), {
               icon: L.divIcon({ html: `<div style="font-size:16px; text-shadow: 1px 1px 2px black;">${iconStr}</div>`, className: 'bg-transparent border-0' })
@@ -1286,10 +1908,21 @@ function app() {
             const tip = `<b>${st.prefab || st.type}</b><br>${st.biome || '—'} · ${st.status || '—'}`;
             marker.bindTooltip(tip, { permanent: false, direction: 'top' });
             markers.addLayer(marker);
+            overlay.shown++;
           }
         } else {
-          const d = await fetchJson(`${API}/points?cat=${overlay.id}&limit=200000`);
-          for (const pt of d.points) {
+          const query = new URLSearchParams({
+            cat: overlay.id,
+            limit: '5000',
+            minX: String(minX), maxX: String(maxX),
+            minZ: String(minZ), maxZ: String(maxZ),
+            spawnedAfterFraction: String(this.filterSpawnAfter),
+            spawnedBeforeFraction: String(this.filterSpawnBefore),
+          });
+          const d = await fetchJson(`${API}/points?${query}`);
+          if (!overlay.active || overlay._loadToken !== loadToken) return;
+          overlay.total = this.pointOverlayTotal(overlay, d);
+          for (const pt of (d.points || [])) {
             if (Math.abs(pt.x) >= 100000 || Math.abs(pt.z) >= 100000) continue;
             let color = overlay.color;
             let radius = 3;
@@ -1308,11 +1941,22 @@ function app() {
             const lbl = overlay.id === 'INTERIOR' ? (pt.prefab || pt.label || 'Prop') : (pt.label || '');
             if (lbl) circle.bindTooltip(lbl, { permanent: false, direction: 'top' });
             markers.addLayer(circle);
+            overlay.shown++;
           }
         }
+        if (!overlay.active || overlay._loadToken !== loadToken) return;
         overlay.layer = markers;
         this.map.addLayer(markers);
+        overlay.loading = false;
+        } catch(e) {
+          if (overlay._loadToken !== loadToken) return;
+          overlay.loading = false;
+          overlay.error = e.message || 'Overlay failed to load.';
+          overlay.active = false;
+          console.warn('Point overlay failed', overlay.id, e);
+        }
       } else {
+        overlay._loadToken = (overlay._loadToken || 0) + 1;
         if (overlay.layer) {
           overlay.layer.eachLayer(l => {
             if (l.closeTooltip) l.closeTooltip();
@@ -1321,23 +1965,44 @@ function app() {
           this.map.removeLayer(overlay.layer);
         }
         overlay.layer = null;
+        overlay.loading = false;
       }
     },
 
-    applyFilters() {
-      for (const overlay of this.pointOverlays) {
-        if (overlay.active) {
-          if (overlay.layer) {
-            overlay.layer.eachLayer(l => {
-              if (l.closeTooltip) l.closeTooltip();
-              if (l.unbindTooltip) l.unbindTooltip();
-            });
-            this.map.removeLayer(overlay.layer);
-          }
-          overlay.layer = null;
-          overlay.active = false;
+    overlayBudgetLabel(overlay) {
+      if (overlay.shown == null) return '';
+      const total = overlay.total ?? overlay.shown;
+      return overlay.shown < total ? `showing ${overlay.shown.toLocaleString()} of ${total.toLocaleString()} · zoom in` : overlay.shown.toLocaleString();
+    },
+
+    pointOverlayTotal(overlay, payload = {}) {
+      const direct = Number(payload.total ?? payload.count);
+      if (Number.isFinite(direct)) return direct;
+      const summaryFields = { PORTAL:'portalCount', BED:'bedCount', TOMBSTONE:'tombstoneCount', CONTAINER:'containerCount' };
+      const summaryValue = Number(this.summary?.[summaryFields[overlay.id]] ?? this.summary?.categoryCounts?.[overlay.id]);
+      return Number.isFinite(summaryValue) ? summaryValue : (payload.points || payload.data || []).length;
+    },
+
+    async applyFilters() {
+      this.filterSpawnAfter = Math.max(0, Number(this.filterSpawnAfter) || 0);
+      const requestedBefore = Number(this.filterSpawnBefore);
+      this.filterSpawnBefore = Math.max(this.filterSpawnAfter, Number.isFinite(requestedBefore) ? requestedBefore : 2);
+      const active = this.pointOverlays.filter(overlay => overlay.active);
+      // Remove current marker groups without changing checkbox intent. A user toggle
+      // during the reload still invalidates that overlay's request through _loadToken.
+      for (const overlay of active) {
+        overlay._loadToken = (overlay._loadToken || 0) + 1;
+        if (overlay.layer) {
+          overlay.layer.eachLayer(layer => {
+            if (layer.closeTooltip) layer.closeTooltip();
+            if (layer.unbindTooltip) layer.unbindTooltip();
+          });
+          this.map.removeLayer(overlay.layer);
         }
+        overlay.layer = null;
+        overlay.loading = false;
       }
+      await Promise.all(active.map(overlay => overlay.active ? this.toggleOverlay(overlay) : Promise.resolve()));
     },
 
     // ===== PORTALS =====
@@ -1455,7 +2120,7 @@ function app() {
       this.guildGearMeta = d;   // shared
       // If user landed on Guild Gear via deep-link (or just hasn't picked an issuer yet)
       // and we just got the list, auto-load the top issuer so the page has content.
-      if (this.activeTab === 'guildgear' && !this.selectedIssuer && d.issuers && d.issuers.length) {
+      if (this.activeTab === 'cointrail' && this.coinTrailSection === 'guildgear' && !this.selectedIssuer && d.issuers && d.issuers.length) {
         this.selectedIssuer = d.issuers[0].crafter;
         this.loadGuildGear();
       }
@@ -1665,79 +2330,118 @@ function app() {
     },
 
     async fetchSelection(minX, maxX, minZ, maxZ) {
-      this.switchTab('selection');
+      this.selectionBounds = { minX, maxX, minZ, maxZ };
+      this.selectionOpen = true;
       this.selectionData = [];
       this.isSelectionLoading = true;
       try {
-        try {
-          const summary = await fetchJson(`${API}/db/selection-summary?topN=30&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}`);
-          const rows = [];
-          for (const r of (summary.topPrefabs || [])) {
-            rows.push({ prefab: `ZDO ${r.key || 'unknown'}`, count: r.value });
-          }
-          for (const r of (summary.topItems || [])) {
-            rows.push({ prefab: `Item ${r.key || 'unknown'}`, count: r.value });
-          }
-          if (rows.length > 0) {
-            this.selectionData = rows;
-            return;
-          }
-        } catch(e) {
-          // Analytics cache is optional; fall back to the legacy interior selection.
+        let url = `${API}/db/selection-summary?topN=30&minX=${encodeURIComponent(minX)}&maxX=${encodeURIComponent(maxX)}&minZ=${encodeURIComponent(minZ)}&maxZ=${encodeURIComponent(maxZ)}`;
+        if (this.selectedSnapshotId) url += `&snapshot=${encodeURIComponent(this.selectedSnapshotId)}`;
+        const summary = await fetchJson(url);
+        const rows = [];
+        for (const row of (summary.topPrefabs || [])) {
+          rows.push({ prefab:`ZDO ${row.key || 'unknown'}`, count:Number(row.value || 0) });
         }
-        const d = await fetchJson(`${API}/points?cat=INTERIOR&limit=200000&minX=${minX}&maxX=${maxX}&minZ=${minZ}&maxZ=${maxZ}`);
-        const counts = {};
-        for (const pt of d.points) {
-          const p = pt.prefab || pt.label || 'Unknown Prop';
-          counts[p] = (counts[p] || 0) + 1;
+        for (const row of (summary.topItems || [])) {
+          rows.push({ prefab:`Item ${row.key || 'unknown'}`, count:Number(row.value || 0) });
         }
-        this.selectionData = Object.entries(counts)
-          .sort((a,b) => b[1] - a[1])
-          .map(([prefab, count]) => ({ prefab, count }));
+        this.selectionData = rows;
+      } catch(e) {
+        console.warn('Selection summary failed', e);
+        this.selectionData = [];
       } finally {
         this.isSelectionLoading = false;
       }
     },
 
+    selectionTotal() { return this.selectionData.reduce((sum, row) => sum + Number(row.count || 0), 0); },
+    selectionBoundsLabel(bounds = this.selectionBounds) {
+      if (!bounds) return '';
+      return `x ${Math.round(bounds.minX).toLocaleString()} … ${Math.round(bounds.maxX).toLocaleString()} · z ${Math.round(bounds.minZ).toLocaleString()} … ${Math.round(bounds.maxZ).toLocaleString()}`;
+    },
+    copySelectionBounds() {
+      if (!this.selectionBounds) return;
+      const b = this.selectionBounds;
+      navigator.clipboard?.writeText(`minX=${b.minX}&maxX=${b.maxX}&minZ=${b.minZ}&maxZ=${b.maxZ}&snapshot=${this.selectedSnapshotId || ''}`);
+    },
+    openSelectionInExplore() {
+      this.exploreBounds = this.selectionBounds ? { ...this.selectionBounds } : null;
+      this.selectionOpen = false;
+      this.showPrimary('explore');
+      this.runExploreQuery();
+    },
+
     // ===== HISTORY & SNAPSHOTS =====
 
     async loadSnapshots() {
+      const hadSnapshots = this.snapshots.length > 0;
+      this.snapshotState = 'loading';
+      this.snapshotError = '';
       try {
         // Always fetch unfiltered first so the selector can offer the world_ids that exist,
         // then narrow client-side. Filtering server-side by a world_id nobody ingested under
         // returned an empty timeline with no hint as to why.
-        const all = (await fetchJson(`${API}/db/snapshots`)).snapshots || [];
+        const payload = await fetchJson(`${API}/db/snapshots`);
+        const all = (payload.snapshots || []).slice().sort((a,b) => Number(b.snapshotId) - Number(a.snapshotId));
         this.knownWorldIds = [...new Set(all.map(s => s.worldId).filter(Boolean))].sort();
         this.snapshots = this.selectedWorldId
           ? all.filter(s => s.worldId === this.selectedWorldId)
           : all;
-        if (this.snapshots.length > 0 && !this.selectedSnapshotId) {
-          this.selectedSnapshotId = this.snapshots[0].snapshotId;
-        }
+        const ids = new Set(this.snapshots.map(s => String(s.snapshotId)));
+        if (this.snapshots.length > 0 && !ids.has(String(this.selectedSnapshotId))) this.selectedSnapshotId = this.snapshots[0].snapshotId;
+        if (!this.snapshots.length) this.selectedSnapshotId = null;
+        this.deltaPairs = (payload.deltaPairs || []).filter(pair => {
+          const from = pair.fromSnapshotId ?? pair.from;
+          const to = pair.toSnapshotId ?? pair.to;
+          return ids.has(String(from)) && ids.has(String(to));
+        });
+        this.ensureDeltaPair();
+        this.snapshotState = this.snapshots.length ? 'ready' : 'empty';
       } catch (e) {
+        this.snapshotError = e.message || 'Failed loading snapshots.';
+        this.snapshotState = 'error';
+        if (!hadSnapshots) { this.snapshots = []; this.deltaPairs = []; }
         console.warn('Failed loading snapshots:', e);
       }
     },
 
     async switchWorld(worldId) {
+      this._manifestToken++;
+      this._deltaManifestToken++;
+      this._deltaCompareToken++;
+      this._rasterToken++;
+      this.removeRasterOverlay();
       this.selectedWorldId = worldId;
+      this.selectedSnapshotId = null;
+      this.deltaFromId = null;
+      this.deltaToId = null;
+      this.deltaResult = null;
+      this.deltaRenderedManifest = null;
+      this.deltaRenderedLayers = [];
+      this.selectionData = [];
+      this.selectionBounds = null;
+      this.selectionOpen = false;
       await this.loadSnapshots();
+      await this.loadRenderedManifest();
+      if (this.mapRasterMode === 'changes') await this.loadDeltaRenderedManifest();
     },
 
     async switchSnapshot(snapshotId) {
+      // Preserve an already displayed successful raster for stale fallback, but prevent
+      // a decode started for the previous snapshot from becoming that fallback.
+      this._rasterToken++;
       this.selectedSnapshotId = snapshotId;
+      this.selectionData = [];
+      this.selectionBounds = null;
+      this.exploreResults = null;
       // Raster layers are per-snapshot; swap the manifest (which re-applies the overlay).
-      await this.loadRenderedManifest();
-      if (this.primaryTab === 'changes') {
-        await this.loadDelta();
-      }
+      if (this.mapRasterMode === 'snapshot') await this.loadRenderedManifest();
     },
 
     async loadDelta() {
-      await this.loadSnapshots();
+      if (!this.snapshots.length) await this.loadSnapshots();
+      this.ensureDeltaPair();
       if (this.snapshots.length >= 2) {
-        this.deltaFromId = this.snapshots[1].snapshotId;
-        this.deltaToId = this.snapshots[0].snapshotId;
         await this.compareSnapshots();
       } else if (this.snapshots.length === 1) {
         try {
@@ -1746,24 +2450,148 @@ function app() {
       }
     },
 
+    ensureDeltaPair() {
+      const ids = new Set(this.snapshots.map(s => String(s.snapshotId)));
+      const byId = new Map(this.snapshots.map(snapshot => [String(snapshot.snapshotId), snapshot]));
+      const from = byId.get(String(this.deltaFromId));
+      const to = byId.get(String(this.deltaToId));
+      if (from && to && String(from.snapshotId) !== String(to.snapshotId) && from.worldId === to.worldId) return;
+
+      // Under "All worlds", global snapshot order can interleave worlds. Prefer a
+      // published canonical pair so the default can never become a cross-world 409.
+      const advertised = this.deltaPairs.find(pair => pair.available !== false) || this.deltaPairs[0];
+      if (advertised) {
+        this.deltaFromId = advertised.fromSnapshotId ?? advertised.from;
+        this.deltaToId = advertised.toSnapshotId ?? advertised.to;
+        return;
+      }
+
+      const snapshotsByWorld = new Map();
+      for (const snapshot of this.snapshots) {
+        const key = snapshot.worldId || '';
+        if (!snapshotsByWorld.has(key)) snapshotsByWorld.set(key, []);
+        snapshotsByWorld.get(key).push(snapshot);
+      }
+      const sameWorld = [...snapshotsByWorld.values()].find(group => group.length >= 2);
+      this.deltaFromId = sameWorld?.[1]?.snapshotId ?? null;
+      this.deltaToId = sameWorld?.[0]?.snapshotId ?? null;
+    },
+
+    deltaPairOrdered() { return Number(this.deltaFromId) < Number(this.deltaToId); },
+    async swapDeltaPair() {
+      const from = this.deltaFromId;
+      this.deltaFromId = this.deltaToId;
+      this.deltaToId = from;
+      await this.deltaPairChanged();
+    },
+    async deltaPairChanged() {
+      if (this.mapRasterMode === 'changes') {
+        this._deltaManifestToken++;
+        this._rasterToken++;
+        this.removeRasterOverlay();
+        if (!this.deltaPairOrdered()) {
+          this.rasterState = 'unavailable';
+          this.rasterError = 'Spatial rasters require an older From snapshot and newer To snapshot.';
+        } else {
+          this.rasterState = 'loading';
+          this.rasterError = '';
+        }
+      }
+      await this.compareSnapshots();
+    },
+
+    deltaRasterPairAvailable() {
+      if (this.deltaRenderedManifest && String(this.deltaRenderedManifest.fromSnapshotId) === String(this.deltaFromId) && String(this.deltaRenderedManifest.toSnapshotId) === String(this.deltaToId)) return true;
+      return this.deltaPairs.some(pair => pair.available !== false && String(pair.fromSnapshotId ?? pair.from) === String(this.deltaFromId) && String(pair.toSnapshotId ?? pair.to) === String(this.deltaToId));
+    },
+
+    async showDeltaOnMap() {
+      if (!this.deltaPairOrdered()) {
+        const from = this.deltaFromId; this.deltaFromId = this.deltaToId; this.deltaToId = from;
+      }
+      this.primaryTab = 'world';
+      this.activeTab = 'map';
+      this._rasterToken++;
+      this.removeRasterOverlay();
+      this.mapRasterMode = 'changes';
+      this._manifestToken++;
+      this.activeRasterLayer = 'build-activity';
+      history.replaceState(null, '', '#tab=map');
+      await this.loadDeltaRenderedManifest();
+      this.$nextTick(() => this.map?.invalidateSize());
+    },
+
     async compareSnapshots() {
       if (!this.deltaFromId || !this.deltaToId) return;
+      const token = ++this._deltaCompareToken;
+      const from = this.deltaFromId, to = this.deltaToId;
+      this.deltaState = 'loading';
+      this.deltaError = '';
       try {
-        this.deltaResult = await fetchJson(`${API}/db/snapshots/compare?from=${this.deltaFromId}&to=${this.deltaToId}`);
+        const result = await fetchJson(`${API}/db/snapshots/compare?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+        if (token !== this._deltaCompareToken) return;
+        this.deltaResult = result;
+        this.deltaState = 'ready';
       } catch(e) {
+        if (token !== this._deltaCompareToken) return;
+        this.deltaError = e.message || 'Failed comparing snapshots.';
+        this.deltaState = 'error';
         console.error('Failed comparing snapshots', e);
       }
+      if (token === this._deltaCompareToken && this.mapRasterMode === 'changes' && this.deltaPairOrdered()) await this.loadDeltaRenderedManifest();
     },
 
     async runExploreQuery() {
       let url = `${API}/db/zdo/query?limit=100`;
+      if (this.selectedSnapshotId) url += `&snapshot=${encodeURIComponent(this.selectedSnapshotId)}`;
       if (this.exploreQueryPrefab) url += `&prefab=${encodeURIComponent(this.exploreQueryPrefab)}`;
       if (this.exploreQueryCategory) url += `&category=${encodeURIComponent(this.exploreQueryCategory)}`;
+      if (this.exploreBounds) {
+        for (const key of ['minX','maxX','minZ','maxZ']) url += `&${key}=${encodeURIComponent(this.exploreBounds[key])}`;
+      }
+      this.exploreState = 'loading';
+      this.exploreError = '';
       try {
         this.exploreResults = await fetchJson(url);
+        this.exploreState = (this.exploreResults?.data || []).length ? 'ready' : 'empty';
       } catch(e) {
+        this.exploreError = e.message || 'Explore query failed.';
+        this.exploreState = 'error';
         console.error('Failed explore query', e);
       }
+    },
+
+    compareFromSnapshot(snapshotId) {
+      this.deltaFromId = snapshotId;
+      this.deltaToId = String(snapshotId) === String(this.selectedSnapshotId) ? this.snapshots[0]?.snapshotId : this.selectedSnapshotId;
+      if (String(this.deltaFromId) === String(this.deltaToId) && this.snapshots.length > 1) this.deltaFromId = this.snapshots[1].snapshotId;
+      this.showPrimary('changes');
+    },
+
+    historyHasCounts() { return this.snapshots.some(s => Number.isFinite(Number(s.zdoCount))); },
+    historyBarHeight(snap) {
+      const counts = this.snapshots.map(s => Number(s.zdoCount)).filter(Number.isFinite);
+      if (!counts.length || !Number.isFinite(Number(snap.zdoCount))) return 4;
+      const min = Math.min(...counts), max = Math.max(...counts);
+      return max === min ? 72 : 20 + ((Number(snap.zdoCount) - min) / (max - min)) * 80;
+    },
+    historyRangeLabel() {
+      if (!this.snapshots.length) return '';
+      const oldest = this.snapshots[this.snapshots.length - 1], newest = this.snapshots[0];
+      return `${this.formatSnapshotTime(oldest)} → ${this.formatSnapshotTime(newest)}`;
+    },
+    formatSnapshotTime(snap) {
+      const value = snap?.saveTimestamp || snap?.parsedAt;
+      if (!value) return 'unknown time';
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString([], { dateStyle:'short', timeStyle:'short' });
+    },
+    formatFileSize(bytes) { return Number.isFinite(Number(bytes)) ? `${(Number(bytes) / 1024 / 1024).toFixed(1)} MB` : '—'; },
+    formatSigned(value) { const n = Number(value || 0); return `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toLocaleString()}`; },
+    flyToExploreRow(row) {
+      if (row?.x == null || row?.z == null) return;
+      this.flyMapTo(row.x, row.z);
+      this.switchTab('map');
     },
 
     // ===== HELPERS =====
@@ -1779,6 +2607,20 @@ function app() {
 // Color functions — the single palette definition; rasters are baked grayscale
 // and colorized in the browser through a LUT built from this ramp.
 function heatColorRgb(t, scheme) {
+  const namedRamps = {
+    ember: ['#14243c','#2f5aa8','#6fa8dd','#f0d9a0','#d9635f'],
+    moss: ['#101c18','#1f4a3a','#5fae7f','#b9dfa8','#eef6d8'],
+    viridis: ['#1c1235','#3b528b','#21918c','#5ec962','#fde725'],
+  };
+  if (namedRamps[scheme]) {
+    const colors = namedRamps[scheme];
+    const position = Math.max(0, Math.min(1, t)) * (colors.length - 1);
+    const index = Math.min(colors.length - 2, Math.floor(position));
+    const fraction = position - index;
+    const parse = hex => [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+    const from = parse(colors[index]), to = parse(colors[index + 1]);
+    return from.map((value, channel) => Math.round(value + (to[channel] - value) * fraction));
+  }
   switch (scheme) {
     case 'green':
       return [Math.round(20*t), Math.round(100 + 155*t), Math.round(20*t)];
@@ -1816,7 +2658,15 @@ function fmtNum(cell) {
 
 async function fetchJson(url) {
   const r = await fetch(url);
-  return r.json();
+  let payload = null;
+  try { payload = await r.json(); } catch(e) {}
+  if (!r.ok) {
+    const error = new Error(payload?.error || payload?.message || `${r.status} ${r.statusText}`);
+    error.status = r.status;
+    error.payload = payload;
+    throw error;
+  }
+  return payload;
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }

@@ -4,11 +4,13 @@ Valheim world-file (`.db`) parser, steward API, and browser viewer for high-play
 
 The app runs as a single Java fat JAR. In normal mode it parses the world into an in-memory steward dashboard. In batch analytics mode it also writes a full-fidelity DuckDB cache and pre-rendered map layers for large-world GM investigations.
 
-It also acts as the world intelligence and read model for the wider server stack: it retains a history of ingested saves with provenance, computes deltas between them, and serves a four-view UI (World / Changes / History / Explore). The ingest contract is in [ISLET_INTEGRATION_SPEC.md](docs/comfy-integration/ISLET_INTEGRATION_SPEC.md); prefab naming, which everything downstream depends on, is in [PREFAB_DICTIONARY.md](docs/comfy-integration/PREFAB_DICTIONARY.md).
+It also acts as the world intelligence and read model for the wider server stack: it retains a history of ingested saves with provenance, computes deltas between them, and serves a unified World / Changes / History / Explore shell. The ingest contract is in [ISLET_INTEGRATION_SPEC.md](docs/comfy-integration/ISLET_INTEGRATION_SPEC.md); prefab naming, which everything downstream depends on, is in [PREFAB_DICTIONARY.md](docs/comfy-integration/PREFAB_DICTIONARY.md).
 
 For the architecture, the findings behind it, and the measurements, read the white paper — served alongside the app at **[/steward/whitepaper.html](https://am4.tail8e749c.ts.net/steward/whitepaper.html)**. Its source is [WHITEPAPER.html](docs/comfy-integration/WHITEPAPER.html), built into the jar by [tools/Build-Whitepaper.ps1](tools/Build-Whitepaper.ps1); the diagrams alone live in [docs/comfy-integration/diagrams/](docs/comfy-integration/diagrams/).
 
 Processing and serving run on different hosts. OMEN parses saves and builds the DuckDB cache and map layers (~53 s and ~1.2 GB per 9M-ZDO world, and it keeps the growing snapshot history); AM4 only serves the published artifacts. [tools/Publish-Steward.ps1](tools/Publish-Steward.ps1) is the data lane — dry-run by default, `-Push` to publish. [tools/Deploy-Steward.ps1](tools/Deploy-Steward.ps1) remains the code lane. Deploy when the jar changes, publish when the world changes.
+
+The v4 shell and spatial comparison release has been deployed through both lanes and verified at [the AM4 Steward endpoint](https://am4.tail8e749c.ts.net/steward/). This is a release verification record, not a guarantee that the live data will remain on any particular snapshot pair.
 
 ## Quick start
 
@@ -53,21 +55,7 @@ Open `http://localhost:7080/`.
 
 If startup fails with `NoClassDefFoundError: kotlin/jvm/internal/Intrinsics`, the jar was built without Kotlin stdlib. Rebuild after pulling the latest `viewer/pom.xml`.
 
-Main tabs:
-- Map
-- Portals
-- Players
-- Economy
-- Tombstones
-- Signs
-- Dropped
-- Alerts
-- Structures
-- Creatures
-- Coin Caches
-- Server Issuers
-- Guild Gear
-- Selection
+Primary tabs are **World**, **Changes**, **History**, and **Explore**. World retains the existing data-bearing views under grouped secondary navigation (Spatial, Inventories, Forensics, and Population); the three coin-forensics views now share a **Coin trail** surface. The selected snapshot and every comparison pair are shown explicitly in the shell.
 
 ## Batch analytics mode
 
@@ -109,7 +97,7 @@ Supported analytics flags:
 
 ## Documentation
 
-The project docs are centered in [`docs/comfy-integration/README.md`](docs/comfy-integration/README.md). The core integration and analytics docs are current through the July 2, 2026 DB-backed analytics work.
+The project docs are centered in [`docs/comfy-integration/README.md`](docs/comfy-integration/README.md). The unified raster/comparison UI contract and incremental milestone record are in [`docs/design/STEWARD_VIEW_V4_INTEGRATION_PLAN.md`](docs/design/STEWARD_VIEW_V4_INTEGRATION_PLAN.md).
 
 Useful entry points:
 
@@ -127,18 +115,26 @@ Useful entry points:
 - Item classification loaded from `viewer/classification.json`.
 - Forensics routes for coin caches, server issuers, and guild gear.
 - Optional DuckDB analytics cache with `world_snapshot`, `zdo`, `zdo_field`, `container_item`, and `render_cell`.
+- Unified World / Changes / History / Explore shell with grouped World navigation, explicit time-scope badges, legacy deep-link redirects, and a segmented Coin trail view.
+- Snapshot-aware Map, Explore, and selection workflows; boot-snapshot views are labeled rather than silently following the snapshot selector.
+- Snapshot Map rasters for Build density, Dropped, All ZDOs, and Coins at every cell size advertised by the manifest, with client-side ramp and opacity controls.
+- Changes Map rasters for Build activity and All ZDO change, composited from aligned added/removed gray8 channels with a dual logarithmic legend. Changes and Map share the same ordered comparison pair.
 - Rendered overlay and DB-backed drilldown routes:
   - `/api/v1/rendered/manifest`
   - `/api/v1/rendered/{file}`
+  - `/api/v1/rendered/delta/manifest?from=N&to=M`
+  - `/api/v1/rendered/delta/{file}?from=N&to=M`
   - `/api/v1/db/zdo/query`
   - `/api/v1/db/containers/items`
   - `/api/v1/db/selection-summary`
+- OMEN precomputes aligned added/removed gray8 rasters for every ordered pair among up to each world's latest six snapshots; AM4 serves only manifest-advertised artifacts and never rasterizes on demand.
+
+Release verification covered a clean Maven package with all three delta-raster tests passing, live status and snapshot discovery, an advertised comparison manifest with both layers at four cell sizes, both PNG channels, and browser rendering of the Changes compositor and dual legend without runtime errors.
 
 ## Still to build
 
 This is the consolidated backlog pulled from the handoff docs and batch analytics plan:
 
-- Cached ZDO explorer UI over `/api/v1/db/zdo/query`.
 - Semantic location masks such as known-world radius and space-island filters.
 - Build analytics and leaderboards by creator, prefab, sector, and zone.
 - Container wealth reports by area, item type, crafter, and inferred owner.
@@ -148,6 +144,8 @@ This is the consolidated backlog pulled from the handoff docs and batch analytic
 - Local bounded 3D prefab viewer.
 - Per-container inventory drill-down in the live UI.
 - Alert noise reduction for orphaned portals.
+- Snapshot-aware point overlays; they are intentionally labeled as pinned to the boot snapshot today.
+- The remaining v4 operational-polish work: consistent stale/retry states across every leaf view, spawn-time aggregate/histogram, accessibility and reduced-motion checks, responsive regression coverage, and publish telemetry.
 - Naming the residual unresolved prefab hashes (129 hashes / 0.54% of ZDOs on ComfyEra16, mostly modded and ZoneSystem location prefabs). The bundled dictionary resolves 99.5%; `GET /api/v1/prefabs/unresolved` is the live worklist. See [docs/comfy-integration/PREFAB_DICTIONARY.md](docs/comfy-integration/PREFAB_DICTIONARY.md).
 
 ## Repo layout
