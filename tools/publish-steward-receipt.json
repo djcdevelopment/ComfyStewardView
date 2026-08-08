@@ -1,0 +1,19 @@
+﻿{
+    "started_at":  "2026-08-08T04:40:42.6779848Z",
+    "finished_at":  "2026-08-08T04:41:36.8358560Z",
+    "pushed":  false,
+    "ssh_target":  "am4",
+    "git_sha":  "58055a5",
+    "am4_world_sha256":  null,
+    "omen_world":  "ComfyEra16_backup_auto-20260807211142.db",
+    "cache_mb":  1197.8,
+    "rendered_mb":  0.1,
+    "snapshots":  [
+                      {
+                          "snapshot_id":  "1",
+                          "world_id":  "omen-lab",
+                          "dictionary":  "0.221.12",
+                          "zdo_rows":  9155594
+                      }
+                  ]
+}

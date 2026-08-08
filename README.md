@@ -6,6 +6,8 @@ The app runs as a single Java fat JAR. In normal mode it parses the world into a
 
 It also acts as the world intelligence and read model for the wider server stack: it retains a history of ingested saves with provenance, computes deltas between them, and serves a four-view UI (World / Changes / History / Explore). The ingest contract is in [ISLET_INTEGRATION_SPEC.md](docs/comfy-integration/ISLET_INTEGRATION_SPEC.md); prefab naming, which everything downstream depends on, is in [PREFAB_DICTIONARY.md](docs/comfy-integration/PREFAB_DICTIONARY.md).
 
+Processing and serving run on different hosts. OMEN parses saves and builds the DuckDB cache and map layers (~53 s and ~1.2 GB per 9M-ZDO world, and it keeps the growing snapshot history); AM4 only serves the published artifacts. [tools/Publish-Steward.ps1](tools/Publish-Steward.ps1) is the data lane — dry-run by default, `-Push` to publish. [tools/Deploy-Steward.ps1](tools/Deploy-Steward.ps1) remains the code lane. Deploy when the jar changes, publish when the world changes.
+
 ## Quick start
 
 Recommended path for Windows users:

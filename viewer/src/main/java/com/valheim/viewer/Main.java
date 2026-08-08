@@ -7,6 +7,8 @@ import com.valheim.viewer.contract.WorldContracts;
 import com.valheim.viewer.db.AnalyticsCache;
 import com.valheim.viewer.db.AnalyticsCacheReader;
 import com.valheim.viewer.db.RenderedLayerBuilder;
+import com.valheim.viewer.db.SnapshotIngestService;
+import com.valheim.viewer.db.SnapshotProvenance;
 import com.valheim.viewer.extractor.AlertBuilder;
 import com.valheim.viewer.extractor.AlertResult;
 import com.valheim.viewer.extractor.ClassificationStore;
@@ -30,6 +32,7 @@ import org.slf4j.LoggerFactory;
 import java.awt.Desktop;
 import java.io.File;
 import java.net.URI;
+import java.time.Instant;
 
 /**
  * Entry point for Valheim World Viewer.
@@ -55,6 +58,10 @@ public class Main {
         String cachePath = "world-cache.duckdb";
         String renderDirPath = "rendered";
         String probeHashArg = null;
+        // Provenance for a batch cache build. Without these a --build-cache run derives world_id
+        // from the filename, which is why snapshots built by the container never matched the
+        // world ids Islet ingests under.
+        String worldIdArg = null, worldNameArg = null, sourceArg = null, backupIdArg = null;
 
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -88,6 +95,18 @@ public class Main {
                     break;
                 case "--probe-hash":
                     if (i + 1 < args.length) probeHashArg = args[++i];
+                    break;
+                case "--world-id":
+                    if (i + 1 < args.length) worldIdArg = args[++i];
+                    break;
+                case "--world-name":
+                    if (i + 1 < args.length) worldNameArg = args[++i];
+                    break;
+                case "--source":
+                    if (i + 1 < args.length) sourceArg = args[++i];
+                    break;
+                case "--backup-id":
+                    if (i + 1 < args.length) backupIdArg = args[++i];
                     break;
                 default:
                     if (!args[i].startsWith("--")) dbPath = args[i];
@@ -124,6 +143,18 @@ public class Main {
                     cacheFile.getAbsolutePath(), rebuildCache, cacheFields);
                 analyticsCache = new AnalyticsCache(cacheFile, rebuildCache, cacheFields);
                 parser.setAnalyticsCache(analyticsCache);
+                if (worldIdArg != null) {
+                    // Staged before the parse: WorldParser opens the snapshot itself, and a
+                    // beginSnapshot afterwards would open a second, empty one.
+                    String hash = SnapshotIngestService.sha256(dbFile);
+                    analyticsCache.setPendingProvenance(new SnapshotProvenance(
+                        worldIdArg, worldNameArg, sourceArg, backupIdArg,
+                        Instant.ofEpochMilli(dbFile.lastModified()).toString(), hash,
+                        SnapshotProvenance.DEFAULT_PARSER_VERSION,
+                        SnapshotProvenance.CURRENT_SCHEMA_VERSION));
+                    log.info("Snapshot provenance: worldId={} source={} backupId={} sha256={}",
+                        worldIdArg, sourceArg, backupIdArg, hash);
+                }
             } catch (Exception e) {
                 log.error("Failed to initialize analytics cache", e);
                 System.exit(1);

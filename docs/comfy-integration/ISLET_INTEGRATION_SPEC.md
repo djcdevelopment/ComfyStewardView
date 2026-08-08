@@ -31,6 +31,65 @@ This specification defines the boundary and contract between **Islet** (the oper
 
 ---
 
+## 0. Where the work runs
+
+Processing and serving are split across hosts. OMEN parses saves and builds artifacts; AM4 only
+serves them.
+
+```text
+OMEN (processing)                                  AM4 (serving)
+  comfy-valheim-lab server  --+
+  worlds_local/*.db           |
+                              +--> tools/Publish-Steward.ps1
+  AM4 world (pulled frozen) --+       |
+                                      |  parse + DuckDB cache + rendered layers
+                                      |  (~53 s, ~1.2 GB per world)
+                                      |
+                                      +--> scp artifacts --> steward-data volume
+                                                             touch /data/.cache-complete
+                                                             restart container
+                                                                    |
+                                                                    v
+                                                             serve mode only
+                                                             https://am4.../steward/
+```
+
+**Why the marker matters.** `entrypoint.sh` gates its batch build on `/data/.cache-complete`.
+Publishing prebuilt artifacts and touching that marker makes the container skip the build and go
+straight to serve mode, so moving processing to OMEN needed no application change at all.
+
+**AM4 still needs a world file.** Around twenty endpoints read the in-memory `ZdoFlatStore`, not
+DuckDB, so the container parses a `.db` at every start (seconds, not minutes). The frozen world
+copy stays on AM4; only the expensive batch build moved.
+
+**Two worlds, two ids.** `am4-prod` is AM4's live server world, snapshotted on AM4 with an
+mtime-stable copy and pulled to OMEN. `omen-lab` is OMEN's own `comfy-valheim-lab` world, read
+from a rotated `*_backup_auto-*.db` on local disk — immutable once written, so it needs no
+torn-copy protection. The viewer's World Selector switches between them.
+
+**The consistency gate.** `Publish-Steward.ps1` refuses to publish unless the `file_hash` recorded
+in the `am4-prod` snapshot equals the SHA-256 of the world file AM4 will actually serve. Otherwise
+the DuckDB view and the in-memory view would describe different saves. It also fails closed if any
+snapshot has zero ZDO rows or no prefab dictionary recorded.
+
+**Retention splits by host.** History costs ~1.5 GB per snapshot and belongs on OMEN. AM4 receives
+only the snapshots it serves, so its volume stays bounded. This is the part of "publish the results
+where they are needed" that keeps AM4's disk from growing without limit.
+
+Run it dry first — it builds and verifies locally, touching nothing on AM4 beyond the read-only
+world pull:
+
+```bash
+powershell -ExecutionPolicy Bypass -File .\tools\Publish-Steward.ps1
+```
+
+Then publish with `-Push`. `-SkipAm4World` builds `omen-lab` only, for when AM4 is unreachable.
+
+`Deploy-Steward.ps1` remains the lane for shipping *code* to AM4 (image build + compose up).
+`Publish-Steward.ps1` ships *data*. Deploy when the jar changes; publish when the world changes.
+
+---
+
 ## 1. Steward Ingest API Boundary
 
 ### `POST /api/v1/db/snapshots/ingest`
@@ -93,15 +152,25 @@ the dictionary has gone stale against a new game build; see
 
 #### Timeouts and cost — measured, not estimated
 
-**An ingest of a 1.27 GB / 9.16M-ZDO save takes 12–13 minutes, not seconds.** Parsing is ~4 s;
-essentially all the wall-clock is writing 9.16M ZDO rows and ~400k container-item rows into
-DuckDB. Islet must set its HTTP timeout to **at least 20 minutes** and treat ingest as a
-long-running job rather than a request/response call.
+**An ingest of a 1.27 GB / 9.16M-ZDO save into an existing cache takes 12–13 minutes.** Raw
+parsing is only ~4 s; the wall-clock is writing 9.16M ZDO rows and ~400k container-item rows.
+Islet must set its HTTP timeout to **at least 20 minutes** and treat ingest as a long-running job,
+not a request/response call.
 
-**Each snapshot costs roughly 1.5 GB of DuckDB storage.** A 42-snapshot retention window is
-therefore ~60 GB, on a host where the compose file caps memory at 8 GB but does not bound disk.
-Islet owns retention: decide how many snapshots to keep and prune deliberately. DuckDB does not
-release file space on `DELETE` without a checkpoint, so pruning needs a maintenance step.
+**The same work against a fresh cache takes 53 seconds** — 260,000 ZDO/s versus 12,400 ZDO/s, a
+21× difference. The cause is indexing: `AnalyticsCache.finish()` calls `createIndexes()`, so every
+subsequent append writes through the indexes it built, and the DuckDB Appender fast path loses
+most of its advantage. Two consequences:
+
+- Batch builds that start from nothing (`--rebuild-cache`, what `Publish-Steward.ps1` does) are
+  cheap. Budget a minute, not a quarter of an hour.
+- Growing a long history by repeated ingest gets progressively more expensive. If retention grows,
+  the fix is to drop and rebuild indexes around a bulk append rather than to accept the cost.
+
+**Storage, measured:** a single-snapshot cache is ~1.2 GB; a two-snapshot cache is ~3.2 GB, so the
+appended snapshot costs closer to 2 GB. A 42-snapshot window is therefore tens of GB, on a host
+whose compose file caps memory at 8 GB but does not bound disk. Islet owns retention. DuckDB does
+not release file space on `DELETE` without a checkpoint, so pruning needs a maintenance step.
 
 Ingest is single-writer. Do not issue concurrent ingests against one cache file.
 

@@ -30,7 +30,7 @@ public final class SnapshotIngestService {
         }
 
         // Verify SHA256 file hash if provided, or compute if empty
-        String computedHash = computeSha256(dbFile);
+        String computedHash = sha256(dbFile);
         if (provenance.fileHash() != null && !provenance.fileHash().isBlank()
                 && !provenance.fileHash().equalsIgnoreCase(computedHash)) {
             throw new IllegalArgumentException("File hash mismatch for " + dbFile.getName() +
@@ -126,7 +126,8 @@ public final class SnapshotIngestService {
         return receipt;
     }
 
-    private static String computeSha256(File file) throws Exception {
+    /** SHA-256 of a file, lowercase hex. Shared with the batch path so both stamp the same value. */
+    public static String sha256(File file) throws Exception {
         MessageDigest md = MessageDigest.getInstance("SHA-256");
         try (FileInputStream fis = new FileInputStream(file);
              DigestInputStream dis = new DigestInputStream(fis, md)) {
