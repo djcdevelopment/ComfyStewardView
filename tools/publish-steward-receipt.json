@@ -1,19 +1,25 @@
 ﻿{
-    "started_at":  "2026-08-08T07:47:15.0068350Z",
-    "finished_at":  "2026-08-08T07:48:04.1967545Z",
-    "pushed":  false,
+    "started_at":  "2026-08-08T08:38:57.5256577Z",
+    "finished_at":  "2026-08-08T08:54:47.2657422Z",
+    "pushed":  true,
     "ssh_target":  "am4",
-    "git_sha":  "c5cd447",
-    "am4_world_sha256":  null,
-    "omen_world":  "ComfyEra16_backup_auto-20260807231143.db",
-    "cache_mb":  1195.5,
+    "git_sha":  "cd58914",
+    "am4_world_sha256":  "24e9ae40a027f2419ab31efcce167dd7a740111d02524d9efa3e9be4b1ee4f45",
+    "omen_world":  "ComfyEra16_backup_auto-20260808011144.db",
+    "cache_mb":  3130.5,
     "rendered_mb":  0.1,
-    "archived":  true,
-    "archive_dir":  "C:\\Users\\derek\\AppData\\Local\\Temp\\claude\\C--work-ComfyStewardView\\6610f873-1fd0-4508-a450-aecef14f0684\\scratchpad\\publish3\\archive",
-    "archive_mb":  113.7,
+    "archived":  false,
+    "archive_dir":  null,
+    "archive_mb":  0,
     "snapshots":  [
                       {
                           "snapshot_id":  "1",
+                          "world_id":  "ComfyEra16",
+                          "dictionary":  "0.221.12",
+                          "zdo_rows":  9155593
+                      },
+                      {
+                          "snapshot_id":  "2",
                           "world_id":  "ComfyEra16",
                           "dictionary":  "0.221.12",
                           "zdo_rows":  9155594
