@@ -4,7 +4,7 @@
 *.db
 *.fwl*
 
-# Daemon runtime logs — re-generated on every restart
+# Daemon runtime logs â€” re-generated on every restart
 viewer/logs/*.log
 viewer/logs/*.err
 
@@ -14,6 +14,3 @@ viewer/target/*.duckdb.wal
 viewer/target/rendered-*/
 viewer/target/generation-*.log
 /steward-config.json
-
-# White paper build output; docs/comfy-integration/WHITEPAPER.html is the source
-docs/comfy-integration/whitepaper.built.html

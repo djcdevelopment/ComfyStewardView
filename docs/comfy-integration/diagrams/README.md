@@ -27,10 +27,16 @@ re-run the build, and the paper follows:
 powershell -ExecutionPolicy Bypass -File .\tools\Build-Whitepaper.ps1
 ```
 
-That emits a self-contained `whitepaper.built.html` (git-ignored) with each SVG inlined as
-a base64 data URI. Data URIs rather than inline `<svg>` because these diagrams carry
-internal `<style>` blocks with generic class names, and SVG styles are not scoped — five
-inlined side by side would collide with each other and with the page.
+That writes `viewer/src/main/resources/static/whitepaper.html`, which ships inside the jar
+and is served at [/steward/whitepaper.html](https://am4.tail8e749c.ts.net/steward/whitepaper.html)
+next to the application it documents. Each SVG is inlined as a base64 data URI — rather than
+inline `<svg>` — because these diagrams carry internal `<style>` blocks with generic class
+names, and SVG styles are not scoped: five inlined side by side would collide with each other
+and with the page.
+
+The build also wraps the page in a doctype, `<meta charset="utf-8">` and a viewport. The
+source omits those because the artifact publisher supplies its own; served directly they are
+what keep the browser out of quirks mode and stop a UTF-8 file being decoded as windows-1252.
 
 ## Superseded
 

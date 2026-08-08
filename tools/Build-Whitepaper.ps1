@@ -18,8 +18,11 @@
   opened from disk, mailed, or published as an artifact unchanged.
 
 .PARAMETER OutFile
-  Where to write the built page. Defaults beside the source as whitepaper.built.html,
-  which is git-ignored; the source is what gets committed.
+  Where to write the built page. Defaults into the viewer's static resources, so the
+  paper ships inside the jar and is served at /steward/whitepaper.html alongside the
+  application it documents. That output is committed — like the vendored prefab
+  dictionary, it is a generated artifact the running app depends on, so a fresh clone
+  builds a complete image without having to remember a pre-build step.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File .\tools\Build-Whitepaper.ps1
@@ -35,7 +38,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $Source)     { $Source     = Join-Path $repoRoot 'docs\comfy-integration\WHITEPAPER.html' }
 if (-not $DiagramDir) { $DiagramDir = Join-Path $repoRoot 'docs\comfy-integration\diagrams' }
-if (-not $OutFile)    { $OutFile    = Join-Path $repoRoot 'docs\comfy-integration\whitepaper.built.html' }
+if (-not $OutFile)    { $OutFile    = Join-Path $repoRoot 'viewer\src\main\resources\static\whitepaper.html' }
 
 # Explicit UTF-8 both directions. Get-Content/Set-Content on Windows PowerShell 5.1
 # fall back to the ANSI codepage for a file with no BOM, which silently turns every
@@ -74,7 +77,26 @@ foreach ($key in $figures.Keys) {
 $left = [regex]::Matches($html, '\{\{[A-Z_]+\}\}')
 if ($left.Count -gt 0) { throw "unsubstituted placeholders remain: $(($left | ForEach-Object { $_.Value }) -join ', ')" }
 
-[IO.File]::WriteAllText($OutFile, $html, $utf8)
+# Wrap into a complete document.
+#
+# The source is deliberately wrapper-free because the artifact publisher supplies
+# its own doctype, head and body. Served directly by Javalin it needs its own, and
+# the two omissions that actually bite are the doctype (without it the browser
+# renders in quirks mode) and the charset (without it a UTF-8 file with no BOM gets
+# decoded as windows-1252, and every em-dash turns to mojibake — the same failure
+# this build already guards against on the input side).
+# The source opens with <title> and <style>, which belong in head, and everything
+# from the first top-level container onward is body content.
+$splitAt = $html.IndexOf('<div class="wrap">')
+if ($splitAt -lt 0) { throw 'could not find the body content marker <div class="wrap"> in the source' }
+$head = $html.Substring(0, $splitAt)
+$body = $html.Substring($splitAt)
+$doc = "<!doctype html>`n<html lang=`"en`">`n<head>`n<meta charset=`"utf-8`">`n" +
+       "<meta name=`"viewport`" content=`"width=device-width, initial-scale=1`">`n" +
+       $head + "</head>`n<body>`n" + $body + "`n</body>`n</html>`n"
+
+[IO.File]::WriteAllText($OutFile, $doc, $utf8)
+$html = $doc
 
 # Cheap post-conditions worth having: mojibake is silent, and a broken embed only
 # shows up as a blank figure in a browser.
