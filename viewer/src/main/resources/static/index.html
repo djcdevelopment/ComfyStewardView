@@ -1014,6 +1014,10 @@ function app() {
       this.loadRenderedManifest();
       this.loadSummary();
       this.loadWorldSummary();
+      // Populate the World Selector up front. It reads its options from the world_ids present
+      // in the cache, and those only arrive with the snapshot list -- without this the header
+      // dropdown sits empty until someone happens to open the History tab.
+      this.loadSnapshots();
       this.switchTab('map');
       // PB6 / screenshot capture: deep-link tabs via URL hash `#tab=<id>`.
       // Also useful for sharing links to specific views.
