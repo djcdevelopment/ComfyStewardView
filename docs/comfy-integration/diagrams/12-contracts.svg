@@ -95,14 +95,14 @@
   <text class="band-t" x="830" y="98">Outbound — what Steward serves</text>
 
   <rect class="box" x="830" y="110" width="304" height="184"/>
-  <text class="title" x="844" y="130">REST /api/v1 — 31 routes</text>
+  <text class="title" x="844" y="130">REST /api/v1 — 32 routes</text>
   <text class="sub"   x="844" y="147">envelope: apiVersion, schemaVersion, snapshotNetTime</text>
-  <text class="code"  x="844" y="167">status summary heatmap points entities</text>
+  <text class="code"  x="844" y="167">status summary points entities rendered/*</text>
   <text class="code"  x="844" y="183">portals containers economy players signs</text>
   <text class="code"  x="844" y="199">beds tombstones dropped alerts sectors</text>
   <text class="code"  x="844" y="215">structures metrics/summary world-summary</text>
   <text class="code"  x="844" y="231">forensics/{coin-caches,issuers,guild-gear}</text>
-  <text class="code"  x="844" y="247">db/{zdo/query,containers/items,rendered}</text>
+  <text class="code"  x="844" y="247">db/{zdo/query,containers/items,selection}</text>
   <text class="code"  x="844" y="263">db/snapshots{,/ingest,/delta,/compare}</text>
   <text class="code"  x="844" y="279">prefabs/unresolved</text>
 
