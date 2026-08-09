@@ -82,6 +82,9 @@ param(
     # record each publish rebuilds the live cache from (lossless, ~10x smaller, queryable
     # in place); it accumulates and is never pruned by this script.
     [switch]$Archive,
+    # Scheduled-run mode: when both worlds are unchanged since the previous receipt, exit 0
+    # quietly instead of throwing. Interactive runs keep the loud refusal.
+    [switch]$NoOpIfUnchanged,
     [string]$ArchiveDir = ''
 )
 
@@ -180,14 +183,20 @@ if (-not $SkipAm4World) {
     $am4Sha = (Invoke-Ssh "sha256sum $worldDest").Split(' ')[0]
     Write-Host "      AM4 frozen snapshot sha256: $am4Sha"
 
-    $am4World = Join-Path $WorkDir $worldName
-    Write-Host "      pulling $worldDest (this is the large inbound transfer)..."
-    scp -q "${SshTarget}:$worldDest" $am4World
-    if ($LASTEXITCODE -ne 0) { throw "scp of AM4 world failed (exit $LASTEXITCODE)" }
+    if ($prevHashes -contains $am4Sha) {
+        # Unchanged since the previous receipt: nothing to parse, so skip the 1.3 GB pull.
+        # $am4Sha stays set for the SHA gate; $am4World stays null so no am4 run happens.
+        Write-Host '      AM4 world unchanged since last publish; skipping pull.'
+    } else {
+        $am4World = Join-Path $WorkDir $worldName
+        Write-Host "      pulling $worldDest (this is the large inbound transfer)..."
+        scp -q "${SshTarget}:$worldDest" $am4World
+        if ($LASTEXITCODE -ne 0) { throw "scp of AM4 world failed (exit $LASTEXITCODE)" }
 
-    $localSha = (Get-FileHash $am4World -Algorithm SHA256).Hash.ToLower()
-    if ($localSha -ne $am4Sha) { throw "AM4 world transfer corrupted: remote $am4Sha, local $localSha" }
-    Write-Host ("      transfer verified ({0:n1} MB)" -f ((Get-Item $am4World).Length / 1MB))
+        $localSha = (Get-FileHash $am4World -Algorithm SHA256).Hash.ToLower()
+        if ($localSha -ne $am4Sha) { throw "AM4 world transfer corrupted: remote $am4Sha, local $localSha" }
+        Write-Host ("      transfer verified ({0:n1} MB)" -f ((Get-Item $am4World).Length / 1MB))
+    }
 } else {
     Write-Host '[2/7] -SkipAm4World: publishing the omen-sourced copy only.'
 }
@@ -214,6 +223,10 @@ $doOmen = $prevHashes -notcontains $omenSha
 if ($am4World -and -not $doAm4) { Write-Host "      am4 world unchanged since last publish (sha match); skipping" }
 if (-not $doOmen) { Write-Host "      omen world unchanged since last publish (sha match); skipping" }
 if (-not $doAm4 -and -not $doOmen) {
+    if ($NoOpIfUnchanged) {
+        Write-Host 'nothing new to publish: both worlds match the previous receipt hashes (no-op exit)'
+        exit 0
+    }
     throw 'nothing new to publish: both worlds match the previous receipt hashes'
 }
 $newCount = @($doAm4, $doOmen).Where({ $_ }).Count
@@ -454,8 +467,10 @@ foreach ($worldGroup in @($rows | Group-Object WorldId)) {
     }
 }
 Write-Host "      verified $deltaPairCount canonical delta raster pair(s)."
-if ($am4World) {
+if ($am4Sha) {
     # Selected by source, not world_id: every snapshot shares one world_id by design.
+    # Keyed on the sha, not the pulled file: an unchanged AM4 world skips the pull but
+    # the gate must still confirm the retained snapshot matches what AM4 serves.
     # LATEST am4 snapshot: a cumulative cache carries am4 rows from prior publishes whose
     # hashes legitimately differ from what AM4 serves now.
     $am4Row = $rows | Where-Object { $_.Source -eq 'am4' } |
