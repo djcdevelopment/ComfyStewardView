@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 740" role="img"
-     aria-label="Two independent shipping lanes. The code lane tars a whitelist and builds the image on AM4; the data lane builds artifacts on OMEN, gates on a SHA-256 match, then installs them into AM4's volume and touches the cache marker. Deploy when the jar changes, publish when the world changes."
+     aria-label="Two independent shipping lanes. The code lane tars a whitelist and builds the image on AM4; the data lane rebuilds a fresh cache on OMEN from the accumulating Parquet archive plus new worlds, gates on SHA-256 and history continuity, then installs into AM4's volume and touches the cache marker. Deploy when the jar changes, publish when the world changes."
      font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
   <title>Tooling: the code lane, the data lane, and the gates on each</title>
   <style>
@@ -91,8 +91,8 @@
 
   <text class="n" x="766" y="206">2</text>
   <rect class="box" x="788" y="188" width="346" height="52"/>
-  <text class="label" x="802" y="206">build cache + rendered layers on OMEN</text>
-  <text class="sub"   x="802" y="222">~47 s and ~1.2 GB per snapshot</text>
+  <text class="label" x="802" y="206">rebuild cache from archive + new worlds</text>
+  <text class="sub"   x="802" y="222">latest-6 window live; no indexed appends</text>
   <text class="sub"   x="802" y="235">one world_id; copies differ by source</text>
 
   <text class="n" x="766" y="266">3</text>
@@ -104,7 +104,7 @@
 
   <text class="n" x="766" y="340">4</text>
   <rect class="box" x="788" y="322" width="346" height="52"/>
-  <text class="label" x="802" y="340">−Archive → Parquet + zstd</text>
+  <text class="label" x="802" y="340">archive always-on → Parquet + zstd (history of record)</text>
   <text class="sub"   x="802" y="356">113.7 MB vs 1,196 MB, lossless, ~3 s</text>
   <text class="sub"   x="802" y="369">readable in place via a glob — no import step</text>
 

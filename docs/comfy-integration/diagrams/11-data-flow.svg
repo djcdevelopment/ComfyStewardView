@@ -98,7 +98,7 @@
   <text class="title" x="1014" y="250">RenderedLayer</text>
   <text class="title" x="1014" y="266">Builder</text>
   <text class="label" x="1014" y="288">PNG map layers</text>
-  <text class="sub"   x="1014" y="306">build + coins</text>
+  <text class="sub"   x="1014" y="306">4 layers + change pairs</text>
   <text class="sub"   x="1014" y="322">64/320/500/1000 m</text>
 
   <!-- the failure path -->

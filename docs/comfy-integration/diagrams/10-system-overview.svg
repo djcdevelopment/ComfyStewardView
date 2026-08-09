@@ -88,7 +88,7 @@
   <text class="title" x="680" y="522">Islet — control plane</text>
   <text class="label" x="680" y="544">discovers backups, verifies SHA-256, calls the ingest</text>
   <text class="label" x="680" y="560">API, records receipts</text>
-  <text class="code"  x="680" y="578">POST /api/v1/db/snapshots/ingest</text>
+  <text class="code"  x="680" y="578">POST /api/v1/db/snapshots/ingest (lab only)</text>
 
   <!-- edges -->
   <path class="hot" d="M450 268 L560 268 L560 234 L676 234"/>
@@ -104,6 +104,6 @@
   <path class="arrow" d="M250 186 L250 204"/>
   <path class="arrow" d="M250 332 L250 350"/>
 
-  <text class="sub" x="30" y="608">Measured: a fresh cache build is ~47 s, not the 12–13 min an append into an existing cache costs — indexes exist by then, so the appender writes through them.</text>
+  <text class="sub" x="30" y="608">Fresh cache builds are ~47 s per snapshot. Both lanes now avoid indexed appends: publish rebuilds from the Parquet archive; ingest drops indexes around its bulk load.</text>
   <text class="sub" x="30" y="628">Moving processing off AM4 is therefore not about CPU: it keeps gigabytes of disk churn away from the box running a live game server, and keeps the growing history on OMEN.</text>
 </svg>
