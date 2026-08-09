@@ -78,10 +78,9 @@ param(
     [int]   $TimeoutMinutes  = 30,
     [switch]$SkipAm4World,
     [switch]$Push,
-    # Write each snapshot out as Parquet alongside the DuckDB cache. Lossless -- every column of
-    # every row -- but ~10x smaller, and DuckDB reads Parquet directly, so an archived snapshot
-    # stays queryable without an import step. Where the files go afterwards is your business;
-    # this only writes them locally.
+    # Deprecated no-op: archiving is now always on. The Parquet archive is the history of
+    # record each publish rebuilds the live cache from (lossless, ~10x smaller, queryable
+    # in place); it accumulates and is never pruned by this script.
     [switch]$Archive,
     [string]$ArchiveDir = ''
 )
@@ -137,12 +136,31 @@ if (-not (Test-Path $java)) { throw "java not found at $java (pass -JavaHome)" }
 if (-not (Test-Path $jar))  { throw "viewer jar not found at $jar - run: mvn -f viewer/pom.xml package -DskipTests" }
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 
+# The cache is disposable and rebuilt fresh each run from the Parquet archive (history of
+# record) plus this run's new worlds. rendered/ and archive/ persist across publishes so
+# retained snapshots keep their rasters and history accumulates.
 $outDir    = Join-Path $WorkDir 'out'
 $cacheFile = Join-Path $outDir 'world-cache.duckdb'
 $renderDir = Join-Path $outDir 'rendered'
-if (Test-Path $outDir) { Remove-Item $outDir -Recurse -Force }
-New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-Write-Host "      workdir: $WorkDir"
+if (-not $ArchiveDir) { $ArchiveDir = Join-Path $WorkDir 'archive' }
+New-Item -ItemType Directory -Force -Path $outDir, $renderDir, $ArchiveDir | Out-Null
+Remove-Item $cacheFile, "$cacheFile.wal" -Force -ErrorAction SilentlyContinue
+Write-Host "      workdir: $WorkDir (archive: $ArchiveDir)"
+
+# Live-cache window: the cache carries at most the latest 6 snapshots (the delta-matrix
+# maximum); older history stays in the archive only.
+$LiveWindow = 6
+
+# Previous receipt: source for the continuity gate and same-world dedupe.
+$prevReceiptPath = Join-Path $PSScriptRoot 'publish-steward-receipt.json'
+$prevReceipt = $null
+if (Test-Path $prevReceiptPath) {
+    try { $prevReceipt = Get-Content $prevReceiptPath -Raw | ConvertFrom-Json } catch {}
+}
+$prevHashes = @()
+if ($prevReceipt -and $prevReceipt.snapshots) {
+    $prevHashes = @($prevReceipt.snapshots | ForEach-Object { [string]$_.file_hash } | Where-Object { $_ })
+}
 
 # --- 2. Acquire AM4's world ----------------------------------------------
 # Snapshot on AM4 first (mtime-stable copy, so a live save cannot tear it),
@@ -185,32 +203,53 @@ if (-not $omenWorld) { throw "no rotated backup found in $OmenWorldDir" }
 Write-Host ("      {0} ({1:n1} MB, {2})" -f $omenWorld.Name, ($omenWorld.Length / 1MB), $omenWorld.LastWriteTime)
 
 # --- 4. Build artifacts on OMEN ------------------------------------------
-# Every run carries --render-layers: it renders each snapshot that is missing a
-# manifest, so both the AM4 world and the appended lab world get raster layers
-# and the viewer's snapshot selector can swap between them.
-# Measured on a 9.16M-ZDO world: ~53s for the first (--rebuild-cache) world, which uses the
-# DuckDB Appender against an empty, unindexed database. Appending a second world is far slower
-# because finish() has already built the indexes and the append writes through them.
+# Fresh cache each run: import the retained archive window first (unindexed bulk load),
+# parse this run's new worlds with --defer-indexes so every append hits an unindexed
+# table, and let the LAST batch run build the indexes once. Renders only fill in what
+# the persistent render dir is missing. Worlds whose SHA-256 already appears in the
+# previous receipt are unchanged and skipped (no duplicate snapshots).
 Write-Host '[4/7] Building analytics cache on OMEN...'
-$first = $true
-if ($am4World) {
-    Invoke-Batch -Label "am4 copy: parse + cache + render" -Arguments @(
-        $am4World, '--rebuild-cache', '--cache', $cacheFile,
-        '--render-layers', '--render-dir', $renderDir,
-        '--world-id', $WorldId, '--world-name', $WorldName,
-        '--source', 'am4', '--backup-id', ("am4_{0}" -f (Get-Date -Format 'yyyyMMddHHmmss')),
-        '--batch-only', '--no-browser')
-    $first = $false
+$omenSha = (Get-FileHash $omenWorld.FullName -Algorithm SHA256).Hash.ToLower()
+$doAm4  = [bool]$am4World -and ($prevHashes -notcontains $am4Sha)
+$doOmen = $prevHashes -notcontains $omenSha
+if ($am4World -and -not $doAm4) { Write-Host "      am4 world unchanged since last publish (sha match); skipping" }
+if (-not $doOmen) { Write-Host "      omen world unchanged since last publish (sha match); skipping" }
+if (-not $doAm4 -and -not $doOmen) {
+    throw 'nothing new to publish: both worlds match the previous receipt hashes'
 }
-$omenArgs = @(
-    $omenWorld.FullName,
-    $(if ($first) { '--rebuild-cache' } else { '--build-cache' }),
-    '--cache', $cacheFile,
-    '--render-layers', '--render-dir', $renderDir,
-    '--world-id', $WorldId, '--world-name', $WorldName,
-    '--source', 'omen', '--backup-id', [IO.Path]::GetFileNameWithoutExtension($omenWorld.Name),
-    '--batch-only', '--no-browser')
-Invoke-Batch -Label "omen copy: parse + cache + render" -Arguments $omenArgs
+$newCount = @($doAm4, $doOmen).Where({ $_ }).Count
+$importLatest = [Math]::Max(0, $LiveWindow - $newCount)
+
+$runs = @()
+if ($doAm4) {
+    $runs += ,@{ Label = 'am4 copy: parse + cache + render'; World = $am4World; Source = 'am4'
+                 BackupId = ("am4_{0}" -f (Get-Date -Format 'yyyyMMddHHmmss')) }
+}
+if ($doOmen) {
+    $runs += ,@{ Label = 'omen copy: parse + cache + render'; World = $omenWorld.FullName; Source = 'omen'
+                 BackupId = [IO.Path]::GetFileNameWithoutExtension($omenWorld.Name) }
+}
+for ($i = 0; $i -lt $runs.Count; $i++) {
+    $run = $runs[$i]
+    $isFirst = $i -eq 0
+    $isLast  = $i -eq ($runs.Count - 1)
+    $runArgs = @(
+        $run.World,
+        $(if ($isFirst) { '--rebuild-cache' } else { '--build-cache' }),
+        '--cache', $cacheFile,
+        '--world-id', $WorldId, '--world-name', $WorldName,
+        '--source', $run.Source, '--backup-id', $run.BackupId,
+        '--batch-only', '--no-browser')
+    if ($isFirst) { $runArgs += @('--import-archive', $ArchiveDir, '--import-latest', "$importLatest") }
+    if ($isLast) {
+        # Renders only on the final run: indexes exist by then, and Main fills in exactly
+        # the absolute manifests and delta pairs the persistent render dir is missing.
+        $runArgs += @('--render-layers', '--render-dir', $renderDir)
+    } else {
+        $runArgs += '--defer-indexes'
+    }
+    Invoke-Batch -Label $run.Label -Arguments $runArgs
+}
 
 # --- 5. Verify ------------------------------------------------------------
 # Fail closed. The published cache must contain the expected worlds, and the
@@ -242,6 +281,34 @@ $rows = & $jshell --class-path $duckJar "-R-Ddbpath=$cacheFile" -q $verifyScript
 $rows | Format-Table -AutoSize | Out-String | Write-Host
 
 if (-not $rows) { throw 'verification failed: no snapshots in the built cache' }
+
+# Continuity gate: history must accumulate. Every snapshot the previous receipt shipped
+# that still fits the live window must be present in this cache; the publish fails closed
+# rather than silently shipping a history reset.
+if ($prevReceipt -and $prevReceipt.snapshots) {
+    $prevIds = @($prevReceipt.snapshots | ForEach-Object { [long]$_.snapshot_id } | Sort-Object)
+    $retainCount = [Math]::Min($prevIds.Count, $LiveWindow - $newCount)
+    $expectedRetained = @($prevIds | Select-Object -Last $retainCount)
+    $currentIds = @($rows | ForEach-Object { [long]$_.SnapshotId })
+    foreach ($id in $expectedRetained) {
+        if ($currentIds -notcontains $id) {
+            throw "continuity gate failed: snapshot $id from the previous publish is missing from the new cache (history would reset)"
+        }
+    }
+    Write-Host ("      continuity gate passed: retained {0} of {1} prior snapshot(s), {2} new" -f `
+        $expectedRetained.Count, $prevIds.Count, $newCount)
+}
+
+# Prune absolute render dirs for snapshots that aged out of the live window (delta pair
+# pruning is handled by the builder itself).
+$liveIds = @($rows | ForEach-Object { "$($_.SnapshotId)" })
+Get-ChildItem $renderDir -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^[0-9]+$' -and $liveIds -notcontains $_.Name } |
+    ForEach-Object {
+        Write-Host "      pruning aged-out rendered dir $($_.Name)"
+        Remove-Item $_.FullName -Recurse -Force
+    }
+
 foreach ($r in $rows) {
     if ($r.ZdoRows -le 0) { throw "snapshot $($r.SnapshotId) (source=$($r.Source)) has no ZDO rows" }
     if (-not $r.Dict)     { throw "snapshot $($r.SnapshotId) (source=$($r.Source)) has no prefab dictionary recorded" }
@@ -385,7 +452,10 @@ foreach ($worldGroup in @($rows | Group-Object WorldId)) {
 Write-Host "      verified $deltaPairCount canonical delta raster pair(s)."
 if ($am4World) {
     # Selected by source, not world_id: every snapshot shares one world_id by design.
-    $am4Row = $rows | Where-Object { $_.Source -eq 'am4' } | Select-Object -First 1
+    # LATEST am4 snapshot: a cumulative cache carries am4 rows from prior publishes whose
+    # hashes legitimately differ from what AM4 serves now.
+    $am4Row = $rows | Where-Object { $_.Source -eq 'am4' } |
+              Sort-Object { [long]$_.SnapshotId } -Descending | Select-Object -First 1
     if (-not $am4Row) { throw "no am4-sourced snapshot in the built cache" }
     if ($am4Row.FileHash -ne $am4Sha) {
         throw "consistency gate failed: cache was built from $($am4Row.FileHash) but AM4 serves $am4Sha"
@@ -399,17 +469,18 @@ $renderMB = [math]::Round(((Get-ChildItem $renderDir -Recurse -File -ErrorAction
 Write-Host "      artifacts: cache ${cacheMB} MB, rendered ${renderMB} MB"
 
 # --- 5b. Archive ----------------------------------------------------------
+# Always on: the archive is the history of record the next publish rebuilds from.
+# Only snapshots not yet archived are exported; nothing is ever deleted here.
 $archiveTotalMB = 0
-if ($Archive) {
-    if (-not $ArchiveDir) { $ArchiveDir = Join-Path $WorkDir 'archive' }
-    Write-Host "[5b/7] Archiving snapshots as Parquet to $ArchiveDir ..."
-    New-Item -ItemType Directory -Force -Path $ArchiveDir | Out-Null
+if ($true) {
+    Write-Host "[5b/7] Archiving new snapshots as Parquet to $ArchiveDir ..."
 
     $stmts = @()
     foreach ($r in $rows) {
         $src = if ($r.Source) { $r.Source } else { 'unknown' }   # no ternary: Windows PowerShell 5.1
         $snapDirName = "snapshot-{0}-{1}" -f $r.SnapshotId, $src
         $snapDir = Join-Path $ArchiveDir $snapDirName
+        if (Test-Path (Join-Path $snapDir 'world_snapshot.parquet')) { continue }
         New-Item -ItemType Directory -Force -Path $snapDir | Out-Null
         $p = $snapDir -replace '\\', '/'
         $id = $r.SnapshotId
@@ -419,18 +490,22 @@ if ($Archive) {
         $stmts += "  st.execute(`"COPY (SELECT * FROM container_item WHERE snapshot_id = $id) TO '$p/container_item.parquet' (FORMAT PARQUET, COMPRESSION ZSTD)`");"
         $stmts += "  st.execute(`"COPY (SELECT * FROM world_snapshot WHERE snapshot_id = $id) TO '$p/world_snapshot.parquet' (FORMAT PARQUET, COMPRESSION ZSTD)`");"
     }
-    $archScript = Join-Path $WorkDir 'archive.jsh'
-    @(
-        'var url = "jdbc:duckdb:" + System.getProperty("dbpath");'
-        'try (var c = java.sql.DriverManager.getConnection(url); var st = c.createStatement()) {'
-        $stmts
-        '  System.out.println("archive-ok");'
-        '}'
-        '/exit'
-    ) | Set-Content -Path $archScript -Encoding ascii
+    if ($stmts.Count -eq 0) {
+        Write-Host '      nothing new to archive.'
+    } else {
+        $archScript = Join-Path $WorkDir 'archive.jsh'
+        @(
+            'var url = "jdbc:duckdb:" + System.getProperty("dbpath");'
+            'try (var c = java.sql.DriverManager.getConnection(url); var st = c.createStatement()) {'
+            $stmts
+            '  System.out.println("archive-ok");'
+            '}'
+            '/exit'
+        ) | Set-Content -Path $archScript -Encoding ascii
 
-    $archOut = & $jshell --class-path $duckJar "-R-Ddbpath=$cacheFile" -q $archScript 2>&1
-    if ("$archOut" -notmatch 'archive-ok') { throw "parquet archive failed:`n$archOut" }
+        $archOut = & $jshell --class-path $duckJar "-R-Ddbpath=$cacheFile" -q $archScript 2>&1
+        if ("$archOut" -notmatch 'archive-ok') { throw "parquet archive failed:`n$archOut" }
+    }
 
     $archiveTotalMB = [math]::Round(((Get-ChildItem $ArchiveDir -Recurse -File -Filter '*.parquet' |
                        Measure-Object Length -Sum).Sum / 1MB), 1)
@@ -514,11 +589,14 @@ $receipt = [ordered]@{
     cache_mb        = $cacheMB
     rendered_mb     = $renderMB
     delta_pairs     = $deltaPairCount
-    archived        = [bool]$Archive
-    archive_dir     = $(if ($Archive) { $ArchiveDir } else { $null })
+    archived        = $true
+    archive_dir     = $ArchiveDir
     archive_mb      = $archiveTotalMB
+    live_window     = $LiveWindow
+    new_snapshots   = $newCount
     snapshots       = @($rows | ForEach-Object { [ordered]@{
-        snapshot_id = $_.SnapshotId; world_id = $_.WorldId
+        snapshot_id = $_.SnapshotId; world_id = $_.WorldId; source = $_.Source
+        file_hash   = $_.FileHash
         dictionary  = $_.Dict;       zdo_rows = $_.ZdoRows } })
 }
 $receiptPath = Join-Path $PSScriptRoot 'publish-steward-receipt.json'
