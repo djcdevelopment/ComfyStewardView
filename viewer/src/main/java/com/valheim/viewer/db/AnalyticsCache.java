@@ -371,20 +371,33 @@ public final class AnalyticsCache implements AutoCloseable {
             f.getName().startsWith("snapshot-") && new File(f, "world_snapshot.parquet").isFile());
         if (dirs == null || dirs.length == 0) return List.of();
 
-        // Read each dir's snapshot id from its world_snapshot.parquet rather than trusting names.
+        // Read id and world from each dir's world_snapshot.parquet rather than trusting names.
+        // The latest-N window applies PER WORLD, so an archived demo/synthetic world coexists
+        // with the live world instead of starving it out of the window.
         Map<Long, File> byId = new TreeMap<>();
+        Map<Long, String> worldById = new TreeMap<>();
         try (Statement st = conn.createStatement()) {
             for (File dir : dirs) {
                 String p = dir.getAbsolutePath().replace('\\', '/').replace("'", "''");
                 try (ResultSet rs = st.executeQuery(
-                        "SELECT snapshot_id FROM read_parquet('" + p + "/world_snapshot.parquet')")) {
-                    if (rs.next()) byId.put(rs.getLong(1), dir);
+                        "SELECT snapshot_id, world_id FROM read_parquet('" + p + "/world_snapshot.parquet')")) {
+                    if (rs.next()) {
+                        byId.put(rs.getLong(1), dir);
+                        worldById.put(rs.getLong(1), rs.getString(2) == null ? "" : rs.getString(2));
+                    }
                 }
             }
         }
 
-        List<Long> selected = new ArrayList<>(byId.keySet());
-        while (selected.size() > latestN) selected.remove(0);
+        Map<String, List<Long>> perWorld = new TreeMap<>();
+        for (Map.Entry<Long, String> e : worldById.entrySet()) {
+            perWorld.computeIfAbsent(e.getValue(), ignored -> new ArrayList<>()).add(e.getKey());
+        }
+        List<Long> selected = new ArrayList<>();
+        for (List<Long> ids : perWorld.values()) {
+            selected.addAll(ids.subList(Math.max(0, ids.size() - latestN), ids.size()));
+        }
+        selected.sort(Long::compare);
 
         List<Long> imported = new ArrayList<>();
         try (Statement st = conn.createStatement()) {
