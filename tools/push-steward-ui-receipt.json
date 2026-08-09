@@ -1,0 +1,12 @@
+﻿{
+    "pushed_at":  "2026-08-09T04:11:52.6445421Z",
+    "finished_at":  "2026-08-09T04:11:54.2025636Z",
+    "ssh_target":  "am4",
+    "git_sha":  "ecc2f25",
+    "index_kb":  186.4,
+    "sha256":  "bed85e1ea9c76626adc2e5b22e1e462ba6ec257d24a41a1b9907c3f95c89ea6f",
+    "served_match":  true,
+    "public_url":  "https://am4.tail8e749c.ts.net/steward/",
+    "public_ok":  true,
+    "restarted":  false
+}
