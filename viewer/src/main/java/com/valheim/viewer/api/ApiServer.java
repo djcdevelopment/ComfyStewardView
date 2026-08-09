@@ -218,6 +218,7 @@ public class ApiServer {
         app.get("/api/v1/db/zdo/query", this::handleDbZdoQuery);
         app.get("/api/v1/db/containers/items", this::handleDbContainerItems);
         app.get("/api/v1/db/selection-summary", this::handleDbSelectionSummary);
+        app.get("/api/v1/db/selection-delta", this::handleDbSelectionDelta);
         app.get("/api/v1/db/spawn-histogram", this::handleDbSpawnHistogram);
 
         // World Intelligence & Ingest endpoints
@@ -1219,6 +1220,60 @@ public class ApiServer {
         }
     }
 
+    /**
+     * What changed inside one rectangle between two snapshots — the drill-down behind a spatial
+     * hotspot. selection-summary answers the same shape of question for a single snapshot.
+     */
+    private void handleDbSelectionDelta(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            // Canonical order, so "added" always means "appeared in the newer snapshot" and the
+            // drill-down agrees with the raster it was launched from.
+            long[] pair = resolveSnapshotPair(ctx, reader, true);
+            if (pair == null) return;
+            double minX = ctx.queryParamAsClass("minX", Double.class).getOrDefault(-100_000d);
+            double maxX = ctx.queryParamAsClass("maxX", Double.class).getOrDefault(100_000d);
+            double minZ = ctx.queryParamAsClass("minZ", Double.class).getOrDefault(-100_000d);
+            double maxZ = ctx.queryParamAsClass("maxZ", Double.class).getOrDefault(100_000d);
+            int topN = clampLimit(ctx.queryParamAsClass("topN", Integer.class).getOrDefault(20), 100);
+
+            SnapshotDeltaEngine.BoundedDelta d = SnapshotDeltaEngine.computeBoundedDelta(
+                reader.connection(), pair[0], pair[1], minX, maxX, minZ, maxZ, topN);
+
+            ObjectNode root = mapper.createObjectNode();
+            root.put("fromSnapshotId", pair[0]);
+            root.put("toSnapshotId", pair[1]);
+            ObjectNode bounds = root.putObject("bounds");
+            bounds.put("minX", minX); bounds.put("maxX", maxX);
+            bounds.put("minZ", minZ); bounds.put("maxZ", maxZ);
+            root.put("addedTotal", d.addedTotal());
+            root.put("removedTotal", d.removedTotal());
+            // {key,value} rows so the frontend reuses the same ranked-bar renderer as
+            // selection-summary rather than growing a second row shape.
+            putPrefabRows(root.putArray("addedPrefabs"), d.addedPrefabs());
+            putPrefabRows(root.putArray("removedPrefabs"), d.removedPrefabs());
+            ObjectNode addedCat = root.putObject("addedByCategory");
+            d.addedByCategory().forEach(addedCat::put);
+            ObjectNode removedCat = root.putObject("removedByCategory");
+            d.removedByCategory().forEach(removedCat::put);
+            root.put("truncated", d.truncated());
+            ctx.json(mapper.writeValueAsString(root));
+        } catch (Exception e) {
+            log.error("Failed DB selection delta", e);
+            ctx.status(500).json("{\"error\":\"db selection delta failure\"}");
+        }
+    }
+
+    private void putPrefabRows(ArrayNode arr, java.util.List<SnapshotDeltaEngine.PrefabDelta> rows) {
+        for (SnapshotDeltaEngine.PrefabDelta r : rows) {
+            ObjectNode n = arr.addObject();
+            n.put("key", r.prefab());
+            n.put("value", r.count());
+            n.put("category", r.category());
+        }
+    }
+
     private static final Set<String> KNOWN_ZDO_CATEGORIES = Set.of(
         "NATURE", "BUILDING", "DROPPED_ITEM", "ITEM_STAND", "CONTAINER", "CREATURE",
         "PORTAL", "BED", "TOMBSTONE", "SIGN", "BALLISTA", "UNKNOWN", "STRUCTURE", "INTERIOR");
@@ -1394,6 +1449,24 @@ public class ApiServer {
 
             ObjectNode removedObj = root.putObject("removedPrefabs");
             delta.removedPrefabs().forEach(removedObj::put);
+
+            // Added alongside the maps above, not in place of them. The maps are ordered
+            // descending server-side, but JSON object key order is not a contract and a JS
+            // client reorders integer-like keys regardless — so a client that wants a ranked,
+            // category-aware list needs an array. Invoke-SyntheticHistory's Validate stage
+            // records this payload verbatim, so the existing fields must not move.
+            ArrayNode addedDetail = root.putArray("addedPrefabDetail");
+            delta.addedPrefabs().forEach((prefab, count) -> {
+                ObjectNode n = addedDetail.addObject();
+                n.put("prefab", prefab);
+                n.put("count", count);
+            });
+            ArrayNode removedDetail = root.putArray("removedPrefabDetail");
+            delta.removedPrefabs().forEach((prefab, count) -> {
+                ObjectNode n = removedDetail.addObject();
+                n.put("prefab", prefab);
+                n.put("count", count);
+            });
 
             // Per-category breakdown: CREATURE and DROPPED_ITEM churn between any two saves
             // because those objects move. Surfacing it keeps movement out of "build activity".

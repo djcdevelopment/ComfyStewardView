@@ -116,6 +116,19 @@
     .spawn-handle::after { content: ''; position: absolute; left: 5px; top: 0; bottom: 0; width: 2px; background: #5fa8e0; }
     #map-wrapper { position: relative; flex: 1; min-width: 0; }
     #map { width: 100%; height: 100%; background: #151b27; }
+    /* Explicit height, not flex-derived: this map is created inside an x-show subtree, and a
+       percentage height under a display:none ancestor resolves to 0 and yields a dead viewport. */
+    #changes-map { width: 100%; height: 460px; background: #151b27; border-radius: 5px; }
+    .hotspot-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 6px; border-radius: 4px; border: 1px solid transparent; background: none; cursor: pointer; text-align: left; }
+    .hotspot-row:hover { background: rgba(255,255,255,.04); }
+    .hotspot-row.active { background: var(--sv-blue-bg); border-color: var(--sv-blue-border); }
+    .hotspot-bar { flex: 1; height: 14px; border-radius: 3px; background: #232a38; overflow: hidden; display: flex; }
+    .mover-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 3px 6px; border-radius: 4px; border: 1px solid transparent; background: none; cursor: pointer; text-align: left; }
+    .mover-row:hover { background: rgba(255,255,255,.04); }
+    .mover-row.active { background: var(--sv-blue-bg); border-color: var(--sv-blue-border); }
+    .mover-bar { flex: 1; height: 13px; border-radius: 3px; background: #232a38; overflow: hidden; }
+    .cat-chip { height: 22px; padding: 0 8px; border-radius: 11px; border: 1px solid var(--sv-border-2); background: var(--sv-control); color: #96a0b1; font-size: 11px; cursor: pointer; white-space: nowrap; }
+    .cat-chip.active { background: var(--sv-blue-bg); border-color: var(--sv-blue-border); color: #dbe8f7; }
     .map-sidebar-toggle { position: absolute; left: 10px; top: 10px; z-index: 1100; width: 30px; height: 30px; border-radius: 5px; border: 1px solid var(--sv-border-2); background: rgba(18,22,31,.94); color: #c7cfdd; cursor: pointer; }
     .raster-layer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
     .layer-button { height: 26px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--sv-border-2); background: var(--sv-control); color: #96a0b1; font-size: 11.5px; cursor: pointer; }
@@ -184,12 +197,12 @@
     <label class="eyebrow world-label" for="world-select">World</label>
     <select id="world-select" x-model="selectedWorldId" @change="switchWorld(selectedWorldId)" class="sv-select" aria-label="World">
       <option value="">All worlds</option>
-      <template x-for="w in knownWorldIds" :key="w"><option :value="w" x-text="w"></option></template>
+      <template x-for="w in knownWorldIds" :key="w"><option :value="w" :title="w" x-text="worldLabel(w)"></option></template>
     </select>
     <label class="eyebrow" for="snapshot-select">Snapshot</label>
     <select id="snapshot-select" x-model="selectedSnapshotId" @change="switchSnapshot(selectedSnapshotId)" class="sv-select" aria-label="Snapshot">
       <template x-for="(snap,index) in snapshots" :key="snap.snapshotId">
-        <option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${index === 0 ? ' · latest' : ''}${!selectedWorldId && snap.worldId ? ' · ' + snap.worldId : ''} · ${formatSnapshotTime(snap)}`"></option>
+        <option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${index === 0 ? ' · latest' : ''}${!selectedWorldId && snap.worldId ? ' · ' + worldLabel(snap.worldId) : ''} · ${formatSnapshotTime(snap)}`"></option>
       </template>
     </select>
     <button class="scope-trigger" @click="scopeOpen = !scopeOpen" :aria-expanded="scopeOpen" aria-controls="scope-popover">
@@ -256,7 +269,7 @@
   <select x-model="selectedWorldId" @change="switchWorld(selectedWorldId)" class="bg-gray-700 text-xs font-semibold rounded px-2 py-1 text-blue-300 border border-gray-600">
     <option value="">All worlds</option>
     <template x-for="w in knownWorldIds" :key="w">
-      <option :value="w" x-text="`World: ${w}`"></option>
+      <option :value="w" :title="w" x-text="`World: ${worldLabel(w)}`"></option>
     </template>
   </select>
 
@@ -333,8 +346,8 @@
           </div>
 
           <div x-show="mapRasterMode === 'changes'" class="flex flex-col gap-2">
-            <div class="flex items-center gap-2"><span class="eyebrow w-10">FROM</span><select class="sv-select flex-1 min-w-0" x-model="deltaFromId" @change="deltaPairChanged()"><template x-for="snap in snapshots" :key="snap.snapshotId"><option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${!selectedWorldId && snap.worldId ? ' · ' + snap.worldId : ''}`"></option></template></select></div>
-            <div class="flex items-center gap-2"><span class="eyebrow w-10">TO</span><select class="sv-select flex-1 min-w-0" x-model="deltaToId" @change="deltaPairChanged()"><template x-for="snap in snapshots" :key="snap.snapshotId"><option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${!selectedWorldId && snap.worldId ? ' · ' + snap.worldId : ''}`"></option></template></select></div>
+            <div class="flex items-center gap-2"><span class="eyebrow w-10">FROM</span><select class="sv-select flex-1 min-w-0" x-model="deltaFromId" @change="deltaPairChanged()"><template x-for="snap in snapshots" :key="snap.snapshotId"><option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${!selectedWorldId && snap.worldId ? ' · ' + worldLabel(snap.worldId) : ''}`"></option></template></select></div>
+            <div class="flex items-center gap-2"><span class="eyebrow w-10">TO</span><select class="sv-select flex-1 min-w-0" x-model="deltaToId" @change="deltaPairChanged()"><template x-for="snap in snapshots" :key="snap.snapshotId"><option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${!selectedWorldId && snap.worldId ? ' · ' + worldLabel(snap.worldId) : ''}`"></option></template></select></div>
             <button x-show="!deltaPairOrdered()" class="btn-secondary w-full" @click="swapDeltaPair()">Swap to older → newer</button>
           </div>
 
@@ -1007,13 +1020,13 @@
         <span class="eyebrow">FROM</span>
         <select x-model="deltaFromId" @change="deltaPairChanged()" class="sv-select">
           <template x-for="snap in snapshots" :key="snap.snapshotId">
-            <option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${!selectedWorldId && snap.worldId ? ' · ' + snap.worldId : ''}`"></option>
+            <option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${!selectedWorldId && snap.worldId ? ' · ' + worldLabel(snap.worldId) : ''}`"></option>
           </template>
         </select>
         <span class="eyebrow">TO</span>
         <select x-model="deltaToId" @change="deltaPairChanged()" class="sv-select">
           <template x-for="snap in snapshots" :key="snap.snapshotId">
-            <option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${!selectedWorldId && snap.worldId ? ' · ' + snap.worldId : ''}`"></option>
+            <option :value="snap.snapshotId" x-text="`#${snap.snapshotId}${!selectedWorldId && snap.worldId ? ' · ' + worldLabel(snap.worldId) : ''}`"></option>
           </template>
         </select>
         <button x-show="!deltaPairOrdered()" @click="swapDeltaPair()" class="btn-secondary">Swap</button>
@@ -1023,12 +1036,110 @@
     <div class="flex-1 overflow-y-auto p-[18px] flex flex-col gap-4">
       <div class="flex items-center gap-2">
         <span class="text-xs" style="color:var(--sv-muted)">Compare precalculated object and inventory deltas between retained world saves.</span><span class="flex-1"></span>
-        <button class="btn-secondary" @click="showDeltaOnMap()">View spatial change →</button>
+        <button class="btn-secondary" @click="showDeltaOnMap()">Open in full map →</button>
       </div>
       <div x-show="deltaState==='loading'" class="state-strip warn"><span class="loading-mark !w-3 !h-3"></span>Comparing snapshots…</div>
       <div x-show="deltaState==='error'" class="state-strip error"><span x-text="deltaError || 'Comparison failed.'"></span><button class="ml-auto underline" @click="compareSnapshots()">Retry</button></div>
-      <div x-show="deltaRasterPairAvailable()" class="state-strip ok">Spatial Build activity and All ZDO rasters are available for this pair.</div>
+      <div x-show="deltaState==='ready' && deltaRasterPairAvailable()" class="state-strip ok" x-text="deltaLayerAvailabilityCopy()"></div>
       <div x-show="deltaState==='ready' && !deltaRasterPairAvailable()" class="state-strip warn">Tabular comparison is available; no published spatial raster is advertised for this pair.</div>
+
+      <!-- Where it happened: the delta raster inline, plus ranked hotspots -->
+      <div class="grid gap-4" style="grid-template-columns: minmax(0,1fr) 340px;">
+        <section class="card">
+          <div class="card-header">
+            <span class="eyebrow !text-gray-300">WHERE IT CHANGED</span>
+            <span class="flex-1"></span>
+            <template x-for="group in deltaRasterGroups()" :key="group.layer">
+              <button class="layer-button !h-[22px] !text-[11px]"
+                      :aria-pressed="changesLayer===group.layer"
+                      :class="{active: changesLayer===group.layer, 'opacity-50': group.empty}"
+                      @click="setChangesLayer(group.layer)"
+                      x-text="group.label + (group.empty ? ' ·' : '')"
+                      :title="group.empty ? 'No changed cells for this layer in this pair' : ''"></button>
+            </template>
+          </div>
+          <div class="p-3 flex flex-col gap-2">
+            <!-- x-init rather than initialising from showPrimary: this element is the thing that
+                 knows when it exists. Navigating straight to #tab=changes runs showPrimary before
+                 Alpine has rendered this subtree, and a map built against a missing container
+                 leaves the panel permanently dead with no retry. -->
+            <div id="changes-map" x-init="$nextTick(() => refreshChangesMap())"></div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="eyebrow">CELL</span>
+              <div class="segmented">
+                <template x-for="size in changesCellSizes()" :key="size">
+                  <button class="segment" :aria-pressed="Number(changesCellSize)===Number(size)"
+                          :class="{active: Number(changesCellSize)===Number(size)}"
+                          @click="setChangesCellSize(size)" x-text="size"></button>
+                </template>
+              </div>
+              <span class="flex-1"></span>
+              <label class="flex items-center gap-1.5 text-xs cursor-pointer" style="color:var(--sv-muted)">
+                <input type="checkbox" :checked="showChangesBasemap" @change="toggleChangesBasemap()" class="accent-blue-500"/>
+                world underlay
+              </label>
+              <template x-for="overlay in changesOverlays" :key="overlay.id">
+                <label class="flex items-center gap-1.5 text-xs cursor-pointer" style="color:var(--sv-muted)">
+                  <input type="checkbox" x-model="overlay.active" @change="toggleChangesOverlay()" class="accent-blue-500"/>
+                  <span class="scope-dot" :style="`color:${overlay.color}`"></span>
+                  <span x-text="overlay.label"></span>
+                </label>
+              </template>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="endpoint" x-text="changesCoords"></span>
+              <span class="flex-1"></span>
+              <span class="endpoint">added</span><span class="w-6 h-2 rounded" style="background:#5fae7f"></span>
+              <span class="endpoint">removed</span><span class="w-6 h-2 rounded" style="background:#d9635f"></span>
+              <span class="endpoint">both</span><span class="w-6 h-2 rounded" style="background:#efd9a0"></span>
+            </div>
+            <div x-show="deltaRasterState==='unavailable'" class="state-strip warn">No published spatial raster for this pair. The ranked movers below still apply.</div>
+            <div x-show="deltaRasterState==='empty'" class="state-strip ok">No changed cells for this layer and pair.</div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-header"><span class="eyebrow !text-gray-300">HOTSPOTS</span><span class="flex-1"></span><span class="endpoint" x-show="changesHotspots.length" x-text="`top ${changesHotspots.length}`"></span></div>
+          <div class="p-2 flex flex-col gap-1 overflow-y-auto" style="max-height:520px">
+            <div x-show="changesHotspotApprox" class="state-strip warn !p-2 !text-[11px]">Counts are approximate — the raster totals did not reconcile with the manifest.</div>
+            <div x-show="!changesHotspots.length" class="endpoint p-2">No spatial hotspots for this layer.</div>
+            <div x-show="changesHotspots.length && (changesHotspotRemainder.added || changesHotspotRemainder.removed)"
+                 class="endpoint px-2 pb-1"
+                 x-text="`plus +${changesHotspotRemainder.added.toLocaleString()} / −${changesHotspotRemainder.removed.toLocaleString()} spread outside the top ${changesHotspots.length}`"></div>
+            <template x-for="(h, hi) in changesHotspots" :key="hi">
+              <div>
+                <button class="hotspot-row" :class="{active: changesHotspotIndex===hi}" @click="selectHotspot(hi)">
+                  <span class="text-[11px] font-mono w-[104px] shrink-0" style="color:#c7cfdd"
+                        x-text="`${Math.round(h.x).toLocaleString()}, ${Math.round(h.z).toLocaleString()}`"></span>
+                  <span class="hotspot-bar">
+                    <span class="h-full" :style="`width:${h.addedPct}%;background:#5fae7f`"></span>
+                    <span class="h-full" :style="`width:${h.removedPct}%;background:#d9635f`"></span>
+                  </span>
+                  <span class="text-[11px] font-mono w-[86px] text-right shrink-0">
+                    <span style="color:#5fae7f" x-text="h.added ? `+${h.added.toLocaleString()}` : ''"></span>
+                    <span style="color:#d9635f" x-text="h.removed ? ` −${h.removed.toLocaleString()}` : ''"></span>
+                  </span>
+                </button>
+                <!-- Drill-down: what actually changed inside this box -->
+                <div x-show="changesHotspotIndex===hi" class="pl-2 pb-2">
+                  <div x-show="changesDrillState==='loading'" class="endpoint px-2 py-1">reading this area…</div>
+                  <div x-show="changesDrillState==='unavailable'" class="endpoint px-2 py-1">Per-area breakdown needs the selection-delta endpoint (ships with the next image build).</div>
+                  <template x-if="changesDrillState==='ready' && changesDrill">
+                    <div class="flex flex-col gap-0.5 px-2">
+                      <template x-for="row in (changesDrill.addedPrefabs || []).slice(0,5)" :key="'a'+row.key">
+                        <div class="flex text-[11px]"><span class="flex-1 truncate" style="color:#9aa4b4" x-text="row.key"></span><span style="color:#5fae7f" x-text="`+${row.value}`"></span></div>
+                      </template>
+                      <template x-for="row in (changesDrill.removedPrefabs || []).slice(0,5)" :key="'r'+row.key">
+                        <div class="flex text-[11px]"><span class="flex-1 truncate" style="color:#9aa4b4" x-text="row.key"></span><span style="color:#d9635f" x-text="`−${row.value}`"></span></div>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </section>
+      </div>
 
     <template x-if="deltaResult">
       <div class="space-y-4">
@@ -1071,42 +1182,47 @@
           </div>
         </div>
 
-        <!-- Breakdown Tables -->
-        <div class="grid grid-cols-2 gap-4">
-          <div class="bg-gray-800 p-4 rounded border border-gray-700">
-            <div class="text-sm font-semibold text-green-400 mb-2">Added Prefabs Breakdown</div>
-            <table class="w-full text-xs">
-              <thead class="text-gray-400 border-b border-gray-700">
-                <tr><th class="text-left p-1">Prefab</th><th class="text-right p-1">Count Added</th></tr>
-              </thead>
-              <tbody>
-                <template x-for="(count, prefab) in deltaResult.addedPrefabs" :key="prefab">
-                  <tr class="border-b border-gray-800">
-                    <td class="p-1 text-gray-200" x-text="prefab"></td>
-                    <td class="p-1 text-green-400 font-bold text-right" x-text="`+${count}`"></td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
+        <!-- Ranked movers -->
+        <section class="card">
+          <div class="card-header">
+            <span class="eyebrow !text-gray-300">WHAT CHANGED</span>
+            <div class="segmented ml-3">
+              <button class="segment" :aria-pressed="deltaPrefabChannel==='added'" :class="{active:deltaPrefabChannel==='added'}" @click="deltaPrefabChannel='added'; deltaCategoryFilter=''">Added</button>
+              <button class="segment" :aria-pressed="deltaPrefabChannel==='removed'" :class="{active:deltaPrefabChannel==='removed'}" @click="deltaPrefabChannel='removed'; deltaCategoryFilter=''">Removed</button>
+            </div>
+            <span class="flex-1"></span>
+            <span class="endpoint" x-text="`${deltaPrefabRows(deltaPrefabChannel).length} of ${deltaPrefabTotal(deltaPrefabChannel)} prefabs`"></span>
           </div>
-
-          <div class="bg-gray-800 p-4 rounded border border-gray-700">
-            <div class="text-sm font-semibold text-red-400 mb-2">Removed Prefabs Breakdown</div>
-            <table class="w-full text-xs">
-              <thead class="text-gray-400 border-b border-gray-700">
-                <tr><th class="text-left p-1">Prefab</th><th class="text-right p-1">Count Removed</th></tr>
-              </thead>
-              <tbody>
-                <template x-for="(count, prefab) in deltaResult.removedPrefabs" :key="prefab">
-                  <tr class="border-b border-gray-800">
-                    <td class="p-1 text-gray-200" x-text="prefab"></td>
-                    <td class="p-1 text-red-400 font-bold text-right" x-text="`-${count}`"></td>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
+          <div class="p-3 flex flex-col gap-2">
+            <div class="flex gap-1.5 flex-wrap" x-show="deltaCategoryRows(deltaPrefabChannel).length">
+              <button class="cat-chip" :class="{active: deltaCategoryFilter===''}" @click="deltaCategoryFilter=''">All</button>
+              <template x-for="cat in deltaCategoryRows(deltaPrefabChannel)" :key="cat.key">
+                <button class="cat-chip" :class="{active: deltaCategoryFilter===cat.key}"
+                        @click="deltaCategoryFilter = deltaCategoryFilter===cat.key ? '' : cat.key"
+                        x-text="`${cat.key} ${cat.count.toLocaleString()}`"></button>
+              </template>
+            </div>
+            <div class="flex flex-col gap-0.5">
+              <template x-for="row in deltaPrefabRows(deltaPrefabChannel)" :key="row.prefab">
+                <button class="mover-row" :class="{active: deltaPrefabFocus?.prefab===row.prefab}"
+                        @click="showPrefabOnChangesMap(row, deltaPrefabChannel)"
+                        :title="`Show ${row.prefab} on the map above`">
+                  <span class="text-xs w-[190px] truncate shrink-0" style="color:#c7cfdd" x-text="row.prefab"></span>
+                  <span class="mover-bar">
+                    <span class="block h-full" :style="`width:${row.pct}%;background:${deltaPrefabChannel==='removed' ? '#d9635f' : '#5fae7f'}`"></span>
+                  </span>
+                  <span class="text-xs font-mono w-[70px] text-right shrink-0"
+                        :style="`color:${deltaPrefabChannel==='removed' ? '#d9635f' : '#5fae7f'}`"
+                        x-text="`${deltaPrefabChannel==='removed' ? '−' : '+'}${row.count.toLocaleString()}`"></span>
+                  <span class="endpoint w-[74px] truncate shrink-0" x-text="row.category"></span>
+                </button>
+              </template>
+            </div>
+            <button class="btn-secondary self-start" x-show="deltaPrefabTotal(deltaPrefabChannel) > deltaPrefabLimit"
+                    @click="deltaPrefabLimit = deltaPrefabLimit >= 1000 ? 20 : 1000"
+                    x-text="deltaPrefabLimit >= 1000 ? 'Show top 20' : 'Show all'"></button>
           </div>
-        </div>
+        </section>
       </div>
     </template>
     </div>
@@ -1259,6 +1375,7 @@ function app() {
     coinTrailSection: 'caches',
     selectedWorldId: '',
     knownWorldIds: [],
+    worldNameById: {},
     selectedSnapshotId: null,
     snapshots: [],
     deltaPairs: [],
@@ -1269,6 +1386,44 @@ function app() {
     deltaToId: null,
     deltaState: 'idle',
     deltaError: '',
+
+    // --- Changes tab: its own map, and its own raster state ---------------
+    // Separate from the World map's rasterState on purpose. The Changes tab loads delta
+    // manifests whenever a pair is selected, but the World map's status pill reads
+    // rasterState — sharing them made that pill describe a raster it was not showing.
+    changesMap: null,
+    changesDeltaOverlay: null,
+    changesBaseOverlay: null,
+    changesBoxLayer: null,
+    changesMarkerLayer: null,
+    changesLayer: 'build-activity',
+    changesCellSize: null,
+    changesCoords: '',
+    deltaRasterState: 'idle',
+    deltaRasterError: '',
+    changesBaseManifest: null,
+    changesBaseLayers: [],
+    showChangesBasemap: true,
+    // Snapshot-scoped, unlike the World map's pointOverlays: /api/v1/points and
+    // /api/v1/structures answer from the boot parse, which on AM4 is a different world
+    // than the corpus being compared. These query /db/zdo/query at deltaToId instead.
+    changesOverlays: [
+      { id:'STRUCTURE', label:'Structures', color:'#fbbf24', active:true,  count:null },
+      { id:'PORTAL',    label:'Portals',    color:'#818cf8', active:true,  count:null },
+    ],
+    changesHotspots: [],
+    changesHotspotIndex: -1,
+    changesHotspotApprox: false,
+    changesHotspotRemainder: { added: 0, removed: 0 },
+    _hotspotCache: {},
+    changesDrill: null,
+    changesDrillState: 'idle',
+    _drillToken: 0,
+    deltaCategoryFilter: '',
+    deltaPrefabChannel: 'added',
+    deltaPrefabLimit: 20,
+    deltaPrefabFocus: null,
+    _changesRasterToken: 0,
     exploreResults: null,
     exploreQueryPrefab: '',
     exploreQueryCategory: '',
@@ -1417,7 +1572,7 @@ function app() {
         const isWide = window.innerWidth >= 1360;
         if (wasWide && !isWide) this.mapSidebarOpen = false;
         wasWide = isWide;
-        this.$nextTick(() => this.map?.invalidateSize());
+        this.$nextTick(() => { this.map?.invalidateSize(); this.changesMap?.invalidateSize(); });
       });
       this.navigateFromHash();
       window.addEventListener('hashchange', () => this.navigateFromHash());
@@ -1451,6 +1606,9 @@ function app() {
         this.$nextTick(() => this.activeTab === 'map' && this.map?.invalidateSize());
       } else if (id === 'changes') {
         this.loadDelta();
+        // Created after primaryTab is set and inside $nextTick: L.map() on a node whose
+        // ancestor is still display:none produces a 0x0 viewport that never recovers on its own.
+        this.$nextTick(() => this.refreshChangesMap());
       } else if (id === 'history') {
         this.loadSnapshots();
       }
@@ -1665,18 +1823,28 @@ function app() {
       if (this.mapRasterMode === 'snapshot' && loaded) await this.applyRasterLayer();
     },
 
+    // Writes deltaRasterState, and mirrors into the World map's rasterState only while that
+    // map is actually showing changes. Loading a manifest for the Changes tab must not
+    // relabel a snapshot raster the World map is still displaying.
+    setDeltaRasterState(state, error = '') {
+      this.deltaRasterState = state;
+      this.deltaRasterError = error;
+      if (this.mapRasterMode === 'changes') {
+        this.rasterState = state;
+        this.rasterError = error;
+      }
+    },
+
     async loadDeltaRenderedManifest() {
       const token = ++this._deltaManifestToken;
       let loaded = false;
-      if (!this.deltaFromId || !this.deltaToId) { this.rasterState = 'unavailable'; return; }
+      if (!this.deltaFromId || !this.deltaToId) { this.setDeltaRasterState('unavailable'); return; }
       if (!this.deltaPairOrdered()) {
-        this.rasterState = 'unavailable';
-        this.rasterError = 'Spatial rasters require an older From snapshot and newer To snapshot.';
+        this.setDeltaRasterState('unavailable', 'Spatial rasters require an older From snapshot and newer To snapshot.');
         return;
       }
       const samePair = this.deltaRenderedManifest && String(this.deltaRenderedManifest.fromSnapshotId) === String(this.deltaFromId) && String(this.deltaRenderedManifest.toSnapshotId) === String(this.deltaToId);
-      this.rasterState = 'loading';
-      this.rasterError = '';
+      this.setDeltaRasterState('loading');
       try {
         const r = await fetch(`${API}/rendered/delta/manifest?from=${encodeURIComponent(this.deltaFromId)}&to=${encodeURIComponent(this.deltaToId)}`);
         if (!r.ok) { const error = new Error(r.status === 404 ? 'Spatial raster unavailable for this pair.' : `Delta manifest request failed (${r.status})`); error.status = r.status; throw error; }
@@ -1684,24 +1852,26 @@ function app() {
         if (token !== this._deltaManifestToken) return;
         this.deltaRenderedManifest = d;
         this.deltaRenderedLayers = d.layers || [];
-        this.rasterState = this.deltaRenderedLayers.length && !this.deltaRenderedLayers.every(l => l.empty) ? 'ready' : 'empty';
+        this.setDeltaRasterState(this.deltaRenderedLayers.length && !this.deltaRenderedLayers.every(l => l.empty) ? 'ready' : 'empty');
         loaded = true;
       } catch(e) {
         if (token !== this._deltaManifestToken) return;
-        this.rasterError = e.message;
-        if (samePair && this.deltaRenderedLayers.length) this.rasterState = 'stale';
+        if (samePair && this.deltaRenderedLayers.length) this.setDeltaRasterState('stale', e.message);
         else {
           this.deltaRenderedManifest = null;
           this.deltaRenderedLayers = [];
-          this.rasterState = e.status === 404 || e.status === 400 ? 'unavailable' : 'error';
+          this.setDeltaRasterState(e.status === 404 || e.status === 400 ? 'unavailable' : 'error', e.message);
           this.removeRasterOverlay();
         }
       }
       const groups = this.activeRasterGroups();
       if (groups.length && !groups.some(g => g.layer === this.activeRasterLayer)) this.activeRasterLayer = groups[0].layer;
+      const deltaGroups = this.deltaRasterGroups();
+      if (deltaGroups.length && !deltaGroups.some(g => g.layer === this.changesLayer)) this.changesLayer = deltaGroups[0].layer;
       // A failed same-pair refresh intentionally leaves the last successful image and
       // stale state intact instead of recoloring cached files back into a false "ready".
       if (loaded) await this.applyRasterLayer();
+      if (loaded && this.primaryTab === 'changes') await this.refreshChangesMap();
     },
 
     setRasterMode(mode) {
@@ -1730,12 +1900,24 @@ function app() {
       this.renderedOverlay = null;
     },
 
-    activeRasterGroups() {
-      if (this.mapRasterMode === 'snapshot') return this.rasterLayerGroups;
+    // Manifest-driven, so a layer added to the render pipeline appears here without a UI change.
+    deltaRasterGroups() {
       const labels = { 'build-activity':'Build activity', 'all-zdos':'All ZDOs', 'dropped-items':'Dropped', 'coins':'Coins' };
       const groups = [];
-      for (const layer of this.deltaRenderedLayers) if (!groups.some(g => g.layer === layer.layer)) groups.push({ layer:layer.layer, label:labels[layer.layer] || layer.label || layer.layer });
+      for (const layer of this.deltaRenderedLayers) {
+        if (groups.some(g => g.layer === layer.layer)) continue;
+        groups.push({
+          layer: layer.layer,
+          label: labels[layer.layer] || layer.label || layer.layer,
+          empty: this.deltaRenderedLayers.filter(l => l.layer === layer.layer).every(l => l.empty),
+        });
+      }
       return groups;
+    },
+
+    activeRasterGroups() {
+      if (this.mapRasterMode === 'snapshot') return this.rasterLayerGroups;
+      return this.deltaRasterGroups();
     },
 
     activeRasterEntry() {
@@ -1855,6 +2037,460 @@ function app() {
       canvas.width = out.width; canvas.height = out.height;
       canvas.getContext('2d').putImageData(out, 0, 0);
       return canvas.toDataURL();
+    },
+
+    // ===================== Changes tab: inline map =========================
+    // A second Leaflet instance rather than moving the World map here. The two tabs would
+    // otherwise contend for mapRasterMode, activeRasterLayer, rasterCellSize, renderedOverlay
+    // and _rasterToken, so opening Changes would silently retarget the World map — which is
+    // exactly what made the old "View spatial change →" jump feel like it lost your place.
+    // Returns whether the map is usable. The container lives in an x-show subtree that Alpine
+    // may not have rendered yet on the first pass — navigating straight to #tab=changes runs
+    // showPrimary before the template exists. Report that instead of throwing, and let the
+    // callers below re-try, so a missed first tick cannot leave the tab permanently mapless.
+    ensureChangesMap() {
+      if (this.changesMap) return true;
+      if (!document.getElementById('changes-map')) return false;
+      this.initChangesMap();
+      return !!this.changesMap;
+    },
+
+    initChangesMap() {
+      if (this.changesMap) return;
+      if (!document.getElementById('changes-map')) return;
+      const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      this.changesMap = L.map('changes-map', {
+        crs: L.CRS.Simple,
+        minZoom: -7, maxZoom: 4,
+        zoomControl: true,
+        zoomAnimation: !reducedMotion,
+        fadeAnimation: !reducedMotion,
+        markerZoomAnimation: !reducedMotion,
+      });
+      this.changesMap.fitBounds(L.latLngBounds([WORLD_Z_MIN, WORLD_X_MIN], [WORLD_Z_MAX, WORLD_X_MAX]).pad(0.2));
+      this.changesMap.on('mousemove', (e) => {
+        const w = latLngToWorld(e.latlng);
+        this.changesCoords = `X: ${Math.round(w.x)}  Z: ${Math.round(w.z)}`;
+      });
+    },
+
+    changesDeltaEntry() {
+      const forLayer = this.deltaRenderedLayers.filter(l => l.layer === this.changesLayer);
+      if (!forLayer.length) return null;
+      const sizes = [...new Set(forLayer.map(l => Number(l.cellSize)))].sort((a, b) => a - b);
+      if (this.changesCellSize == null || !sizes.includes(Number(this.changesCellSize))) {
+        this.changesCellSize = sizes.includes(500) ? 500 : sizes[sizes.length - 1];
+      }
+      return forLayer.find(l => Number(l.cellSize) === Number(this.changesCellSize)) || null;
+    },
+
+    changesCellSizes() {
+      return [...new Set(this.deltaRenderedLayers.filter(l => l.layer === this.changesLayer).map(l => Number(l.cellSize)))].sort((a, b) => a - b);
+    },
+
+    async refreshChangesMap() {
+      if (!this.ensureChangesMap()) return;
+      this.changesMap.invalidateSize();
+      const token = ++this._changesRasterToken;
+      const entry = this.changesDeltaEntry();
+
+      this.clearChangesOverlay('changesDeltaOverlay');
+      if (!entry || !entry.bounds || entry.empty) {
+        this.changesHotspots = [];
+        this.changesHotspotIndex = -1;
+        await this.loadChangesBasemap(entry);
+        return;
+      }
+
+      const b = entry.bounds;
+      const overlayBounds = [[b.minZ, b.minX], [b.maxZ, b.maxX]];
+      const pair = `from=${encodeURIComponent(this.deltaFromId)}&to=${encodeURIComponent(this.deltaToId)}`;
+      const addedUrl = `${API}/rendered/delta/${entry.addedFile}?${pair}`;
+      const removedUrl = `${API}/rendered/delta/${entry.removedFile}?${pair}`;
+
+      try {
+        const dataUrl = await this.compositeDeltaRaster(addedUrl, removedUrl);
+        if (token !== this._changesRasterToken) return;
+        this.changesDeltaOverlay = L.imageOverlay(dataUrl, overlayBounds,
+          { opacity: 0.9, interactive: false, zIndex: 400 }).addTo(this.changesMap);
+        // Frame the change, never the basemap: the snapshot all-zdos bounds run past x=+75000
+        // on a handful of outliers, which would shrink the actual delta to a few pixels.
+        this.changesMap.fitBounds(overlayBounds, { padding: [24, 24], maxZoom: 2 });
+        this.changesMap.invalidateSize();
+      } catch (e) {
+        if (token !== this._changesRasterToken) return;
+        console.error('Changes raster failed', e);
+      }
+
+      await this.loadChangesBasemap(entry);
+      await this.computeChangesHotspots(addedUrl, removedUrl);
+      await this.loadChangesOverlays(entry);
+    },
+
+    clearChangesOverlay(key) {
+      if (this[key] && this.changesMap) this.changesMap.removeLayer(this[key]);
+      this[key] = null;
+    },
+
+    // ---- Basemap underlay -------------------------------------------------
+    // The snapshot all-zdos raster for the TO snapshot, drawn dim and grey beneath the delta,
+    // so a bright cell reads as "here, in the world" rather than floating on black. Deliberately
+    // not buildLut(): Ember/Moss/Viridis would fight the red/green delta palette.
+    async loadChangesBasemap(deltaEntry) {
+      this.clearChangesOverlay('changesBaseOverlay');
+      if (!this.showChangesBasemap || !this.changesMap || !this.deltaToId) return;
+      const token = this._changesRasterToken;
+      try {
+        if (String(this.changesBaseManifest?.snapshotId) !== String(this.deltaToId)) {
+          const r = await fetch(`${API}/rendered/manifest?snapshot=${encodeURIComponent(this.deltaToId)}`);
+          if (!r.ok) return;
+          const d = await r.json();
+          if (token !== this._changesRasterToken) return;
+          this.changesBaseManifest = d;
+          this.changesBaseLayers = d.layers || [];
+        }
+        const wanted = Number(deltaEntry?.cellSize || 500);
+        // Coarser than the delta on purpose — at the delta's own resolution the underlay stops
+        // reading as terrain and starts competing with the data drawn on top of it.
+        const candidates = this.changesBaseLayers
+          .filter(l => l.layer === 'all-zdos')
+          .sort((a, b) => Number(a.cellSize) - Number(b.cellSize));
+        const base = candidates.find(l => Number(l.cellSize) >= wanted) || candidates[candidates.length - 1];
+        if (!base || !base.bounds) return;
+        const url = `${API}/rendered/${base.file}?snapshot=${encodeURIComponent(this.deltaToId)}`;
+        const dataUrl = await this.colorizeBasemap(url);
+        if (token !== this._changesRasterToken || !dataUrl) return;
+        const bb = base.bounds;
+        this.changesBaseOverlay = L.imageOverlay(dataUrl, [[bb.minZ, bb.minX], [bb.maxZ, bb.maxX]],
+          { opacity: 0.35, interactive: false, zIndex: 200 }).addTo(this.changesMap);
+        this.changesBaseOverlay.bringToBack();
+      } catch (e) {
+        console.error('Basemap underlay failed', e);
+      }
+    },
+
+    async colorizeBasemap(url) {
+      const gray = await this.loadGrayRaster(url);
+      const out = new ImageData(gray.width, gray.height);
+      const src = gray.data, dst = out.data;
+      for (let i = 0; i < src.length; i += 4) {
+        if (src[i + 3] === 0) continue;
+        dst[i] = 150; dst[i + 1] = 160; dst[i + 2] = 175;
+        // Capped alpha, so even the densest cell stays an underlay.
+        dst[i + 3] = Math.round(70 * (src[i] / 255));
+      }
+      const c = document.createElement('canvas');
+      c.width = gray.width; c.height = gray.height;
+      c.getContext('2d').putImageData(out, 0, 0);
+      return c.toDataURL();
+    },
+
+    // ---- Landmark points --------------------------------------------------
+    async loadChangesOverlays(deltaEntry) {
+      if (this.changesMarkerLayer && this.changesMap) this.changesMap.removeLayer(this.changesMarkerLayer);
+      this.changesMarkerLayer = null;
+      if (!this.changesMap || !this.deltaToId || !deltaEntry?.bounds) return;
+      const active = this.changesOverlays.filter(o => o.active);
+      if (!active.length) return;
+
+      const b = deltaEntry.bounds;
+      const padX = (b.maxX - b.minX) * 0.2 || 500;
+      const padZ = (b.maxZ - b.minZ) * 0.2 || 500;
+      const box = `minX=${b.minX - padX}&maxX=${b.maxX + padX}&minZ=${b.minZ - padZ}&maxZ=${b.maxZ + padZ}`;
+      const group = L.layerGroup();
+      const token = this._changesRasterToken;
+
+      for (const overlay of active) {
+        try {
+          const d = await fetchJson(`${API}/db/zdo/query?snapshot=${encodeURIComponent(this.deltaToId)}&category=${overlay.id}&${box}&limit=1500`);
+          if (token !== this._changesRasterToken) return;
+          const rows = d?.data || [];
+          overlay.count = rows.length;
+          for (const row of rows) {
+            L.circleMarker(worldToLatLng(row.x, row.z), {
+              radius: 2.5, color: overlay.color, weight: 1, fillOpacity: 0.55, interactive: false,
+            }).addTo(group);
+          }
+        } catch (e) {
+          overlay.count = null;
+        }
+      }
+      if (token !== this._changesRasterToken) return;
+      this.changesMarkerLayer = group.addTo(this.changesMap);
+    },
+
+    // ===================== Hotspot extraction ==============================
+    // Read straight out of the decoded delta PNGs. The alternative — a new endpoint, or baking
+    // hotspot metadata into the manifest — would cost a backend round trip or a full re-render
+    // and re-publish to produce numbers the browser is already holding.
+    //
+    // Encoding, from RenderedDeltaLayerBuilder.paintChannel: v = max(1, round(255 *
+    // log1p(raw) / maxLog)), written into an INT_ARGB image whose ALPHA is the presence mask.
+    // Gate on alpha — a painted cell can legitimately encode a low value, and v>0 is not the
+    // same test.
+    async computeChangesHotspots(addedUrl, removedUrl) {
+      const layerName = this.changesLayer;
+      const sizes = this.changesCellSizes();
+      if (!sizes.length) { this.changesHotspots = []; return; }
+      // Finest available, independent of what the map is displaying: 64 m localizes to a
+      // building rather than a region, and pinning it here stops the list reshuffling
+      // every time the display resolution changes.
+      let entry = null;
+      for (const size of sizes) {
+        const candidate = this.deltaRenderedLayers.find(l => l.layer === layerName && Number(l.cellSize) === Number(size));
+        if (!candidate || candidate.empty) continue;
+        if (candidate.width * candidate.height > 1000000) continue;
+        entry = candidate;
+        break;
+      }
+      if (!entry) { this.changesHotspots = []; this.changesHotspotIndex = -1; return; }
+
+      const key = `${this.deltaFromId}-${this.deltaToId}-${layerName}-${entry.cellSize}`;
+      if (this._hotspotCache[key]) {
+        this.changesHotspots = this._hotspotCache[key].hotspots;
+        this.changesHotspotApprox = this._hotspotCache[key].approx;
+        this.changesHotspotRemainder = this._hotspotCache[key].remainder;
+        this.changesHotspotIndex = -1;
+        return;
+      }
+
+      const pair = `from=${encodeURIComponent(this.deltaFromId)}&to=${encodeURIComponent(this.deltaToId)}`;
+      const aUrl = `${API}/rendered/delta/${entry.addedFile}?${pair}`;
+      const rUrl = `${API}/rendered/delta/${entry.removedFile}?${pair}`;
+      let added, removed;
+      try {
+        [added, removed] = await Promise.all([this.loadGrayRaster(aUrl), this.loadGrayRaster(rUrl)]);
+      } catch (e) {
+        this.changesHotspots = []; this.changesHotspotIndex = -1; return;
+      }
+
+      const cellSize = Number(entry.cellSize);
+      const b = entry.bounds;
+      const cells = [];
+      let rawAddedSum = 0, rawRemovedSum = 0;
+      const aData = added.data, rData = removed.data;
+      for (let py = 0; py < added.height; py++) {
+        for (let px = 0; px < added.width; px++) {
+          const i = (py * added.width + px) * 4;
+          const av = aData[i + 3] ? Math.expm1(aData[i] / 255 * (entry.addedMaxLog || 0)) : 0;
+          const rv = rData[i + 3] ? Math.expm1(rData[i] / 255 * (entry.removedMaxLog || 0)) : 0;
+          if (av <= 0 && rv <= 0) continue;
+          rawAddedSum += av; rawRemovedSum += rv;
+          cells.push({ px, py, added: av, removed: rv, total: av + rv });
+        }
+      }
+      if (!cells.length) { this.changesHotspots = []; this.changesHotspotIndex = -1; return; }
+
+      // Rescale to the manifest's own totals. Quantization bias is systematic, so it cancels
+      // in aggregate and the list then reconciles exactly with the compare endpoint instead of
+      // being "close". If the pre-scale ratio is wildly off, the encoding is not what we think
+      // it is — say so rather than presenting invented numbers as exact.
+      const aScale = rawAddedSum > 0 && entry.addedRawTotal ? entry.addedRawTotal / rawAddedSum : 1;
+      const rScale = rawRemovedSum > 0 && entry.removedRawTotal ? entry.removedRawTotal / rawRemovedSum : 1;
+      const approx = (entry.addedRawTotal && Math.abs(aScale - 1) > 0.1) || (entry.removedRawTotal && Math.abs(rScale - 1) > 0.1);
+      if (approx) console.warn('Hotspot calibration off', { layer: layerName, aScale, rScale });
+
+      // Greedy peak-picking with non-maximum suppression, not connected components: an 8-connected
+      // flood over a diffuse change region collapses the whole map into one blob, which is the
+      // opposite of useful. Radius 2 merges genuinely adjacent cells while keeping two bases a
+      // few hundred metres apart distinct.
+      const RADIUS = 2, TOP_N = 12;
+      cells.sort((p, q) => q.total - p.total);
+      const consumed = new Set();
+      const peak = cells[0].total;
+      const hotspots = [];
+      for (const seed of cells) {
+        if (hotspots.length >= TOP_N) break;
+        const seedKey = seed.py * added.width + seed.px;
+        if (consumed.has(seedKey)) continue;
+        // Floor is deliberately below one object. The decode is lossy — a lone 2-object removal
+        // comes back as 1.987 — so a floor of 2 would silently discard exactly the small,
+        // surgical changes worth looking at. 2% of peak still suppresses noise on busy pairs.
+        if (seed.total < Math.max(0.5, peak * 0.02)) break;
+        let sumAdded = 0, sumRemoved = 0, wx = 0, wz = 0, weight = 0;
+        let minPx = seed.px, maxPx = seed.px, minPy = seed.py, maxPy = seed.py;
+        for (const other of cells) {
+          const otherKey = other.py * added.width + other.px;
+          if (consumed.has(otherKey)) continue;
+          if (Math.abs(other.px - seed.px) > RADIUS || Math.abs(other.py - seed.py) > RADIUS) continue;
+          consumed.add(otherKey);
+          sumAdded += other.added; sumRemoved += other.removed;
+          const x = b.minX + (other.px + 0.5) * cellSize;
+          const z = b.maxZ - (other.py + 0.5) * cellSize;
+          wx += x * other.total; wz += z * other.total; weight += other.total;
+          minPx = Math.min(minPx, other.px); maxPx = Math.max(maxPx, other.px);
+          minPy = Math.min(minPy, other.py); maxPy = Math.max(maxPy, other.py);
+        }
+        hotspots.push({
+          x: weight ? wx / weight : b.minX + (seed.px + 0.5) * cellSize,
+          z: weight ? wz / weight : b.maxZ - (seed.py + 0.5) * cellSize,
+          added: Math.round(sumAdded * aScale),
+          removed: Math.round(sumRemoved * rScale),
+          bounds: {
+            minX: b.minX + minPx * cellSize,
+            maxX: b.minX + (maxPx + 1) * cellSize,
+            minZ: b.maxZ - (maxPy + 1) * cellSize,
+            maxZ: b.maxZ - minPy * cellSize,
+          },
+          cellSize,
+        });
+      }
+      const maxTotal = Math.max(1, ...hotspots.map(h => h.added + h.removed));
+      for (const h of hotspots) {
+        h.addedPct = (h.added / maxTotal) * 100;
+        h.removedPct = (h.removed / maxTotal) * 100;
+      }
+      // The list is capped at TOP_N, so on a busy pair it does not sum to the pair total. Say
+      // what fell outside it rather than letting the numbers quietly fail to add up.
+      const remainder = {
+        added: Math.max(0, Math.round((entry.addedRawTotal || 0) - hotspots.reduce((a, h) => a + h.added, 0))),
+        removed: Math.max(0, Math.round((entry.removedRawTotal || 0) - hotspots.reduce((a, h) => a + h.removed, 0))),
+      };
+      this._hotspotCache[key] = { hotspots, approx, remainder };
+      this.changesHotspots = hotspots;
+      this.changesHotspotApprox = approx;
+      this.changesHotspotRemainder = remainder;
+      this.changesHotspotIndex = -1;
+    },
+
+    async selectHotspot(index) {
+      const h = this.changesHotspots[index];
+      if (!h || !this.changesMap) return;
+      this.changesHotspotIndex = index;
+      this.clearChangesOverlay('changesBoxLayer');
+      this.changesBoxLayer = L.rectangle(
+        [[h.bounds.minZ, h.bounds.minX], [h.bounds.maxZ, h.bounds.maxX]],
+        { color: '#e7d9a0', weight: 1.5, fill: false, interactive: false }
+      ).addTo(this.changesMap);
+      this.changesMap.setView(worldToLatLng(h.x, h.z), 0);
+      await this.loadHotspotDrill(h);
+    },
+
+    // What actually changed inside the hotspot box. Bounds-scoped, so it answers "what happened
+    // here" rather than restating the world-wide totals.
+    async loadHotspotDrill(h) {
+      const token = ++this._drillToken;
+      this.changesDrillState = 'loading';
+      this.changesDrill = null;
+      const b = h.bounds;
+      const q = `from=${encodeURIComponent(this.deltaFromId)}&to=${encodeURIComponent(this.deltaToId)}`
+        + `&minX=${b.minX}&maxX=${b.maxX}&minZ=${b.minZ}&maxZ=${b.maxZ}&topN=12`;
+      try {
+        const d = await fetchJson(`${API}/db/selection-delta?${q}`);
+        if (token !== this._drillToken) return;
+        this.changesDrill = d;
+        this.changesDrillState = 'ready';
+      } catch (e) {
+        if (token !== this._drillToken) return;
+        this.changesDrillState = 'unavailable';
+      }
+    },
+
+    // A hotspot describes itself by what changed in it. Portal tags would be the real place
+    // names, but they live in ZDO string fields the analytics cache does not store, so the
+    // only endpoint that has them answers from the boot parse — a different world than the
+    // one being compared.
+    hotspotLabel(h, index) {
+      if (index !== this.changesHotspotIndex || this.changesDrillState !== 'ready') return '';
+      const top = this.changesDrill?.addedPrefabs?.[0] || this.changesDrill?.removedPrefabs?.[0];
+      return top ? `mostly ${top.key}` : '';
+    },
+
+    setChangesLayer(layer) {
+      if (this.changesLayer === layer) return;
+      this.changesLayer = layer;
+      this.changesCellSize = null;
+      this.changesHotspotIndex = -1;
+      this.changesDrill = null;
+      this.refreshChangesMap();
+    },
+
+    setChangesCellSize(size) {
+      this.changesCellSize = Number(size);
+      this.refreshChangesMap();
+    },
+
+    toggleChangesOverlay() {
+      const entry = this.changesDeltaEntry();
+      this.loadChangesOverlays(entry);
+    },
+
+    toggleChangesBasemap() {
+      this.showChangesBasemap = !this.showChangesBasemap;
+      this.loadChangesBasemap(this.changesDeltaEntry());
+    },
+
+    // ===================== Ranked prefab movers ============================
+    deltaCategoryRows(channel) {
+      const src = channel === 'removed' ? this.deltaResult?.removedByCategory : this.deltaResult?.addedByCategory;
+      if (!src) return [];
+      return Object.entries(src)
+        .map(([key, count]) => ({ key, count: Number(count) || 0 }))
+        .filter(r => r.count > 0)
+        .sort((a, b) => b.count - a.count);
+    },
+
+    deltaPrefabRows(channel) {
+      const detail = channel === 'removed' ? this.deltaResult?.removedPrefabDetail : this.deltaResult?.addedPrefabDetail;
+      const flat = channel === 'removed' ? this.deltaResult?.removedPrefabs : this.deltaResult?.addedPrefabs;
+      let rows;
+      if (Array.isArray(detail) && detail.length) {
+        rows = detail.map(d => ({ prefab: d.prefab ?? d.key, category: d.category || '', count: Number(d.count ?? d.value) || 0 }));
+      } else if (flat) {
+        rows = Object.entries(flat).map(([prefab, count]) => ({ prefab, category: '', count: Number(count) || 0 }));
+      } else {
+        return [];
+      }
+      // Sorted here rather than trusting transport order: the backend emits descending into a
+      // LinkedHashMap, but JSON object key order is not a contract and JS reorders integer-like
+      // keys regardless.
+      rows.sort((a, b) => b.count - a.count);
+      if (this.deltaCategoryFilter) rows = rows.filter(r => r.category === this.deltaCategoryFilter);
+      const max = rows.length ? rows[0].count : 1;
+      return rows.slice(0, this.deltaPrefabLimit).map(r => ({ ...r, pct: (r.count / max) * 100 }));
+    },
+
+    deltaPrefabTotal(channel) {
+      const detail = channel === 'removed' ? this.deltaResult?.removedPrefabDetail : this.deltaResult?.addedPrefabDetail;
+      const flat = channel === 'removed' ? this.deltaResult?.removedPrefabs : this.deltaResult?.addedPrefabs;
+      if (Array.isArray(detail)) return detail.length;
+      return flat ? Object.keys(flat).length : 0;
+    },
+
+    // added prefabs exist in the newer snapshot, removed ones only in the older. Querying the
+    // wrong end is the difference between "here is what got built" and an empty result.
+    async showPrefabOnChangesMap(row, channel) {
+      if (!this.changesMap) return;
+      this.deltaPrefabFocus = { prefab: row.prefab, channel };
+      const snapshot = channel === 'removed' ? this.deltaFromId : this.deltaToId;
+      const entry = this.changesDeltaEntry();
+      let box = '';
+      if (entry?.bounds) {
+        const b = entry.bounds;
+        box = `&minX=${b.minX}&maxX=${b.maxX}&minZ=${b.minZ}&maxZ=${b.maxZ}`;
+      }
+      try {
+        const d = await fetchJson(`${API}/db/zdo/query?snapshot=${encodeURIComponent(snapshot)}&prefab=${encodeURIComponent(row.prefab)}${box}&limit=1500`);
+        this.clearChangesOverlay('changesBoxLayer');
+        const group = L.layerGroup();
+        const color = channel === 'removed' ? '#d9635f' : '#5fae7f';
+        for (const p of (d?.data || [])) {
+          L.circleMarker(worldToLatLng(p.x, p.z), { radius: 3, color, weight: 1, fillOpacity: 0.7, interactive: false }).addTo(group);
+        }
+        this.changesBoxLayer = group.addTo(this.changesMap);
+      } catch (e) {
+        console.error('Prefab locate failed', e);
+      }
+    },
+
+    // Manifest-driven, replacing copy that hardcoded two of the four layers we render and
+    // showed while the comparison was still loading.
+    deltaLayerAvailabilityCopy() {
+      const groups = this.deltaRasterGroups();
+      if (!groups.length) return 'Spatial rasters are advertised for this pair.';
+      const named = groups.map(g => `${g.label}${g.empty ? ' (no cells)' : ''}`);
+      const sizes = [...new Set(this.deltaRenderedLayers.map(l => Number(l.cellSize)))].sort((a, b) => a - b);
+      return `${named.join(' · ')} — ${sizes.join(' / ')} m cells`;
     },
 
     activeLegendGradient() {
@@ -2511,6 +3147,8 @@ function app() {
         const payload = await fetchJson(`${API}/db/snapshots`);
         const all = (payload.snapshots || []).slice().sort((a,b) => Number(b.snapshotId) - Number(a.snapshotId));
         this.knownWorldIds = [...new Set(all.map(s => s.worldId).filter(Boolean))].sort();
+        this.worldNameById = {};
+        for (const s of all) if (s.worldId && s.worldName) this.worldNameById[s.worldId] = s.worldName;
         this.snapshots = this.selectedWorldId
           ? all.filter(s => s.worldId === this.selectedWorldId)
           : all;
@@ -2604,6 +3242,17 @@ function app() {
       this.deltaToId = sameWorld?.[0]?.snapshotId ?? null;
     },
 
+    // The raw world_id is a slug ("steward-synthetic-history-v1"); world_name is the human
+    // label the ingest recorded. Falls back to the id, and ignores a name that is just the
+    // save's filename — SnapshotProvenance defaults world_name that way when none was passed,
+    // and "ComfyEra16.db" reads worse than "ComfyEra16".
+    worldLabel(worldId) {
+      const name = this.worldNameById?.[worldId];
+      if (!name) return worldId || 'unknown world';
+      const stripped = name.replace(/\.db$/i, '');
+      return stripped === worldId ? worldId : name;
+    },
+
     deltaPairOrdered() { return Number(this.deltaFromId) < Number(this.deltaToId); },
     async swapDeltaPair() {
       const from = this.deltaFromId;
@@ -2612,6 +3261,15 @@ function app() {
       await this.deltaPairChanged();
     },
     async deltaPairChanged() {
+      // Hotspots, the drill-down and the basemap are all pair-scoped; leaving them up while the
+      // new pair loads would attribute one pair's changes to another.
+      this.changesHotspots = [];
+      this.changesHotspotIndex = -1;
+      this.changesDrill = null;
+      this.changesDrillState = 'idle';
+      this.deltaCategoryFilter = '';
+      this.deltaPrefabFocus = null;
+      this.clearChangesOverlay('changesBoxLayer');
       if (this.mapRasterMode === 'changes') {
         this._deltaManifestToken++;
         this._rasterToken++;
@@ -2665,7 +3323,10 @@ function app() {
         this.deltaState = 'error';
         console.error('Failed comparing snapshots', e);
       }
-      if (token === this._deltaCompareToken && this.mapRasterMode === 'changes' && this.deltaPairOrdered()) await this.loadDeltaRenderedManifest();
+      // Unconditional now: the Changes tab renders the delta raster inline, so the manifest is
+      // needed whenever a valid pair is selected, not only while the World map happens to be
+      // in changes mode.
+      if (token === this._deltaCompareToken && this.deltaPairOrdered()) await this.loadDeltaRenderedManifest();
     },
 
     async runExploreQuery() {

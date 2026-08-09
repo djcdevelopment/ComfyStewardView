@@ -132,6 +132,103 @@ public final class SnapshotDeltaEngine {
                 countFrom, countTo, reconciles);
     }
 
+    /** One prefab's contribution to a bounded delta. */
+    public record PrefabDelta(String prefab, String category, int count) {}
+
+    /** What changed inside one rectangle, between one pair of snapshots. */
+    public record BoundedDelta(
+            int addedTotal,
+            int removedTotal,
+            java.util.List<PrefabDelta> addedPrefabs,
+            java.util.List<PrefabDelta> removedPrefabs,
+            Map<String, Integer> addedByCategory,
+            Map<String, Integer> removedByCategory,
+            boolean truncated
+    ) {}
+
+    /**
+     * The same added/removed question as {@link #computeDelta}, restricted to a rectangle.
+     *
+     * <p>Answers "what happened <em>here</em>" for a spatial hotspot, rather than restating the
+     * world-wide totals. Reuses {@link #missingIdentityPredicate} verbatim so a drill-down and
+     * the delta raster can never disagree about what counts as the same object.
+     */
+    public static BoundedDelta computeBoundedDelta(Connection conn,
+                                                   long fromSnapshotId, long toSnapshotId,
+                                                   double minX, double maxX,
+                                                   double minZ, double maxZ,
+                                                   int topN) throws SQLException {
+        Map<String, Integer> addedCat = new TreeMap<>(), removedCat = new TreeMap<>();
+        java.util.List<PrefabDelta> added = new java.util.ArrayList<>();
+        java.util.List<PrefabDelta> removed = new java.util.ArrayList<>();
+
+        int addedTotal = collectMissingBounded(conn, toSnapshotId, fromSnapshotId,
+                minX, maxX, minZ, maxZ, added, addedCat);
+        int removedTotal = collectMissingBounded(conn, fromSnapshotId, toSnapshotId,
+                minX, maxX, minZ, maxZ, removed, removedCat);
+
+        boolean truncated = added.size() > topN || removed.size() > topN;
+        return new BoundedDelta(addedTotal, removedTotal,
+                added.subList(0, Math.min(topN, added.size())),
+                removed.subList(0, Math.min(topN, removed.size())),
+                addedCat, removedCat, truncated);
+    }
+
+    private static int collectMissingBounded(Connection conn, long presentIn, long absentFrom,
+                                             double minX, double maxX, double minZ, double maxZ,
+                                             java.util.List<PrefabDelta> out,
+                                             Map<String, Integer> byCategory) throws SQLException {
+        // The inner side carries the SAME box, which is safe precisely because identity requires
+        // exact coordinate equality: if b is inside the box and a.x = b.x, a is inside it too. It
+        // is a pushdown that lets the engine prune both scans. Bounding the two sides by
+        // DIFFERENT boxes would make an object that moved across an edge read as both added and
+        // removed, so this must stay one rectangle.
+        String sql =
+            "SELECT b.prefab_name, b.category, COUNT(*) AS n " +
+            "FROM zdo b " +
+            "WHERE b.snapshot_id = ? " +
+            "  AND b.x BETWEEN ? AND ? AND b.z BETWEEN ? AND ? " +
+            "  AND " + missingIdentityPredicateBounded("b", "a") + " " +
+            "GROUP BY b.prefab_name, b.category " +
+            "ORDER BY n DESC";
+
+        int total = 0;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            // Running counter, not literal indexes: missingIdentityPredicate embeds its own
+            // placeholder mid-string, so inserting the bounds shifts everything after it. Getting
+            // this wrong compares a snapshot against itself and silently returns zeros.
+            int p = 1;
+            ps.setLong(p++, presentIn);
+            ps.setDouble(p++, minX); ps.setDouble(p++, maxX);
+            ps.setDouble(p++, minZ); ps.setDouble(p++, maxZ);
+            ps.setLong(p++, absentFrom);
+            ps.setDouble(p++, minX); ps.setDouble(p++, maxX);
+            ps.setDouble(p++, minZ); ps.setDouble(p++, maxZ);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String prefab = rs.getString(1);
+                    String category = rs.getString(2);
+                    int n = rs.getInt(3);
+                    if (prefab == null) prefab = "unknown";
+                    if (category == null) category = "UNKNOWN";
+                    out.add(new PrefabDelta(prefab, category, n));
+                    byCategory.merge(category, n, Integer::sum);
+                    total += n;
+                }
+            }
+        }
+        return total;
+    }
+
+    /** {@link #missingIdentityPredicate} with the same rectangle applied to the inner scan. */
+    private static String missingIdentityPredicateBounded(String presentAlias, String absentAlias) {
+        return missingIdentityPredicate(presentAlias, absentAlias).replaceFirst(
+            java.util.regex.Pattern.quote("WHERE " + absentAlias + ".snapshot_id = ? "),
+            java.util.regex.Matcher.quoteReplacement(
+                "WHERE " + absentAlias + ".snapshot_id = ? " +
+                "AND " + absentAlias + ".x BETWEEN ? AND ? AND " + absentAlias + ".z BETWEEN ? AND ? "));
+    }
+
     private static long countZdos(Connection conn, long snapshotId) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
                 "SELECT COUNT(*) FROM zdo WHERE snapshot_id = ?")) {
