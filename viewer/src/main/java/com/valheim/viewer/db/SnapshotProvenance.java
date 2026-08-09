@@ -13,7 +13,13 @@ public record SnapshotProvenance(
         String parserVersion,
         int schemaVersion
 ) {
-    public static final String DEFAULT_PARSER_VERSION = "1.0.0";
+    /**
+     * 1.1.0 classifies dictionary-confirmed construction pieces as BUILDING regardless of whether
+     * the ZDO carries a creator field. Snapshots ingested under 1.0.0 hold the old categories
+     * until they are re-ingested, so a pair spanning the two versions under-counts the removed
+     * channel of build-activity; {@code world_snapshot.parser_version} is how that is detected.
+     */
+    public static final String DEFAULT_PARSER_VERSION = "1.1.0";
     /** 3 adds world_snapshot.prefab_dictionary_version / prefab_dictionary_entries. */
     public static final int CURRENT_SCHEMA_VERSION = 3;
 

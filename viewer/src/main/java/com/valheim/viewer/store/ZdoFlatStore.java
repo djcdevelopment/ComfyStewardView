@@ -70,6 +70,13 @@ public class ZdoFlatStore {
      */
     public final long[] categoryCounts = new long[16];
 
+    /**
+     * Prefab hashes the verified dictionary identifies as construction pieces (Piece + WearNTear).
+     * Set once by the parser from the loaded dictionary; empty when no dictionary is available,
+     * in which case classification falls back to the property-shape heuristic alone.
+     */
+    public Set<Integer> buildPieceHashes = Collections.emptySet();
+
     // ----- Prefab dictionary provenance (set by WorldParser once at load) -----
     public int    dictionaryEntries     = 0;
     public String dictionaryGameVersion = null;
