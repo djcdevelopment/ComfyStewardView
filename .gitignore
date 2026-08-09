@@ -8,15 +8,12 @@
 viewer/logs/*.log
 viewer/logs/*.err
 
-# Batch analytics outputs generated from real world saves
-viewer/target/*.duckdb
-viewer/target/*.duckdb.wal
-viewer/target/rendered-*/
-viewer/target/generation-*.log
+# Maven build output. Tracking it made every branch that compiled conflict with
+# every other one in .class files and 89 MB jars, which is what blocked PR #3 —
+# no source file disagreed. It also covers the batch analytics artifacts
+# (*.duckdb, rendered-*/, generation-*.log) that used to be listed one by one.
+viewer/target/
 design_mocks/.thumbnail
-viewer/target/test-classes/
-viewer/target/surefire-reports/
-viewer/target/maven-status/maven-compiler-plugin/testCompile/
 /steward-config.json
 # Synthetic validation saves, caches, ledgers, PNGs, and receipts
 /artifacts/synthetic-history/
