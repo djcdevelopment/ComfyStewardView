@@ -14,6 +14,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.time.Instant;
 
 /**
@@ -292,10 +296,26 @@ public final class AnalyticsCache implements AutoCloseable {
      * fail with "Connection was closed" after a ten-minute parse. Releasing the connection is
      * {@link #close()}'s job. Idempotent.
      */
+    /** When true, {@link #finish()} skips index creation; a later run pays it once. */
+    private boolean deferIndexes = false;
+
+    public void setDeferIndexes(boolean defer) {
+        this.deferIndexes = defer;
+    }
+
     public void finish() throws SQLException {
+        finish(!deferIndexes);
+    }
+
+    /**
+     * Variant for bulk lanes: {@code buildIndexes=false} flushes and commits without creating
+     * indexes, so a caller loading many snapshots back-to-back can pay the index build once at
+     * the end (indexed appends run ~20x slower and degrade linearly with table size).
+     */
+    public void finish(boolean buildIndexes) throws SQLException {
         if (finished) return;
         flushBatches();
-        createIndexes();
+        if (buildIndexes) createIndexes();
         conn.commit();
         closeQuietly(zdoStmt);
         closeQuietly(fieldStmt);
@@ -336,6 +356,54 @@ public final class AnalyticsCache implements AutoCloseable {
         fieldStmt.addBatch();
         fieldBatch++;
         flushIfNeeded();
+    }
+
+    /**
+     * Bulk-import archived snapshots (Parquet dirs written by the publish archive lane:
+     * {@code snapshot-<id>-<source>/{world_snapshot,zdo,container_item}.parquet}) into this
+     * cache, preserving original snapshot ids. Only the {@code latestN} highest snapshot ids are
+     * imported; snapshots already present (by id) are skipped. Call before any parse and before
+     * indexes exist — imports are plain inserts and stay fast on an unindexed table.
+     * Returns the imported snapshot ids in ascending order.
+     */
+    public List<Long> importArchiveSnapshots(File archiveDir, int latestN) throws SQLException {
+        File[] dirs = archiveDir.listFiles(f -> f.isDirectory() &&
+            f.getName().startsWith("snapshot-") && new File(f, "world_snapshot.parquet").isFile());
+        if (dirs == null || dirs.length == 0) return List.of();
+
+        // Read each dir's snapshot id from its world_snapshot.parquet rather than trusting names.
+        Map<Long, File> byId = new TreeMap<>();
+        try (Statement st = conn.createStatement()) {
+            for (File dir : dirs) {
+                String p = dir.getAbsolutePath().replace('\\', '/').replace("'", "''");
+                try (ResultSet rs = st.executeQuery(
+                        "SELECT snapshot_id FROM read_parquet('" + p + "/world_snapshot.parquet')")) {
+                    if (rs.next()) byId.put(rs.getLong(1), dir);
+                }
+            }
+        }
+
+        List<Long> selected = new ArrayList<>(byId.keySet());
+        while (selected.size() > latestN) selected.remove(0);
+
+        List<Long> imported = new ArrayList<>();
+        try (Statement st = conn.createStatement()) {
+            for (long id : selected) {
+                try (ResultSet rs = st.executeQuery(
+                        "SELECT COUNT(*) FROM world_snapshot WHERE snapshot_id = " + id)) {
+                    rs.next();
+                    if (rs.getLong(1) > 0) continue;
+                }
+                String p = byId.get(id).getAbsolutePath().replace('\\', '/').replace("'", "''");
+                for (String table : new String[] {"world_snapshot", "zdo", "container_item"}) {
+                    st.executeUpdate("INSERT INTO " + table + " BY NAME " +
+                        "SELECT * FROM read_parquet('" + p + "/" + table + ".parquet')");
+                }
+                imported.add(id);
+            }
+        }
+        conn.commit();
+        return imported;
     }
 
     private void createSchema() throws SQLException {
@@ -454,8 +522,26 @@ public final class AnalyticsCache implements AutoCloseable {
         }
     }
 
-    private void createIndexes() throws SQLException {
+    /** Public so bulk lanes can drop indexes before a large append and rebuild them after. */
+    public void dropIndexes() throws SQLException {
         try (Statement st = conn.createStatement()) {
+            for (String name : new String[] {
+                "zdo_snapshot_idx", "zdo_prefab_idx", "zdo_category_idx", "zdo_creator_idx",
+                "zdo_sector_idx", "zdo_zone_idx", "zdo_xz_idx", "zdo_field_hash_idx",
+                "container_item_name_idx", "container_item_crafter_idx",
+                "container_item_sector_idx", "render_cell_layer_idx",
+            }) {
+                st.executeUpdate("DROP INDEX IF EXISTS " + name);
+            }
+        }
+        conn.commit();
+    }
+
+    public void createIndexes() throws SQLException {
+        try (Statement st = conn.createStatement()) {
+            // Every SnapshotDeltaEngine query filters on snapshot_id; without this the delta
+            // path full-scans the multi-snapshot table.
+            st.executeUpdate("CREATE INDEX IF NOT EXISTS zdo_snapshot_idx ON zdo(snapshot_id, prefab_hash)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS zdo_prefab_idx ON zdo(prefab_hash)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS zdo_category_idx ON zdo(category)");
             st.executeUpdate("CREATE INDEX IF NOT EXISTS zdo_creator_idx ON zdo(creator_id)");

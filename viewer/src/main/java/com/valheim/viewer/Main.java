@@ -65,6 +65,11 @@ public class Main {
         // from the filename, which is why snapshots built by the container never matched the
         // world ids Islet ingests under.
         String worldIdArg = null, worldNameArg = null, sourceArg = null, backupIdArg = null;
+        // Bulk-lane controls: skip index creation at finish (pay it once at the end of a chain of
+        // batch runs) and pre-load archived snapshots so publish caches keep prior history.
+        boolean deferIndexes = false;
+        String importArchivePath = null;
+        int importLatest = 6;
 
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -111,6 +116,15 @@ public class Main {
                 case "--backup-id":
                     if (i + 1 < args.length) backupIdArg = args[++i];
                     break;
+                case "--defer-indexes":
+                    deferIndexes = true;
+                    break;
+                case "--import-archive":
+                    if (i + 1 < args.length) importArchivePath = args[++i];
+                    break;
+                case "--import-latest":
+                    if (i + 1 < args.length) importLatest = Integer.parseInt(args[++i]);
+                    break;
                 default:
                     if (!args[i].startsWith("--")) dbPath = args[i];
             }
@@ -121,7 +135,7 @@ public class Main {
         File dbFile = new File(dbPath);
         if (!dbFile.exists()) {
             System.err.println("ERROR: Save file not found: " + dbFile.getAbsolutePath());
-            System.err.println("Usage: java -Xmx3g -jar world-viewer.jar [save.db] [--port 8003] [--build-cache] [--render-layers] [--batch-only] [--cache-fields]");
+            System.err.println("Usage: java -Xmx3g -jar world-viewer.jar [save.db] [--port 8003] [--build-cache] [--render-layers] [--batch-only] [--cache-fields] [--defer-indexes] [--import-archive <dir>] [--import-latest N]");
             System.exit(1);
         }
 
@@ -145,6 +159,14 @@ public class Main {
                 log.info("Analytics cache enabled: {} (rebuild={}, fields={})",
                     cacheFile.getAbsolutePath(), rebuildCache, cacheFields);
                 analyticsCache = new AnalyticsCache(cacheFile, rebuildCache, cacheFields);
+                analyticsCache.setDeferIndexes(deferIndexes);
+                if (importArchivePath != null) {
+                    // Pre-load retained history before the parse, while the table is unindexed.
+                    var imported = analyticsCache.importArchiveSnapshots(
+                        new File(importArchivePath), importLatest);
+                    log.info("Imported {} archived snapshot(s) from {}: {}",
+                        imported.size(), importArchivePath, imported);
+                }
                 parser.setAnalyticsCache(analyticsCache);
                 if (worldIdArg != null) {
                     // Staged before the parse: WorldParser opens the snapshot itself, and a
