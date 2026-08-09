@@ -144,7 +144,6 @@ $cacheFile = Join-Path $outDir 'world-cache.duckdb'
 $renderDir = Join-Path $outDir 'rendered'
 if (-not $ArchiveDir) { $ArchiveDir = Join-Path $WorkDir 'archive' }
 New-Item -ItemType Directory -Force -Path $outDir, $renderDir, $ArchiveDir | Out-Null
-Remove-Item $cacheFile, "$cacheFile.wal" -Force -ErrorAction SilentlyContinue
 Write-Host "      workdir: $WorkDir (archive: $ArchiveDir)"
 
 # Live-cache window: the cache carries at most the latest 6 snapshots (the delta-matrix
@@ -219,6 +218,11 @@ if (-not $doAm4 -and -not $doOmen) {
 }
 $newCount = @($doAm4, $doOmen).Where({ $_ }).Count
 $importLatest = [Math]::Max(0, $LiveWindow - $newCount)
+
+# Delete the old cache only now, after the dedupe decision: a refused publish must leave
+# the previous cache intact (learned the hard way — deleting in preflight left an empty
+# workdir when both worlds were unchanged).
+Remove-Item $cacheFile, "$cacheFile.wal" -Force -ErrorAction SilentlyContinue
 
 $runs = @()
 if ($doAm4) {
