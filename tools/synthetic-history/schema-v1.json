@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "steward-synthetic-history/v1",
+  "type": "object",
+  "required": ["schemaVersion", "corpusId", "sequenceSeed", "generator", "baseline", "snapshots", "intervals"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "corpusId": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,96}$"},
+    "sequenceSeed": {"type": "integer", "minimum": 0},
+    "generator": {
+      "type": "object",
+      "required": ["name", "version", "prng"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "gitSha": {"type": "string"},
+        "prng": {"const": "pcg32"}
+      },
+      "additionalProperties": false
+    },
+    "baseline": {
+      "type": "object",
+      "required": ["savePath", "saveSha256", "worldId"],
+      "properties": {
+        "savePath": {"type": "string"},
+        "saveSha256": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"},
+        "saveSize": {"type": "integer", "minimum": 0},
+        "worldId": {"type": "string"},
+        "semanticIdentityDigest": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "snapshots": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "required": ["index", "label", "savePath", "saveSha256"],
+        "properties": {
+          "index": {"type": "integer", "minimum": 0},
+          "label": {"type": "string"},
+          "savePath": {"type": "string"},
+          "saveSha256": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"},
+          "stewardSnapshotId": {"type": "integer", "minimum": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "intervals": {
+      "type": "array",
+      "minItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["index", "id", "from", "to", "events"],
+        "properties": {
+          "index": {"type": "integer", "minimum": 1},
+          "id": {"type": "string"},
+          "from": {"type": "string"},
+          "to": {"type": "string"},
+          "events": {
+            "type": "array",
+            "items": {"$ref": "#/$defs/event"}
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "$defs": {
+    "event": {
+      "type": "object",
+      "required": ["eventId", "scenarioType", "seed", "geometry", "requested", "ledgerFile"],
+      "properties": {
+        "eventId": {"type": "string"},
+        "scenarioType": {"type": "string"},
+        "seed": {"type": "integer", "minimum": 0},
+        "geometry": {"type": "object"},
+        "requested": {"type": "object"},
+        "applied": {"type": "object"},
+        "expectedSteward": {"type": "object"},
+        "ledgerFile": {"type": "string"},
+        "ledgerSha256": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

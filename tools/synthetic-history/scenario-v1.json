@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "steward-synthetic-history-v1",
+  "sequenceSeed": 41041,
+  "generator": {
+    "name": "steward-synthetic-history",
+    "version": "1.0.0",
+    "prng": "pcg32"
+  },
+  "description": "Six cumulative snapshots: baseline plus five controlled mutation intervals.",
+  "anchors": {
+    "settlement_alpha": {"separationMinimumM": 0, "radiusM": 45},
+    "settlement_beta": {"separationMinimumM": 640, "radiusM": 35},
+    "settlement_gamma": {"separationMinimumM": 640, "radiusM": 35},
+    "settlement_delta": {"separationMinimumM": 640, "radiusM": 35}
+  },
+  "intervals": [
+    {
+      "index": 1,
+      "id": "01-footprint",
+      "events": [
+        {"eventId": "settlement_alpha_01", "scenarioType": "settlement_increment", "targetCount": 64, "radiusM": 45},
+        {"eventId": "harvest_alpha_01", "scenarioType": "remove_disc", "targetCount": 24, "objectTypes": ["Birch1", "Birch2", "Oak1"]},
+        {"eventId": "mine_alpha_01", "scenarioType": "remove_disc", "targetCount": 8, "objectTypes": ["MineRock_Copper", "MineRock_Tin", "MineRock_Obsidian"]}
+      ]
+    },
+    {
+      "index": 2,
+      "id": "02-distributed",
+      "events": [
+        {"eventId": "settlement_alpha_02", "scenarioType": "settlement_increment", "targetCount": 64, "radiusM": 45},
+        {"eventId": "settlement_beta_02", "scenarioType": "settlement_increment", "targetCount": 32, "radiusM": 35},
+        {"eventId": "settlement_gamma_02", "scenarioType": "settlement_increment", "targetCount": 64, "radiusM": 35},
+        {"eventId": "settlement_delta_02", "scenarioType": "settlement_increment", "targetCount": 128, "radiusM": 35},
+        {"eventId": "harvest_north_02", "scenarioType": "remove_disc", "targetCount": 16},
+        {"eventId": "harvest_east_02", "scenarioType": "remove_disc", "targetCount": 32},
+        {"eventId": "harvest_south_02", "scenarioType": "remove_disc", "targetCount": 64}
+      ]
+    },
+    {
+      "index": 3,
+      "id": "03-growth-tornado",
+      "events": [
+        {"eventId": "settlement_alpha_03", "scenarioType": "settlement_increment", "targetCount": 128, "radiusM": 45},
+        {"eventId": "tornado_01", "scenarioType": "remove_corridor", "targetCount": 160, "widthM": 35, "lengthM": 700, "objectTypes": ["vegetation", "resources", "synthetic_structures"]}
+      ]
+    },
+    {
+      "index": 4,
+      "id": "04-local-churn",
+      "events": [
+        {"eventId": "settlement_alpha_04", "scenarioType": "settlement_increment", "targetCount": 64, "radiusM": 45},
+        {"eventId": "churn_yard_04", "scenarioType": "replace_churn", "targetCount": 224, "radiusM": 45, "minimumReplacementOffsetM": 0.25}
+      ]
+    },
+    {
+      "index": 5,
+      "id": "05-concurrent-scale",
+      "events": [
+        {"eventId": "settlement_alpha_05", "scenarioType": "settlement_increment", "targetCount": 256, "radiusM": 45},
+        {"eventId": "settlement_beta_05", "scenarioType": "settlement_increment", "targetCount": 128, "radiusM": 35},
+        {"eventId": "settlement_gamma_05", "scenarioType": "settlement_increment", "targetCount": 128, "radiusM": 35},
+        {"eventId": "harvest_distributed_05", "scenarioType": "remove_disc", "targetCount": 256},
+        {"eventId": "tornado_02", "scenarioType": "remove_corridor", "targetCount": 256, "widthM": 35, "lengthM": 900, "objectTypes": ["vegetation", "resources", "synthetic_structures"]}
+      ]
+    }
+  ]
+}
