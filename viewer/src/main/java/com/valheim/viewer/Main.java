@@ -60,6 +60,10 @@ public class Main {
         boolean cacheFields = false;
         String cachePath = "world-cache.duckdb";
         String renderDirPath = "rendered";
+        // Serve the UI from disk instead of the copy baked into the jar. Without this, changing
+        // one line of index.html costs a Maven build, an image rebuild and a container restart —
+        // and the restart re-parses the whole world before the port opens.
+        String staticDirPath = null;
         String probeHashArg = null;
         // Provenance for a batch cache build. Without these a --build-cache run derives world_id
         // from the filename, which is why snapshots built by the container never matched the
@@ -101,6 +105,9 @@ public class Main {
                 case "--render-dir":
                     if (i + 1 < args.length) renderDirPath = args[++i];
                     break;
+                case "--static-dir":
+                    if (i + 1 < args.length) staticDirPath = args[++i];
+                    break;
                 case "--probe-hash":
                     if (i + 1 < args.length) probeHashArg = args[++i];
                     break;
@@ -135,7 +142,7 @@ public class Main {
         File dbFile = new File(dbPath);
         if (!dbFile.exists()) {
             System.err.println("ERROR: Save file not found: " + dbFile.getAbsolutePath());
-            System.err.println("Usage: java -Xmx3g -jar world-viewer.jar [save.db] [--port 8003] [--build-cache] [--render-layers] [--batch-only] [--cache-fields] [--defer-indexes] [--import-archive <dir>] [--import-latest N]");
+            System.err.println("Usage: java -Xmx3g -jar world-viewer.jar [save.db] [--port 8003] [--build-cache] [--render-layers] [--batch-only] [--cache-fields] [--defer-indexes] [--import-archive <dir>] [--import-latest N] [--static-dir <dir>]");
             System.exit(1);
         }
 
@@ -350,7 +357,7 @@ public class Main {
         );
         log.info("Item classification: {} entries loaded", classification.size());
 
-        ApiServer server = new ApiServer(parser);
+        ApiServer server = new ApiServer(parser, staticDirPath);
         server.setStore(store);
         server.setContracts(contracts);
         server.setMetrics(metrics);

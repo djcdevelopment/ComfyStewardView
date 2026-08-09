@@ -23,6 +23,8 @@ import com.valheim.viewer.store.ZdoFlatStore.PlayerRecord;
 import com.valheim.viewer.parser.WorldParser;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
+import io.javalin.http.Header;
+import io.javalin.http.staticfiles.Location;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,13 +59,49 @@ public class ApiServer {
     private volatile AnalyticsCacheReader analyticsCacheReader = null;
 
     public ApiServer(WorldParser parser) {
+        this(parser, null);
+    }
+
+    /**
+     * @param staticDirPath directory to serve the UI from instead of the copy baked into the jar,
+     *                      or null to use only the baked copy. Lets a UI change ship by writing one
+     *                      file, rather than by rebuilding the image and restarting the container —
+     *                      a restart re-parses the whole world before the port opens.
+     */
+    public ApiServer(WorldParser parser, String staticDirPath) {
         this.parser = parser;
+        File staticDir = (staticDirPath == null || staticDirPath.isBlank())
+            ? null : new File(staticDirPath);
+        // A path that does not resolve is a misconfiguration, not a reason to serve nothing.
+        boolean useExternal = staticDir != null && staticDir.isDirectory();
+        if (staticDir != null && !useExternal) {
+            log.warn("--static-dir {} is not a directory; serving the UI baked into the jar",
+                staticDir.getAbsolutePath());
+        }
         this.app = Javalin.create(config -> {
+            // Registered ahead of the classpath handler so it shadows the baked copy. The classpath
+            // handler stays registered as a fallback: the override directory lives in a Docker
+            // volume that can legitimately be empty, and an empty override must degrade to the
+            // shipped UI rather than 404 a publicly funnelled page.
+            if (useExternal) {
+                config.staticFiles.add(staticConfig -> {
+                    staticConfig.directory  = staticDir.getAbsolutePath();
+                    staticConfig.location   = Location.EXTERNAL;
+                    staticConfig.hostedPath = "/";
+                    // The whole point of this path is that a push lands without a restart, so
+                    // nothing downstream may hold a stale copy. Javalin's default here is
+                    // max-age=0, which still permits revalidated caching.
+                    staticConfig.headers    = Map.of(Header.CACHE_CONTROL, "no-store");
+                });
+            }
             config.staticFiles.add("/static");
             config.bundledPlugins.enableCors(cors -> cors.addRule(rule -> {
                 rule.anyHost();
             }));
         });
+        if (useExternal) {
+            log.info("Serving UI from {} (jar copy is the fallback)", staticDir.getAbsolutePath());
+        }
         registerRoutes();
     }
 

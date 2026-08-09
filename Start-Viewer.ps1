@@ -1,7 +1,16 @@
 param(
     [string]$WorldDb,
     [int]$Port = 7080,
-    [switch]$NoBrowser
+    [switch]$NoBrowser,
+    # Point at the artifacts the publish lane produces, so local runs see the real snapshot
+    # history, deltas and rendered rasters instead of an empty cache next to the jar.
+    [string]$Cache     = "$env:LOCALAPPDATA\steward-publish\out\world-cache.duckdb",
+    [string]$RenderDir = "$env:LOCALAPPDATA\steward-publish\out\rendered",
+    # Serve the UI straight from the working copy. Editing index.html then refreshing the
+    # browser is the whole loop - no rebuild, no restart. Defaults to the repo's static dir.
+    [string]$StaticDir = '',
+    # The jar only needs rebuilding when Java changes; skip it when iterating on the UI.
+    [switch]$SkipBuild
 )
 
 $ErrorActionPreference = 'Stop'
@@ -32,6 +41,14 @@ function Get-JavaCommand {
         if (Test-Path $javaFromHome) {
             return $javaFromHome
         }
+    }
+
+    # The repo vendors its own JDK under .tools, the same one tools\Publish-Steward.ps1 defaults
+    # to. This machine has no Java on PATH and no JAVA_HOME, so without this the launcher fails
+    # on a box where the publish lane runs fine.
+    $vendored = Join-Path (Get-RepoRoot) '.tools\jdk-17.0.19+10\bin\java.exe'
+    if (Test-Path $vendored) {
+        return $vendored
     }
 
     return $null
@@ -74,15 +91,37 @@ function Get-MavenCommand([string]$RepoRoot) {
     return $mavenCmd
 }
 
+# Remembering the last save keeps this a one-command loop. Prompting on every run is fine when
+# you launch the viewer occasionally; it is friction when you are restarting it to pick up a
+# Java change while iterating.
+function Get-LastWorldDbPath {
+    Join-Path $env:LOCALAPPDATA 'steward-publish\last-world.txt'
+}
+
 function Resolve-WorldDb([string]$InitialValue) {
     $value = $InitialValue
+    $memo  = Get-LastWorldDbPath
+
+    if ([string]::IsNullOrWhiteSpace($value) -and (Test-Path -LiteralPath $memo)) {
+        $remembered = (Get-Content -LiteralPath $memo -Raw).Trim()
+        if (![string]::IsNullOrWhiteSpace($remembered) -and (Test-Path -LiteralPath $remembered)) {
+            Write-Host "Using the last world: $remembered" -ForegroundColor DarkGray
+            Write-Host "  (pass -WorldDb to change it)" -ForegroundColor DarkGray
+            $value = $remembered
+        }
+    }
+
     while ([string]::IsNullOrWhiteSpace($value) -or !(Test-Path -LiteralPath $value)) {
         if (![string]::IsNullOrWhiteSpace($value)) {
             Write-Host "File not found: $value" -ForegroundColor Yellow
         }
         $value = Read-Host "Enter the full path to the Valheim world .db file"
     }
-    return (Resolve-Path -LiteralPath $value).Path
+
+    $resolved = (Resolve-Path -LiteralPath $value).Path
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $memo) | Out-Null
+    Set-Content -LiteralPath $memo -Value $resolved -Encoding utf8
+    return $resolved
 }
 
 function Ensure-LocalValheimSaveTools([string]$MavenCmd, [string]$RepoRoot) {
@@ -156,14 +195,18 @@ $mvnCmd = Get-MavenCommand $repoRoot
 $resolvedDb = Resolve-WorldDb $WorldDb
 Ensure-LocalValheimSaveTools -MavenCmd $mvnCmd -RepoRoot $repoRoot
 
-Write-Step "Building the viewer jar"
-& $mvnCmd -f (Join-Path $viewerDir 'pom.xml') package -DskipTests
-if ($LASTEXITCODE -ne 0) {
-    Fail "Build failed. Scroll up to the Maven error output."
+if ($SkipBuild) {
+    Write-Step "Skipping the build (-SkipBuild)"
+} else {
+    Write-Step "Building the viewer jar"
+    & $mvnCmd -f (Join-Path $viewerDir 'pom.xml') package -DskipTests
+    if ($LASTEXITCODE -ne 0) {
+        Fail "Build failed. Scroll up to the Maven error output."
+    }
 }
 
 if (!(Test-Path $targetJar)) {
-    Fail "Build completed, but the runnable jar was not found at $targetJar"
+    Fail "The runnable jar was not found at $targetJar. Run without -SkipBuild to build it."
 }
 
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
@@ -172,12 +215,34 @@ Stop-ExistingPortProcess $Port
 $stdoutLog = Join-Path $logsDir 'run.log'
 $stderrLog = Join-Path $logsDir 'run.err'
 
+if (-not $StaticDir) {
+    $StaticDir = Join-Path $repoRoot 'viewer\src\main\resources\static'
+}
+
+# The cache is what carries snapshot history, the Changes comparisons and the delta rasters.
+# Warn rather than fail without it: the endpoints served from the boot parse still work, so a
+# run against a bare save is useful, just not for anything snapshot-scoped.
+if (!(Test-Path $Cache)) {
+    Write-Host "WARNING: no analytics cache at $Cache - History and Changes will be empty." -ForegroundColor Yellow
+    Write-Host "         Run tools\Publish-Steward.ps1 (without -Push) to produce one." -ForegroundColor Yellow
+}
+
 Write-Step "Starting the viewer"
+Write-Host "  cache:  $Cache"
+Write-Host "  render: $RenderDir"
+Write-Host "  ui:     $StaticDir  (edit + refresh; no restart needed)"
+
 $arguments = @(
     '-Xmx3g',
     '-jar',
     $targetJar,
     $resolvedDb,
+    '--cache',
+    $Cache,
+    '--render-dir',
+    $RenderDir,
+    '--static-dir',
+    $StaticDir,
     '--port',
     $Port,
     '--no-browser'
