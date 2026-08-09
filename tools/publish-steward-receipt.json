@@ -1,12 +1,12 @@
 ﻿{
-    "started_at":  "2026-08-08T16:13:53.0142226Z",
-    "finished_at":  "2026-08-08T16:28:26.2509600Z",
+    "started_at":  "2026-08-08T22:37:04.0305888Z",
+    "finished_at":  "2026-08-08T22:53:33.8550012Z",
     "pushed":  true,
     "ssh_target":  "am4",
-    "git_sha":  "e544e9a",
-    "am4_world_sha256":  "60e4ebef940e30c43b65c0965d1e9410f851ef8ebf1201eaf3826e2452f79b6f",
-    "omen_world":  "ComfyEra16_backup_auto-20260808074138.db",
-    "cache_mb":  3109.8,
+    "git_sha":  "6549492",
+    "am4_world_sha256":  "8ec7c30dcd37d402feeb48e6165ffd7b144efde5e37fe5e040c0cf26366a1a80",
+    "omen_world":  "ComfyEra16_backup_auto-20260808145538.db",
+    "cache_mb":  3122,
     "rendered_mb":  0.5,
     "delta_pairs":  1,
     "archived":  false,
@@ -23,7 +23,7 @@
                           "snapshot_id":  "2",
                           "world_id":  "ComfyEra16",
                           "dictionary":  "0.221.12",
-                          "zdo_rows":  9155594
+                          "zdo_rows":  9155596
                       }
                   ]
 }

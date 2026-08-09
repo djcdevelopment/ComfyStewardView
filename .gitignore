@@ -18,3 +18,5 @@ viewer/target/test-classes/
 viewer/target/surefire-reports/
 viewer/target/maven-status/maven-compiler-plugin/testCompile/
 /steward-config.json
+# Synthetic validation saves, caches, ledgers, PNGs, and receipts
+/artifacts/synthetic-history/
