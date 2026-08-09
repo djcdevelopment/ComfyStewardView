@@ -1,0 +1,67 @@
+{
+  "schema": "steward-resource-prefabs/v1",
+  "_comment": [
+    "Which prefabs count as a harvestable resource, for the harvest-vs-regrowth series.",
+    "",
+    "Data, not code, for two reasons. Modded servers add prefabs this repo has never seen, and",
+    "the classifier cannot help here: Categories.NATURE is never assigned on a real world (every",
+    "tree and rock carries a property flag and falls through to UNKNOWN), so grouping has to be",
+    "by name. Names come from PrefabDictionary, which validates every entry against the same",
+    "stable hash the parser reads, so a name here is a real prefab or it matches nothing.",
+    "",
+    "Patterns are Java regexes matched against the prefab name, case-insensitively. First",
+    "matching group wins, so order matters: put the specific ahead of the general.",
+    "",
+    "The 'seen' field on each group lists names actually observed in this repo's corpus. It is",
+    "documentation, not configuration - it exists so a reader can tell which patterns are",
+    "grounded in observed data and which are carried for worlds we have not looked at yet."
+  ],
+  "groups": [
+    {
+      "id": "ore",
+      "label": "Ore and metal deposits",
+      "seen": ["rock4_copper_frac"],
+      "patterns": [
+        "^MineRock",
+        "^rock4_(copper|tin|silver|obsidian|iron)",
+        "^silvervein",
+        "^(Flametal|FlametalOre)",
+        "^giant_(helmet|brain|sword|ribs)",
+        "^MineRock5$"
+      ]
+    },
+    {
+      "id": "tree",
+      "label": "Trees",
+      "seen": ["Birch1", "BirchStub", "Birch_log_half"],
+      "patterns": [
+        "^(Beech|Birch|Oak|Pine|FirTree|SwampTree|YggaShoot|Ashlands_tree|Bonemaw)",
+        "Stub$",
+        "_log(_half)?$",
+        "^(beech|birch|oak|pine|fir)_"
+      ]
+    },
+    {
+      "id": "forage",
+      "label": "Foraged pickups",
+      "seen": ["Pickable_Stone"],
+      "patterns": [
+        "^Pickable_",
+        "^(RaspberryBush|BlueberryBush|CloudberryBush)",
+        "^(Mushroom|Dandelion|Thistle|Carrot|Turnip|Onion|Barley|Flax)"
+      ]
+    },
+    {
+      "id": "stone",
+      "label": "Rock and stone",
+      "seen": ["Rock_4", "Rock_3", "Rock_3_frac", "rock4_coast", "rock4_forest_frac"],
+      "patterns": [
+        "^Rock_?\\d",
+        "^rock\\d",
+        "^(Rock|rock)[_0-9].*_frac$",
+        "^Stone$",
+        "^(StatueEvil|StoneTower|stone_pile)"
+      ]
+    }
+  ]
+}
