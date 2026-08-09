@@ -79,10 +79,16 @@ in the am4-sourced snapshot equals the SHA-256 of the world file AM4 will actual
 the DuckDB view and the in-memory view would describe different saves. It also fails closed if any
 snapshot has zero ZDO rows or no prefab dictionary recorded.
 
-**Retention splits by host.** History belongs on OMEN; AM4 receives only the snapshots it serves,
-so its volume stays bounded.
+**Retention splits by host (updated 2026-08-09).** The Parquet archive on OMEN
+(`%LOCALAPPDATA%\steward-publish\archive\`) is the history of record and accumulates forever.
+The live cache is disposable: every publish rebuilds it fresh from the archive's latest-6
+window plus that run's new worlds (unindexed bulk loads, indexes built once at the end), so
+AM4's volume stays bounded at ~7 GB and indexed appends never happen in the publish lane. A
+continuity gate fails the publish if any previously shipped snapshot is missing from the new
+cache. AM4's ingest endpoint is disabled (`STEWARD_DISABLE_INGEST=1`) — publish owns that
+history; ingest remains the lane for lab instances. See `SAVES.md` for the location registry.
 
-**Archive with `-Archive`, which is lossless.** A snapshot costs ~1,196 MB as live DuckDB but
+**Archiving is always on and lossless.** A snapshot costs ~1,196 MB as live DuckDB but
 **113.7 MB as Parquet + zstd — 10.5x smaller with every column of every row retained**, written in
 about three seconds. Files land in `<ArchiveDir>/snapshot-<id>-<source>/{zdo,container_item,
 world_snapshot}.parquet`.
@@ -190,8 +196,10 @@ most of its advantage. Two consequences:
 
 - Batch builds that start from nothing (`--rebuild-cache`, what `Publish-Steward.ps1` does) are
   cheap. Budget a minute, not a quarter of an hour.
-- Growing a long history by repeated ingest gets progressively more expensive. If retention grows,
-  the fix is to drop and rebuild indexes around a bulk append rather than to accept the cost.
+- Growing a long history by repeated ingest gets progressively more expensive. As of 2026-08-09
+  the ingest path drops indexes before its bulk append and rebuilds them at finish, and the
+  publish lane avoids indexed appends entirely (fresh cache from the Parquet archive each run),
+  so both lanes stay linear per snapshot.
 
 **Storage, measured:** a single-snapshot cache is ~1.2 GB; a two-snapshot cache is ~3.2 GB, so the
 appended snapshot costs closer to 2 GB. A 42-snapshot window is therefore tens of GB, on a host
