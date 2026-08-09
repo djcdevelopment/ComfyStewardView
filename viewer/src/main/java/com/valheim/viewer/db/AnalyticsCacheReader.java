@@ -185,6 +185,22 @@ public final class AnalyticsCacheReader implements AutoCloseable {
         return new File(new File(renderDir, String.valueOf(targetSnapshotId)), clean);
     }
 
+    /**
+     * A world's change-history series, or null when the world id cannot name one.
+     *
+     * <p>The id arrives as a query parameter, so it is run through the same sanitiser
+     * {@link BaselineBuilder} writes with — which maps every character outside
+     * {@code [A-Za-z0-9_.-]} to an underscore, and therefore cannot emit a separator or a dot
+     * segment. The equality check afterwards is the part that matters: it rejects any id that
+     * would have had to be rewritten to be safe, rather than silently serving a neighbouring
+     * world's file to someone who asked for {@code ../other}.
+     */
+    public File baselineSeriesFile(String worldId) {
+        if (worldId == null || worldId.isBlank()) return null;
+        if (!BaselineBuilder.pathSafe(worldId).equals(worldId)) return null;
+        return new File(new File(renderDir, "baseline"), worldId + "-series.json");
+    }
+
     public File deltaManifestFile(long fromSnapshotId, long toSnapshotId) {
         return new File(new File(new File(renderDir, "delta"),
             RenderedDeltaLayerBuilder.pairDirectoryName(fromSnapshotId, toSnapshotId)), "manifest.json");
