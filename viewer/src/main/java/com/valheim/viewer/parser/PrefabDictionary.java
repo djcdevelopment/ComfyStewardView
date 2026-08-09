@@ -10,8 +10,10 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Verified prefab hash → name dictionary, extracted from the game assembly.
@@ -58,6 +60,19 @@ public final class PrefabDictionary {
             this.wearNTear = wearNTear;
             this.category = category;
         }
+
+        /**
+         * A placeable, destructible construction piece — the assembly gives the prefab both a
+         * Piece and a WearNTear component.
+         *
+         * <p>Piece alone is not sufficient: the 29 Piece-without-WearNTear prefabs are saplings,
+         * roads and terrain operations ({@code sapling_carrot}, {@code paved_road}, {@code raise}),
+         * none of which is construction. WearNTear alone is not sufficient either: it covers
+         * world-generated props with no build recipe ({@code vines}, {@code goblin_woodwall_1m},
+         * {@code Ashlands_Wall_2x2}). All 506 prefabs that carry both also carry a build-menu
+         * category, which is the independent confirmation that this pair is the right test.
+         */
+        public boolean isBuildPiece() { return piece && wearNTear; }
     }
 
     private final Map<Integer, Entry> byHash;
@@ -90,6 +105,13 @@ public final class PrefabDictionary {
     public String generatedAt()         { return generatedAt; }
     public String sourceDescription()   { return source; }
     public Iterable<Entry> entries()    { return byHash.values(); }
+
+    /** Hashes of every {@link Entry#isBuildPiece()} prefab, for classifying by prefab identity. */
+    public Set<Integer> buildPieceHashes() {
+        Set<Integer> out = new HashSet<>(Math.max(16, byHash.size()));
+        for (Entry e : byHash.values()) if (e.isBuildPiece()) out.add(e.hash);
+        return out;
+    }
 
     // ----- Loading -----
 

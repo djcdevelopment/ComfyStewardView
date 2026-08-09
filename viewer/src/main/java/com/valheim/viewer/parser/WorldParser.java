@@ -306,8 +306,9 @@ public class WorldParser {
             String.format("%,d", store.unknownHashCounts.size()));
 
         if (store.dictionarySource != null) {
-            log.info("  Dictionary: {} entries, game {}, {}",
-                store.dictionaryEntries, store.dictionaryGameVersion, store.dictionarySource);
+            log.info("  Dictionary: {} entries, game {}, {} — {} of them construction pieces",
+                store.dictionaryEntries, store.dictionaryGameVersion, store.dictionarySource,
+                store.buildPieceHashes.size());
         } else {
             log.info("  Dictionary: not loaded — hardcoded names only");
         }
@@ -340,6 +341,7 @@ public class WorldParser {
         for (PrefabDictionary.Entry e : dict.entries()) {
             store.registerHashName(e.hash, e.name);
         }
+        store.buildPieceHashes      = dict.buildPieceHashes();
         store.dictionaryEntries     = dict.size();
         store.dictionaryGameVersion = dict.gameVersion();
         store.dictionaryGeneratedAt = dict.generatedAt();
@@ -465,9 +467,17 @@ public class WorldParser {
             );
         }
 
-        // No property flags → pure positional ZDO (very lightweight nature object)
+        // No property flags → pure positional ZDO (very lightweight nature object), unless the
+        // prefab itself is construction. A piece with no properties at all is what a scripted
+        // placer leaves behind; nothing about it is nature.
         if ((flags & 0xFF) == 0) {
             if (validPos) store.allHeatmap.increment(x, z);
+            if (store.buildPieceHashes.contains(hash)) {
+                store.buildingCount++;
+                if (validPos) store.buildingHeatmap.increment(x, z);
+                recordCacheZdo(zdoIndex, store, hash, Categories.BUILDING, x, y, z, 0L, 0L, 0L, flags);
+                return;
+            }
             byte cat = y > 3000f ? Categories.INTERIOR : Categories.NATURE;
             recordCacheZdo(zdoIndex, store, hash, cat, x, y, z, 0L, 0L, 0L, flags);
             return;
@@ -778,8 +788,20 @@ public class WorldParser {
             return;
         }
 
-        // Building piece
-        if (hasCreator && (hasSupport || hasHealth)) {
+        // Building piece. Two independent sufficient signals:
+        //
+        //  1. the property shape a player-placed piece leaves behind (creator + health/support);
+        //  2. prefab identity — the verified dictionary says this prefab is a construction piece.
+        //
+        // (2) was added because a piece that carries neither creator nor health is still a piece.
+        // On ComfyEra16, 895,488 of the 4,720,394 UNKNOWN ZDOs are dictionary-confirmed
+        // construction with no creator field — world-generated blackmarble_*, stone_wall_2x1,
+        // woodwall, wood_floor, wood_beam_* — and the synthetic-history corpus places wood_floor
+        // with no properties beyond a string, which is what surfaced the gap.
+        //
+        // Order matters: chests, beds, signs, portals and item stands are all pieces too, and
+        // every one of those branches has already returned above.
+        if ((hasCreator && (hasSupport || hasHealth)) || store.buildPieceHashes.contains(hash)) {
             store.buildingCount++;
             if (validPos) {
                 store.allHeatmap.increment(x, z);

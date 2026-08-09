@@ -158,13 +158,71 @@ so no ZDO was lost or double-counted:
 (`piece_chest_trailer`, `Longship`, `Sailraftr`, `piece_chest_cart`) and gained the 22
 `TreasureChest_*` variants via prefix match.
 
+## The building-piece filter
+
+Until this landed, BUILDING was decided purely by property shape: a `creator` field plus `health`
+or `support`. That is the residue a *player* placement leaves behind, so anything placed by
+something other than a player was invisible to it. The synthetic-history corpus made the gap
+concrete — its 288 `wood_floor` pieces carry no `creator`, no `health` and no `support`, so they
+landed in UNKNOWN and showed up in the `all-zdos` raster but never in `build-activity`.
+
+Prefab identity is now a second, independent sufficient signal. `PrefabDictionary.Entry.isBuildPiece()`
+is `piece && wearNTear` — the assembly gives the prefab both a Piece and a WearNTear component —
+and `WorldParser` classifies any such hash as BUILDING regardless of what properties the ZDO
+carries.
+
+Both halves of the pair are load-bearing:
+
+| test | count | what it is | verdict |
+|---|---|---|---|
+| `piece && wearNTear` | 506 | the build menu: `wood_floor`, `woodwall`, `stone_wall_2x1`, `blackmarble_*`, `piece_workbench`, furniture, placeable food | construction |
+| `piece`, no `wearNTear` | 29 | saplings, `cultivate`, `paved_road`, `raise`, `ship_construction` | not construction |
+| `wearNTear`, no `piece` | 134 | world-gen props with no recipe: `vines`, `goblin_woodwall_1m`, `Ashlands_Wall_2x2`, `dvergrprops_wood_pole` | left UNKNOWN |
+
+All 506 prefabs that carry both also carry a build-menu `category` (BuildingWorkbench,
+BuildingStonecutter, Furniture, Crafting, Misc, Food, Meads, Feasts). Nothing in the other two
+groups does. That independent agreement is why the pair is the test rather than either flag alone.
+
+The check sits with the existing property-shape check, after every more specific branch has
+returned — chests, beds, signs, portals, item stands and ballistas are all pieces too, and each
+keeps its own category. `goblin_bed` is a piece by the dictionary but is short-circuited to
+UNKNOWN earlier as an NPC furnishing, and stays there.
+
+Measured on ComfyEra16 (9,155,594 ZDOs; every other category identical before and after):
+
+| category | before | after | delta |
+|---|---|---|---|
+| BUILDING | 3,629,427 | 4,540,856 | +911,429 |
+| UNKNOWN | 4,720,394 | 3,826,908 | −893,486 |
+| INTERIOR | 399,410 | 381,467 | −17,943 |
+
+The two decreases balance the increase exactly. Most of what moved is world-generated
+construction with no creator — `blackmarble_2x2x2` (146,307), `stone_wall_2x1` (128,282),
+`woodwall` (39,222), `wood_floor` (37,607) — which is genuinely construction and belongs in
+build density. The 3.83M ZDOs still UNKNOWN are legitimately unknown: vegetation, rock,
+pickables, `_ZoneCtrl`, `LocationProxy`, fish.
+
+The INTERIOR loss is pieces above Y=3000, inside dungeon instances. BUILDING already outranked
+INTERIOR for creator-bearing pieces, and the BUILDING category already spanned dungeon-instance
+coordinates before this change, so nothing new appears in the raster's bounds.
+
+**This only takes effect on ingest.** Both `RenderedLayerBuilder` and `RenderedDeltaLayerBuilder`
+skip any snapshot or pair that already has a manifest, and a snapshot's categories are frozen into
+`zdo.category` when it is parsed. Bumping the delta manifest `schemaVersion` would therefore
+re-render old pairs from unchanged rows and produce identical bytes — it is not the lever. To pick
+up the new classification, re-ingest; each ingest appends a new `snapshot_id`, which renders fresh.
+`SnapshotProvenance.DEFAULT_PARSER_VERSION` moved to `1.1.0` so `world_snapshot.parser_version`
+says which snapshots were classified which way. In a cache that mixes the two, delta identity is
+still `prefab_hash` + position, so no phantom changes appear; only the `removed` channel of
+`build-activity` under-counts, because it reads the older snapshot's category.
+
 ## Refresh procedure
 
 1. Regenerate the dump in the baseline repo (`tools/component-packets`) against the new
    `assembly_valheim.dll`.
 2. Copy it over `viewer/src/main/resources/prefab-dump.json` — byte-for-byte, no transformation.
-   The `piece` / `category` / `wearNTear` fields are unused today but are the payload for the
-   deferred building-piece filter; do not strip them.
+   `piece` and `wearNTear` drive the building-piece filter below and `category` is the evidence
+   that the pair is the right test; do not strip them.
 3. Rebuild and check the startup log for **`0 rejected`**. A nonzero count means entries whose
    `sh(name) != hash` — a transcription error or a schema change, not a game change.
 4. Confirm coverage did not regress: `GET /api/v1/summary` → `prefabCoverage.pctResolved`.
