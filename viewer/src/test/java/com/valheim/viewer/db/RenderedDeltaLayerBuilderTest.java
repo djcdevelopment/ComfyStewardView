@@ -34,6 +34,42 @@ class RenderedDeltaLayerBuilderTest {
     @TempDir
     Path tempDir;
 
+    /**
+     * Off-map dungeon interiors and in-sanity-bound-but-out-of-world outliers must not reach the
+     * raster. Both used to be painted: INTERIOR was never filtered, and the old guard only
+     * rejected coordinates past 100 km, so a ZDO at x=40000 — 13.5 km outside the world box —
+     * stretched every layer's bounds around empty space.
+     */
+    @Test
+    void leavesOffMapObjectsOutOfTheRaster() throws Exception {
+        File cache = tempDir.resolve("offmap.duckdb").toFile();
+        File rendered = tempDir.resolve("offmap-rendered").toFile();
+        createSchema(cache);
+        try (Connection conn = open(cache)) {
+            insertSnapshot(conn, 1, "world-a", "dict-1");
+            insertSnapshot(conn, 2, "world-a", "dict-1");
+            // The only object that belongs on the map.
+            insertZdo(conn, 2, 0, 200, "piece_onmap", "BUILDING", 100, 0, 100);
+            // A dungeon interior: real object, no location on a world map.
+            insertZdo(conn, 2, 1, 201, "dungeon_room", "INTERIOR", -20000, 5000, 5000);
+            // Inside the old 100 km sanity bound, outside the world box.
+            insertZdo(conn, 2, 2, 202, "far_outlier", "CREATURE", 40000, 0, 0);
+        }
+
+        File manifestFile = new RenderedDeltaLayerBuilder(cache, rendered).renderPair(1, 2);
+        JsonNode manifest = new ObjectMapper().readTree(manifestFile);
+        assertEquals(3, manifest.path("zdosAdded").asLong(), "all three are still counted");
+        assertEquals(1, manifest.path("spatialZdosAdded").asLong(), "only one is renderable");
+        assertEquals(2, manifest.path("unrenderableZdosAdded").asLong());
+
+        JsonNode all64 = layer(manifest, "all-zdos", 64);
+        assertEquals(1, all64.path("addedRawTotal").asLong());
+        // Bounds describe the one on-map object, not a 60 km span reaching out to the outlier.
+        assertTrue(all64.path("bounds").path("minX").asDouble() >= RenderedLayerBuilder.WORLD_MIN_X);
+        assertTrue(all64.path("bounds").path("maxX").asDouble() <= RenderedLayerBuilder.WORLD_MAX_X);
+        assertTrue(all64.path("width").asInt() <= 2, "one painted cell, not a stretched canvas");
+    }
+
     @Test
     void rendersAlignedChannelsWithTheTabularIdentityRule() throws Exception {
         File cache = tempDir.resolve("fixture.duckdb").toFile();
@@ -79,7 +115,7 @@ class RenderedDeltaLayerBuilderTest {
         assertEquals(3, manifest.path("spatialZdosAdded").asLong());
         assertEquals(1, manifest.path("unrenderableZdosAdded").asLong());
         assertFalse(manifest.path("dictionaryMismatch").asBoolean());
-        assertEquals(2, manifest.path("schemaVersion").asInt());
+        assertEquals(3, manifest.path("schemaVersion").asInt());
         assertEquals(16, manifest.path("layers").size());
 
         JsonNode build64 = layer(manifest, "build-activity", 64);
