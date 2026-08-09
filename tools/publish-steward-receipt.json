@@ -1,29 +1,43 @@
 ﻿{
-    "started_at":  "2026-08-08T22:37:04.0305888Z",
-    "finished_at":  "2026-08-08T22:53:33.8550012Z",
+    "started_at":  "2026-08-09T02:35:19.6277129Z",
+    "finished_at":  "2026-08-09T02:39:20.0411507Z",
     "pushed":  true,
     "ssh_target":  "am4",
-    "git_sha":  "6549492",
-    "am4_world_sha256":  "8ec7c30dcd37d402feeb48e6165ffd7b144efde5e37fe5e040c0cf26366a1a80",
-    "omen_world":  "ComfyEra16_backup_auto-20260808145538.db",
-    "cache_mb":  3122,
-    "rendered_mb":  0.5,
-    "delta_pairs":  1,
-    "archived":  false,
-    "archive_dir":  null,
-    "archive_mb":  0,
+    "git_sha":  "37f4124",
+    "am4_world_sha256":  "dfdf88ccc7f651a241ed7d872d92e602c1ec2d659d1461f23b19dbf6f453dade",
+    "omen_world":  "ComfyEra16_backup_auto-20260808185542.db",
+    "cache_mb":  3893.5,
+    "rendered_mb":  0.8,
+    "delta_pairs":  3,
+    "archived":  true,
+    "archive_dir":  "C:\\Users\\derek\\AppData\\Local\\steward-publish\\archive",
+    "archive_mb":  341,
+    "live_window":  6,
+    "new_snapshots":  1,
     "snapshots":  [
                       {
                           "snapshot_id":  "1",
                           "world_id":  "ComfyEra16",
+                          "source":  "am4",
+                          "file_hash":  "052618b4a2ca112d35e1b03c5d485c2518eb8d1c3116c3ecb594ca4d7374895a",
                           "dictionary":  "0.221.12",
                           "zdo_rows":  9155593
                       },
                       {
                           "snapshot_id":  "2",
                           "world_id":  "ComfyEra16",
+                          "source":  "omen",
+                          "file_hash":  "1ae8bc8e7dd8aea985ced03598cc771127613bcd2ae187f20507738b3a44faff",
                           "dictionary":  "0.221.12",
                           "zdo_rows":  9155596
+                      },
+                      {
+                          "snapshot_id":  "3",
+                          "world_id":  "ComfyEra16",
+                          "source":  "am4",
+                          "file_hash":  "dfdf88ccc7f651a241ed7d872d92e602c1ec2d659d1461f23b19dbf6f453dade",
+                          "dictionary":  "0.221.12",
+                          "zdo_rows":  9155593
                       }
                   ]
 }
