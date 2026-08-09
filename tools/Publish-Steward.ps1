@@ -135,6 +135,19 @@ function Get-ImageDimensions {
 
 # --- 1. Preflight ---------------------------------------------------------
 Write-Host '[1/7] Preflight...'
+# Single-publisher lock: two overlapping publishes share one workdir cache and one AM4
+# volume, and interleaving them corrupts both. Stale locks (>2h) are assumed crashed.
+$lockFile = Join-Path $WorkDir '.publish-lock'
+if (Test-Path $lockFile) {
+    $age = (Get-Date) - (Get-Item $lockFile).LastWriteTime
+    if ($age.TotalHours -lt 2) { throw "another publish appears to be running (lock $lockFile, age $([int]$age.TotalMinutes) min); remove it if that's wrong" }
+    Write-Host '      removing stale publish lock'
+    Remove-Item $lockFile -Force
+}
+New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+Set-Content -Path $lockFile -Value "$PID $(Get-Date -Format o)"
+trap { Remove-Item $lockFile -Force -ErrorAction SilentlyContinue; break }
+
 if (-not (Test-Path $java)) { throw "java not found at $java (pass -JavaHome)" }
 if (-not (Test-Path $jar))  { throw "viewer jar not found at $jar - run: mvn -f viewer/pom.xml package -DskipTests" }
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
@@ -225,6 +238,7 @@ if (-not $doOmen) { Write-Host "      omen world unchanged since last publish (s
 if (-not $doAm4 -and -not $doOmen) {
     if ($NoOpIfUnchanged) {
         Write-Host 'nothing new to publish: both worlds match the previous receipt hashes (no-op exit)'
+        Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
         exit 0
     }
     throw 'nothing new to publish: both worlds match the previous receipt hashes'
@@ -620,5 +634,6 @@ $receipt = [ordered]@{
 }
 $receiptPath = Join-Path $PSScriptRoot 'publish-steward-receipt.json'
 $receipt | ConvertTo-Json -Depth 5 | Set-Content -Path $receiptPath -Encoding utf8
+Remove-Item $lockFile -Force -ErrorAction SilentlyContinue
 Write-Host ''
 Write-Host "Receipt: $receiptPath"

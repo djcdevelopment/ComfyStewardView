@@ -18,9 +18,10 @@ $logDir = Join-Path $env:LOCALAPPDATA 'steward-publish\logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir ("nightly-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 
-& powershell -NoProfile -ExecutionPolicy Bypass `
-    -File (Join-Path $PSScriptRoot 'Publish-Steward.ps1') -Push -NoOpIfUnchanged `
-    *> $log
+# cmd-level redirection: PowerShell 5.1 wraps a native child's stderr lines in
+# ErrorRecords under -ErrorAction Stop, turning harmless SLF4J warnings fatal.
+$publishScript = Join-Path $PSScriptRoot 'Publish-Steward.ps1'
+& cmd /c "powershell -NoProfile -ExecutionPolicy Bypass -File `"$publishScript`" -Push -NoOpIfUnchanged > `"$log`" 2>&1"
 $exit = $LASTEXITCODE
 
 Get-ChildItem $logDir -Filter 'nightly-*.log' | Sort-Object Name -Descending |
