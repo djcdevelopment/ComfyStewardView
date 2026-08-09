@@ -1208,7 +1208,25 @@ public class ApiServer {
         }
     }
 
+    /** Serializes post-ingest work (delta compute + raster renders) behind the response. */
+    private final java.util.concurrent.ExecutorService ingestPostWork =
+        java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "ingest-post-work");
+            t.setDaemon(true);
+            return t;
+        });
+
+    private static boolean ingestDisabled() {
+        String v = System.getenv("STEWARD_DISABLE_INGEST");
+        return v != null && (v.equals("1") || v.equalsIgnoreCase("true"));
+    }
+
     private void handleDbSnapshotIngest(Context ctx) {
+        if (ingestDisabled()) {
+            ctx.status(403).json("{\"error\":\"ingest is disabled on this instance; " +
+                "production history flows through the publish lane\"}");
+            return;
+        }
         AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
         if (reader == null) return;
         try {
@@ -1231,42 +1249,56 @@ public class ApiServer {
                     SnapshotProvenance.CURRENT_SCHEMA_VERSION
             );
 
-            // Run ingestion through writable cache
+            // Run ingestion through writable cache: parse + unindexed append + index rebuild.
+            // Delta compute and raster renders run after the response — the delta of a 9M-ZDO
+            // world can take minutes and blocking the HTTP response on it caused client timeouts.
             ObjectNode receipt;
             try (AnalyticsCache cache = new AnalyticsCache(reader.dbFile(), false)) {
-                receipt = SnapshotIngestService.processIngest(saveFile, prov, cache);
+                receipt = SnapshotIngestService.processIngest(saveFile, prov, cache, true);
             }
 
-            // Render map raster layers for the new snapshot after the writable cache closes.
-            // The snapshot data is already committed, so a render failure degrades, not fails.
             long newSnapshotId = receipt.path("snapshotId").asLong(0);
-            boolean rendered = false;
-            int deltaPairsRendered = 0;
+            long prevSnapshotId = receipt.path("delta").path("prevSnapshotId").asLong(-1);
             if (newSnapshotId > 0) {
-                try {
-                    new RenderedLayerBuilder(reader.dbFile(), reader.renderDir(), newSnapshotId).renderDefaults();
-                    rendered = true;
-                } catch (Exception renderEx) {
-                    log.error("Rendered layer build failed for snapshot {}", newSnapshotId, renderEx);
-                }
-                try {
-                    deltaPairsRendered = new RenderedDeltaLayerBuilder(reader.dbFile(), reader.renderDir())
-                        .renderRecentPairs();
-                } catch (Exception renderEx) {
-                    log.error("Rendered delta layer build failed after snapshot {}", newSnapshotId, renderEx);
-                }
-                try {
-                    reader.refreshLatestSnapshotId();
-                } catch (Exception refreshEx) {
-                    log.warn("Could not refresh latest analytics snapshot after ingest: {}", refreshEx.toString());
-                }
+                receipt.put("postWorkQueued", true);
+                ingestPostWork.submit(() -> runIngestPostWork(reader, prevSnapshotId, newSnapshotId));
             }
-            receipt.put("renderedLayers", rendered);
-            receipt.put("deltaPairsRendered", deltaPairsRendered);
             ctx.json(receipt.toString());
         } catch (Exception e) {
             log.error("Snapshot ingestion failed", e);
             ctx.status(500).json("{\"error\":\"snapshot ingestion failed: " + e.getMessage() + "\"}");
+        }
+    }
+
+    /** Post-response ingest work: delta compute + raster renders. Failures log, never throw. */
+    private void runIngestPostWork(AnalyticsCacheReader reader, long prevSnapshotId, long newSnapshotId) {
+        if (prevSnapshotId > 0) {
+            try (AnalyticsCache cache = new AnalyticsCache(reader.dbFile(), false)) {
+                SnapshotDeltaEngine.DeltaResult delta =
+                    SnapshotDeltaEngine.computeDelta(cache.connection(), prevSnapshotId, newSnapshotId);
+                cache.recordDelta(prevSnapshotId, delta.zdosAdded(), delta.zdosRemoved(),
+                    delta.zdosModified(), delta.containerItemsDelta());
+                log.info("Deferred delta recorded for {} -> {}: +{} -{}", prevSnapshotId, newSnapshotId,
+                    delta.zdosAdded(), delta.zdosRemoved());
+            } catch (Exception e) {
+                log.error("Deferred delta compute failed for {} -> {}", prevSnapshotId, newSnapshotId, e);
+            }
+        }
+        try {
+            new RenderedLayerBuilder(reader.dbFile(), reader.renderDir(), newSnapshotId).renderDefaults();
+        } catch (Exception e) {
+            log.error("Rendered layer build failed for snapshot {}", newSnapshotId, e);
+        }
+        try {
+            int pairs = new RenderedDeltaLayerBuilder(reader.dbFile(), reader.renderDir()).renderRecentPairs();
+            log.info("Post-ingest delta raster pass rendered {} pair(s)", pairs);
+        } catch (Exception e) {
+            log.error("Rendered delta layer build failed after snapshot {}", newSnapshotId, e);
+        }
+        try {
+            reader.refreshLatestSnapshotId();
+        } catch (Exception e) {
+            log.warn("Could not refresh latest analytics snapshot after ingest: {}", e.toString());
         }
     }
 

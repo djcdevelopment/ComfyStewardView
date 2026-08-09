@@ -23,6 +23,16 @@ public final class SnapshotIngestService {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     public static ObjectNode processIngest(File dbFile, SnapshotProvenance provenance, AnalyticsCache cache) throws Exception {
+        return processIngest(dbFile, provenance, cache, false);
+    }
+
+    /**
+     * {@code deferDelta=true} skips the inline delta computation — the caller runs it in a
+     * post-response pass (the delta of a 9M-ZDO world can take minutes and blocking the HTTP
+     * response on it caused client timeouts). The receipt then carries {@code deltaPending}.
+     */
+    public static ObjectNode processIngest(File dbFile, SnapshotProvenance provenance, AnalyticsCache cache,
+            boolean deferDelta) throws Exception {
         long startTime = System.currentTimeMillis();
 
         if (!dbFile.exists() || !dbFile.isFile()) {
@@ -74,14 +84,18 @@ public final class SnapshotIngestService {
         WorldParser parser = new WorldParser();
         parser.setAnalyticsCache(cache);
         cache.setPendingProvenance(finalProvenance);
+        // Appending through existing indexes is ~20x slower and degrades linearly with rows
+        // already in the table (O(n^2) across a series of ingests). Drop them for the bulk
+        // append; finish() rebuilds them once.
+        cache.dropIndexes();
         ZdoFlatStore store = parser.parse(dbFile);
         cache.finish();
 
         long currentSnapshotId = cache.snapshotId();
 
-        // Pre-calculate Delta if previous snapshot exists
+        // Pre-calculate Delta if previous snapshot exists (unless deferred to a post-pass)
         SnapshotDeltaEngine.DeltaResult delta = null;
-        if (prevSnapshotId > 0) {
+        if (prevSnapshotId > 0 && !deferDelta) {
             delta = SnapshotDeltaEngine.computeDelta(conn, prevSnapshotId, currentSnapshotId);
             cache.recordDelta(prevSnapshotId, delta.zdosAdded(), delta.zdosRemoved(), delta.zdosModified(), delta.containerItemsDelta());
         }
@@ -108,6 +122,7 @@ public final class SnapshotIngestService {
         receipt.put("durationMs", durationMs);
         receipt.put("ingestedAt", Instant.now().toString());
 
+        receipt.put("deltaPending", deferDelta && prevSnapshotId > 0);
         ObjectNode deltaNode = receipt.putObject("delta");
         deltaNode.put("prevSnapshotId", prevSnapshotId);
         deltaNode.put("zdosAdded", delta != null ? delta.zdosAdded() : 0);
