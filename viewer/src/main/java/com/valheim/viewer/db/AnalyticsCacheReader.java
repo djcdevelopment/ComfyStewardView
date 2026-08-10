@@ -284,6 +284,12 @@ public final class AnalyticsCacheReader implements AutoCloseable {
             int limit,
             int offset) throws SQLException {
 
+        // The returned `total` counts rows inside the queried box, not rows in the snapshot.
+        // Those differ: the caller's default box is +/-100,000, and 1,350 ZDOs on ComfyEra16 sit
+        // outside it, so this endpoint reports 9,154,246 where COUNT(*) reports 9,155,596. That
+        // is correct for a spatial query and confusing next to a headline figure, so do not
+        // reconcile the two by widening this - they are answering different questions. (Checked:
+        // the difference is entirely far-out coordinates, no null or NaN positions.)
         StringBuilder sql = new StringBuilder(
             "SELECT zdo_index, prefab_hash, prefab_name, category, x, y, z, " +
             "creator_id, owner_id, spawn_time_micros, flags " +
