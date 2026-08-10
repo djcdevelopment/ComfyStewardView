@@ -21,6 +21,42 @@ public final class RenderedLayerBuilder {
 
     private static final int[] DEFAULT_CELL_SIZES = {64, 320, 500, 1000};
 
+    /**
+     * Bumped whenever a render changes what the pixels mean, so an existing manifest can be
+     * recognised as stale rather than merely present.
+     *
+     * <p>Without this the caller's "skip if manifest.json exists" test made every future change to
+     * this builder invisible on any deployment that had already rendered once — the AM4 container
+     * gates its batch phase on a marker file, so a schema change there would simply never be
+     * picked up.
+     *
+     * <p>1: off-map dungeon interiors excluded from all-zdos, all layers clamped to the world box.
+     */
+    public static final int SCHEMA_VERSION = 1;
+
+    /**
+     * The playable world box, matching {@link com.valheim.viewer.store.HeatmapGrid}.
+     *
+     * <p>Rasters are clamped to it rather than to the old {@code ABS(coord) < 100000} sanity
+     * bound. A handful of outlier ZDOs sit past {@code x = +75000}, and because layer bounds are
+     * derived from the cells that got written, those outliers stretched every raster's extent:
+     * the actual world ended up occupying roughly 60% of the image, and anything framing itself
+     * on those bounds framed mostly empty space.
+     */
+    static final double WORLD_MIN_X = -26500, WORLD_MAX_X = 26500;
+    static final double WORLD_MIN_Z = -20500, WORLD_MAX_Z = 27500;
+
+    /**
+     * Valheim places dungeon interiors on a regular lattice far off the map — the parser tags
+     * them {@code INTERIOR} by their {@code y > 3000} altitude. They are real objects, but they
+     * are not anywhere, so drawing them on a world map produces the grid of disconnected blocks
+     * to the north-west of the landmass and nothing else.
+     *
+     * <p>Excluding them is also what turns {@code all-zdos} into a usable land mask: vegetation
+     * and rock only generate on land, so surface ZDO density is the coastline.
+     */
+    private static final String SURFACE_ONLY = "AND (category IS NULL OR category <> 'INTERIOR') ";
+
     private static final String[][] LAYERS = {
         {"build-density", "Build Density"},
         {"dropped-items", "Dropped Items"},
@@ -47,6 +83,7 @@ public final class RenderedLayerBuilder {
 
         ObjectMapper mapper = new ObjectMapper();
         ObjectNode manifest = mapper.createObjectNode();
+        manifest.put("schemaVersion", SCHEMA_VERSION);
         manifest.put("snapshotId", snapshotId);
         manifest.put("generatedAt", Instant.now().toString());
         ArrayNode layers = manifest.putArray("layers");
@@ -62,6 +99,20 @@ public final class RenderedLayerBuilder {
         File manifestFile = new File(outDir, "manifest.json");
         mapper.writerWithDefaultPrettyPrinter().writeValue(manifestFile, manifest);
         return manifestFile;
+    }
+
+    /**
+     * True when {@code manifestFile} was written by this version of the builder. A manifest from
+     * an older schema describes different pixels and must be re-rendered, not served.
+     */
+    public static boolean isCurrentManifest(File manifestFile) {
+        if (!manifestFile.isFile()) return false;
+        try {
+            return new ObjectMapper().readTree(manifestFile).path("schemaVersion").asInt(0)
+                == SCHEMA_VERSION;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private void renderLayer(Connection conn, File outDir, ArrayNode manifestLayers,
@@ -136,15 +187,18 @@ public final class RenderedLayerBuilder {
 
         String sql;
         if ("build-density".equals(layer) || "dropped-items".equals(layer) || "all-zdos".equals(layer)) {
+            // build-density and dropped-items are already surface-only by category; all-zdos is
+            // the layer that needs INTERIOR removed explicitly.
             String categoryFilter =
                 "build-density".equals(layer) ? "AND category = 'BUILDING' " :
-                "dropped-items".equals(layer) ? "AND category = 'DROPPED_ITEM' " : "";
+                "dropped-items".equals(layer) ? "AND category = 'DROPPED_ITEM' " : SURFACE_ONLY;
             sql =
                 "INSERT INTO render_cell " +
                 "SELECT ?, ?, ?, CAST(FLOOR(x / ?) AS INTEGER) AS cx, CAST(FLOOR(z / ?) AS INTEGER) AS cz, " +
                 "COUNT(*) AS count_value, CAST(COUNT(*) AS DOUBLE) AS sum_value, LN(1 + COUNT(*)) AS log_value " +
                 "FROM zdo WHERE snapshot_id = ? " + categoryFilter +
-                "AND ABS(x) < 100000 AND ABS(z) < 100000 " +
+                "AND x BETWEEN " + WORLD_MIN_X + " AND " + WORLD_MAX_X + " " +
+                "AND z BETWEEN " + WORLD_MIN_Z + " AND " + WORLD_MAX_Z + " " +
                 "GROUP BY cx, cz";
         } else if ("coins".equals(layer)) {
             sql =
@@ -152,7 +206,8 @@ public final class RenderedLayerBuilder {
                 "SELECT ?, ?, ?, CAST(FLOOR(container_x / ?) AS INTEGER) AS cx, CAST(FLOOR(container_z / ?) AS INTEGER) AS cz, " +
                 "COUNT(*) AS count_value, SUM(stack) AS sum_value, LN(1 + SUM(stack)) AS log_value " +
                 "FROM container_item WHERE snapshot_id = ? AND item_name = 'Coins' " +
-                "AND ABS(container_x) < 100000 AND ABS(container_z) < 100000 " +
+                "AND container_x BETWEEN " + WORLD_MIN_X + " AND " + WORLD_MAX_X + " " +
+                "AND container_z BETWEEN " + WORLD_MIN_Z + " AND " + WORLD_MAX_Z + " " +
                 "GROUP BY cx, cz";
         } else {
             throw new IllegalArgumentException("Unknown render layer: " + layer);

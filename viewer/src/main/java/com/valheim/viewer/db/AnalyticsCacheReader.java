@@ -555,29 +555,18 @@ public final class AnalyticsCacheReader implements AutoCloseable {
             }
         }
 
-        // The 1000m all-zdos raster cells are tiny compared with the source ZDO table, and their
-        // count_value sum is the exact snapshot row count. This keeps History loads O(render cells)
-        // instead of repeatedly grouping millions of ZDO rows.
-        if (!missing.isEmpty()) {
-            String placeholders = String.join(",", java.util.Collections.nCopies(missing.size(), "?"));
-            try (PreparedStatement ps = conn.prepareStatement(
-                    "SELECT snapshot_id, CAST(SUM(count_value) AS BIGINT) " +
-                    "FROM render_cell WHERE layer = 'all-zdos' AND cell_size = 1000 " +
-                    "AND snapshot_id IN (" + placeholders + ") GROUP BY snapshot_id")) {
-                int index = 1;
-                for (long id : missing) ps.setLong(index++, id);
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        long id = rs.getLong(1);
-                        counts.put(id, rs.getLong(2));
-                    }
-                }
-                missing.removeAll(counts.keySet());
-            } catch (SQLException ignored) {
-                // Pre-render/pre-migration caches fall through to the targeted source-table query.
-            }
-        }
-
+        // Counted from the source table, deliberately.
+        //
+        // This used to sum count_value over the 1000 m all-zdos render cells, on the stated
+        // invariant that the sum "is the exact snapshot row count". That was true only while
+        // all-zdos meant every row. It no longer does: the layer now excludes off-map dungeon
+        // interiors and clamps to the world box, so the sum silently became a surface-only,
+        // in-box count — 8,765,827 against a true 9,154,246 on ComfyEra16, a 4.2% under-report
+        // with nothing anywhere to indicate it.
+        //
+        // The bug was not the filter; it was deriving a reported figure from a rendering
+        // artifact whose meaning is free to change. COUNT(*) over a columnar store with a
+        // snapshot_id predicate is cheap, and it cannot drift from what it claims to measure.
         if (!missing.isEmpty()) {
             String placeholders = String.join(",", java.util.Collections.nCopies(missing.size(), "?"));
             try (PreparedStatement ps = conn.prepareStatement(

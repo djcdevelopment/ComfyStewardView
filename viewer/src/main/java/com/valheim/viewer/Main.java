@@ -236,8 +236,11 @@ public class Main {
                  ResultSet rs = st.executeQuery("SELECT snapshot_id FROM world_snapshot ORDER BY snapshot_id")) {
                 while (rs.next()) {
                     long snapId = rs.getLong(1);
-                    if (reader.manifestFile(snapId).exists()) {
-                        log.info("Rendered layers already present for snapshot {}; skipping", snapId);
+                    // Current, not merely present: a manifest from an older render schema
+                    // describes different pixels, and skipping on existence alone meant a
+                    // builder change could never reach a deployment that had rendered once.
+                    if (RenderedLayerBuilder.isCurrentManifest(reader.manifestFile(snapId))) {
+                        log.info("Rendered layers already current for snapshot {}; skipping", snapId);
                         continue;
                     }
                     log.info("Rendering static layers for snapshot {} into {}",

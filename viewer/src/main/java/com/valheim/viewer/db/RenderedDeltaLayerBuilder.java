@@ -42,7 +42,9 @@ public final class RenderedDeltaLayerBuilder {
 
     public static final int RECENT_SNAPSHOT_LIMIT = 6;
     public static final int[] CELL_SIZES = {64, 320, 500, 1000};
-    public static final int SCHEMA_VERSION = 2;
+    // 3: all-zdos excludes off-map dungeon interiors and every layer is clamped to the world box,
+    // so a v2 manifest describes different pixels and must be re-rendered rather than served.
+    public static final int SCHEMA_VERSION = 3;
 
     private static final Pattern PAIR_DIR = Pattern.compile("[1-9][0-9]*-[1-9][0-9]*");
     private static final String BUILD_ACTIVITY = "build-activity";
@@ -209,8 +211,11 @@ public final class RenderedDeltaLayerBuilder {
                     double x = rs.getDouble("x");
                     double z = rs.getDouble("z");
                     changes.total++;
+                    // Off-map dungeon interiors and out-of-box outliers are counted in the pair
+                    // totals but never painted: they have no location on a world map, and letting
+                    // them into the cell maps stretches every layer's bounds around empty space.
                     if (!Double.isFinite(x) || !Double.isFinite(z) ||
-                            Math.abs(x) >= 100_000 || Math.abs(z) >= 100_000) continue;
+                            !onWorldMap(x, z) || "INTERIOR".equals(category)) continue;
                     changes.spatialTotal++;
                     for (int cellSize : CELL_SIZES) {
                         Cell cell = new Cell(gridCoord(x, cellSize), gridCoord(z, cellSize));
@@ -257,7 +262,8 @@ public final class RenderedDeltaLayerBuilder {
         try (PreparedStatement ps = conn.prepareStatement(
                 "SELECT container_x, container_z, SUM(stack) AS coins FROM container_item " +
                 "WHERE snapshot_id = ? AND item_name = 'Coins' " +
-                "AND ABS(container_x) < 100000 AND ABS(container_z) < 100000 " +
+                "AND container_x BETWEEN " + RenderedLayerBuilder.WORLD_MIN_X + " AND " + RenderedLayerBuilder.WORLD_MAX_X + " " +
+                "AND container_z BETWEEN " + RenderedLayerBuilder.WORLD_MIN_Z + " AND " + RenderedLayerBuilder.WORLD_MAX_Z + " " +
                 "GROUP BY container_x, container_z")) {
             ps.setLong(1, snapshotId);
             try (ResultSet rs = ps.executeQuery()) {
@@ -527,6 +533,12 @@ public final class RenderedDeltaLayerBuilder {
 
     private static int gridCoord(double value, int cellSize) {
         return (int) Math.floor(value / cellSize);
+    }
+
+    /** Inside the playable world box, so a raster's bounds describe the world and not an outlier. */
+    private static boolean onWorldMap(double x, double z) {
+        return x >= RenderedLayerBuilder.WORLD_MIN_X && x <= RenderedLayerBuilder.WORLD_MAX_X
+            && z >= RenderedLayerBuilder.WORLD_MIN_Z && z <= RenderedLayerBuilder.WORLD_MAX_Z;
     }
 
     private static boolean sameWorld(String first, String second) {

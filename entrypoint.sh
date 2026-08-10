@@ -24,7 +24,15 @@ fi
 
 mkdir -p "$STATIC"
 
-echo "[entrypoint] starting viewer"
+# --render-layers on the serve process, not as a second batch run. The marker above means "the
+# cache is built", not "the rasters match this jar", so without a render pass here a bump to a
+# render schema could never reach a volume that had already been built once - the deployment
+# would keep serving rasters the new code refuses to accept, and the map would silently fall
+# back to snapshot mode. Rendering is version-aware and idempotent, so a current volume costs a
+# few seconds of manifest checks. It goes here rather than in a second java invocation because
+# Main parses the world before doing anything else: a separate batch run would re-parse the
+# 1.3 GB world on every container start, while this process has to parse it anyway.
+echo "[entrypoint] starting viewer (refreshing any stale rendered layers first)"
 exec java $JAVA_OPTS -jar /app/world-viewer.jar "$WORLD_FILE" \
-  --cache "$CACHE" --render-dir "$RENDER" --static-dir "$STATIC" \
+  --cache "$CACHE" --render-layers --render-dir "$RENDER" --static-dir "$STATIC" \
   --port 8003 --no-browser

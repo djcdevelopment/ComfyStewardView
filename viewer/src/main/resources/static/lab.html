@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Steward Shading Lab</title>
+<style>
+  :root {
+    --bg: #0d1017; --surface: #12161f; --border: #222836; --border-2: #2b3345;
+    --text: #c7cfdd; --muted: #7d8798; --bright: #e8eef7; --amber: #d9a34a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+           padding: 12px 18px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  h1 { font: 600 15px/1.3 inherit; margin: 0; color: var(--bright); letter-spacing: .01em; }
+  .sub { color: var(--muted); font-size: 11.5px; max-width: 78ch; }
+  .controls { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end;
+              padding: 12px 18px; border-bottom: 1px solid var(--border); }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .eyebrow { font: 500 10px/1 'IBM Plex Mono', ui-monospace, monospace;
+             letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+  select, input[type=number] { background: #171c27; color: var(--text);
+             border: 1px solid var(--border-2); border-radius: 4px; padding: 5px 7px; font: inherit; }
+  label.chk { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+  main { padding: 18px; }
+  .status { padding: 10px 14px; border-radius: 5px; font-size: 12px; margin-bottom: 14px;
+            border: 1px solid rgba(217,163,74,.3); background: rgba(217,163,74,.08); color: var(--amber); }
+  .stats { display: flex; gap: 22px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 16px;
+           background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+  .stat b { font: 500 15px/1.3 'IBM Plex Mono', ui-monospace, monospace; color: var(--bright); }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .histo { display: flex; align-items: flex-end; gap: 1px; height: 54px; margin-top: 6px;
+           padding: 3px; background: #171c27; border: 1px solid var(--border-2); border-radius: 4px; }
+  .histo span { flex: 1; background: #4a86c8; border-radius: 1px 1px 0 0; min-height: 1px; }
+  table { border-collapse: collapse; }
+  th, td { padding: 5px; text-align: left; vertical-align: top; }
+  th.ramp { color: var(--bright); font: 500 12px/1.3 inherit; }
+  th.norm { color: var(--bright); font: 500 12px/1.3 inherit; white-space: nowrap;
+            max-width: 190px; padding-right: 12px; }
+  th.norm em { display: block; font: 400 10.5px/1.4 inherit; color: var(--muted); font-style: normal; }
+  canvas { display: block; background: #0a0d13; border: 1px solid var(--border-2); border-radius: 4px;
+           image-rendering: pixelated; }
+  .swatch { height: 9px; border-radius: 2px; margin-top: 4px; }
+  .tile-note { font: 400 10px/1.4 'IBM Plex Mono', ui-monospace, monospace; color: var(--muted); margin-top: 3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Steward Shading Lab</h1>
+  <div class="sub">
+    Same raster, every treatment, side by side. Rows are how a cell count becomes a 0..1 intensity;
+    columns are how that intensity becomes colour. Decoded from the published gray8 PNGs, so what
+    you are judging is the real count distribution — not a synthetic gradient.
+  </div>
+</header>
+
+<div class="controls">
+  <div class="field"><span class="eyebrow">Snapshot</span><select id="snap"></select></div>
+  <div class="field"><span class="eyebrow">Layer</span><select id="layer"></select></div>
+  <div class="field"><span class="eyebrow">Cell size</span><select id="cell"></select></div>
+  <div class="field"><span class="eyebrow">Tile width</span>
+    <input id="width" type="number" min="80" max="600" step="20" value="240"/></div>
+  <div class="field"><span class="eyebrow">Alpha</span>
+    <select id="alpha">
+      <option value="opaque">Opaque (occupied = solid)</option>
+      <option value="ramp">From intensity (fades low cells)</option>
+      <option value="floor">Floor + lift (mask-like)</option>
+    </select></div>
+  <label class="chk"><input type="checkbox" id="clip"/> Clip top 1% before scaling</label>
+</div>
+
+<main>
+  <div class="status" id="status">Loading…</div>
+  <div class="stats" id="stats" hidden></div>
+  <div id="matrix"></div>
+</main>
+
+<script>
+const API = '/api/v1';
+const $ = (id) => document.getElementById(id);
+
+// ---- Colour ramps ---------------------------------------------------------
+// Stops are [t, r, g, b]; interpolation is linear in sRGB, which is what the viewer does today.
+// Any ramp added here shows up as a new column with no other change.
+const RAMPS = {
+  Ember:   [[0,16,22,38],[.25,42,86,150],[.5,120,140,190],[.75,224,150,90],[1,240,196,120]],
+  Moss:    [[0,16,28,24],[.25,31,74,58],[.5,95,174,127],[.75,185,223,168],[1,238,246,216]],
+  Viridis: [[0,28,18,53],[.25,59,82,139],[.5,33,145,140],[.75,94,201,98],[1,253,231,37]],
+  Magma:   [[0,12,8,38],[.25,90,26,110],[.5,183,55,105],[.75,246,120,80],[1,252,235,175]],
+  // Deliberately not perceptually smooth: a step ramp answers "which order of magnitude is this"
+  // instead of "is this a bit more than that", which is often the real question on a count map.
+  Steps:   [[0,30,42,64],[.2,30,42,64],[.2001,52,96,158],[.45,52,96,158],[.4501,120,168,120],
+            [.7,120,168,120],[.7001,226,158,74],[.9,226,158,74],[.9001,232,120,110],[1,232,120,110]],
+};
+
+// ---- Normalisations -------------------------------------------------------
+// Each maps an array of raw counts to a 0..1 intensity per cell. `ctx` carries precomputed
+// distribution facts so a normalisation does not have to re-scan.
+const NORMS = [
+  { id: 'linear', label: 'Linear', note: 'v / max. Honest about ratios; a few huge cells flatten everything else to black.',
+    fn: (v, c) => v / c.max },
+  { id: 'log', label: 'Log1p (current)', note: 'ln(1+v) / ln(1+max). What the viewer ships today.',
+    fn: (v, c) => Math.log1p(v) / Math.log1p(c.max) },
+  { id: 'sqrt', label: 'Square root', note: 'Between linear and log. Keeps mid-range separation without crushing the top.',
+    fn: (v, c) => Math.sqrt(v / c.max) },
+  { id: 'rank', label: 'Percentile rank', note: 'Equalised: colour is "busier than this fraction of occupied cells". Maximum contrast, no absolute meaning.',
+    fn: (v, c) => c.rankOf(v) },
+  { id: 'p95', label: 'Linear to p95', note: 'Linear, clipped at the 95th percentile. Reads the body of the distribution and saturates the tail.',
+    fn: (v, c) => Math.min(1, v / (c.p95 || 1)) },
+  { id: 'logp99', label: 'Log to p99', note: 'Log shape, top anchored to p99 rather than to the single largest cell.',
+    fn: (v, c) => Math.min(1, Math.log1p(v) / Math.log1p(c.p99 || 1)) },
+];
+
+function rampColor(stops, t) {
+  t = Math.max(0, Math.min(1, t));
+  for (let i = 1; i < stops.length; i++) {
+    if (t <= stops[i][0]) {
+      const [t0, r0, g0, b0] = stops[i - 1], [t1, r1, g1, b1] = stops[i];
+      const f = t1 === t0 ? 0 : (t - t0) / (t1 - t0);
+      return [r0 + (r1 - r0) * f, g0 + (g1 - g0) * f, b0 + (b1 - b0) * f];
+    }
+  }
+  const last = stops[stops.length - 1];
+  return [last[1], last[2], last[3]];
+}
+
+// ---- Data ----------------------------------------------------------------
+let manifest = null, layerEntry = null, decoded = null;
+
+async function loadSnapshots() {
+  const r = await fetch(`${API}/db/snapshots`);
+  const d = await r.json();
+  const snaps = (d.snapshots || []).sort((a, b) => b.snapshotId - a.snapshotId);
+  $('snap').innerHTML = snaps.map(s =>
+    `<option value="${s.snapshotId}">#${s.snapshotId}${s.worldName ? ' · ' + s.worldName.replace(/\.db$/i, '') : ''}</option>`).join('');
+  if (!snaps.length) throw new Error('No snapshots in the cache.');
+  return snaps[0].snapshotId;
+}
+
+async function loadManifest(snapshotId) {
+  const r = await fetch(`${API}/rendered/manifest?snapshot=${encodeURIComponent(snapshotId)}`);
+  if (!r.ok) throw new Error(`No rendered manifest for snapshot ${snapshotId}.`);
+  manifest = await r.json();
+  const layers = [...new Set((manifest.layers || []).map(l => l.layer))];
+  $('layer').innerHTML = layers.map(l => `<option value="${l}">${l}</option>`).join('');
+  syncCellSizes();
+}
+
+function syncCellSizes() {
+  const wanted = $('layer').value;
+  const sizes = (manifest.layers || []).filter(l => l.layer === wanted)
+    .map(l => Number(l.cellSize)).sort((a, b) => a - b);
+  const prev = Number($('cell').value);
+  $('cell').innerHTML = sizes.map(s => `<option value="${s}">${s} m</option>`).join('');
+  if (sizes.includes(prev)) $('cell').value = String(prev);
+}
+
+// The published PNG is gray8 with alpha as the presence mask, encoding
+// v = round(255 * ln(1+count) / maxLog). Inverting that recovers the counts the renderer saw,
+// which is the whole point: every treatment below is judged against the real distribution.
+async function decodeLayer() {
+  const layer = $('layer').value, cell = Number($('cell').value);
+  layerEntry = (manifest.layers || []).find(l => l.layer === layer && Number(l.cellSize) === cell);
+  if (!layerEntry) throw new Error('That layer/cell-size combination is not in the manifest.');
+
+  const url = `${API}/rendered/${layerEntry.file}?snapshot=${encodeURIComponent(manifest.snapshotId)}`;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('PNG failed to load')); img.src = url; });
+
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const ctx2d = c.getContext('2d', { willReadFrequently: true });
+  ctx2d.drawImage(img, 0, 0);
+  const px = ctx2d.getImageData(0, 0, c.width, c.height).data;
+
+  const maxLog = layerEntry.maxLog || 0;
+  const counts = new Float64Array(c.width * c.height);
+  const occupied = [];
+  for (let i = 0, n = 0; i < px.length; i += 4, n++) {
+    if (px[i + 3] === 0) { counts[n] = 0; continue; }
+    const v = Math.expm1((px[i] / 255) * maxLog);
+    counts[n] = v;
+    occupied.push(v);
+  }
+  occupied.sort((a, b) => a - b);
+  const pick = (q) => occupied.length ? occupied[Math.min(occupied.length - 1, Math.floor(q * occupied.length))] : 0;
+
+  // A rank lookup over the sorted occupied values; binary search keeps the equalised
+  // normalisation from being O(cells x cells) on a 670x1050 raster.
+  const sorted = occupied;
+  const rankOf = (v) => {
+    let lo = 0, hi = sorted.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (sorted[mid] < v) lo = mid + 1; else hi = mid; }
+    return sorted.length ? lo / sorted.length : 0;
+  };
+
+  decoded = {
+    width: c.width, height: c.height, counts,
+    occupiedCount: occupied.length,
+    max: occupied.length ? occupied[occupied.length - 1] : 1,
+    median: pick(0.5), p95: pick(0.95), p99: pick(0.99),
+    total: occupied.reduce((a, b) => a + b, 0),
+    rankOf, sorted,
+  };
+}
+
+function renderStats() {
+  const d = decoded;
+  const bins = 40;
+  const hist = new Array(bins).fill(0);
+  // Log-spaced bins: counts span orders of magnitude, and linear bins put every cell in bin 0.
+  const top = Math.log1p(d.max) || 1;
+  for (const v of d.sorted) hist[Math.min(bins - 1, Math.floor(Math.log1p(v) / top * bins))]++;
+  const hmax = Math.max(1, ...hist);
+  $('stats').hidden = false;
+  $('stats').innerHTML = `
+    <div class="stat"><span class="eyebrow">Raster</span><b>${d.width}×${d.height}</b></div>
+    <div class="stat"><span class="eyebrow">Occupied cells</span><b>${d.occupiedCount.toLocaleString()}</b></div>
+    <div class="stat"><span class="eyebrow">Median</span><b>${d.median.toFixed(1)}</b></div>
+    <div class="stat"><span class="eyebrow">p95</span><b>${d.p95.toFixed(1)}</b></div>
+    <div class="stat"><span class="eyebrow">p99</span><b>${d.p99.toFixed(1)}</b></div>
+    <div class="stat"><span class="eyebrow">Max</span><b>${Math.round(d.max).toLocaleString()}</b></div>
+    <div class="stat" style="flex:1;min-width:280px">
+      <span class="eyebrow">Count distribution (log-spaced bins, occupied cells only)</span>
+      <div class="histo">${hist.map(n => `<span style="height:${Math.round(n / hmax * 100)}%"></span>`).join('')}</div>
+    </div>`;
+}
+
+function drawTile(canvas, normFn, rampStops) {
+  const d = decoded, w = d.width, h = d.height;
+  canvas.width = w; canvas.height = h;
+  const scale = Number($('width').value) / w;
+  canvas.style.width = Math.round(w * scale) + 'px';
+  canvas.style.height = Math.round(h * scale) + 'px';
+
+  const ctx2d = canvas.getContext('2d');
+  const out = ctx2d.createImageData(w, h);
+  const alphaMode = $('alpha').value;
+  const clip = $('clip').checked ? d.p99 : Infinity;
+  const ctx = { max: Math.min(d.max, clip === Infinity ? d.max : clip), p95: d.p95, p99: d.p99, rankOf: d.rankOf };
+
+  for (let n = 0; n < d.counts.length; n++) {
+    const raw = d.counts[n];
+    const i = n * 4;
+    if (raw <= 0) { out.data[i + 3] = 0; continue; }
+    const t = Math.max(0, Math.min(1, normFn(Math.min(raw, clip), ctx)));
+    const [r, g, b] = rampColor(rampStops, t);
+    out.data[i] = r; out.data[i + 1] = g; out.data[i + 2] = b;
+    out.data[i + 3] = alphaMode === 'opaque' ? 255
+      : alphaMode === 'ramp' ? Math.round(40 + 215 * t)
+      : Math.round(150 + 105 * t);
+  }
+  ctx2d.putImageData(out, 0, 0);
+}
+
+function renderMatrix() {
+  const host = $('matrix');
+  const rampNames = Object.keys(RAMPS);
+  const table = document.createElement('table');
+
+  const head = document.createElement('tr');
+  head.appendChild(document.createElement('th'));
+  for (const name of rampNames) {
+    const th = document.createElement('th');
+    th.className = 'ramp';
+    const stops = RAMPS[name];
+    const css = stops.map(s => `rgb(${s[1]},${s[2]},${s[3]}) ${(s[0] * 100).toFixed(1)}%`).join(',');
+    th.innerHTML = `${name}<div class="swatch" style="background:linear-gradient(90deg,${css})"></div>`;
+    head.appendChild(th);
+  }
+  table.appendChild(head);
+
+  for (const norm of NORMS) {
+    const tr = document.createElement('tr');
+    const th = document.createElement('th');
+    th.className = 'norm';
+    th.innerHTML = `${norm.label}<em>${norm.note}</em>`;
+    tr.appendChild(th);
+    for (const name of rampNames) {
+      const td = document.createElement('td');
+      const canvas = document.createElement('canvas');
+      td.appendChild(canvas);
+      tr.appendChild(td);
+      drawTile(canvas, norm.fn, RAMPS[name]);
+    }
+    table.appendChild(tr);
+  }
+  host.replaceChildren(table);
+}
+
+async function refresh({ reloadManifest = false, redecode = true } = {}) {
+  try {
+    $('status').textContent = 'Decoding…';
+    $('status').hidden = false;
+    if (reloadManifest) await loadManifest($('snap').value);
+    if (redecode) await decodeLayer();
+    if (!decoded.occupiedCount) {
+      $('status').textContent = 'That layer has no occupied cells in this snapshot.';
+      $('matrix').replaceChildren();
+      return;
+    }
+    renderStats();
+    renderMatrix();
+    $('status').hidden = true;
+  } catch (e) {
+    $('status').hidden = false;
+    $('status').textContent = e.message || String(e);
+  }
+}
+
+$('snap').addEventListener('change', () => refresh({ reloadManifest: true }));
+$('layer').addEventListener('change', () => { syncCellSizes(); refresh(); });
+$('cell').addEventListener('change', () => refresh());
+for (const id of ['alpha', 'clip', 'width']) {
+  $(id).addEventListener('change', () => refresh({ redecode: false }));
+}
+
+(async () => {
+  try {
+    const latest = await loadSnapshots();
+    $('snap').value = String(latest);
+    await refresh({ reloadManifest: true });
+  } catch (e) {
+    $('status').textContent = e.message || String(e);
+  }
+})();
+</script>
+</body>
+</html>
