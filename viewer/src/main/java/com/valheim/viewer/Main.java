@@ -7,6 +7,7 @@ import com.valheim.viewer.contract.WorldContracts;
 import com.valheim.viewer.db.AnalyticsCache;
 import com.valheim.viewer.db.AnalyticsCacheReader;
 import com.valheim.viewer.db.RenderedDeltaLayerBuilder;
+import com.valheim.viewer.db.BaselineBuilder;
 import com.valheim.viewer.db.RenderedLayerBuilder;
 import com.valheim.viewer.db.SnapshotIngestService;
 import com.valheim.viewer.db.SnapshotProvenance;
@@ -252,6 +253,13 @@ public class Main {
                 int renderedPairs = new RenderedDeltaLayerBuilder(cacheFile, renderRoot)
                     .renderRecentPairs();
                 log.info("Recent delta raster matrix ready ({} new pair manifests)", renderedPairs);
+
+                // Baselines walk consecutive pairs across all snapshots, so they follow the same
+                // batch pass rather than a request. Unconditional rather than skip-if-present:
+                // the newest snapshot adds an interval to every world's series, so a series that
+                // exists is not the same as a series that is current.
+                var baselines = new BaselineBuilder(cacheFile, renderRoot).buildAll();
+                log.info("Change baselines ready ({} world series)", baselines.size());
             } catch (Exception e) {
                 log.error("Failed to render static layers", e);
                 System.exit(1);

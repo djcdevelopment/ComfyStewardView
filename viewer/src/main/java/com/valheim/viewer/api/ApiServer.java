@@ -211,6 +211,7 @@ public class ApiServer {
         app.get("/api/v1/forensics/guild-gear", this::handleGuildGear);
 
         // Batch analytics cache & snapshot history endpoints
+        app.get("/api/v1/db/baseline", this::handleBaselineSeries);
         app.get("/api/v1/rendered/delta/manifest", this::handleRenderedDeltaManifest);
         app.get("/api/v1/rendered/delta/{file}", this::handleRenderedDeltaFile);
         app.get("/api/v1/rendered/manifest", this::handleRenderedManifest);
@@ -1060,6 +1061,33 @@ public class ApiServer {
     }
 
     // ----- Batch analytics cache handlers -----
+
+    /**
+     * A world's baseline: what changed between each pair of consecutive saves, and the summary
+     * statistics that history supports. Served as written, so the sufficiency block travels with
+     * the numbers and a caller cannot read a percentile without reading whether one was emitted.
+     */
+    private void handleBaselineSeries(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        try {
+            String worldId = ctx.queryParam("world");
+            File series = reader.baselineSeriesFile(worldId);
+            if (series == null) {
+                apiError(ctx, 400, "a valid ?world= id is required");
+                return;
+            }
+            if (!series.exists()) {
+                apiError(ctx, 404, "no baseline for world " + worldId +
+                    " (needs at least two snapshots, and a batch pass to build it)");
+                return;
+            }
+            ctx.contentType("application/json").result(Files.readString(series.toPath()));
+        } catch (Exception e) {
+            log.error("Failed to read baseline series", e);
+            ctx.status(500).json("{\"error\":\"baseline series read failure\"}");
+        }
+    }
 
     private void handleRenderedManifest(Context ctx) {
         AnalyticsCacheReader reader = requireAnalyticsCache(ctx);

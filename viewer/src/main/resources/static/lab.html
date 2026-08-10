@@ -44,6 +44,23 @@
            image-rendering: pixelated; }
   .swatch { height: 9px; border-radius: 2px; margin-top: 4px; }
   .tile-note { font: 400 10px/1.4 'IBM Plex Mono', ui-monospace, monospace; color: var(--muted); margin-top: 3px; }
+  h2 { font: 600 13px/1.4 inherit; color: var(--bright); margin: 18px 0 4px; }
+  .endpoint-note { font-size: 11.5px; color: var(--muted); margin-bottom: 8px; max-width: 70ch; }
+  .endpoint-note code { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; }
+  .two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 22px; }
+  .grid-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .grid-table th { font: 500 10px/1 'IBM Plex Mono', ui-monospace, monospace; letter-spacing: .08em;
+                   text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border-2);
+                   padding: 5px 8px 5px 0; }
+  .grid-table td { padding: 5px 8px 5px 0; border-bottom: 1px solid #1a1f2b; }
+  .grid-table td.num { font-family: 'IBM Plex Mono', ui-monospace, monospace; text-align: right; }
+  .spark { display: inline-flex; align-items: flex-end; gap: 2px; height: 22px; }
+  .spark i { width: 9px; background: #4a86c8; border-radius: 1px 1px 0 0; min-height: 1px; display: block; }
+  .spark i.zero { background: #2b3345; }
+  .banner { padding: 12px 15px; border-radius: 6px; margin-bottom: 16px; font-size: 12.5px; line-height: 1.55; }
+  .banner.warn { border: 1px solid rgba(217,163,74,.35); background: rgba(217,163,74,.08); color: var(--amber); }
+  .banner.ok { border: 1px solid rgba(95,174,127,.3); background: rgba(95,174,127,.08); color: #7cc59a; }
+  .banner b { display: block; margin-bottom: 3px; }
 </style>
 </head>
 <body>
@@ -57,6 +74,11 @@
 </header>
 
 <div class="controls">
+  <div class="field"><span class="eyebrow">Mode</span>
+    <select id="mode">
+      <option value="snapshot">Snapshot — how a count becomes a colour</option>
+      <option value="delta">Delta — is there enough history to set a threshold?</option>
+    </select></div>
   <div class="field"><span class="eyebrow">Snapshot</span><select id="snap"></select></div>
   <div class="field"><span class="eyebrow">Layer</span><select id="layer"></select></div>
   <div class="field"><span class="eyebrow">Cell size</span><select id="cell"></select></div>
@@ -71,10 +93,44 @@
   <label class="chk"><input type="checkbox" id="clip"/> Clip top 1% before scaling</label>
 </div>
 
+<div class="controls" id="delta-controls" hidden>
+  <div class="field"><span class="eyebrow">World</span><select id="dworld"></select></div>
+  <div class="field"><span class="eyebrow">Layer</span><select id="dlayer"></select></div>
+  <div class="field"><span class="eyebrow">Cell size</span><select id="dcell"></select></div>
+  <div class="field"><span class="eyebrow">Threshold (x median cell)</span>
+    <input id="dthresh" type="number" min="1" max="200" step="1" value="10"/></div>
+</div>
+
 <main>
   <div class="status" id="status">Loading…</div>
-  <div class="stats" id="stats" hidden></div>
-  <div id="matrix"></div>
+
+  <section id="snapshot-view">
+    <div class="stats" id="stats" hidden></div>
+    <div id="matrix"></div>
+  </section>
+
+  <section id="delta-view" hidden>
+    <div id="sufficiency"></div>
+    <div class="stats" id="dstats" hidden></div>
+    <div class="two-col">
+      <div>
+        <h2>Intervals</h2>
+        <div class="endpoint-note">Consecutive saves only. A rate needs equal-length intervals,
+          so the 15-pair raster matrix is not what a baseline is built from.</div>
+        <div id="intervals"></div>
+      </div>
+      <div>
+        <h2>Resource groups — removed per interval</h2>
+        <div class="endpoint-note">Grouped by prefab name, because <code>Categories.NATURE</code>
+          is never assigned on a real world.</div>
+        <div id="groups"></div>
+      </div>
+    </div>
+    <h2>Pooled per-cell change, across every rendered pair</h2>
+    <div class="endpoint-note">This is the distribution a spatial threshold would be drawn
+      from. If it is a handful of samples, no threshold is choosable yet.</div>
+    <div id="pooled"></div>
+  </section>
 </main>
 
 <script>
@@ -291,6 +347,221 @@ function renderMatrix() {
   host.replaceChildren(table);
 }
 
+// ---- Delta mode -----------------------------------------------------------
+// Answers a narrower question than the matrix above: not "which shading reads best" but "is
+// there enough history here to draw a line at all". Everything it shows is either the baseline
+// the batch pass computed, or the pooled change distribution decoded from the rendered pairs.
+
+let snapshotIndex = [], deltaPairs = [];
+
+async function loadDeltaWorlds() {
+  const d = await (await fetch(`${API}/db/snapshots`)).json();
+  snapshotIndex = d.snapshots || [];
+  deltaPairs = (d.deltaPairs || []).filter(p => p.available !== false);
+  const worlds = [...new Set(snapshotIndex.map(s => s.worldId).filter(Boolean))];
+  // Two worlds can share a display name, so the id is shown as well - that collision is exactly
+  // what made the viewer's own pair selector confusing.
+  $('dworld').innerHTML = worlds.map(w => {
+    const name = (snapshotIndex.find(s => s.worldId === w) || {}).worldName || '';
+    const label = name.replace(/\.db$/i, '');
+    return `<option value="${w}">${label && label !== w ? `${label} · ${w}` : w}</option>`;
+  }).join('');
+}
+
+function pairsForWorld(worldId) {
+  return deltaPairs.filter(p => p.worldId === worldId);
+}
+
+async function loadDeltaLayerOptions(worldId) {
+  const pairs = pairsForWorld(worldId);
+  if (!pairs.length) { $('dlayer').innerHTML = ''; $('dcell').innerHTML = ''; return null; }
+  const p = pairs[0];
+  const r = await fetch(`${API}/rendered/delta/manifest?from=${p.fromSnapshotId}&to=${p.toSnapshotId}`);
+  if (!r.ok) { $('dlayer').innerHTML = ''; $('dcell').innerHTML = ''; return null; }
+  const m = await r.json();
+  const layers = [...new Set((m.layers || []).map(l => l.layer))];
+  const sizes = [...new Set((m.layers || []).map(l => Number(l.cellSize)))].sort((a, b) => a - b);
+  const keepLayer = $('dlayer').value, keepCell = Number($('dcell').value);
+  $('dlayer').innerHTML = layers.map(l => `<option value="${l}">${l}</option>`).join('');
+  $('dcell').innerHTML = sizes.map(s => `<option value="${s}">${s} m</option>`).join('');
+  if (layers.includes(keepLayer)) $('dlayer').value = keepLayer;
+  if (sizes.includes(keepCell)) $('dcell').value = String(keepCell);
+  return m;
+}
+
+function renderSufficiency(series) {
+  const s = series.sufficiency, c = series.coverage;
+  const ok = s.percentilesEmitted;
+  $('sufficiency').innerHTML = `
+    <div class="banner ${ok ? 'ok' : 'warn'}">
+      <b>${ok ? `Percentiles computed over ${s.sampleCount} intervals.`
+              : `Not enough history to set a threshold.`}</b>
+      ${s.note}
+      <br>Resource coverage: ${c.groupedRemovals.toLocaleString()} of
+      ${c.totalRemovals.toLocaleString()} removals matched a resource group
+      (${(c.groupedFraction * 100).toFixed(1)}%). The remainder is building demolition and
+      wildlife motion, which are not harvest.
+    </div>`;
+}
+
+function renderIntervals(series) {
+  const rows = series.intervals.map(i => `
+    <tr>
+      <td>#${i.from} → #${i.to}</td>
+      <td class="num" style="color:#5fae7f">+${i.zdosAdded.toLocaleString()}</td>
+      <td class="num" style="color:#d9635f">−${i.zdosRemoved.toLocaleString()}</td>
+      <td class="num" title="${i.reconciles ? 'added − removed matches the row-count change'
+        : 'counts do not reconcile; real churn is higher'}">${i.reconciles ? '' : '≥'}</td>
+    </tr>`).join('');
+  $('intervals').innerHTML =
+    `<table class="grid-table"><tr><th>Interval</th><th>Added</th><th>Removed</th><th></th></tr>${rows}</table>`;
+}
+
+function spark(values) {
+  const max = Math.max(1, ...values);
+  return `<span class="spark">${values.map(v =>
+    `<i class="${v === 0 ? 'zero' : ''}" style="height:${Math.max(2, Math.round(v / max * 22))}px" title="${v}"></i>`
+  ).join('')}</span>`;
+}
+
+function renderGroups(series) {
+  const rows = Object.entries(series.groups).map(([id, g]) => {
+    const st = g.removedStats;
+    return `<tr>
+      <td>${g.label}</td>
+      <td>${spark(g.removed)}</td>
+      <td class="num">${st.total.toLocaleString()}</td>
+      <td class="num">${st.median}</td>
+      <td class="num">${st.max.toLocaleString()}</td>
+      <td class="num">${st.p99 === undefined ? '—' : st.p99}</td>
+    </tr>`;
+  }).join('');
+  $('groups').innerHTML = `<table class="grid-table">
+    <tr><th>Group</th><th>Per interval</th><th>Total</th><th>Median</th><th>Max</th><th>p99</th></tr>
+    ${rows}</table>`;
+}
+
+/** Decode every rendered pair for this world at one layer/cell size and pool the cell values. */
+async function poolDeltaCells(worldId, layer, cellSize) {
+  const pairs = pairsForWorld(worldId);
+  const values = [];
+  let pairsUsed = 0, pairsEmpty = 0;
+  for (const p of pairs) {
+    const r = await fetch(`${API}/rendered/delta/manifest?from=${p.fromSnapshotId}&to=${p.toSnapshotId}`);
+    if (!r.ok) continue;
+    const m = await r.json();
+    const entry = (m.layers || []).find(l => l.layer === layer && Number(l.cellSize) === Number(cellSize));
+    if (!entry || entry.empty) { pairsEmpty++; continue; }
+    const q = `from=${p.fromSnapshotId}&to=${p.toSnapshotId}`;
+    try {
+      const [a, b] = await Promise.all([
+        loadGray(`${API}/rendered/delta/${entry.addedFile}?${q}`),
+        loadGray(`${API}/rendered/delta/${entry.removedFile}?${q}`),
+      ]);
+      // Same decode the viewer uses: alpha is the presence mask, value is log-encoded.
+      for (let i = 0; i < a.data.length; i += 4) {
+        const av = a.data[i + 3] ? Math.expm1(a.data[i] / 255 * (entry.addedMaxLog || 0)) : 0;
+        const rv = b.data[i + 3] ? Math.expm1(b.data[i] / 255 * (entry.removedMaxLog || 0)) : 0;
+        if (av > 0 || rv > 0) values.push(av + rv);
+      }
+      pairsUsed++;
+    } catch (e) { /* a missing channel is a pair we cannot pool, not a failure of the page */ }
+  }
+  values.sort((x, y) => x - y);
+  return { values, pairsUsed, pairsEmpty, pairsTotal: pairs.length };
+}
+
+async function loadGray(url) {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error(url)); img.src = url; });
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  return ctx.getImageData(0, 0, c.width, c.height);
+}
+
+function renderPooled(pool) {
+  const v = pool.values;
+  const host = $('pooled');
+  if (!v.length) {
+    host.innerHTML = `<div class="banner warn"><b>No changed cells at this layer and cell size.</b>
+      ${pool.pairsEmpty} of ${pool.pairsTotal} rendered pairs are empty here.</div>`;
+    return;
+  }
+  const at = (q) => v[Math.max(0, Math.min(v.length - 1, Math.ceil(q * v.length) - 1))];
+  const median = at(0.5), p90 = at(0.9), p99 = at(0.99), max = v[v.length - 1];
+  const mult = Math.max(1, Number($('dthresh').value) || 10);
+  const cut = median * mult;
+  const flagged = v.length - v.findIndex(x => x >= cut) === v.length + 1 ? 0 : v.filter(x => x >= cut).length;
+
+  const bins = 36, top = Math.log1p(max) || 1;
+  const hist = new Array(bins).fill(0);
+  for (const x of v) hist[Math.min(bins - 1, Math.floor(Math.log1p(x) / top * bins))]++;
+  const hmax = Math.max(1, ...hist);
+
+  // A sample count this small is the finding, so it is stated rather than left to be inferred
+  // from a sparse histogram.
+  const thin = v.length < 200 || pool.pairsUsed < 3;
+  host.innerHTML = `
+    ${thin ? `<div class="banner warn"><b>Too thin to draw a line from.</b>
+        ${v.length.toLocaleString()} changed cell(s) pooled across ${pool.pairsUsed} usable pair(s)
+        of ${pool.pairsTotal}. A spatial threshold set from this would be describing these few
+        pairs, not the server.</div>` : ''}
+    <div class="stats">
+      <div class="stat"><span class="eyebrow">Pooled cells</span><b>${v.length.toLocaleString()}</b></div>
+      <div class="stat"><span class="eyebrow">Pairs used</span><b>${pool.pairsUsed} / ${pool.pairsTotal}</b></div>
+      <div class="stat"><span class="eyebrow">Median</span><b>${median.toFixed(1)}</b></div>
+      <div class="stat"><span class="eyebrow">p90</span><b>${p90.toFixed(1)}</b></div>
+      <div class="stat"><span class="eyebrow">p99</span><b>${p99.toFixed(1)}</b></div>
+      <div class="stat"><span class="eyebrow">Max</span><b>${max.toFixed(1)}</b></div>
+      <div class="stat"><span class="eyebrow">At ${mult}× median (${cut.toFixed(1)})</span>
+        <b>${flagged.toLocaleString()} cell(s) flag</b></div>
+      <div class="stat" style="flex:1;min-width:280px">
+        <span class="eyebrow">Pooled change per cell (log-spaced bins)</span>
+        <div class="histo">${hist.map(n => `<span style="height:${Math.round(n / hmax * 100)}%"></span>`).join('')}</div>
+      </div>
+    </div>`;
+}
+
+async function refreshDelta({ reloadWorlds = false } = {}) {
+  $('status').hidden = false;
+  $('status').textContent = 'Reading baseline…';
+  if (reloadWorlds) await loadDeltaWorlds();
+  const worldId = $('dworld').value;
+  if (!worldId) { $('status').textContent = 'No worlds in the cache.'; return; }
+
+  const r = await fetch(`${API}/db/baseline?world=${encodeURIComponent(worldId)}`);
+  if (!r.ok) {
+    $('status').textContent = `No baseline for ${worldId}. It needs at least two snapshots and a batch pass.`;
+    $('sufficiency').innerHTML = ''; $('intervals').innerHTML = '';
+    $('groups').innerHTML = ''; $('pooled').innerHTML = '';
+    return;
+  }
+  const series = await r.json();
+  renderSufficiency(series);
+  renderIntervals(series);
+  renderGroups(series);
+
+  await loadDeltaLayerOptions(worldId);
+  $('status').textContent = 'Pooling rendered pairs…';
+  const pool = await poolDeltaCells(worldId, $('dlayer').value, Number($('dcell').value));
+  renderPooled(pool);
+  $('status').hidden = true;
+}
+
+function applyMode() {
+  const delta = $('mode').value === 'delta';
+  $('delta-view').hidden = !delta;
+  $('snapshot-view').hidden = delta;
+  $('delta-controls').hidden = !delta;
+  for (const id of ['snap', 'layer', 'cell', 'width', 'alpha', 'clip']) {
+    $(id).closest('.field, .chk').style.display = delta ? 'none' : '';
+  }
+  return delta;
+}
+
 async function refresh({ reloadManifest = false, redecode = true } = {}) {
   try {
     $('status').textContent = 'Decoding…';
@@ -318,12 +589,28 @@ for (const id of ['alpha', 'clip', 'width']) {
   $(id).addEventListener('change', () => refresh({ redecode: false }));
 }
 
+const guard = (fn) => async (...args) => {
+  try { await fn(...args); }
+  catch (e) { $('status').hidden = false; $('status').textContent = e.message || String(e); }
+};
+
+$('mode').addEventListener('change', guard(async () => {
+  if (applyMode()) await refreshDelta({ reloadWorlds: !deltaPairs.length });
+  else await refresh({ redecode: false });
+}));
+$('dworld').addEventListener('change', guard(() => refreshDelta()));
+$('dlayer').addEventListener('change', guard(() => refreshDelta()));
+$('dcell').addEventListener('change', guard(() => refreshDelta()));
+$('dthresh').addEventListener('change', guard(() => refreshDelta()));
+
 (async () => {
   try {
+    applyMode();
     const latest = await loadSnapshots();
     $('snap').value = String(latest);
     await refresh({ reloadManifest: true });
   } catch (e) {
+    $('status').hidden = false;
     $('status').textContent = e.message || String(e);
   }
 })();

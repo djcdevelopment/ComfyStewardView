@@ -185,6 +185,22 @@ public final class AnalyticsCacheReader implements AutoCloseable {
         return new File(new File(renderDir, String.valueOf(targetSnapshotId)), clean);
     }
 
+    /**
+     * A world's change-history series, or null when the world id cannot name one.
+     *
+     * <p>The id arrives as a query parameter, so it is run through the same sanitiser
+     * {@link BaselineBuilder} writes with — which maps every character outside
+     * {@code [A-Za-z0-9_.-]} to an underscore, and therefore cannot emit a separator or a dot
+     * segment. The equality check afterwards is the part that matters: it rejects any id that
+     * would have had to be rewritten to be safe, rather than silently serving a neighbouring
+     * world's file to someone who asked for {@code ../other}.
+     */
+    public File baselineSeriesFile(String worldId) {
+        if (worldId == null || worldId.isBlank()) return null;
+        if (!BaselineBuilder.pathSafe(worldId).equals(worldId)) return null;
+        return new File(new File(renderDir, "baseline"), worldId + "-series.json");
+    }
+
     public File deltaManifestFile(long fromSnapshotId, long toSnapshotId) {
         return new File(new File(new File(renderDir, "delta"),
             RenderedDeltaLayerBuilder.pairDirectoryName(fromSnapshotId, toSnapshotId)), "manifest.json");
@@ -268,6 +284,12 @@ public final class AnalyticsCacheReader implements AutoCloseable {
             int limit,
             int offset) throws SQLException {
 
+        // The returned `total` counts rows inside the queried box, not rows in the snapshot.
+        // Those differ: the caller's default box is +/-100,000, and 1,350 ZDOs on ComfyEra16 sit
+        // outside it, so this endpoint reports 9,154,246 where COUNT(*) reports 9,155,596. That
+        // is correct for a spatial query and confusing next to a headline figure, so do not
+        // reconcile the two by widening this - they are answering different questions. (Checked:
+        // the difference is entirely far-out coordinates, no null or NaN positions.)
         StringBuilder sql = new StringBuilder(
             "SELECT zdo_index, prefab_hash, prefab_name, category, x, y, z, " +
             "creator_id, owner_id, spawn_time_micros, flags " +
