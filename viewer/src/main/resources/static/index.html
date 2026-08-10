@@ -1472,7 +1472,12 @@ function app() {
     changesBaseOverlay: null,
     changesBoxLayer: null,
     changesMarkerLayer: null,
-    changesLayer: 'build-activity',
+    // all-zdos, not build-activity. Build churn is deprioritised, and the build-activity layer
+    // measures it at a 57.6% ceiling because a piece rebuilt on its own centimetre is invisible
+    // to snapshot identity. all-zdos is also the only layer where harvesting shows at all: NATURE
+    // is never assigned, so felled trees and mined rock sit in UNKNOWN and no category-filtered
+    // layer contains them.
+    changesLayer: 'all-zdos',
     changesCellSize: null,
     // 'auto' tracks zoom the way the World map's resolution control already does; a number pins
     // it. Without this, zooming into a hotspot only enlarged 500 m cells instead of resolving
@@ -2021,7 +2026,7 @@ function app() {
         this.beaconLayer = null;
         this.changeBeacons = [];
       }
-      this.activeRasterLayer = mode === 'changes' ? 'build-activity' : 'build-density';
+      this.activeRasterLayer = mode === 'changes' ? 'all-zdos' : 'build-density';
       this.rasterCellSize = 500;
       if (mode === 'changes') {
         this._manifestToken++;
