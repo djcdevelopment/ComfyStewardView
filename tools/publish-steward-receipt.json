@@ -1,17 +1,19 @@
 ﻿{
-    "started_at":  "2026-08-09T02:35:19.6277129Z",
-    "finished_at":  "2026-08-09T02:39:20.0411507Z",
+    "started_at":  "2026-08-22T15:53:25.7088202Z",
+    "finished_at":  "2026-08-22T16:01:57.1058585Z",
     "pushed":  true,
     "ssh_target":  "am4",
-    "git_sha":  "37f4124",
-    "am4_world_sha256":  "dfdf88ccc7f651a241ed7d872d92e602c1ec2d659d1461f23b19dbf6f453dade",
-    "omen_world":  "ComfyEra16_backup_auto-20260808185542.db",
-    "cache_mb":  3893.5,
-    "rendered_mb":  0.8,
-    "delta_pairs":  3,
+    "git_sha":  "b021d65",
+    "am4_world_sha256":  null,
+    "omen_world":  "ComfyEra17.db",
+    "omen_world_sha256":  "3acee92b99f37ec991b85bddf031760a8eeef5261ef25005a1e173547f1f49c7",
+    "activated_world":  "ComfyEra17.db",
+    "cache_mb":  11503.3,
+    "rendered_mb":  2.5,
+    "delta_pairs":  13,
     "archived":  true,
     "archive_dir":  "C:\\Users\\derek\\AppData\\Local\\steward-publish\\archive",
-    "archive_mb":  341,
+    "archive_mb":  1183.2,
     "live_window":  6,
     "new_snapshots":  1,
     "snapshots":  [
@@ -38,6 +40,54 @@
                           "file_hash":  "dfdf88ccc7f651a241ed7d872d92e602c1ec2d659d1461f23b19dbf6f453dade",
                           "dictionary":  "0.221.12",
                           "zdo_rows":  9155593
+                      },
+                      {
+                          "snapshot_id":  "102",
+                          "world_id":  "steward-synthetic-history-v1",
+                          "source":  "synthetic",
+                          "file_hash":  "51d256329a53132f7140017966b536025dca8620e46a53dbf91d25c1bcd48516",
+                          "dictionary":  "0.221.12",
+                          "zdo_rows":  9155610
+                      },
+                      {
+                          "snapshot_id":  "103",
+                          "world_id":  "steward-synthetic-history-v1",
+                          "source":  "synthetic",
+                          "file_hash":  "86552e57572b66cda9fc289b1c3973bb93c4b43ca1ece34d95d40fb2e321e478",
+                          "dictionary":  "0.221.12",
+                          "zdo_rows":  9155658
+                      },
+                      {
+                          "snapshot_id":  "104",
+                          "world_id":  "steward-synthetic-history-v1",
+                          "source":  "synthetic",
+                          "file_hash":  "d8fa43f4f978ab723549fd95cf5aa430fb2574d892508856555e3324e187eb4b",
+                          "dictionary":  "0.221.12",
+                          "zdo_rows":  9155531
+                      },
+                      {
+                          "snapshot_id":  "105",
+                          "world_id":  "steward-synthetic-history-v1",
+                          "source":  "synthetic",
+                          "file_hash":  "0b088c70dedc94167c0d7d8ba007f64e2a669bacf1b1d3b826990d9002a884a6",
+                          "dictionary":  "0.221.12",
+                          "zdo_rows":  9155595
+                      },
+                      {
+                          "snapshot_id":  "106",
+                          "world_id":  "steward-synthetic-history-v1",
+                          "source":  "synthetic",
+                          "file_hash":  "7eebcc0675e1dd7f64bcb7f6f3aaa9411470742c5374725797298a702ef6837d",
+                          "dictionary":  "0.221.12",
+                          "zdo_rows":  9155596
+                      },
+                      {
+                          "snapshot_id":  "107",
+                          "world_id":  "ComfyEra17",
+                          "source":  "release",
+                          "file_hash":  "3acee92b99f37ec991b85bddf031760a8eeef5261ef25005a1e173547f1f49c7",
+                          "dictionary":  "0.221.12",
+                          "zdo_rows":  8936584
                       }
                   ]
 }
