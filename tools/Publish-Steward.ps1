@@ -45,6 +45,14 @@
   Process only OMEN's local world. Useful when AM4 is unreachable; the published
   cache then contains the omen-sourced snapshot only.
 
+.PARAMETER OmenWorldPath
+  Explicit immutable world artifact to ingest instead of discovering the newest
+  rotated backup in OmenWorldDir. Completed-era releases should use this path.
+
+.PARAMETER ActivateWorld
+  With -Push, also upload the explicit world artifact to AM4's Steward world
+  directory, verify its SHA-256, and select it as the container's boot world.
+
 .EXAMPLE
   # Dry run: build both worlds on OMEN, verify, report. Nothing published.
   powershell -ExecutionPolicy Bypass -File .\tools\Publish-Steward.ps1
@@ -66,18 +74,22 @@ param(
     [string]$RemoteRoot      = '/home/derek/steward',
     [string]$Am4WorldSource  = '/home/derek/comfy-valheim-lab/server-state/config/worlds_local/ComfyEra16.db',
     [string]$OmenWorldDir    = 'C:\work\baseline\fieldlab\autonomous\state\server\config\worlds_local',
+    [string]$OmenWorldPath   = '',
     # One world id, because these are all copies of the same Era16 save. What differs between
     # them is which host the copy came from and when, which is what `source` and `backup_id`
     # record. Giving them separate world_ids would split one world's history into parallel
     # timelines and make the Changes view unable to diff them.
     [string]$WorldId         = 'ComfyEra16',
     [string]$WorldName       = 'Comfy Era 16',
+    [string]$OmenSource      = 'omen',
+    [string]$OmenBackupId    = '',
     [string]$WorkDir         = "$env:LOCALAPPDATA\steward-publish",
     [string]$JavaHome        = '',
     [string]$JavaOpts        = '-Xmx8g -Djava.awt.headless=true',
     [int]   $TimeoutMinutes  = 30,
     [switch]$SkipAm4World,
     [switch]$Push,
+    [switch]$ActivateWorld,
     # Deprecated no-op: archiving is now always on. The Parquet archive is the history of
     # record each publish rebuilds the live cache from (lossless, ~10x smaller, queryable
     # in place); it accumulates and is never pruned by this script.
@@ -150,6 +162,20 @@ trap { Remove-Item $lockFile -Force -ErrorAction SilentlyContinue; break }
 
 if (-not (Test-Path $java)) { throw "java not found at $java (pass -JavaHome)" }
 if (-not (Test-Path $jar))  { throw "viewer jar not found at $jar - run: mvn -f viewer/pom.xml package -DskipTests" }
+if ($ActivateWorld -and -not $Push) { throw '-ActivateWorld requires -Push' }
+if ($ActivateWorld -and -not $OmenWorldPath) { throw '-ActivateWorld requires -OmenWorldPath' }
+if ($OmenWorldPath) {
+    if (-not (Test-Path -LiteralPath $OmenWorldPath -PathType Leaf)) {
+        throw "explicit world artifact not found: $OmenWorldPath"
+    }
+    if ([IO.Path]::GetExtension($OmenWorldPath) -ne '.db') {
+        throw "explicit world artifact must be a .db file: $OmenWorldPath"
+    }
+    $worldLeaf = [IO.Path]::GetFileName($OmenWorldPath)
+    if ($worldLeaf -notmatch '^[A-Za-z0-9._-]+$') {
+        throw "world filename is not safe for remote activation: $worldLeaf"
+    }
+}
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 
 # The cache is disposable and rebuilt fresh each run from the Parquet archive (history of
@@ -172,8 +198,15 @@ $prevReceipt = $null
 if (Test-Path $prevReceiptPath) {
     try { $prevReceipt = Get-Content $prevReceiptPath -Raw | ConvertFrom-Json } catch {}
 }
+$usePrevReceipt = $false
+if ($prevReceipt -and [bool]$prevReceipt.pushed -and $prevReceipt.snapshots -and
+        $prevReceipt.archive_dir) {
+    $currentArchive = [IO.Path]::GetFullPath($ArchiveDir).TrimEnd('\')
+    $previousArchive = [IO.Path]::GetFullPath([string]$prevReceipt.archive_dir).TrimEnd('\')
+    $usePrevReceipt = $currentArchive -eq $previousArchive
+}
 $prevHashes = @()
-if ($prevReceipt -and $prevReceipt.snapshots) {
+if ($usePrevReceipt) {
     $prevHashes = @($prevReceipt.snapshots | ForEach-Object { [string]$_.file_hash } | Where-Object { $_ })
 }
 
@@ -218,9 +251,15 @@ if (-not $SkipAm4World) {
 # Prefer the newest rotated backup over the live file: a backup_auto is immutable
 # once written, so it needs no torn-copy dance.
 Write-Host '[3/7] Selecting OMEN world save...'
-$omenWorld = Get-ChildItem $OmenWorldDir -Filter '*_backup_auto-*.db' -ErrorAction SilentlyContinue |
-             Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (-not $omenWorld) { throw "no rotated backup found in $OmenWorldDir" }
+$omenWorld = $null
+if ($OmenWorldPath) {
+    $omenWorld = Get-Item -LiteralPath $OmenWorldPath
+    Write-Host '      explicit immutable release artifact'
+} else {
+    $omenWorld = Get-ChildItem $OmenWorldDir -Filter '*_backup_auto-*.db' -ErrorAction SilentlyContinue |
+                 Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $omenWorld) { throw "no rotated backup found in $OmenWorldDir" }
+}
 Write-Host ("      {0} ({1:n1} MB, {2})" -f $omenWorld.Name, ($omenWorld.Length / 1MB), $omenWorld.LastWriteTime)
 
 # --- 4. Build artifacts on OMEN ------------------------------------------
@@ -257,8 +296,9 @@ if ($doAm4) {
                  BackupId = ("am4_{0}" -f (Get-Date -Format 'yyyyMMddHHmmss')) }
 }
 if ($doOmen) {
-    $runs += ,@{ Label = 'omen copy: parse + cache + render'; World = $omenWorld.FullName; Source = 'omen'
-                 BackupId = [IO.Path]::GetFileNameWithoutExtension($omenWorld.Name) }
+    $backupId = if ($OmenBackupId) { $OmenBackupId } else { [IO.Path]::GetFileNameWithoutExtension($omenWorld.Name) }
+    $runs += ,@{ Label = "$OmenSource copy: parse + cache + render"; World = $omenWorld.FullName; Source = $OmenSource
+                 BackupId = $backupId }
 }
 for ($i = 0; $i -lt $runs.Count; $i++) {
     $run = $runs[$i]
@@ -316,7 +356,7 @@ if (-not $rows) { throw 'verification failed: no snapshots in the built cache' }
 # Continuity gate: history must accumulate. Every snapshot the previous receipt shipped
 # that still fits the live window must be present in this cache; the publish fails closed
 # rather than silently shipping a history reset.
-if ($prevReceipt -and $prevReceipt.snapshots) {
+if ($usePrevReceipt) {
     $prevIds = @($prevReceipt.snapshots | ForEach-Object { [long]$_.snapshot_id } | Sort-Object)
     $retainCount = [Math]::Min($prevIds.Count, $LiveWindow - $newCount)
     $expectedRetained = @($prevIds | Select-Object -Last $retainCount)
@@ -395,7 +435,7 @@ foreach ($worldGroup in @($rows | Group-Object WorldId)) {
             if ([long]$deltaManifest.fromSnapshotId -ne $fromId -or [long]$deltaManifest.toSnapshotId -ne $toId) {
                 throw "delta manifest $deltaManifestPath identifies $($deltaManifest.fromSnapshotId) -> $($deltaManifest.toSnapshotId), expected $fromId -> $toId"
             }
-            if ([int]$deltaManifest.schemaVersion -ne 2) {
+            if ([int]$deltaManifest.schemaVersion -ne 3) {
                 throw "delta manifest $deltaManifestPath has unsupported schemaVersion '$($deltaManifest.schemaVersion)'"
             }
             if ([string]$deltaManifest.worldId -ne [string]$worldGroup.Name) {
@@ -406,7 +446,9 @@ foreach ($worldGroup in @($rows | Group-Object WorldId)) {
             }
             $topFields = @($deltaManifest.PSObject.Properties.Name)
             foreach ($requiredField in @('fromDictionaryVersion', 'toDictionaryVersion',
-                    'dictionaryMismatch', 'dictionaryCompatibility', 'zdosAdded', 'zdosRemoved')) {
+                    'dictionaryMismatch', 'dictionaryCompatibility', 'zdosAdded', 'zdosRemoved',
+                    'spatialZdosAdded', 'spatialZdosRemoved', 'unrenderableZdosAdded',
+                    'unrenderableZdosRemoved')) {
                 if ($topFields -notcontains $requiredField) {
                     throw "delta manifest $deltaManifestPath does not declare $requiredField"
                 }
@@ -424,7 +466,15 @@ foreach ($worldGroup in @($rows | Group-Object WorldId)) {
                     (($dictionaryCompatibility -eq 'mismatch') -ne $expectedDictionaryMismatch)) {
                 throw "delta manifest $deltaManifestPath has inconsistent dictionary compatibility fields"
             }
-            if ([double]$deltaManifest.zdosAdded -lt 0 -or [double]$deltaManifest.zdosRemoved -lt 0) {
+            if ([double]$deltaManifest.zdosAdded -lt 0 -or [double]$deltaManifest.zdosRemoved -lt 0 -or
+                    [double]$deltaManifest.spatialZdosAdded -lt 0 -or
+                    [double]$deltaManifest.spatialZdosRemoved -lt 0 -or
+                    [double]$deltaManifest.unrenderableZdosAdded -lt 0 -or
+                    [double]$deltaManifest.unrenderableZdosRemoved -lt 0 -or
+                    [double]$deltaManifest.zdosAdded -ne
+                        ([double]$deltaManifest.spatialZdosAdded + [double]$deltaManifest.unrenderableZdosAdded) -or
+                    [double]$deltaManifest.zdosRemoved -ne
+                        ([double]$deltaManifest.spatialZdosRemoved + [double]$deltaManifest.unrenderableZdosRemoved)) {
                 throw "delta manifest $deltaManifestPath has negative headline counts"
             }
             $deltaLayers = @($deltaManifest.layers)
@@ -443,13 +493,16 @@ foreach ($worldGroup in @($rows | Group-Object WorldId)) {
                 }
                 $layerFields = @($layer.PSObject.Properties.Name)
                 foreach ($requiredField in @('addedMaxRaw', 'removedMaxRaw', 'addedMaxLog',
-                        'removedMaxLog', 'width', 'height', 'empty', 'units', 'identity')) {
+                        'removedMaxLog', 'addedCellCount', 'removedCellCount', 'addedRawTotal',
+                        'removedRawTotal', 'width', 'height', 'empty', 'units', 'identity')) {
                     if ($layerFields -notcontains $requiredField) {
                         throw "delta layer '$($layer.id)' in $deltaManifestPath does not declare $requiredField"
                     }
                 }
                 if ([double]$layer.addedMaxRaw -lt 0 -or [double]$layer.removedMaxRaw -lt 0 -or
                         [double]$layer.addedMaxLog -lt 0 -or [double]$layer.removedMaxLog -lt 0 -or
+                        [double]$layer.addedCellCount -lt 0 -or [double]$layer.removedCellCount -lt 0 -or
+                        [double]$layer.addedRawTotal -lt 0 -or [double]$layer.removedRawTotal -lt 0 -or
                         [int]$layer.width -le 0 -or [int]$layer.height -le 0) {
                     throw "delta layer '$($layer.id)' in $deltaManifestPath has invalid maxima or dimensions"
                 }
@@ -561,6 +614,24 @@ if (-not $Push) {
     Write-Host "[6/7] Publishing to $SshTarget..."
     Invoke-Ssh "mkdir -p $RemoteRoot/publish/rendered" | Out-Null
 
+    $activeWorldRemote = $null
+    if ($ActivateWorld) {
+        $activeWorldName = $omenWorld.Name
+        $activeWorldRemote = "$RemoteRoot/world/$activeWorldName"
+        $activeWorldUpload = "$activeWorldRemote.upload"
+        Write-Host "      uploading active boot world $activeWorldName..."
+        Invoke-Ssh "mkdir -p $RemoteRoot/world && rm -f $activeWorldUpload" | Out-Null
+        scp -q $omenWorld.FullName "${SshTarget}:$activeWorldUpload"
+        if ($LASTEXITCODE -ne 0) { throw "scp of active world failed (exit $LASTEXITCODE)" }
+        $remoteActiveSha = (Invoke-Ssh "sha256sum $activeWorldUpload").Split(' ')[0]
+        if ($remoteActiveSha -ne $omenSha) {
+            Invoke-Ssh "rm -f $activeWorldUpload" -AllowFailure | Out-Null
+            throw "active world transfer corrupted: local $omenSha, remote $remoteActiveSha"
+        }
+        Invoke-Ssh "mv $activeWorldUpload $activeWorldRemote" | Out-Null
+        Write-Host "      active world transfer verified: $omenSha"
+    }
+
     Write-Host "      uploading cache (${cacheMB} MB)..."
     scp -q $cacheFile "${SshTarget}:$RemoteRoot/publish/world-cache.duckdb"
     if ($LASTEXITCODE -ne 0) { throw "scp of cache failed (exit $LASTEXITCODE)" }
@@ -575,7 +646,7 @@ if (-not $Push) {
     # artifacts into the named volume through a helper container (no sudo, and no
     # assumptions about where docker keeps volume data).
     Write-Host '      stopping container and installing artifacts into steward-data...'
-    Invoke-Ssh "cd $RemoteRoot/build && docker compose -f docker-compose.am4.yml stop" -AllowFailure | Out-Null
+    Invoke-Ssh "cd $RemoteRoot/build && docker compose --env-file $RemoteRoot/.env -f docker-compose.am4.yml stop" -AllowFailure | Out-Null
     $install = @(
         "docker run --rm -v steward_steward-data:/data -v $RemoteRoot/publish:/in:ro alpine sh -c '"
         'set -eu; '
@@ -590,8 +661,14 @@ if (-not $Push) {
     $installResult = Invoke-Ssh $install
     if ("$installResult" -notmatch 'install-ok') { throw "artifact install failed: $installResult" }
 
+    if ($ActivateWorld) {
+        $activeWorldName = $omenWorld.Name
+        Invoke-Ssh "printf 'STEWARD_WORLD_FILE=/world/$activeWorldName\n' > $RemoteRoot/.env.new && mv $RemoteRoot/.env.new $RemoteRoot/.env" | Out-Null
+        Write-Host "      selected /world/$activeWorldName as the Steward boot world"
+    }
+
     Write-Host '      starting container...'
-    Invoke-Ssh "cd $RemoteRoot/build && docker compose -f docker-compose.am4.yml up -d" | Out-Null
+    Invoke-Ssh "cd $RemoteRoot/build && docker compose --env-file $RemoteRoot/.env -f docker-compose.am4.yml up -d" | Out-Null
 
     Write-Host "[7/7] Waiting for readiness (up to $TimeoutMinutes min; serve mode only, no rebuild)..."
     $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
@@ -607,6 +684,16 @@ if (-not $Push) {
     }
     $snapCheck = Invoke-Ssh "curl -fsS -m 10 http://127.0.0.1:$Port/api/v1/db/snapshots" -AllowFailure
     Write-Host "      /api/v1/db/snapshots: $snapCheck"
+    if ($ActivateWorld) {
+        $bootStatus = Invoke-Ssh "curl -fsS -m 10 http://127.0.0.1:$Port/api/v1/status" -AllowFailure
+        $expectedBootRows = ($rows | Where-Object { $_.FileHash -eq $omenSha } |
+                            Sort-Object { [long]$_.SnapshotId } -Descending |
+                            Select-Object -First 1).ZdoRows
+        if (-not $expectedBootRows -or "$bootStatus" -notmatch ('"parsed"\s*:\s*' + $expectedBootRows)) {
+            throw "active-world gate failed: boot status does not report $expectedBootRows parsed ZDOs: $bootStatus"
+        }
+        Write-Host "      active-world gate passed: boot parse and release snapshot both contain $expectedBootRows ZDOs."
+    }
     Write-Host '      Ready.'
 }
 
@@ -619,6 +706,8 @@ $receipt = [ordered]@{
     git_sha         = (git -C $repoRoot rev-parse --short HEAD)
     am4_world_sha256 = $am4Sha
     omen_world      = $omenWorld.Name
+    omen_world_sha256 = $omenSha
+    activated_world = $(if ($ActivateWorld) { $omenWorld.Name } else { $null })
     cache_mb        = $cacheMB
     rendered_mb     = $renderMB
     delta_pairs     = $deltaPairCount

@@ -12,6 +12,17 @@ Processing and serving run on different hosts. OMEN parses saves and builds the 
 
 The v4 shell and spatial comparison release has been deployed through both lanes and verified at [the AM4 Steward endpoint](https://am4.tail8e749c.ts.net/steward/). This is a release verification record, not a guarantee that the live data will remain on any particular snapshot pair.
 
+Completed-era releases use an explicit immutable artifact instead of rotated-backup discovery:
+
+```powershell
+.\tools\Publish-Steward.ps1 -SkipAm4World -OmenWorldPath E:\releases\ComfyEra17.db `
+  -WorldId ComfyEra17 -WorldName 'Comfy Era 17' -OmenSource release `
+  -OmenBackupId era17-release-20260822 -Push -ActivateWorld
+```
+
+Activation uploads the boot save through a SHA-256 gate and changes only Steward's
+publish-owned world selection; it never writes to a live game-server save.
+
 ## Quick start
 
 Recommended path for Windows users:

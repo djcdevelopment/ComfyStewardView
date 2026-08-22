@@ -46,6 +46,7 @@ function Invoke-Ssh {
 Write-Host "[1/7] SSH preflight to '$SshTarget'..."
 Invoke-Ssh 'true' | Out-Null
 Invoke-Ssh "mkdir -p $RemoteRoot/world" | Out-Null
+Invoke-Ssh "test -f $RemoteRoot/.env || printf 'STEWARD_WORLD_FILE=/world/ComfyEra16.db\n' > $RemoteRoot/.env" | Out-Null
 
 # --- 2. Stage build context ----------------------------------------------
 Write-Host '[2/7] Staging build context...'
@@ -79,7 +80,7 @@ if ($haveSnapshot -and -not $RefreshWorld) {
 } else {
     if ($RefreshWorld) {
         Write-Host '[3/7] -RefreshWorld: stopping container and wiping cache volume...'
-        Invoke-Ssh "cd $RemoteRoot/build && docker compose -f docker-compose.am4.yml down" -AllowFailure | Out-Null
+        Invoke-Ssh "cd $RemoteRoot/build && docker compose --env-file $RemoteRoot/.env -f docker-compose.am4.yml down" -AllowFailure | Out-Null
         Invoke-Ssh 'docker volume rm steward_steward-data' -AllowFailure | Out-Null
     }
     Write-Host "[3/7] Snapshotting $WorldSource -> $worldDest ..."
@@ -100,7 +101,7 @@ if ("$ourContainer".Trim() -eq 'comfy-steward-view') {
 
 # --- 5. Build + start -----------------------------------------------------
 Write-Host '[5/7] docker compose up -d --build (build runs on AM4)...'
-Invoke-Ssh "cd $RemoteRoot/build && docker compose -f docker-compose.am4.yml up -d --build" | Write-Host
+Invoke-Ssh "cd $RemoteRoot/build && docker compose --env-file $RemoteRoot/.env -f docker-compose.am4.yml up -d --build" | Write-Host
 
 # --- 6. Readiness ---------------------------------------------------------
 Write-Host "[6/7] Waiting for /api/v1/status done:true (up to $TimeoutMinutes min; first boot parses twice + renders layers)..."

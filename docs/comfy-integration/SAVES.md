@@ -1,13 +1,13 @@
-# Era16 save & cache locations — canonical registry
+# Steward save & cache locations — canonical registry
 
-One world (`ComfyEra16`), many copies. This is the authoritative map of where they live,
-who owns each, and which lane touches it. If a location isn't listed here, it's not part
-of the pipeline.
+Each era is a distinct `world_id`; snapshots within an era form its history. This is the
+authoritative map of where active and historical copies live and which lane touches them.
 
 | Location | Host | Owner / purpose |
 |---|---|---|
 | `/home/derek/comfy-valheim-lab/server-state/config/worlds_local/ComfyEra16.db` | AM4 | **Live game world.** Source for am4-sourced snapshots. Never edited by tooling. |
 | `/home/derek/steward/world/ComfyEra16.db` | AM4 | **Publish-owned serve copy.** Re-snapshotted (mtime-stable) from the live world by every `Publish-Steward` run; Deploy-Steward only seeds it on first deploy. Not frozen — it tracks the last publish. |
+| `/home/derek/steward/world/ComfyEra17.db` | AM4 | **Completed-era serve copy.** Uploaded only from an explicit release artifact, SHA-256 verified, and selected through `/home/derek/steward/.env`. |
 | `steward_steward-data` volume → `/data/{world-cache.duckdb, rendered/, .cache-complete}` | AM4 | **Published artifacts.** Replaced atomically by each publish. The API ingest endpoint is disabled here (`STEWARD_DISABLE_INGEST=1`) — publish owns this history. |
 | `C:\work\baseline\fieldlab\autonomous\state\server\config\worlds_local\` | OMEN | **Lab game world + rotated backups.** Newest `*_backup_auto-*.db` is the omen-sourced snapshot each publish. Also the seed world for synthetic-history replays. |
 | `%LOCALAPPDATA%\steward-publish\out\` | OMEN | **Publish workdir.** `world-cache.duckdb` is disposable (rebuilt every run); `rendered\` persists across runs (only missing rasters render). |
@@ -24,3 +24,5 @@ Notes:
 - Lanes and their write targets: `Publish-Steward.ps1` (archive + workdir + AM4 volume +
   AM4 serve copy), `Deploy-Steward.ps1` (AM4 image; `-RefreshWorld` wipes the volume),
   ingest API (lab instances only), synthetic-history tools (corpus dirs only).
+- A machine-local nightly configuration may pin an immutable completed-era artifact;
+  unchanged releases are a no-op and executable defaults do not encode its drive path.
