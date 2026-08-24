@@ -12,6 +12,7 @@
 8. A local surface replaces the 16 m analysis raster instead of blending two analytical grids. Inferred context becomes a faint locator layer, while press-and-hold peek restores it for orientation.
 9. Close-detail surfaces are double-buffered. The last complete surface remains authoritative during movement and is replaced only after the next surface image loads; hidden coarse rasters never crossfade over it.
 10. Smooth surface sampling is the default at every raster scale. Cell grid reveals the same discrete bins with hard edges; changing this display mode never changes data, thresholds, or queries.
+11. Analysis tone uses a stable client-side focus curve with a bright peak cap. Inferred context remains visually subordinate and does not share that curve, preventing two midtone surfaces from reading as one dull layer.
 
 ## Independent dimensions
 

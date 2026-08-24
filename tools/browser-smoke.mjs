@@ -9,7 +9,10 @@ const parsedOutput = path.parse(output);
 const marqueeOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-marquee${parsedOutput.ext || '.png'}`);
 const denseOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-dense${parsedOutput.ext || '.png'}`);
 const detailOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-detail-4m${parsedOutput.ext || '.png'}`);
+const scale320Output = path.join(parsedOutput.dir, `${parsedOutput.name}-320m${parsedOutput.ext || '.png'}`);
+const scale64Output = path.join(parsedOutput.dir, `${parsedOutput.name}-64m${parsedOutput.ext || '.png'}`);
 const exercise = process.argv.includes('--exercise');
+const scalePreviews = process.argv.includes('--scale-previews');
 const marqueeOnly = process.argv.includes('--marquee-only');
 const useStoryAction = process.argv.includes('--story-action');
 const submitJob = process.argv.includes('--submit-job');
@@ -81,6 +84,8 @@ const rasterStyleResult = await cdp('Runtime.evaluate', { expression: `(() => {
     mode: document.body.classList.contains('raster-cells') ? 'cells' : 'smooth',
     world: getComputedStyle(document.querySelector('.analysis-raster')).imageRendering,
     context: getComputedStyle(document.querySelector('.context-raster')).imageRendering,
+    worldOpacity: Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
+    contextOpacity: Number(getComputedStyle(document.querySelector('.context-raster')).opacity),
     smoothActive: document.querySelector('[data-raster-style="smooth"]')?.classList.contains('active'),
     cellsActive: document.querySelector('[data-raster-style="cells"]')?.classList.contains('active')
   });
@@ -91,6 +96,21 @@ const rasterStyleResult = await cdp('Runtime.evaluate', { expression: `(() => {
   return { initial, cells, restored:capture() };
 })()`, returnByValue:true });
 rasterStyleState = rasterStyleResult.result.value;
+
+if (scalePreviews) {
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 1400));
+  const scale320Shot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(scale320Output, Buffer.from(scale320Shot.data, 'base64'));
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 700));
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 1600));
+  const scale64Shot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(scale64Output, Buffer.from(scale64Shot.data, 'base64'));
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#go-world')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 1200));
+}
 
 if (submitJob) {
   await cdp('Runtime.evaluate', { expression: `
@@ -391,6 +411,7 @@ await writeFile(output, Buffer.from(shot.data, 'base64'));
 
 console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marqueeOutput : null,
   denseOutput:exercise ? denseOutput : null, detailOutput:exercise ? detailOutput : null,
+  scale320Output:scalePreviews ? scale320Output : null, scale64Output:scalePreviews ? scale64Output : null,
   state, marqueeState, inspectorTabState, panGestureState, densePointState, denseUiState,
   localDetail8State, localDetail4State, bufferedHandoffState, rasterStyleState, errors }, null, 2));
 await cdp('Browser.close').catch(() => {});
@@ -398,7 +419,8 @@ socket.close();
 setTimeout(() => browser.kill(), 1000).unref();
 if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state.status} ${state.title}`) ||
     rasterStyleState?.initial?.mode !== 'smooth' || rasterStyleState?.initial?.world !== 'auto' ||
-    rasterStyleState?.initial?.context !== 'auto' || !rasterStyleState?.initial?.smoothActive ||
+    rasterStyleState?.initial?.context !== 'auto' || rasterStyleState?.initial?.worldOpacity !== .82 ||
+    rasterStyleState?.initial?.contextOpacity !== .42 || !rasterStyleState?.initial?.smoothActive ||
     rasterStyleState?.cells?.mode !== 'cells' || !['pixelated','crisp-edges'].includes(rasterStyleState?.cells?.world) ||
     !['pixelated','crisp-edges'].includes(rasterStyleState?.cells?.context) || !rasterStyleState?.cells?.cellsActive ||
     rasterStyleState?.restored?.mode !== 'smooth' || rasterStyleState?.restored?.world !== 'auto' ||
@@ -429,7 +451,7 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
         localDetail8State?.worldOpacity !== 0 || localDetail8State?.contextOpacity >= .2 ||
         localDetail8State?.contextOpacity >= localDetail8State?.localOpacity ||
         !/→/.test(localDetail8State?.contextOpacityLabel || '') ||
-        localDetail8State?.peekContextOpacity < .6 || localDetail8State?.peekLocalOpacity !== .03 ||
+        localDetail8State?.peekContextOpacity < .4 || localDetail8State?.peekLocalOpacity !== .03 ||
         localDetail8State?.restoredContextOpacity !== localDetail8State?.contextOpacity ||
         bufferedHandoffState?.held?.src !== bufferedHandoffState?.before?.src ||
         bufferedHandoffState?.held?.localCount !== 1 || bufferedHandoffState?.held?.localOpacity <= 0 ||
@@ -441,5 +463,5 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
         localDetail4State?.worldOpacity !== 0 || localDetail4State?.contextOpacity >= .2 ||
         localDetail4State?.contextOpacity >= localDetail4State?.localOpacity ||
         !/→/.test(localDetail4State?.contextOpacityLabel || '') ||
-        localDetail4State?.peekContextOpacity < .6 || localDetail4State?.peekLocalOpacity !== .03 ||
+        localDetail4State?.peekContextOpacity < .4 || localDetail4State?.peekLocalOpacity !== .03 ||
         localDetail4State?.restoredContextOpacity !== localDetail4State?.contextOpacity))))) process.exitCode = 1;

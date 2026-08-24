@@ -4,7 +4,7 @@
   const $ = id => document.getElementById(id);
   const API = '/api';
   const palettes = {
-    ember: [[0,[14,25,43]],[.34,[43,79,126]],[.7,[176,171,139]],[1,[242,126,108]]],
+    ember: [[0,[10,20,36]],[.36,[40,76,124]],[.67,[172,178,142]],[.88,[249,125,91]],[1,[255,224,166]]],
     moss: [[0,[10,30,23]],[.36,[31,92,62]],[.72,[103,176,116]],[1,[238,245,203]]],
     viridis: [[0,[35,15,68]],[.35,[48,79,150]],[.68,[32,164,139]],[1,[220,236,62]]],
     context: [[0,[24,38,55]],[.42,[54,76,94]],[1,[137,156,165]]],
@@ -21,8 +21,8 @@
     resolution: 'auto',
     rasterStyle: 'smooth',
     palette: 'ember',
-    analysisOpacity: .72,
-    contextOpacity: .62,
+    analysisOpacity: .82,
+    contextOpacity: .42,
     contextEnabled: true,
     exactEnabled: true,
     tool: 'pan',
@@ -458,7 +458,10 @@
     const ramp = palettes[paletteName] || palettes.ember;
     for (let i = 0; i < pixels.data.length; i += 4) {
       if (pixels.data[i+3] === 0) continue;
-      const [r,g,b] = rampColor(ramp, pixels.data[i] / 255);
+      const encoded = pixels.data[i] / 255;
+      const tone = paletteName === 'context' || paletteName === 'navigator'
+        ? encoded : analysisTone(encoded);
+      const [r,g,b] = rampColor(ramp, tone);
       pixels.data[i] = r; pixels.data[i+1] = g; pixels.data[i+2] = b; pixels.data[i+3] = 255;
     }
     context.putImageData(pixels, 0, 0);
@@ -475,6 +478,10 @@
     const [aT,a] = ramp[right-1], [bT,b] = ramp[right];
     const u = (t-aT) / Math.max(.0001, bT-aT);
     return a.map((value,index) => Math.round(value + (b[index]-value)*u));
+  }
+
+  function analysisTone(t) {
+    return Math.pow(Math.max(0, Math.min(1, t)), 1.18);
   }
 
   async function crossfade(oldOverlay, newOverlay, targetOpacity) {
@@ -750,7 +757,7 @@
     const ramp = palettes[state.palette] || palettes.ember;
     for (let index = 0; index < cells.length; index++) {
       if (cells[index] <= 0) continue;
-      const [r,g,b] = rampColor(ramp, Math.log1p(cells[index])/maxLog);
+      const [r,g,b] = rampColor(ramp, analysisTone(Math.log1p(cells[index])/maxLog));
       const offset = index*4;
       image.data[offset] = r; image.data[offset+1] = g; image.data[offset+2] = b; image.data[offset+3] = 255;
     }

@@ -77,6 +77,10 @@ ladder, so neighboring cells read as a continuous field while zooming. **Cell gr
 back to hard pixel edges for auditing the underlying bins. This display choice never changes cell values,
 legend thresholds, point queries, or generated artifacts.
 
+The analysis palette applies a fixed focus curve to reserve its brightest colors for genuine peaks, while
+the inferred all-ZDO context starts at a subordinate opacity. The curve is client-side presentation over
+the same logarithmic cell values; context and navigator imagery retain their neutral mapping.
+
 ## Prepare a cache from a save
 
 The lab does not duplicate Steward's hand-written save parser. It emits the exact command that
