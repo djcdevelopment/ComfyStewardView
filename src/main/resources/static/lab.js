@@ -43,6 +43,7 @@
     drawMode: null,
     drawing: false,
     boxGestureActive: false,
+    panGestureActive: false,
     ignoreClickUntil: 0,
     storyAction: null,
     currentEntry: null,
@@ -103,8 +104,15 @@
   function renderBootstrap() {
     const cacheChip = $('cache-chip');
     if (state.bootstrap.cacheAvailable) {
-      cacheChip.textContent = `CACHE · ${fmtBytes(state.bootstrap.cacheBytes)} · READ ONLY`;
-      cacheChip.title = state.bootstrap.cachePath;
+      const cacheWorlds = [...new Set((state.bootstrap.snapshots || [])
+        .filter(snapshot => snapshot.source !== 'synthetic')
+        .map(snapshot => String(snapshot.worldId || snapshot.worldName || '').replace(/\.db$/i, ''))
+        .filter(Boolean))];
+      const cacheScope = cacheWorlds.length === 1 ? `${cacheWorlds[0]} ONLY` : `${cacheWorlds.length} WORLDS`;
+      const modified = state.bootstrap.cacheModifiedAt
+        ? new Date(state.bootstrap.cacheModifiedAt).toLocaleString() : 'unknown date';
+      cacheChip.textContent = `CACHE · ${cacheScope} · READ ONLY`;
+      cacheChip.title = `${state.bootstrap.cachePath}\n${fmtBytes(state.bootstrap.cacheBytes)} · last written ${modified}`;
       cacheChip.className = 'header-chip ok';
     } else {
       cacheChip.textContent = 'CACHE · MISSING';
@@ -205,7 +213,9 @@
     }, true);
     state.map.on('mousemove', event => {
       const world = latLngToWorld(event.latlng);
-      $('coords').textContent = state.boxGestureActive
+      $('coords').textContent = state.panGestureActive
+        ? 'PAN · release to place the map'
+        : state.boxGestureActive
         ? 'BOX ZOOM · release to fit the gold window'
         : `X ${Math.round(world.x).toLocaleString()} · Z ${Math.round(world.z).toLocaleString()} · ${state.tool.toUpperCase()} · Shift+drag zoom`;
       if (state.drawing && state.drawRect) state.drawRect.setBounds([state.drawStart, event.latlng]);
@@ -216,6 +226,17 @@
       if (state.tool !== 'pan' || state.drawing || performance.now() < state.ignoreClickUntil) return;
       inspectCell(event.latlng);
     });
+    state.map.on('movestart zoomstart', pauseExactPoints);
+    state.map.on('dragstart', () => {
+      state.panGestureActive = true;
+      document.body.classList.add('map-pan-active');
+      $('coords').textContent = 'PAN · release to place the map';
+    });
+    state.map.on('dragend', () => {
+      state.panGestureActive = false;
+      document.body.classList.remove('map-pan-active');
+      $('coords').textContent = 'PAN · hold and drag to move · Shift+drag zoom';
+    });
     state.map.on('zoomend', () => {
       const before = state.currentEntry?.cellSize;
       applyContext();
@@ -223,13 +244,16 @@
         const after = state.currentEntry?.cellSize;
         if (before && after && before !== after) toast(`${before} m aggregate → ${after} m detail`);
       });
+      document.body.classList.remove('map-view-moving');
       updateMiniViewport();
       scheduleExactPoints();
     });
     state.map.on('moveend', () => {
+      document.body.classList.remove('map-view-moving');
       updateMiniViewport();
       scheduleExactPoints();
     });
+    setTool(state.tool);
   }
 
   function drawGrid() {
@@ -522,6 +546,9 @@
     cancelDrawing();
     state.tool = tool;
     if (tool === 'pan') state.map.dragging.enable(); else state.map.dragging.disable();
+    state.map.getContainer().classList.toggle('map-pan-ready', tool === 'pan');
+    state.panGestureActive = false;
+    document.body.classList.remove('map-pan-active');
     document.querySelectorAll('#tool-buttons button').forEach(button => button.classList.toggle('active', button.dataset.tool === tool));
     $('tool-state').textContent = tool.toUpperCase();
     $('coords').textContent = `${tool.toUpperCase()} · move for coordinates · Shift+drag box zoom`;
@@ -651,6 +678,14 @@
     state.exactTimer = setTimeout(loadExactPoints, 220);
   }
 
+  function pauseExactPoints() {
+    clearTimeout(state.exactTimer);
+    const hadExactPoints = Boolean(state.exactLayer);
+    clearExactPoints();
+    document.body.classList.add('map-view-moving');
+    if (hadExactPoints) $('exact-state').textContent = 'MOVING';
+  }
+
   async function loadExactPoints() {
     const threshold = Number($('threshold-exact').value);
     if (!state.exactEnabled || !state.map || state.map.getZoom() < threshold || !state.currentEntry) {
@@ -664,23 +699,29 @@
       if (token !== state.exactToken) return;
       clearExactPoints(false);
       const lens = state.lensById.get(state.lensId);
-      const group = L.layerGroup([], { pane:'exactPane' }).addTo(state.map);
+      state.metrics.exact = performance.now()-started;
+      if (result.truncated) {
+        $('exact-state').textContent = `> ${fmt(result.limit)} · RASTER`;
+        setStory('', `Zoom closer to reveal exact ${lens.units}`,
+          `At least ${fmt(result.minimumCount)} ${lens.units} are inside this viewport. The raster remains complete; tighten the view to reveal every position together.`,
+          { type:'box', label:'Tighten viewport' });
+        updateMetrics();
+        return;
+      }
+      const group = L.layerGroup([], { pane:'exactPane' });
       for (const point of result.points) {
         L.circleMarker(worldToLatLng(point.x,point.z), {
           pane:'exactPane', renderer:state.exactRenderer, radius:4.2, weight:1.3, color:'#f5f7fb',
           fillColor:lens.accent, fillOpacity:1, opacity:.96
         }).bindTooltip(`${escapeHtml(point.label)} · ${fmt(point.value)}`).addTo(group);
       }
-      state.exactLayer = group;
+      state.exactLayer = group.addTo(state.map);
       if (state.overlay) state.overlay.setOpacity(state.analysisOpacity*.38);
-      state.metrics.exact = performance.now()-started;
-      $('exact-state').textContent = `${result.points.length}${result.truncated ? '+' : ''} POINTS`;
+      $('exact-state').textContent = `${result.points.length} POINTS`;
       const exactTitle = result.points.length
         ? `${fmt(result.points.length)} exact ${lens.units} in this viewport`
         : `No exact ${lens.units} in this viewport`;
-      const exactCopy = result.truncated
-        ? `Showing the first ${fmt(result.points.length)} objects. Tighten the viewport to resolve the full cluster.`
-        : `The ${state.currentEntry.cellSize} m raster has yielded to queryable object positions. Inspect a cluster or pan onward.`;
+      const exactCopy = `The ${state.currentEntry.cellSize} m raster has yielded to queryable object positions. Inspect a cluster or pan onward.`;
       setStory(result.points.length ? 'ready' : '', exactTitle, exactCopy,
         result.points.length ? { type:'inspect', label:'Inspect an area' } : { type:'box', label:'Try nearby' });
       updateMetrics();
@@ -968,6 +1009,8 @@
       if (event.key === 'Shift' && state.tool === 'pan' && !state.drawing) state.map.dragging.enable();
     });
     window.addEventListener('blur', () => {
+      state.panGestureActive = false;
+      document.body.classList.remove('map-pan-active');
       if (state.drawing) cancelDrawing();
       else if (state.tool === 'pan') state.map.dragging.enable();
     });

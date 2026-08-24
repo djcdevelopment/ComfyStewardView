@@ -7,6 +7,8 @@
 3. Shift-drag, the prompt action, or persistent Box zoom shows the same gold dashed window, then loads the next useful resolution and reports the transition.
 4. Inspect selects a region and opens the right-column Inspect tab to answer why it is bright: total, density, world share, and top prefabs. Switching to Job Bench and back preserves the selection.
 5. At close range, bounded exact points replace aggregate ambiguity.
+6. If a viewport exceeds the exact-point budget, no spatially biased prefix is shown; the complete raster remains authoritative and asks for a tighter viewport.
+7. Pan mode uses a grab cursor and visibly closes the hand only while the held drag is moving the map.
 
 ## Independent dimensions
 

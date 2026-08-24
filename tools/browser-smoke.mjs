@@ -7,12 +7,16 @@ const targetUrl = process.argv[2] || 'http://127.0.0.1:8091/';
 const output = path.resolve(process.argv[3] || 'data/browser-smoke.png');
 const parsedOutput = path.parse(output);
 const marqueeOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-marquee${parsedOutput.ext || '.png'}`);
+const denseOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-dense${parsedOutput.ext || '.png'}`);
 const exercise = process.argv.includes('--exercise');
 const marqueeOnly = process.argv.includes('--marquee-only');
 const useStoryAction = process.argv.includes('--story-action');
 const submitJob = process.argv.includes('--submit-job');
 let marqueeState = null;
 let inspectorTabState = null;
+let panGestureState = null;
+let densePointState = null;
+let denseUiState = null;
 const profile = path.resolve('data/browser-smoke-profile');
 await mkdir(profile, { recursive: true });
 
@@ -78,6 +82,42 @@ if (submitJob) {
 }
 
 if (exercise) {
+  const bootstrap = await fetch(new URL('/api/bootstrap', targetUrl)).then(response => response.json());
+  const denseSnapshot = (bootstrap.snapshots || []).find(snapshot => snapshot.source !== 'synthetic') || bootstrap.snapshots?.[0];
+  const denseUrl = new URL('/api/points', targetUrl);
+  denseUrl.search = new URLSearchParams({
+    snapshot:denseSnapshot.snapshotId, lens:'all-zdos', limit:'50',
+    minX:bootstrap.worldBounds.minX, maxX:bootstrap.worldBounds.maxX,
+    minZ:bootstrap.worldBounds.minZ, maxZ:bootstrap.worldBounds.maxZ
+  });
+  const denseResult = await fetch(denseUrl).then(response => response.json());
+  densePointState = {
+    truncated:denseResult.truncated,
+    presented:denseResult.points?.length,
+    minimumCount:denseResult.minimumCount,
+    limit:denseResult.limit
+  };
+
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-lens="all-zdos"]')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 900));
+  for (let step = 0; step < 6; step++) {
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
+    await new Promise(resolve => setTimeout(resolve, 360));
+  }
+  await new Promise(resolve => setTimeout(resolve, 1200));
+  const denseUiResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    title:document.querySelector('#story-title')?.textContent,
+    copy:document.querySelector('#story-copy')?.textContent,
+    exactState:document.querySelector('#exact-state')?.textContent,
+    action:document.querySelector('#story-action')?.textContent,
+    exactPointCanvases:document.querySelectorAll('.leaflet-exact-pane canvas').length
+  }))()`, returnByValue:true });
+  denseUiState = denseUiResult.result.value;
+  const denseShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(denseOutput, Buffer.from(denseShot.data, 'base64'));
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#go-world')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 1100));
+
   await cdp('Runtime.evaluate', { expression: `
     document.querySelector('[data-lens="birch-trees"]')?.click();
     document.querySelector('[data-tool="pan"]')?.click();
@@ -132,6 +172,36 @@ if (exercise) {
     }
     await cdp('Input.dispatchMouseEvent', { type:'mouseReleased', x:x2, y:y2, button:'left', buttons:0, clickCount:1, modifiers });
   };
+
+  const panBeforeResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    cursor:getComputedStyle(document.querySelector('#map')).cursor,
+    mapPaneTransform:document.querySelector('#map .leaflet-map-pane')?.style.transform || ''
+  }))()`, returnByValue:true });
+  const panStartX = r.x+r.w*.53, panStartY = r.y+r.h*.52;
+  const panEndX = r.x+r.w*.61, panEndY = r.y+r.h*.60;
+  await cdp('Input.dispatchMouseEvent', { type:'mousePressed', x:panStartX, y:panStartY, button:'left', buttons:1, clickCount:1 });
+  await cdp('Input.dispatchMouseEvent', { type:'mouseMoved', x:panEndX, y:panEndY, button:'left', buttons:1 });
+  await new Promise(resolve => setTimeout(resolve, 180));
+  const panActiveResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    cursor:getComputedStyle(document.querySelector('#map')).cursor,
+    active:document.body.classList.contains('map-pan-active'),
+    mapPaneTransform:document.querySelector('#map .leaflet-map-pane')?.style.transform || ''
+  }))()`, returnByValue:true });
+  await cdp('Input.dispatchMouseEvent', { type:'mouseReleased', x:panEndX, y:panEndY, button:'left', buttons:0, clickCount:1 });
+  await new Promise(resolve => setTimeout(resolve, 700));
+  const panAfterResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    active:document.body.classList.contains('map-pan-active')
+  }))()`, returnByValue:true });
+  panGestureState = {
+    readyCursor:panBeforeResult.result.value.cursor,
+    activeCursor:panActiveResult.result.value.cursor,
+    activeWhileHeld:panActiveResult.result.value.active,
+    released:!panAfterResult.result.value.active,
+    viewportMoved:panBeforeResult.result.value.mapPaneTransform !== panActiveResult.result.value.mapPaneTransform
+  };
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#go-world')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 900));
+
   await drag(r.x+r.w*.37, r.y+r.h*.3, r.x+r.w*.66, r.y+r.h*.72, !useStoryAction, true);
   if (!marqueeOnly) {
     await new Promise(resolve => setTimeout(resolve, 1800));
@@ -167,6 +237,7 @@ const evaluated = await cdp('Runtime.evaluate', {
   expression: `JSON.stringify({
     title: document.querySelector('#story-title')?.textContent,
     status: document.querySelector('#map-status')?.textContent,
+    cacheChip: document.querySelector('#cache-chip')?.textContent,
     scales: document.querySelector('#lens-availability')?.textContent,
     legendVisible: !document.querySelector('#legend')?.hidden,
     phaseCount: document.querySelectorAll('.phase').length,
@@ -211,7 +282,9 @@ const shot = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondV
 await mkdir(path.dirname(output), { recursive: true });
 await writeFile(output, Buffer.from(shot.data, 'base64'));
 
-console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marqueeOutput : null, state, marqueeState, inspectorTabState, errors }, null, 2));
+console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marqueeOutput : null,
+  denseOutput:exercise ? denseOutput : null, state, marqueeState, inspectorTabState,
+  panGestureState, densePointState, denseUiState, errors }, null, 2));
 await cdp('Browser.close').catch(() => {});
 socket.close();
 setTimeout(() => browser.kill(), 1000).unref();
@@ -222,6 +295,12 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       marqueeState.left + marqueeState.width > marqueeState.mapRect.left + marqueeState.mapRect.width ||
       marqueeState.top + marqueeState.height > marqueeState.mapRect.top + marqueeState.mapRect.height ||
       state.leafletPanePosition !== 'absolute' || state.leafletZoomButtonSize.width < 24 || state.leafletZoomButtonSize.height < 24 ||
+      !/ONLY/.test(state.cacheChip || '') || !densePointState?.truncated || densePointState.presented !== 0 ||
+      densePointState.minimumCount !== densePointState.limit + 1 || panGestureState?.readyCursor !== 'grab' ||
+      panGestureState?.activeCursor !== 'grabbing' || !panGestureState?.activeWhileHeld || !panGestureState?.released ||
+      !panGestureState?.viewportMoved || !/Zoom closer/.test(denseUiState?.title || '') ||
+      !/RASTER/.test(denseUiState?.exactState || '') || !/Tighten viewport/.test(denseUiState?.action || '') ||
+      denseUiState?.exactPointCanvases !== 0 ||
       (useStoryAction && (!state.storyActionActive || state.toolState !== 'BOX')) ||
       (!marqueeOnly && (!state.inspectorVisible || !/jobs-panel/.test(state.inspectorParent || '') || state.inspectorPosition === 'absolute' ||
         state.inspectRankRows < 1 || !inspectorTabState?.jobsVisible || !inspectorTabState?.inspectVisible ||

@@ -170,10 +170,16 @@ public final class SnapshotRepository {
             }
         }
 
+        // A database-order prefix is spatially biased and must never masquerade as an
+        // exact viewport. Keep the complete raster authoritative until every point in
+        // the viewport fits within the client budget.
+        if (truncated) points.removeAll();
+
         ObjectNode result = mapper.createObjectNode();
         result.put("snapshotId", snapshotId);
         result.put("lensId", lensId);
         result.put("limit", limit);
+        result.put("minimumCount", truncated ? limit + 1 : points.size());
         result.put("truncated", truncated);
         result.set("points", points);
         return result;

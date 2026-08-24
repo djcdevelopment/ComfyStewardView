@@ -57,6 +57,11 @@ activates Box zoom directly, then changes to **Inspect an area** once exact obje
 Inspection results open in the right-column **Inspect** tab, where the selection summary and ranked
 prefab explanation can use the full vertical workspace without covering the map.
 
+The cache chip names the worlds actually present in the attached read-only cache. Dense exact queries
+never draw an arbitrary database-order prefix: the complete raster remains visible until every exact
+object in the viewport fits within the point budget. In Pan mode, hold and drag the map; the grab cursor
+changes to a closed hand for the duration of the gesture.
+
 ## Prepare a cache from a save
 
 The lab does not duplicate Steward's hand-written save parser. It emits the exact command that

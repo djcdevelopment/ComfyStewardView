@@ -104,6 +104,12 @@ kbd { padding: 1px 4px; border: 1px solid var(--border-2); border-radius: 3px; b
 .map-stage { position: relative; min-width: 0; overflow: hidden; background: #0b1018; }
 #map { width: 100%; height: 100%; background: #0b111c; cursor: crosshair; }
 #map:focus, #map:focus-visible { outline: none; box-shadow: none; }
+#map.map-pan-ready,
+#map.map-pan-ready .leaflet-map-pane,
+#map.map-pan-ready .leaflet-interactive { cursor: grab; }
+body.map-pan-active #map,
+body.map-pan-active #map .leaflet-map-pane,
+body.map-pan-active #map .leaflet-interactive { cursor: grabbing !important; }
 .leaflet-container { position: relative; overflow: hidden; background: #0b111c; font-family: var(--sans); }
 .leaflet-pane,
 .leaflet-pane > svg,

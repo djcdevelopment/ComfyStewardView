@@ -77,6 +77,8 @@ public final class LabServer {
         result.put("cacheAvailable", snapshots.available());
         result.put("cachePath", snapshots.cachePath().toString());
         result.put("cacheBytes", snapshots.available() ? Files.size(snapshots.cachePath()) : 0);
+        result.put("cacheModifiedAt", snapshots.available()
+            ? Files.getLastModifiedTime(snapshots.cachePath()).toInstant().toString() : "");
         result.put("artifactPath", artifacts.root().toString());
         result.put("contextAvailable", config.contextImage() != null);
         result.put("contextLabel", config.contextImage() == null

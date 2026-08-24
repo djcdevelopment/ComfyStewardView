@@ -67,6 +67,12 @@ class LensRendererTest {
         ObjectNode points = repository.exactPoints(7, "birch-trees", -200, 500, -200, 500, 20);
         assertEquals(3, points.withArray("points").size());
         assertFalse(points.path("truncated").asBoolean());
+
+        ObjectNode dense = repository.exactPoints(7, "birch-trees", -200, 500, -200, 500, 2);
+        assertTrue(dense.path("truncated").asBoolean());
+        assertEquals(3, dense.path("minimumCount").asInt());
+        assertEquals(0, dense.withArray("points").size(),
+            "A database-order prefix would imply false spatial coverage");
     }
 
     @Test void failureInjectionLeavesAnObservableFailedJob() throws Exception {
