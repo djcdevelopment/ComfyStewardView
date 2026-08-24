@@ -4,6 +4,7 @@
   const $ = id => document.getElementById(id);
   const API = '/api';
   const ANALYSIS_TONE_EXPONENT = 1.18;
+  const ANALYSIS_OVERVIEW_TONE_EXPONENT = 1.75;
   const ANALYSIS_TONE_PERCENTILE = .995;
   const ANALYSIS_TONE_LABEL = 'P99.5';
   const ANALYSIS_DISPLAY_SCALE = 2;
@@ -58,6 +59,7 @@
     currentEntry: null,
     currentToneCap: 1,
     currentToneFocus: 0,
+    currentToneExponent: ANALYSIS_TONE_EXPONENT,
     currentSelectionBounds: null,
     rawImages: new Map(),
     coloredImages: new Map(),
@@ -336,6 +338,13 @@
     return Math.max(0, Math.min(1, Math.log(coarse/size) / Math.log(coarse/detail)));
   }
 
+  function analysisToneExponent(cellSize) {
+    const size = Math.max(320, Number(cellSize || 320));
+    const overviewProgress = Math.max(0, Math.min(1, Math.log(size/320) / Math.log(1000/320)));
+    return ANALYSIS_TONE_EXPONENT
+      +(ANALYSIS_OVERVIEW_TONE_EXPONENT-ANALYSIS_TONE_EXPONENT)*overviewProgress;
+  }
+
   function effectiveAnalysisOpacity() {
     const detailZoom = Number($('opacity-detail-zoom')?.value ?? -4);
     return state.map && state.map.getZoom() < detailZoom ? 1 : state.analysisOpacity;
@@ -385,6 +394,7 @@
       state.currentEntry = entry;
       state.currentToneCap = image.toneCap;
       state.currentToneFocus = image.toneFocus;
+      state.currentToneExponent = image.toneExponent;
       syncCompositeOpacity();
       state.metrics.fetch = image.fetchMs;
       state.metrics.decode = image.colorMs;
@@ -392,7 +402,7 @@
       state.metrics.bytes = image.bytes;
       updateDetailLadder();
       if (!state.detailOverlay) {
-        updateLegend(entry, lens, image.toneCap, image.toneFocus);
+        updateLegend(entry, lens, image.toneCap, image.toneFocus, image.toneExponent);
         $('map-status').textContent = `${lens.label} · ${entry.cellSize} m cells · snapshot #${state.snapshotId} · ${state.palette}`;
         const fallback = Number(entry.cellSize) !== Number(requested) ? ` Nearest available scale: ${entry.cellSize} m.` : '';
         const guidance = rasterGuidance(entry, lens, fallback);
@@ -484,12 +494,13 @@
     const ramp = palettes[paletteName] || palettes.ember;
     const focused = paletteName !== 'context' && paletteName !== 'navigator';
     const toneFocus = focused ? analysisScaleFocus(layer?.cellSize) : 0;
+    const toneExponent = focused ? analysisToneExponent(layer?.cellSize) : 1;
     const robustToneCap = focused ? occupiedToneCap(pixels.data) : 1;
     const toneCap = 1-(1-robustToneCap)*toneFocus;
     for (let i = 0; i < pixels.data.length; i += 4) {
       if (pixels.data[i+3] === 0) continue;
       const encoded = pixels.data[i] / 255;
-      const tone = focused ? analysisTone(encoded, toneCap) : encoded;
+      const tone = focused ? analysisTone(encoded, toneCap, toneExponent) : encoded;
       const [r,g,b] = rampColor(ramp, tone);
       pixels.data[i] = r; pixels.data[i+1] = g; pixels.data[i+2] = b; pixels.data[i+3] = 255;
     }
@@ -507,7 +518,7 @@
     }
     const blob = await new Promise(resolve => outputCanvas.toBlob(resolve, 'image/png'));
     const result = { url: URL.createObjectURL(blob), bytes: raw.bytes, fetchMs: raw.fetchMs,
-      colorMs: performance.now() - colorStarted, toneCap, toneFocus, displayScale,
+      colorMs: performance.now() - colorStarted, toneCap, toneFocus, toneExponent, displayScale,
       sourceWidth: canvas.width, sourceHeight: canvas.height };
     state.coloredImages.set(cacheKey, result);
     return result;
@@ -544,8 +555,8 @@
     return 1;
   }
 
-  function analysisTone(t, cap = 1) {
-    return Math.pow(Math.max(0, Math.min(1, t/Math.max(.01,cap))), ANALYSIS_TONE_EXPONENT);
+  function analysisTone(t, cap = 1, exponent = ANALYSIS_TONE_EXPONENT) {
+    return Math.pow(Math.max(0, Math.min(1, t/Math.max(.01,cap))), exponent);
   }
 
   async function crossfade(oldOverlay, newOverlay, targetOpacity) {
@@ -569,22 +580,28 @@
     if (oldOverlay) state.map.removeLayer(oldOverlay);
   }
 
-  function updateLegend(entry, lens, toneCap = 1, toneFocus = 1) {
+  function updateLegend(entry, lens, toneCap = 1, toneFocus = 1,
+      toneExponent = analysisToneExponent(entry?.cellSize)) {
     $('legend').hidden = false;
     $('legend-title').textContent = `${lens.label} per ${entry.cellSize} m cell`;
     $('legend-gradient').className = `legend-gradient ${state.palette}`;
     const capped = Number(toneCap) < .9999;
     const fullyFocused = Number(toneFocus) >= .9999;
+    const overviewTone = Number(toneExponent) > ANALYSIS_TONE_EXPONENT+.001;
     const legendMode = $('legend').querySelector('.legend-heading span');
-    legendMode.textContent = !capped ? 'MAX LOG' : fullyFocused ? `${ANALYSIS_TONE_LABEL} LOG` : 'SCALE LOG';
-    legendMode.title = !capped
+    legendMode.textContent = overviewTone ? 'OVERVIEW LOG'
+      : !capped ? 'MAX LOG' : fullyFocused ? `${ANALYSIS_TONE_LABEL} LOG` : 'SCALE LOG';
+    legendMode.title = overviewTone
+      ? 'This coarse overview uses a quieter contrast curve so large cells identify regions without flooding them with hotspot color.'
+      : !capped
       ? 'This overview is anchored to the absolute layer maximum so large cells do not overstate hotspot area.'
       : fullyFocused
       ? 'The brightest color begins at the occupied-cell 99.5th percentile; higher outliers share the capped color.'
       : 'Scale-locked focus gradually introduces the P99.5 detail cap as cell size decreases.';
     $('legend').dataset.toneCap = Number(toneCap).toFixed(4);
+    $('legend').dataset.toneExponent = Number(toneExponent).toFixed(4);
     const stops = [0,.25,.5,.75,1];
-    const ticks = stops.map(stop => Math.round(Math.expm1(Number(entry.maxLog || 1)*Number(toneCap)*Math.pow(stop,1/ANALYSIS_TONE_EXPONENT))));
+    const ticks = stops.map(stop => Math.round(Math.expm1(Number(entry.maxLog || 1)*Number(toneCap)*Math.pow(stop,1/toneExponent))));
     $('legend-ticks').innerHTML = ticks.map((tick,index) =>
       `<span>${fmt(tick)}${capped && index === ticks.length-1 ? '+' : ''}</span>`).join('');
   }
@@ -948,7 +965,7 @@
     const entry = state.currentEntry;
     if (!entry || entry.lensId !== state.lensId) return;
     const lens = state.lensById.get(state.lensId);
-    updateLegend(entry,lens,state.currentToneCap,state.currentToneFocus);
+    updateLegend(entry,lens,state.currentToneCap,state.currentToneFocus,state.currentToneExponent);
     $('scale-state').textContent = state.resolution === 'auto' ? `AUTO \u2192 ${entry.cellSize} M` : `${entry.cellSize} M`;
     $('map-status').textContent = `${lens.label} \u00b7 ${entry.cellSize} m cells \u00b7 snapshot #${state.snapshotId} \u00b7 ${state.palette}`;
   }

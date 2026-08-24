@@ -36,7 +36,7 @@ await mkdir(profile, { recursive: true });
 const browser = spawn(chrome, [
   '--headless', '--disable-gpu', '--hide-scrollbars', '--no-first-run',
   '--no-default-browser-check', '--remote-debugging-port=0',
-  '--window-size=1920,1080', `--user-data-dir=${profile}`, 'about:blank'
+  `--window-size=${process.env.SMOKE_WINDOW_SIZE || '1920,1080'}`, `--user-data-dir=${profile}`, 'about:blank'
 ], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
 
 let stderr = '';
@@ -93,6 +93,7 @@ const rasterStyleResult = await cdp('Runtime.evaluate', { expression: `(() => {
     contextOpacity: Number(getComputedStyle(document.querySelector('.context-raster')).opacity),
     opacityLabel: document.querySelector('#analysis-opacity-value')?.textContent,
     toneCap: Number(document.querySelector('#legend')?.dataset.toneCap),
+    toneExponent: Number(document.querySelector('#legend')?.dataset.toneExponent),
     legendMode: document.querySelector('#legend .legend-heading span')?.textContent,
     legendLastTick: document.querySelector('#legend-ticks span:last-child')?.textContent,
     smoothActive: document.querySelector('[data-raster-style="smooth"]')?.classList.contains('active'),
@@ -113,6 +114,7 @@ if (scalePreviews) {
     const result = await cdp('Runtime.evaluate', { expression: `(() => ({
       status:document.querySelector('#map-status')?.textContent,
       toneCap:Number(document.querySelector('#legend')?.dataset.toneCap),
+      toneExponent:Number(document.querySelector('#legend')?.dataset.toneExponent),
       legendMode:document.querySelector('#legend .legend-heading span')?.textContent,
       legendLastTick:document.querySelector('#legend-ticks span:last-child')?.textContent,
       displayScale:Number(document.querySelector('.analysis-raster')?.dataset.displayScale),
@@ -493,7 +495,8 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
     rasterStyleState?.initial?.context !== 'auto' || rasterStyleState?.initial?.worldOpacity !== 1 ||
     rasterStyleState?.initial?.contextOpacity !== .42 || !rasterStyleState?.initial?.smoothActive ||
     !/82%.*100%/.test(rasterStyleState?.initial?.opacityLabel || '') ||
-    rasterStyleState?.initial?.toneCap !== 1 || rasterStyleState?.initial?.legendMode !== 'MAX LOG' ||
+    rasterStyleState?.initial?.toneCap !== 1 || rasterStyleState?.initial?.toneExponent !== 1.75 ||
+    rasterStyleState?.initial?.legendMode !== 'OVERVIEW LOG' ||
     /\+$/.test(rasterStyleState?.initial?.legendLastTick || '') ||
     rasterStyleState?.cells?.mode !== 'cells' || !['pixelated','crisp-edges'].includes(rasterStyleState?.cells?.world) ||
     !['pixelated','crisp-edges'].includes(rasterStyleState?.cells?.context) || !rasterStyleState?.cells?.cellsActive ||
@@ -504,6 +507,7 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       !/80 m cells/.test(scalePreviewState?.scale80?.status || '') ||
       !/64 m cells/.test(scalePreviewState?.scale64?.status || '') ||
       scalePreviewState?.scale320?.toneCap !== 1 ||
+      scalePreviewState?.scale320?.toneExponent !== 1.18 ||
       !(scalePreviewState?.scale320?.toneCap > scalePreviewState?.scale160?.toneCap &&
         scalePreviewState?.scale160?.toneCap > scalePreviewState?.scale80?.toneCap &&
         scalePreviewState?.scale80?.toneCap > scalePreviewState?.scale64?.toneCap) ||

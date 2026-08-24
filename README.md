@@ -80,7 +80,8 @@ legend thresholds, point queries, or generated artifacts.
 The analysis palette uses a scale-locked focus curve: 320 m and coarser overviews retain their absolute
 maximum, then 160/80 m surfaces progressively introduce the occupied-cell P99.5 cap used at 64 m and finer.
 This keeps a large parent cell from painting an implausibly broad coral region while preserving strong local
-highlights. Capped values share the brightest color and the legend marks them with `+`; the narrative still
+highlights. The 1 km overview also uses a quieter contrast exponent so its physically enormous cells locate
+regions without flooding them with hotspot color. Capped values share the brightest color and the legend marks them with `+`; the narrative still
 reports the absolute hottest cell. Coarse analysis artifacts receive a 2x nearest-neighbor display copy
 before smooth browser interpolation, tightening cell transitions without changing their values or bounds.
 World-overview zooms below z-4 hold analysis at 100% opacity; at z-4 and inward, the detail-opacity control
