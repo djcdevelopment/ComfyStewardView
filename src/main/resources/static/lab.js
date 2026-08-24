@@ -30,6 +30,9 @@
     minimap: null,
     worldBounds: null,
     overlay: null,
+    detailOverlay: null,
+    detailObjectUrl: null,
+    detailResolution: null,
     contextOverlay: null,
     miniContextOverlay: null,
     exactLayer: null,
@@ -60,7 +63,7 @@
     pollTimer: null,
     exactTimer: null,
     toastTimer: null,
-    metrics: { manifest: null, fetch: null, decode: null, swap: null, bytes: null, exact: null }
+    metrics: { manifest: null, fetch: null, decode: null, swap: null, bytes: null, exact: null, detail: null }
   };
 
   const worldToLatLng = (x, z) => L.latLng(z, x);
@@ -183,6 +186,7 @@
     state.map.createPane('contextPane').style.zIndex = 180;
     state.map.createPane('gridPane').style.zIndex = 220;
     state.map.createPane('analysisPane').style.zIndex = 280;
+    state.map.createPane('detailPane').style.zIndex = 320;
     state.map.createPane('exactPane').style.zIndex = 360;
     state.map.createPane('selectionPane').style.zIndex = 430;
     state.exactRenderer = L.canvas({ pane:'exactPane', padding:.25 });
@@ -288,7 +292,7 @@
       dot.title = `${count} rendered resolution${count === 1 ? '' : 's'}`;
     });
     const count = new Set(layers.filter(layer => layer.lensId === state.lensId).map(layer => layer.cellSize)).size;
-    $('lens-availability').textContent = `${count} SCALE${count === 1 ? '' : 'S'}`;
+    $('lens-availability').textContent = count ? `${count} WORLD + 2 LOCAL` : '0 SCALES';
   }
 
   function desiredResolution() {
@@ -344,6 +348,7 @@
       state.metrics.swap = performance.now() - swapStarted;
       state.metrics.bytes = image.bytes;
       updateLegend(entry, lens);
+      updateDetailLadder();
       $('map-status').textContent = `${lens.label} · ${entry.cellSize} m cells · snapshot #${state.snapshotId} · ${state.palette}`;
       const fallback = Number(entry.cellSize) !== Number(requested) ? ` Nearest available scale: ${entry.cellSize} m.` : '';
       const guidance = rasterGuidance(entry, lens, fallback);
@@ -680,10 +685,102 @@
 
   function pauseExactPoints() {
     clearTimeout(state.exactTimer);
-    const hadExactPoints = Boolean(state.exactLayer);
+    const hadCloseDetail = Boolean(state.exactLayer || state.detailOverlay);
     clearExactPoints();
     document.body.classList.add('map-view-moving');
-    if (hadExactPoints) $('exact-state').textContent = 'MOVING';
+    if (hadCloseDetail) $('exact-state').textContent = 'MOVING';
+  }
+
+  function desiredLocalDetailResolution() {
+    return state.map.getZoom() >= Number($('threshold-detail4').value) ? 4 : 8;
+  }
+
+  function localDetailBounds(bounds, cellSize) {
+    const world = state.bootstrap.worldBounds;
+    const west = Math.max(world.minX, world.minX + Math.floor((bounds.getWest()-world.minX)/cellSize)*cellSize);
+    const east = Math.min(world.maxX, world.minX + Math.ceil((bounds.getEast()-world.minX)/cellSize)*cellSize);
+    const south = Math.max(world.minZ, world.minZ + Math.floor((bounds.getSouth()-world.minZ)/cellSize)*cellSize);
+    const north = Math.min(world.maxZ, world.minZ + Math.ceil((bounds.getNorth()-world.minZ)/cellSize)*cellSize);
+    return L.latLngBounds([south,west],[north,east]);
+  }
+
+  async function createLocalDetail(points, bounds, cellSize) {
+    const width = Math.max(1, Math.ceil((bounds.getEast()-bounds.getWest())/cellSize));
+    const height = Math.max(1, Math.ceil((bounds.getNorth()-bounds.getSouth())/cellSize));
+    if (width*height > 1_500_000) throw new Error(`Local detail window is too large (${width}x${height})`);
+    const cells = new Float64Array(width*height);
+    let maxRaw = 0;
+    for (const point of points) {
+      const x = Math.floor((Number(point.x)-bounds.getWest())/cellSize);
+      const z = Math.floor((Number(point.z)-bounds.getSouth())/cellSize);
+      if (x < 0 || x >= width || z < 0 || z >= height) continue;
+      const index = (height-1-z)*width+x;
+      cells[index] += Math.max(0, Number(point.value ?? 1));
+      maxRaw = Math.max(maxRaw, cells[index]);
+    }
+    const maxLog = Math.max(1, Math.log1p(maxRaw));
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    const context = canvas.getContext('2d');
+    const image = context.createImageData(width,height);
+    const ramp = palettes[state.palette] || palettes.ember;
+    for (let index = 0; index < cells.length; index++) {
+      if (cells[index] <= 0) continue;
+      const [r,g,b] = rampColor(ramp, Math.log1p(cells[index])/maxLog);
+      const offset = index*4;
+      image.data[offset] = r; image.data[offset+1] = g; image.data[offset+2] = b; image.data[offset+3] = 255;
+    }
+    context.putImageData(image,0,0);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve,'image/png'));
+    if (!blob) throw new Error('Could not encode local detail surface');
+    return { url:URL.createObjectURL(blob), bytes:blob.size, bounds, cellSize, width, height, maxRaw, maxLog };
+  }
+
+  function installLocalDetail(detail, lens) {
+    removeLocalDetail();
+    state.detailObjectUrl = detail.url;
+    state.detailResolution = detail.cellSize;
+    state.detailOverlay = L.imageOverlay(detail.url, detail.bounds, {
+      pane:'detailPane', opacity:state.analysisOpacity*.82, interactive:false, className:'local-detail-raster'
+    }).addTo(state.map);
+    syncAnalysisOpacity();
+    updateLegend(detail,lens);
+    $('scale-state').textContent = `AUTO \u2192 ${detail.cellSize} M LOCAL`;
+    $('map-status').textContent = `${lens.label} \u00b7 ${detail.cellSize} m local cells + exact objects \u00b7 snapshot #${state.snapshotId} \u00b7 ${state.palette}`;
+  }
+
+  function removeLocalDetail() {
+    if (state.detailOverlay && state.map) state.map.removeLayer(state.detailOverlay);
+    if (state.detailObjectUrl) URL.revokeObjectURL(state.detailObjectUrl);
+    state.detailOverlay = null;
+    state.detailObjectUrl = null;
+    state.detailResolution = null;
+  }
+
+  function updateDetailLadder() {
+    const currentDetail = state.detailResolution ||
+      (Number(state.currentEntry?.cellSize) === 16 ? 16 : null);
+    document.querySelectorAll('#detail-ladder [data-detail]').forEach(step => {
+      const detail = step.dataset.detail;
+      const active = detail === 'points' ? Boolean(state.exactLayer)
+        : currentDetail != null && Number(detail) === Number(currentDetail);
+      step.classList.toggle('active',active);
+    });
+  }
+
+  function syncAnalysisOpacity() {
+    if (state.overlay) state.overlay.setOpacity(state.detailOverlay
+      ? state.analysisOpacity*.22 : state.exactLayer ? state.analysisOpacity*.38 : state.analysisOpacity);
+    if (state.detailOverlay) state.detailOverlay.setOpacity(state.analysisOpacity*.82);
+  }
+
+  function restoreWorldRasterPresentation() {
+    const entry = state.currentEntry;
+    if (!entry || entry.lensId !== state.lensId) return;
+    const lens = state.lensById.get(state.lensId);
+    updateLegend(entry,lens);
+    $('scale-state').textContent = state.resolution === 'auto' ? `AUTO \u2192 ${entry.cellSize} M` : `${entry.cellSize} M`;
+    $('map-status').textContent = `${lens.label} \u00b7 ${entry.cellSize} m cells \u00b7 snapshot #${state.snapshotId} \u00b7 ${state.palette}`;
   }
 
   async function loadExactPoints() {
@@ -692,7 +789,8 @@
       clearExactPoints(); return;
     }
     const token = ++state.exactToken;
-    const bounds = state.map.getBounds();
+    const detailResolution = desiredLocalDetailResolution();
+    const bounds = localDetailBounds(state.map.getBounds(),detailResolution);
     const started = performance.now();
     try {
       const result = await fetchJson(`${API}/points?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&limit=5000&${boundsQuery(bounds)}`);
@@ -701,6 +799,7 @@
       const lens = state.lensById.get(state.lensId);
       state.metrics.exact = performance.now()-started;
       if (result.truncated) {
+        restoreWorldRasterPresentation();
         $('exact-state').textContent = `> ${fmt(result.limit)} · RASTER`;
         setStory('', `Zoom closer to reveal exact ${lens.units}`,
           `At least ${fmt(result.minimumCount)} ${lens.units} are inside this viewport. The raster remains complete; tighten the view to reveal every position together.`,
@@ -708,6 +807,18 @@
         updateMetrics();
         return;
       }
+      let detail = null;
+      const detailStarted = performance.now();
+      if (result.points.length) {
+        try { detail = await createLocalDetail(result.points,bounds,detailResolution); }
+        catch (error) { console.warn('Local detail surface failed',error); }
+      }
+      if (token !== state.exactToken) {
+        if (detail?.url) URL.revokeObjectURL(detail.url);
+        return;
+      }
+      state.metrics.detail = performance.now()-detailStarted;
+      if (detail) installLocalDetail(detail,lens);
       const group = L.layerGroup([], { pane:'exactPane' });
       for (const point of result.points) {
         L.circleMarker(worldToLatLng(point.x,point.z), {
@@ -716,12 +827,15 @@
         }).bindTooltip(`${escapeHtml(point.label)} · ${fmt(point.value)}`).addTo(group);
       }
       state.exactLayer = group.addTo(state.map);
-      if (state.overlay) state.overlay.setOpacity(state.analysisOpacity*.38);
-      $('exact-state').textContent = `${result.points.length} POINTS`;
+      syncAnalysisOpacity();
+      updateDetailLadder();
+      $('exact-state').textContent = `${result.points.length} POINTS \u00b7 ${detail ? `${detail.cellSize} M` : 'RASTER'}`;
       const exactTitle = result.points.length
         ? `${fmt(result.points.length)} exact ${lens.units} in this viewport`
         : `No exact ${lens.units} in this viewport`;
-      const exactCopy = `The ${state.currentEntry.cellSize} m raster has yielded to queryable object positions. Inspect a cluster or pan onward.`;
+      const exactCopy = detail
+        ? `The ${detail.cellSize} m local density surface and these positions come from the same complete bounded query. Inspect a cluster or pan onward.`
+        : `The ${state.currentEntry.cellSize} m raster has yielded to queryable object positions. Inspect a cluster or pan onward.`;
       setStory(result.points.length ? 'ready' : '', exactTitle, exactCopy,
         result.points.length ? { type:'inspect', label:'Inspect an area' } : { type:'box', label:'Try nearby' });
       updateMetrics();
@@ -735,7 +849,11 @@
     if (increment) ++state.exactToken;
     if (state.exactLayer && state.map) state.map.removeLayer(state.exactLayer);
     state.exactLayer = null;
-    if (state.overlay) state.overlay.setOpacity(state.analysisOpacity);
+    removeLocalDetail();
+    state.metrics.detail = null;
+    syncAnalysisOpacity();
+    updateDetailLadder();
+    restoreWorldRasterPresentation();
     $('exact-state').textContent = 'RASTER';
   }
 
@@ -891,9 +1009,11 @@
     $('metric-swap').textContent = state.metrics.swap == null ? '—' : `${state.metrics.swap.toFixed(1)} ms`;
     $('metric-bytes').textContent = state.metrics.bytes == null ? '—' : fmtBytes(state.metrics.bytes);
     $('metric-exact').textContent = state.metrics.exact == null ? '—' : `${state.metrics.exact.toFixed(1)} ms`;
+    $('metric-detail').textContent = state.metrics.detail == null ? '\u2014' : `${state.metrics.detail.toFixed(1)} ms`;
   }
 
   function clearClientCache() {
+    clearExactPoints();
     for (const image of state.coloredImages.values()) URL.revokeObjectURL(image.url);
     for (const raw of state.rawImages.values()) raw.bitmap.close?.();
     state.coloredImages.clear(); state.rawImages.clear();
@@ -938,12 +1058,12 @@
     document.querySelectorAll('.palette').forEach(button => button.addEventListener('click', () => {
       state.palette = button.dataset.palette;
       document.querySelectorAll('.palette').forEach(p => { p.classList.toggle('active',p===button); p.querySelector('b').textContent = p===button ? '✓' : ''; });
-      applyRaster();
+      applyRaster(); scheduleExactPoints();
     }));
     $('analysis-opacity').addEventListener('input', event => {
       state.analysisOpacity = Number(event.target.value);
       $('analysis-opacity-value').textContent = `${Math.round(state.analysisOpacity*100)}%`;
-      if (state.overlay) state.overlay.setOpacity(state.exactLayer ? state.analysisOpacity*.38 : state.analysisOpacity);
+      syncAnalysisOpacity();
     });
     $('context-opacity').addEventListener('input', event => {
       state.contextOpacity = Number(event.target.value);
@@ -953,8 +1073,8 @@
     $('context-on').addEventListener('click', () => { state.contextEnabled=true; $('context-on').classList.add('active'); $('context-off').classList.remove('active'); applyContext(); });
     $('context-off').addEventListener('click', () => { state.contextEnabled=false; $('context-off').classList.add('active'); $('context-on').classList.remove('active'); removeContext(); });
     const peek = $('peek-context');
-    const peekOn = () => { if(state.overlay) state.overlay.setOpacity(.05); };
-    const peekOff = () => { if(state.overlay) state.overlay.setOpacity(state.exactLayer ? state.analysisOpacity*.38 : state.analysisOpacity); };
+    const peekOn = () => { if(state.overlay) state.overlay.setOpacity(.05); if(state.detailOverlay) state.detailOverlay.setOpacity(.05); };
+    const peekOff = syncAnalysisOpacity;
     peek.addEventListener('pointerdown', peekOn); peek.addEventListener('pointerup', peekOff); peek.addEventListener('pointerleave', peekOff);
     $('tool-buttons').addEventListener('click', event => { const button=event.target.closest('[data-tool]'); if(button) setTool(button.dataset.tool); });
     $('exact-toggle').addEventListener('change', event => { state.exactEnabled=event.target.checked; scheduleExactPoints(); });
@@ -993,7 +1113,7 @@
     $('inspect-close').addEventListener('click', () => showRightPanel('jobs'));
     $('inspect-zoom').addEventListener('click', () => state.currentSelectionBounds && state.map.fitBounds(state.currentSelectionBounds,{padding:[30,30]}));
     $('inspect-copy').addEventListener('click', () => state.currentSelectionBounds && copyText(boundsLabel(state.currentSelectionBounds)));
-    ['threshold-64','threshold-16','threshold-exact'].forEach(id => $(id).addEventListener('change', () => { applyRaster(); scheduleExactPoints(); }));
+    ['threshold-64','threshold-16','threshold-exact','threshold-detail4'].forEach(id => $(id).addEventListener('change', () => { applyRaster(); scheduleExactPoints(); }));
     document.addEventListener('keydown', event => {
       if (/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) return;
       if (event.key === 'Shift' && state.tool === 'pan' && !state.drawing) state.map.dragging.disable();

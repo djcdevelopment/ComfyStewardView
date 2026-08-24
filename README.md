@@ -62,6 +62,11 @@ never draw an arbitrary database-order prefix: the complete raster remains visib
 object in the viewport fits within the point budget. In Pan mode, hold and drag the map; the grab cursor
 changes to a closed hand for the duration of the gesture.
 
+The 16 metre image remains the finest full-world artifact. Once a bounded viewport fits within the
+exact-object budget, the browser derives 8 metre and then 4 metre local density surfaces from that same
+complete query. The finer surface and the dots therefore describe the same objects; a truncated result
+produces neither, and the complete 16 metre raster remains authoritative until the view is tighter.
+
 ## Prepare a cache from a save
 
 The lab does not duplicate Steward's hand-written save parser. It emits the exact command that
@@ -85,8 +90,9 @@ to the source save. Use a copied or immutable save artifact, not a live server f
 - Tombstones — where player deaths concentrate.
 
 Every lens is rendered as an aligned gray8 raster. Color is applied in the browser, allowing
-palette and opacity changes without rebuilding images. The first scale ladder is 1000, 320, 64,
-and 16 metre cells; exact points appear after the raster has done its job.
+palette and opacity changes without rebuilding images. The full-world scale ladder is 1000, 320,
+64, and 16 metre cells. Bounded 8 and 4 metre client-side surfaces bridge the last step into exact
+points without allocating enormous full-world images.
 
 ## Safety and data boundary
 

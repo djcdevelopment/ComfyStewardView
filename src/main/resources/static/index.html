@@ -93,6 +93,12 @@
         <div class="card-heading"><span>SEMANTIC DETAIL</span><span id="exact-state">raster</span></div>
         <label class="toggle-row"><input id="exact-toggle" type="checkbox" checked><span>Reveal exact objects when close</span></label>
         <p class="microcopy">Aggregate cells yield to bounded points only after the viewport is small enough to make them useful.</p>
+        <div class="detail-ladder" id="detail-ladder" aria-label="Close detail ladder">
+          <span data-detail="16">16 m world</span>
+          <span data-detail="8">8 m local</span>
+          <span data-detail="4">4 m local</span>
+          <span data-detail="points">objects</span>
+        </div>
       </section>
     </aside>
 
@@ -176,6 +182,7 @@
           <span>Overlay swap</span><strong id="metric-swap">—</strong>
           <span>Artifact</span><strong id="metric-bytes">—</strong>
           <span>Exact query</span><strong id="metric-exact">—</strong>
+          <span>Local detail</span><strong id="metric-detail">—</strong>
         </div>
       </section>
 
@@ -184,6 +191,7 @@
         <label class="number-row"><span>320 → 64 zoom</span><input id="threshold-64" type="number" value="-3.25" step="0.25"></label>
         <label class="number-row"><span>64 → 16 zoom</span><input id="threshold-16" type="number" value="-1.25" step="0.25"></label>
         <label class="number-row"><span>Exact-points zoom</span><input id="threshold-exact" type="number" value="-0.25" step="0.25"></label>
+        <label class="number-row"><span>8 → 4 local zoom</span><input id="threshold-detail4" type="number" value="1.25" step="0.25"></label>
         <label class="number-row"><span>Crossfade</span><input id="crossfade-ms" type="number" value="220" min="0" max="2000" step="20"><em>ms</em></label>
       </section>
 

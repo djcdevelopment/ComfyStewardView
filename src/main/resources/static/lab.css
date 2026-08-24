@@ -99,6 +99,11 @@ input[type="range"] { width: 100%; height: 4px; margin-top: 8px; accent-color: v
 .full { width: 100%; margin-top: 8px; padding: 7px; border-radius: 4px; }
 .toggle-row { display: flex !important; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
 .toggle-row input { accent-color: var(--blue-2); }
+.detail-ladder { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 3px; margin-top: 9px; }
+.detail-ladder span { position: relative; overflow: hidden; padding: 5px 3px; border: 1px solid var(--border); border-radius: 3px; color: var(--dim); font: 8px var(--mono); text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.detail-ladder span:not(:last-child)::after { content: '›'; position: absolute; right: -4px; top: 4px; z-index: 2; color: var(--border-2); }
+.detail-ladder span.active { border-color: #4f7098; background: #18273a; color: #d5e7fb; }
+.detail-ladder span[data-detail="points"].active { border-color: #4f8d77; background: #183128; color: #bcebd7; }
 kbd { padding: 1px 4px; border: 1px solid var(--border-2); border-radius: 3px; background: #0d121b; color: var(--muted); font: 9px var(--mono); }
 
 .map-stage { position: relative; min-width: 0; overflow: hidden; background: #0b1018; }
@@ -120,6 +125,7 @@ body.map-pan-active #map .leaflet-interactive { cursor: grabbing !important; }
 .leaflet-control-zoom a { background: #121a27 !important; color: #dce6f4 !important; border-color: var(--border) !important; }
 .leaflet-control-attribution { background: rgba(10,15,23,.8) !important; color: var(--dim); }
 .analysis-raster, .context-raster { image-rendering: pixelated; image-rendering: crisp-edges; }
+.local-detail-raster { image-rendering: auto; }
 body.box-zoom-active #map { cursor: nwse-resize; }
 body.box-zoom-active .coords { border-color: #d5ad4e; color: #f5d87e; }
 

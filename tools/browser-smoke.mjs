@@ -8,6 +8,7 @@ const output = path.resolve(process.argv[3] || 'data/browser-smoke.png');
 const parsedOutput = path.parse(output);
 const marqueeOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-marquee${parsedOutput.ext || '.png'}`);
 const denseOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-dense${parsedOutput.ext || '.png'}`);
+const detailOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-detail-4m${parsedOutput.ext || '.png'}`);
 const exercise = process.argv.includes('--exercise');
 const marqueeOnly = process.argv.includes('--marquee-only');
 const useStoryAction = process.argv.includes('--story-action');
@@ -17,6 +18,8 @@ let inspectorTabState = null;
 let panGestureState = null;
 let densePointState = null;
 let denseUiState = null;
+let localDetail8State = null;
+let localDetail4State = null;
 const profile = path.resolve('data/browser-smoke-profile');
 await mkdir(profile, { recursive: true });
 
@@ -110,7 +113,8 @@ if (exercise) {
     copy:document.querySelector('#story-copy')?.textContent,
     exactState:document.querySelector('#exact-state')?.textContent,
     action:document.querySelector('#story-action')?.textContent,
-    exactPointCanvases:document.querySelectorAll('.leaflet-exact-pane canvas').length
+    exactPointCanvases:document.querySelectorAll('.leaflet-exact-pane canvas').length,
+    localDetailRasters:document.querySelectorAll('.local-detail-raster').length
   }))()`, returnByValue:true });
   denseUiState = denseUiResult.result.value;
   const denseShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
@@ -230,6 +234,38 @@ if (exercise) {
         inspectTabActive:document.querySelector('#inspect-panel-tab').classList.contains('active') };
     })()`, returnByValue:true });
     inspectorTabState = tabResult.result.value;
+
+    const captureLocalDetail = async threshold => {
+      await cdp('Runtime.evaluate', { expression: `(() => {
+        const input = document.querySelector('#threshold-detail4');
+        input.value = '${threshold}';
+        input.dispatchEvent(new Event('change', { bubbles:true }));
+      })()` });
+      await new Promise(resolve => setTimeout(resolve, 2200));
+      const result = await cdp('Runtime.evaluate', { expression: `(() => {
+        const local = document.querySelector('.local-detail-raster');
+        const world = document.querySelector('.analysis-raster');
+        return {
+          scale:document.querySelector('#scale-state')?.textContent,
+          status:document.querySelector('#map-status')?.textContent,
+          exactState:document.querySelector('#exact-state')?.textContent,
+          detailMetric:document.querySelector('#metric-detail')?.textContent,
+          localCount:document.querySelectorAll('.local-detail-raster').length,
+          localCellSize:Number((document.querySelector('#scale-state')?.textContent.match(/(4|8) M LOCAL/) || [])[1]),
+          localImageRendering:local ? getComputedStyle(local).imageRendering : null,
+          localOpacity:local ? Number(getComputedStyle(local).opacity) : null,
+          localNaturalSize:local ? { width:local.naturalWidth, height:local.naturalHeight } : null,
+          worldOpacity:world ? Number(getComputedStyle(world).opacity) : null,
+          activeSteps:[...document.querySelectorAll('#detail-ladder .active')].map(step => step.dataset.detail),
+          exactPointCanvases:document.querySelectorAll('.leaflet-exact-pane canvas').length
+        };
+      })()`, returnByValue:true });
+      return result.result.value;
+    };
+    localDetail8State = await captureLocalDetail(99);
+    localDetail4State = await captureLocalDetail(-99);
+    const detailShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+    await writeFile(detailOutput, Buffer.from(detailShot.data, 'base64'));
   }
 }
 
@@ -283,8 +319,9 @@ await mkdir(path.dirname(output), { recursive: true });
 await writeFile(output, Buffer.from(shot.data, 'base64'));
 
 console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marqueeOutput : null,
-  denseOutput:exercise ? denseOutput : null, state, marqueeState, inspectorTabState,
-  panGestureState, densePointState, denseUiState, errors }, null, 2));
+  denseOutput:exercise ? denseOutput : null, detailOutput:exercise ? detailOutput : null,
+  state, marqueeState, inspectorTabState, panGestureState, densePointState, denseUiState,
+  localDetail8State, localDetail4State, errors }, null, 2));
 await cdp('Browser.close').catch(() => {});
 socket.close();
 setTimeout(() => browser.kill(), 1000).unref();
@@ -300,9 +337,17 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       panGestureState?.activeCursor !== 'grabbing' || !panGestureState?.activeWhileHeld || !panGestureState?.released ||
       !panGestureState?.viewportMoved || !/Zoom closer/.test(denseUiState?.title || '') ||
       !/RASTER/.test(denseUiState?.exactState || '') || !/Tighten viewport/.test(denseUiState?.action || '') ||
-      denseUiState?.exactPointCanvases !== 0 ||
+      denseUiState?.exactPointCanvases !== 0 || denseUiState?.localDetailRasters !== 0 ||
       (useStoryAction && (!state.storyActionActive || state.toolState !== 'BOX')) ||
       (!marqueeOnly && (!state.inspectorVisible || !/jobs-panel/.test(state.inspectorParent || '') || state.inspectorPosition === 'absolute' ||
         state.inspectRankRows < 1 || !inspectorTabState?.jobsVisible || !inspectorTabState?.inspectVisible ||
         !inspectorTabState?.selectionPreserved || !inspectorTabState?.inspectTabActive ||
-        !/Birch trees/.test(state.status) || state.exactState === 'RASTER'))))) process.exitCode = 1;
+        !/Birch trees/.test(state.status) || state.exactState === 'RASTER' ||
+        localDetail8State?.localCount !== 1 || localDetail8State?.localCellSize !== 8 ||
+        localDetail8State?.localImageRendering !== 'auto' || !localDetail8State?.activeSteps?.includes('8') ||
+        !localDetail8State?.activeSteps?.includes('points') || localDetail8State?.exactPointCanvases < 1 ||
+        localDetail4State?.localCount !== 1 || localDetail4State?.localCellSize !== 4 ||
+        localDetail4State?.localImageRendering !== 'auto' || !localDetail4State?.activeSteps?.includes('4') ||
+        !localDetail4State?.activeSteps?.includes('points') || localDetail4State?.exactPointCanvases < 1 ||
+        localDetail8State?.worldOpacity >= localDetail8State?.localOpacity ||
+        localDetail4State?.worldOpacity >= localDetail4State?.localOpacity))))) process.exitCode = 1;

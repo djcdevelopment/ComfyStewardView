@@ -6,7 +6,7 @@
 2. A coarse raster reveals concentrations without pretending to explain them. The in-map prompt names the current scale, the next payoff, and a direct action.
 3. Shift-drag, the prompt action, or persistent Box zoom shows the same gold dashed window, then loads the next useful resolution and reports the transition.
 4. Inspect selects a region and opens the right-column Inspect tab to answer why it is bright: total, density, world share, and top prefabs. Switching to Job Bench and back preserves the selection.
-5. At close range, bounded exact points replace aggregate ambiguity.
+5. At close range, bounded 8 m and 4 m density surfaces bridge the full-world 16 m raster into exact points. Each local surface and its points come from the same complete bounded query.
 6. If a viewport exceeds the exact-point budget, no spatially biased prefix is shown; the complete raster remains authoritative and asks for a tighter viewport.
 7. Pan mode uses a grab cursor and visibly closes the hand only while the held drag is moving the map.
 
@@ -16,7 +16,7 @@
 |---|---|---|
 | Lens | What am I investigating? | Build, dropped, all ZDOs, coins, birch, tombstones |
 | Time | When, or what changed? | One snapshot; delta is deliberately deferred |
-| Scale | How much detail? | Auto, 1000, 320, 64, 16 m, then exact points |
+| Scale | How much detail? | Auto, 1000, 320, 64, 16 m world, 8/4 m local, then exact points |
 | Context | Where is it? | Inferred land mask or supplied terrain image |
 | Selection | Why is this place notable? | Cell click or box inspect |
 
@@ -31,6 +31,7 @@
 - Observe queue, query, encode, manifest, and total timers.
 - Observe cells, values, pixels, bytes, and cache-hit status.
 - Tune semantic-zoom thresholds and crossfade duration in the browser.
+- Observe and tune the 8 m to 4 m local-detail transition independently of full-world rendering.
 - Clear the browser decode cache without deleting generated artifacts.
 - Distinguish newly generated layers from artifact hits in the summary and completion feedback.
 - Mirror active job phase, progress, elapsed time, and outcome in the 15-second terminal monitor.
@@ -43,6 +44,10 @@ must be visible before mouse-up. The persistent Box zoom tool uses the same visu
 `data/artifacts/{snapshotId}/manifest.json` advertises every available lens/resolution image,
 its fixed world bounds, value semantics, logarithmic maximum, cell count, total value, render
 timings, and file size. PNGs are intensity-only gray8 images with binary alpha.
+
+The 8 m and 4 m close-detail surfaces are disposable browser artifacts, not entries in the full-world
+manifest. They may only be derived when the exact query is complete. A result marked `truncated` must
+yield neither a local surface nor points, preventing a database-order prefix from looking authoritative.
 
 An optional authoritative terrain image can be supplied at server startup. Until then, the
 all-ZDO surface raster is labeled as an inferred land mask, never as a terrain heightmap.
