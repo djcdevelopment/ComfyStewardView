@@ -21,7 +21,7 @@
   <nav class="primary-nav">
     <button class="active">◉ World</button>
     <button disabled>⇄ Changes <small>later track</small></button>
-    <button>◷ Runs</button>
+    <button id="runs-nav">◷ Runs <small id="run-nav-state">idle</small></button>
     <button>⌕ Inspect</button>
     <span class="nav-note">Disposable lab · production is untouched</span>
   </nav>
@@ -83,10 +83,10 @@
         <div class="card-heading"><span>GESTURE</span><span id="tool-state">PAN</span></div>
         <div class="segments three" id="tool-buttons">
           <button data-tool="pan" class="active">Pan</button>
-          <button data-tool="box">Box zoom</button>
+          <button data-tool="box" title="Drag a gold window, or hold Shift while dragging from any tool">Box zoom</button>
           <button data-tool="inspect">Inspect</button>
         </div>
-        <p class="microcopy"><kbd>P</kbd> pan · <kbd>Z</kbd> box zoom · <kbd>I</kbd> inspect · click a cell to explain it</p>
+        <p class="microcopy"><kbd>Shift</kbd> + drag box zoom · <kbd>P</kbd> pan · <kbd>Z</kbd> persistent box tool · <kbd>I</kbd> inspect</p>
       </section>
 
       <section class="card exact-card">
@@ -119,7 +119,7 @@
         <div class="legend-ticks" id="legend-ticks"></div>
       </div>
 
-      <div class="coords" id="coords">Move over map for coordinates</div>
+      <div class="coords" id="coords">Move for coordinates · Shift+drag to box zoom</div>
       <div class="transition-toast" id="transition-toast"></div>
 
       <section class="inspector" id="inspector" hidden>
@@ -141,7 +141,7 @@
     </section>
 
     <aside class="jobs-panel scroll-panel">
-      <div class="panel-title"><span>JOB BENCH</span><span class="live-indicator">● LIVE</span></div>
+      <div class="panel-title"><span>JOB BENCH</span><button class="live-indicator" id="job-activity" title="Show latest job">● IDLE</button></div>
 
       <section class="card">
         <div class="card-heading"><span>CREATE RASTERS</span><span id="job-target">—</span></div>
@@ -158,9 +158,10 @@
           <label><span>Failure injection</span><select id="job-failure"><option value="0">off</option><option value="1">after first layer</option><option value="2">after second layer</option></select></label>
         </div>
         <div class="button-row">
-          <button id="render-selected" class="primary">Render selected lens</button>
+          <button id="render-selected" class="primary">Render active lens</button>
           <button id="render-all">All lenses</button>
         </div>
+        <p class="microcopy job-scope" id="job-scope">Creates full-world rasters for the active lens. A zoom window changes your view, not the job scope.</p>
         <button id="copy-command" class="secondary full">Copy equivalent CLI command</button>
       </section>
 
@@ -170,7 +171,7 @@
         <div class="progress-track"><i id="job-progress"></i></div>
         <div class="job-summary" id="job-summary">No render job has run in this process.</div>
         <div id="phase-list" class="phase-list"></div>
-        <div class="button-row"><button id="cancel-job" disabled>Cancel</button><button id="reload-manifest">Reload manifest</button></div>
+        <div class="button-row"><button id="cancel-job" disabled>Cancel</button><button id="view-job-log">Log</button><button id="reload-manifest">Reload manifest</button></div>
       </section>
 
       <section class="card">
@@ -193,8 +194,8 @@
         <label class="number-row"><span>Crossfade</span><input id="crossfade-ms" type="number" value="220" min="0" max="2000" step="20"><em>ms</em></label>
       </section>
 
-      <section class="card logs-card">
-        <div class="card-heading"><span>JOB LOG</span><span id="log-count">0 lines</span></div>
+      <section class="card logs-card" id="job-log-card">
+        <div class="card-heading"><span>JOB LOG · <b id="log-count">0 lines</b></span><button id="copy-monitor-command">Copy 15s terminal</button></div>
         <pre id="job-log">Waiting for a job.</pre>
       </section>
     </aside>

@@ -39,6 +39,7 @@
     drawRect: null,
     drawStart: null,
     drawing: false,
+    nativeBoxZoom: false,
     currentEntry: null,
     currentSelectionBounds: null,
     rawImages: new Map(),
@@ -48,6 +49,7 @@
     exactToken: 0,
     lastJob: null,
     lastCompletedJobId: null,
+    submittingJob: false,
     pollTimer: null,
     exactTimer: null,
     toastTimer: null,
@@ -145,6 +147,7 @@
     $('header-lens').textContent = lens?.label || '—';
     $('lens-question').textContent = lens?.question || 'Choose a lens';
     $('lens-payoff').textContent = lens?.payoff || '';
+    if ($('job-scope')) $('job-scope').textContent = `Creates full-world ${lens?.label || 'active lens'} rasters. A zoom window changes your view, not the job scope.`;
     document.querySelectorAll('.lens-button').forEach(button => button.classList.toggle('active', button.dataset.lens === state.lensId));
   }
 
@@ -158,6 +161,7 @@
       maxZoom: 4,
       zoomSnap: .25,
       preferCanvas: true,
+      boxZoom: true,
       zoomAnimation: !reducedMotion,
       fadeAnimation: !reducedMotion,
       markerZoomAnimation: !reducedMotion
@@ -191,11 +195,26 @@
 
     state.map.on('mousemove', event => {
       const world = latLngToWorld(event.latlng);
-      $('coords').textContent = `X ${Math.round(world.x).toLocaleString()} · Z ${Math.round(world.z).toLocaleString()} · ${state.tool.toUpperCase()}`;
+      $('coords').textContent = state.nativeBoxZoom
+        ? 'BOX ZOOM · release to fit the gold window'
+        : `X ${Math.round(world.x).toLocaleString()} · Z ${Math.round(world.z).toLocaleString()} · ${state.tool.toUpperCase()} · Shift+drag zoom`;
       if (state.drawing && state.drawRect) state.drawRect.setBounds([state.drawStart, event.latlng]);
     });
     state.map.on('mousedown', startDrawing);
     state.map.on('mouseup', finishDrawing);
+    state.map.on('boxzoomstart', () => {
+      state.nativeBoxZoom = true;
+      document.body.classList.add('box-zoom-active');
+      $('coords').textContent = 'BOX ZOOM · release to fit the gold window';
+    });
+    state.map.on('boxzoomend', event => {
+      state.nativeBoxZoom = false;
+      document.body.classList.remove('box-zoom-active');
+      const bounds = event.boxZoomBounds;
+      const width = Math.abs(bounds.getEast()-bounds.getWest());
+      const height = Math.abs(bounds.getNorth()-bounds.getSouth());
+      toast(`Box zoom accepted · ${fmt(width)} × ${fmt(height)} m`);
+    });
     state.map.on('click', event => {
       if (state.tool !== 'pan' || state.drawing) return;
       inspectCell(event.latlng);
@@ -470,15 +489,20 @@
     if (tool === 'pan') state.map.dragging.enable(); else state.map.dragging.disable();
     document.querySelectorAll('#tool-buttons button').forEach(button => button.classList.toggle('active', button.dataset.tool === tool));
     $('tool-state').textContent = tool.toUpperCase();
-    $('coords').textContent = `${tool.toUpperCase()} · move over map for coordinates`;
+    $('coords').textContent = `${tool.toUpperCase()} · move for coordinates · Shift+drag box zoom`;
   }
 
   function startDrawing(event) {
-    if (state.tool === 'pan' || event.originalEvent.button !== 0) return;
+    if (event.originalEvent.shiftKey || state.tool === 'pan' || event.originalEvent.button !== 0) return;
     state.drawing = true;
     state.drawStart = event.latlng;
     if (state.drawRect) state.map.removeLayer(state.drawRect);
-    state.drawRect = L.rectangle([event.latlng,event.latlng], { pane:'selectionPane', color:state.tool === 'box' ? '#e5be58' : '#70d29a', weight:1, fillOpacity:.12 }).addTo(state.map);
+    const isBox = state.tool === 'box';
+    state.drawRect = L.rectangle([event.latlng,event.latlng], {
+      pane:'selectionPane', className:isBox ? 'box-zoom-rectangle' : 'selection-rectangle',
+      color:isBox ? '#f3cf69' : '#70d29a', fillColor:isBox ? '#f3cf69' : '#70d29a',
+      dashArray:isBox ? '7,5' : null, weight:isBox ? 2 : 1, fillOpacity:isBox ? .1 : .12
+    }).addTo(state.map);
     L.DomEvent.preventDefault(event.originalEvent);
   }
 
@@ -613,16 +637,41 @@
       simulatedDelayMs: Number($('job-delay').value),
       failAfterLayers: Number($('job-failure').value)
     };
+    const layerCount = request.lensIds.length * request.resolutions.length;
+    const lensLabel = allLenses ? 'all lenses' : state.lensById.get(state.lensId)?.label || state.lensId;
+    const selectedButton = $('render-selected');
+    const allButton = $('render-all');
+    state.submittingJob = true;
+    selectedButton.disabled = allButton.disabled = true;
+    (allLenses ? allButton : selectedButton).textContent = 'Queueing…';
+    state.lastJob = {
+      id:`submitting-${Date.now()}`, status:'queued', elapsedMs:0,
+      completedUnits:0, totalUnits:layerCount, phases:[], metrics:{},
+      currentPhase:`Submitting ${lensLabel} · ${request.resolutions.join(' → ')} m`,
+      logs:[`Submitting ${layerCount} full-world raster layer(s)`]
+    };
+    renderJob(state.lastJob);
+    setStory('working', `Queueing ${lensLabel} raster job…`, `${layerCount} full-world layer${layerCount === 1 ? '' : 's'}. Live phases and timings are in the Job bench.`);
+    focusJobActivity(false);
     try {
       state.lastJob = await fetchJson(`${API}/jobs/render`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(request) });
       renderJob(state.lastJob);
-      toast(`Queued ${request.lensIds.length*request.resolutions.length} raster layer(s)`);
+      setStory('working', `${lensLabel} job queued`, `${layerCount} full-world layer${layerCount === 1 ? '' : 's'} · job ${state.lastJob.id.slice(0,8)}. Watch the live phases at right.`);
+      toast(`Job queued · ${lensLabel} · ${layerCount} layer${layerCount === 1 ? '' : 's'}`);
     } catch (error) {
+      renderJob({ ...state.lastJob, status:'failed', error:error.message, currentPhase:null });
+      setStory('error', 'Raster job was rejected', error.message);
       toast(`Job rejected: ${error.message}`);
+    } finally {
+      state.submittingJob = false;
+      selectedButton.disabled = allButton.disabled = false;
+      selectedButton.textContent = 'Render active lens';
+      allButton.textContent = 'All lenses';
     }
   }
 
   async function pollJobs() {
+    if (state.submittingJob) return;
     try {
       const jobs = await fetchJson(`${API}/jobs`);
       if (jobs.length) {
@@ -633,26 +682,80 @@
         if (latest.status === 'complete' && previousStatus !== 'complete' && state.lastCompletedJobId !== latest.id) {
           state.lastCompletedJobId = latest.id;
           await loadManifest();
-          toast('New raster artifacts loaded');
+          const outcome = jobOutcome(latest);
+          toast(outcome.createdLayers
+            ? `${outcome.createdLayers} new raster${outcome.createdLayers === 1 ? '' : 's'} created${outcome.cacheHits ? ` · ${outcome.cacheHits} cached` : ''}`
+            : `${outcome.cacheHits} cached raster${outcome.cacheHits === 1 ? '' : 's'} reused · no generation needed`);
         }
+        const activeJobs = jobs.filter(job => ['queued','running'].includes(job.status));
+        if (activeJobs.length) setJobActivity(activeJobs.some(job => job.status === 'running') ? 'running' : 'queued', activeJobs.length);
+      } else {
+        setJobActivity('idle');
       }
     } catch (_) {}
   }
 
+  function jobOutcome(job) {
+    const phaseHits = (job.phases || []).filter(phase => /artifact hit/i.test(phase.name || '')).length;
+    const cacheHits = Number(job.metrics?.cacheHits ?? phaseHits);
+    const createdLayers = Number(job.metrics?.createdLayers ?? Math.max(0, Number(job.completedUnits || 0)-cacheHits));
+    return { cacheHits, createdLayers };
+  }
+
+  function setJobActivity(status, count = 0) {
+    const activity = $('job-activity');
+    const navState = $('run-nav-state');
+    const busy = ['queued','running'].includes(status);
+    const failed = status === 'failed';
+    const label = busy ? `${status.toUpperCase()}${count > 1 ? ` ${count}` : ''}` : failed ? 'FAILED' : 'IDLE';
+    activity.textContent = `● ${label}`;
+    activity.classList.toggle('busy', busy);
+    activity.classList.toggle('failed', failed);
+    navState.textContent = label.toLowerCase();
+    navState.classList.toggle('busy', busy);
+    navState.classList.toggle('failed', failed);
+  }
+
+  function focusJobActivity(log = false) {
+    const panel = document.querySelector('.jobs-panel');
+    const target = log ? $('job-log-card') : document.querySelector('.job-current');
+    panel.scrollTo({ top:Math.max(0, target.offsetTop-34), behavior:'smooth' });
+    target.classList.add('attention');
+    setTimeout(() => target.classList.remove('attention'), 1200);
+  }
+
   function renderJob(job) {
     const status = String(job.status || 'idle').toUpperCase();
-    $('job-status').textContent = status;
+    const outcome = jobOutcome(job);
+    const cachedOnly = job.status === 'complete' && outcome.cacheHits > 0 && outcome.createdLayers === 0;
+    $('job-status').textContent = cachedOnly ? 'COMPLETE · CACHED' : status;
     $('job-status').style.color = job.status === 'complete' ? 'var(--green)' : job.status === 'failed' ? 'var(--red)' : job.status === 'running' ? 'var(--amber)' : '';
     $('job-clock').textContent = (Number(job.elapsedMs || 0)/1000).toFixed(3);
     const progress = job.totalUnits ? job.completedUnits/job.totalUnits*100 : 0;
     $('job-progress').style.width = `${progress}%`;
-    $('job-summary').textContent = job.error || job.currentPhase || `${job.completedUnits || 0} of ${job.totalUnits || 0} layers · ${status.toLowerCase()}`;
+    const completeSummary = cachedOnly
+      ? `${outcome.cacheHits} of ${job.totalUnits || outcome.cacheHits} ready · all cached · no raster generation`
+      : job.status === 'complete'
+        ? `${outcome.createdLayers} created${outcome.cacheHits ? ` · ${outcome.cacheHits} cached` : ''} · ${job.totalUnits || job.completedUnits || 0} ready`
+        : null;
+    const latestPhase = (job.phases || []).at(-1);
+    const betweenPhaseSummary = ['queued','running'].includes(job.status) && latestPhase
+      ? `After ${latestPhase.name} · waiting for next phase`
+      : null;
+    $('job-summary').textContent = job.error || job.currentPhase || betweenPhaseSummary || completeSummary || `${job.completedUnits || 0} of ${job.totalUnits || 0} layers · ${status.toLowerCase()}`;
+    const jobCard = document.querySelector('.job-current');
+    jobCard.classList.toggle('active', ['queued','running'].includes(job.status));
+    jobCard.classList.toggle('cached', cachedOnly);
+    jobCard.classList.toggle('failed', job.status === 'failed');
+    setJobActivity(job.status, ['queued','running'].includes(job.status) ? 1 : 0);
     $('cancel-job').disabled = !['queued','running'].includes(job.status);
     $('phase-list').innerHTML = (job.phases || []).slice().reverse().map(phase => {
       const icon = phase.status === 'complete' ? '✓' : phase.status === 'failed' ? '×' : '●';
       return `<div class="phase ${escapeHtml(phase.status)}"><span class="phase-icon">${icon}</span><span class="phase-name" title="${escapeHtml(phase.name)}">${escapeHtml(phase.name)}</span><span class="phase-time">${Number(phase.elapsedMs || 0).toLocaleString()} ms</span></div>`;
     }).join('');
-    $('job-log').textContent = (job.logs || []).slice(-80).join('\n') || 'Waiting for log output.';
+    const jobLog = $('job-log');
+    jobLog.textContent = (job.logs || []).slice(-80).join('\n') || 'Waiting for log output.';
+    if (['queued','running'].includes(job.status)) jobLog.scrollTop = jobLog.scrollHeight;
     $('log-count').textContent = `${job.logs?.length || 0} lines`;
   }
 
@@ -736,6 +839,9 @@
     $('story-action').addEventListener('click', () => submitRender(false));
     $('render-selected').addEventListener('click', () => submitRender(false));
     $('render-all').addEventListener('click', () => submitRender(true));
+    $('runs-nav').addEventListener('click', () => focusJobActivity(false));
+    $('job-activity').addEventListener('click', () => focusJobActivity(false));
+    $('view-job-log').addEventListener('click', () => focusJobActivity(true));
     $('cancel-job').addEventListener('click', async () => { if(state.lastJob) await fetchJson(`${API}/jobs/${state.lastJob.id}/cancel`,{method:'POST'}); });
     $('reload-manifest').addEventListener('click', loadManifest);
     $('clear-client-cache').addEventListener('click', clearClientCache);
@@ -744,6 +850,7 @@
       const command = `.\\lab.ps1 render -Snapshot ${state.snapshotId} -Lens '${state.lensId}' -Resolutions '${resolutions}'${$('job-force').checked ? ' -Force' : ''}`;
       copyText(command);
     });
+    $('copy-monitor-command').addEventListener('click', () => copyText('.\\lab.ps1 watch-jobs -IntervalSeconds 15'));
     $('inspect-close').addEventListener('click', closeInspector);
     $('inspect-zoom').addEventListener('click', () => state.currentSelectionBounds && state.map.fitBounds(state.currentSelectionBounds,{padding:[30,30]}));
     $('inspect-copy').addEventListener('click', () => state.currentSelectionBounds && copyText(boundsLabel(state.currentSelectionBounds)));
@@ -753,7 +860,11 @@
       if (event.key.toLowerCase()==='p') setTool('pan');
       if (event.key.toLowerCase()==='z') setTool('box');
       if (event.key.toLowerCase()==='i') setTool('inspect');
-      if (event.key==='Escape') { setTool('pan'); closeInspector(); }
+      if (event.key==='Escape') {
+        state.nativeBoxZoom = false;
+        document.body.classList.remove('box-zoom-active');
+        setTool('pan'); closeInspector();
+      }
     });
   }
 

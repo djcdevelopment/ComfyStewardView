@@ -48,7 +48,9 @@ public final class LensRenderer {
             manifest = artifacts.newManifest(snapshot, lenses);
         }
 
-        int renderedLayers = 0;
+        int completedLayers = 0;
+        int createdLayers = 0;
+        int cacheHits = 0;
         long totalOutputBytes = 0;
         try (Connection connection = phase(job, "Open read-only DuckDB", repository::open,
                 Map.of("cache", repository.cachePath().toString()))) {
@@ -70,9 +72,10 @@ public final class LensRenderer {
                             "totalValue", existing.path("totalValue").asDouble()));
                         totalOutputBytes += bytes;
                         job.unitComplete();
-                        renderedLayers++;
+                        completedLayers++;
+                        cacheHits++;
                         delay(job, request.simulatedDelayMs());
-                        maybeInjectFailure(request, renderedLayers);
+                        maybeInjectFailure(request, completedLayers);
                         continue;
                     }
 
@@ -99,15 +102,19 @@ public final class LensRenderer {
                     delay(job, request.simulatedDelayMs());
 
                     job.unitComplete();
-                    renderedLayers++;
-                    maybeInjectFailure(request, renderedLayers);
+                    completedLayers++;
+                    createdLayers++;
+                    maybeInjectFailure(request, completedLayers);
                 }
             }
         }
 
         LabJob.Phase summary = job.beginPhase("Summarize outputs");
         job.completePhase(summary, Map.of(
-            "renderedLayers", renderedLayers,
+            "requestedLayers", layerCount,
+            "completedLayers", completedLayers,
+            "createdLayers", createdLayers,
+            "cacheHits", cacheHits,
             "outputBytes", totalOutputBytes,
             "artifactDirectory", artifacts.snapshotDirectory(snapshot.snapshotId()).toString()));
         job.complete();
@@ -222,9 +229,9 @@ public final class LensRenderer {
         return node;
     }
 
-    private static void maybeInjectFailure(LabJob.RenderRequest request, int renderedLayers) {
-        if (request.failAfterLayers() > 0 && renderedLayers >= request.failAfterLayers()) {
-            throw new IllegalStateException("Injected lab failure after " + renderedLayers + " layer(s)");
+    private static void maybeInjectFailure(LabJob.RenderRequest request, int completedLayers) {
+        if (request.failAfterLayers() > 0 && completedLayers >= request.failAfterLayers()) {
+            throw new IllegalStateException("Injected lab failure after " + completedLayers + " layer(s)");
         }
     }
 

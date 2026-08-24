@@ -17,6 +17,16 @@ DuckDB analytics cache; world saves and generated artifacts are deliberately exc
 The default cache is `%LOCALAPPDATA%\steward-publish\out\world-cache.duckdb` when present.
 Open `http://127.0.0.1:8091`.
 
+To keep job activity visible in a terminal, run this in a second window:
+
+```powershell
+.\lab.ps1 watch-jobs
+```
+
+It polls every 15 seconds and prints active progress, current phase, elapsed time, the last log
+line, and the cached-versus-created outcome. Change the cadence with `-IntervalSeconds 5`, or
+launch the monitor automatically beside the server with `.\lab.ps1 serve -JobMonitor`.
+
 An authoritative full-world terrain/biome PNG can replace the inferred land mask without changing
 the interaction model:
 
@@ -35,6 +45,12 @@ To generate the first scale ladder from the command line:
 
 The same job can be launched from the lab's Job bench, where query time, image time, file size,
 total duration, cache hits, cancellation, simulated latency, and injected failure are visible.
+The result explicitly distinguishes newly generated rasters from cached artifacts, so a fast cache
+hit cannot masquerade as expensive generation.
+
+Hold `Shift` and drag anywhere on the map for a temporary gold dashed zoom window. The persistent
+**Box zoom** tool offers the same marquee without holding a modifier. Both gestures change only the
+viewport; **Render active lens** creates the checked full-world resolution ladder.
 
 ## Prepare a cache from a save
 

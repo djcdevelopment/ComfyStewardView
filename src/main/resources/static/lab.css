@@ -54,7 +54,9 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .jobs-panel { border-left: 1px solid var(--border); padding: 10px 8px 30px; }
 .panel-title { height: 31px; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; font: 10px var(--mono); letter-spacing: .12em; color: var(--dim); }
 .icon-button { width: 28px; height: 26px; border-radius: 4px; padding: 0; }
-.live-indicator { color: var(--green); letter-spacing: .05em; }
+.live-indicator { border: 0; background: transparent; padding: 4px; color: var(--green); font: inherit; letter-spacing: .05em; }
+.live-indicator.busy, #run-nav-state.busy { color: var(--amber); animation: pulse .8s infinite; }
+.live-indicator.failed, #run-nav-state.failed { color: var(--red); }
 
 .card { margin-bottom: 10px; border: 1px solid var(--border); border-radius: 6px; background: linear-gradient(145deg, rgba(26,34,48,.92), rgba(17,23,34,.96)); padding: 11px; box-shadow: 0 5px 18px rgba(0,0,0,.12); }
 .card-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; color: var(--dim); font: 10px var(--mono); letter-spacing: .11em; }
@@ -99,11 +101,22 @@ kbd { padding: 1px 4px; border: 1px solid var(--border-2); border-radius: 3px; b
 .leaflet-control-zoom a { background: #121a27 !important; color: #dce6f4 !important; border-color: var(--border) !important; }
 .leaflet-control-attribution { background: rgba(10,15,23,.8) !important; color: var(--dim); }
 .analysis-raster, .context-raster { image-rendering: pixelated; image-rendering: crisp-edges; }
+.leaflet-zoom-box {
+  border: 2px dashed #f3cf69 !important;
+  outline: 1px solid rgba(255,255,255,.88);
+  outline-offset: -4px;
+  background: rgba(243,207,105,.12) !important;
+  box-shadow: 0 0 20px rgba(243,207,105,.32);
+}
+body.box-zoom-active #map { cursor: nwse-resize; }
+body.box-zoom-active .coords { border-color: #d5ad4e; color: #f5d87e; }
 
 .map-story { position: absolute; z-index: 900; left: 49px; top: 12px; max-width: min(620px, calc(100% - 360px)); display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 6px; background: rgba(14,20,30,.92); box-shadow: 0 6px 20px rgba(0,0,0,.3); backdrop-filter: blur(6px); }
 .map-story .status-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 8px currentColor; }
 .map-story.ready .status-dot { background: var(--green); }
 .map-story.error .status-dot { background: var(--red); }
+.map-story.working { border-color: #8c6c2e; }
+.map-story.working .status-dot { background: var(--amber); animation: pulse .8s infinite; }
 .map-story strong { display: block; font-size: 12px; }
 .map-story p { margin: 2px 0 0; color: var(--muted); font: 10px/1.4 var(--mono); }
 .map-story button { margin-left: auto; white-space: nowrap; padding: 6px 9px; border-radius: 4px; background: #345f95; }
@@ -157,6 +170,11 @@ select, input[type="number"] { height: 27px; border: 1px solid var(--border); bo
 .progress-track { height: 4px; margin: 7px 0; border-radius: 2px; background: #0d121b; overflow: hidden; }
 .progress-track i { display: block; width: 0; height: 100%; background: linear-gradient(90deg,var(--blue),var(--green)); transition: width .2s; }
 .job-summary { min-height: 31px; color: var(--muted); font: 10px/1.45 var(--mono); }
+.job-current.active { border-color: #8c6c2e; box-shadow: inset 3px 0 0 var(--amber), 0 0 18px rgba(225,181,73,.1); }
+.job-current.cached { border-color: #355f52; }
+.job-current.failed { border-color: #7f3d49; }
+.card.attention { outline: 1px solid var(--amber); outline-offset: 2px; }
+.job-scope { margin: 8px 1px 0; padding-top: 7px; border-top: 1px dotted var(--border-2); }
 .phase-list { max-height: 222px; margin-top: 8px; overflow: auto; border-top: 1px solid var(--border); }
 .phase { display: grid; grid-template-columns: 14px minmax(0,1fr) 62px; align-items: center; gap: 5px; min-height: 28px; border-bottom: 1px solid #1e2634; font: 9px var(--mono); }
 .phase .phase-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
@@ -174,6 +192,7 @@ select, input[type="number"] { height: 27px; border: 1px solid var(--border); bo
 
 .exact-point { stroke-width: 1; }
 .selection-rectangle { stroke: #70d29a; fill: #70d29a; fill-opacity: .11; }
+.box-zoom-rectangle { stroke: #f3cf69; stroke-width: 2; stroke-dasharray: 7 5; fill: #f3cf69; fill-opacity: .1; }
 
 @media (max-width: 1250px) {
   .workspace { grid-template-columns: 270px minmax(420px,1fr); }

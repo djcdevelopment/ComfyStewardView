@@ -4,7 +4,7 @@
 
 1. The world overview states what the selected lens measures and why it may matter.
 2. A coarse raster reveals concentrations without pretending to explain them.
-3. Box zoom loads the next useful resolution and reports the transition.
+3. Shift-drag or persistent Box zoom shows a gold dashed window, then loads the next useful resolution and reports the transition.
 4. Inspect selects a region and answers why it is bright: total, density, world share, and top prefabs.
 5. At close range, bounded exact points replace aggregate ambiguity.
 
@@ -30,6 +30,11 @@
 - Observe cells, values, pixels, bytes, and cache-hit status.
 - Tune semantic-zoom thresholds and crossfade duration in the browser.
 - Clear the browser decode cache without deleting generated artifacts.
+- Distinguish newly generated layers from artifact hits in the summary and completion feedback.
+- Mirror active job phase, progress, elapsed time, and outcome in the 15-second terminal monitor.
+
+`Shift` + drag is the universal transient box-zoom gesture. Its white-edged gold dashed marquee
+must be visible before mouse-up. The persistent Box zoom tool uses the same visual language.
 
 ## Artifact package
 

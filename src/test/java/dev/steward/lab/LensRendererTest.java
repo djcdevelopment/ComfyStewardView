@@ -34,6 +34,16 @@ class LensRendererTest {
             LabJob job = jobs.runBlocking(new LabJob.RenderRequest(
                 7, List.of("birch-trees"), List.of(320), true, 0, 0));
             assertEquals(LabJob.Status.COMPLETE, job.status());
+            ObjectNode created = job.toJson(mapper);
+            assertEquals(1, created.path("metrics").path("createdLayers").asInt());
+            assertEquals(0, created.path("metrics").path("cacheHits").asInt());
+
+            LabJob cachedJob = jobs.runBlocking(new LabJob.RenderRequest(
+                7, List.of("birch-trees"), List.of(320), false, 0, 0));
+            assertEquals(LabJob.Status.COMPLETE, cachedJob.status());
+            ObjectNode cached = cachedJob.toJson(mapper);
+            assertEquals(0, cached.path("metrics").path("createdLayers").asInt());
+            assertEquals(1, cached.path("metrics").path("cacheHits").asInt());
         }
 
         ObjectNode manifest = artifacts.readManifest(7);
