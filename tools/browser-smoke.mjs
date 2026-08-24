@@ -12,6 +12,7 @@ const marqueeOnly = process.argv.includes('--marquee-only');
 const useStoryAction = process.argv.includes('--story-action');
 const submitJob = process.argv.includes('--submit-job');
 let marqueeState = null;
+let inspectorTabState = null;
 const profile = path.resolve('data/browser-smoke-profile');
 await mkdir(profile, { recursive: true });
 
@@ -147,8 +148,18 @@ if (exercise) {
     await drag(r.x+r.w*.3, r.y+r.h*.24, r.x+r.w*.76, r.y+r.h*.8, true);
     await new Promise(resolve => setTimeout(resolve, 3200));
     await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-tool="inspect"]')?.click()` });
-    await drag(r.x+r.w*.44, r.y+r.h*.42, r.x+r.w*.59, r.y+r.h*.62);
+    await drag(r.x+r.w*.60, r.y+r.h*.68, r.x+r.w*.72, r.y+r.h*.90);
     await new Promise(resolve => setTimeout(resolve, 1800));
+    const tabResult = await cdp('Runtime.evaluate', { expression: `(() => {
+      const selection = document.querySelector('.selection-rectangle');
+      document.querySelector('#job-bench-tab').click();
+      const jobsVisible = !document.querySelector('#job-bench-pane').hidden;
+      document.querySelector('#inspect-panel-tab').click();
+      return { jobsVisible, inspectVisible:!document.querySelector('#inspector').hidden,
+        selectionPreserved:selection?.isConnected === true,
+        inspectTabActive:document.querySelector('#inspect-panel-tab').classList.contains('active') };
+    })()`, returnByValue:true });
+    inspectorTabState = tabResult.result.value;
   }
 }
 
@@ -163,6 +174,10 @@ const evaluated = await cdp('Runtime.evaluate', {
     runNavState: document.querySelector('#run-nav-state')?.textContent,
     jobSummary: document.querySelector('#job-summary')?.textContent,
     inspectorVisible: !document.querySelector('#inspector')?.hidden,
+    inspectorParent: document.querySelector('#inspector')?.parentElement?.className,
+    inspectorPosition: getComputedStyle(document.querySelector('#inspector')).position,
+    inspectTotal: document.querySelector('#inspect-total')?.textContent,
+    inspectRankRows: document.querySelectorAll('#inspect-top .rank-row').length,
     exactState: document.querySelector('#exact-state')?.textContent,
     toolState: document.querySelector('#tool-state')?.textContent,
     storyAction: document.querySelector('#story-action')?.textContent,
@@ -196,7 +211,7 @@ const shot = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondV
 await mkdir(path.dirname(output), { recursive: true });
 await writeFile(output, Buffer.from(shot.data, 'base64'));
 
-console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marqueeOutput : null, state, marqueeState, errors }, null, 2));
+console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marqueeOutput : null, state, marqueeState, inspectorTabState, errors }, null, 2));
 await cdp('Browser.close').catch(() => {});
 socket.close();
 setTimeout(() => browser.kill(), 1000).unref();
@@ -208,4 +223,7 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       marqueeState.top + marqueeState.height > marqueeState.mapRect.top + marqueeState.mapRect.height ||
       state.leafletPanePosition !== 'absolute' || state.leafletZoomButtonSize.width < 24 || state.leafletZoomButtonSize.height < 24 ||
       (useStoryAction && (!state.storyActionActive || state.toolState !== 'BOX')) ||
-      (!marqueeOnly && (!state.inspectorVisible || !/Birch trees/.test(state.status) || state.exactState === 'RASTER'))))) process.exitCode = 1;
+      (!marqueeOnly && (!state.inspectorVisible || !/jobs-panel/.test(state.inspectorParent || '') || state.inspectorPosition === 'absolute' ||
+        state.inspectRankRows < 1 || !inspectorTabState?.jobsVisible || !inspectorTabState?.inspectVisible ||
+        !inspectorTabState?.selectionPreserved || !inspectorTabState?.inspectTabActive ||
+        !/Birch trees/.test(state.status) || state.exactState === 'RASTER'))))) process.exitCode = 1;

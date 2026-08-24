@@ -25,6 +25,7 @@
     contextEnabled: true,
     exactEnabled: true,
     tool: 'pan',
+    rightPanel: 'jobs',
     map: null,
     minimap: null,
     worldBounds: null,
@@ -51,6 +52,7 @@
     rasterToken: 0,
     contextToken: 0,
     exactToken: 0,
+    inspectToken: 0,
     lastJob: null,
     lastCompletedJobId: null,
     submittingJob: false,
@@ -524,6 +526,7 @@
     $('tool-state').textContent = tool.toUpperCase();
     $('coords').textContent = `${tool.toUpperCase()} · move for coordinates · Shift+drag box zoom`;
     syncStoryAction();
+    if (tool === 'inspect') showRightPanel('inspect');
   }
 
   function startDrawing(event) {
@@ -597,12 +600,17 @@
   }
 
   async function inspectBounds(bounds) {
+    const token = ++state.inspectToken;
     state.currentSelectionBounds = bounds;
     if (state.selectionRect) state.map.removeLayer(state.selectionRect);
     state.selectionRect = L.rectangle(bounds, { pane:'selectionPane', renderer:state.selectionRenderer, className:'selection-rectangle', color:'#70d29a', weight:2, fillOpacity:.1 }).addTo(state.map);
     if (state.miniSelectionRect) state.minimap.removeLayer(state.miniSelectionRect);
     state.miniSelectionRect = L.rectangle(bounds, { color:'#70d29a', weight:1, fillOpacity:.08, interactive:false }).addTo(state.minimap);
-    $('inspector').hidden = false;
+    $('inspect-empty').hidden = true;
+    $('inspect-content').hidden = false;
+    $('inspect-tab-state').textContent = 'QUERYING';
+    showRightPanel('inspect');
+    $('inspector').scrollTop = 0;
     const query = boundsQuery(bounds);
     $('inspect-bounds').textContent = boundsLabel(bounds);
     $('inspect-title').textContent = `Explaining ${state.lensById.get(state.lensId)?.label || state.lensId}`;
@@ -611,17 +619,21 @@
     const started = performance.now();
     try {
       const result = await fetchJson(`${API}/selection?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&topN=10&${query}`);
+      if (token !== state.inspectToken) return;
       const elapsed = performance.now()-started;
       $('inspect-query-time').textContent = `${elapsed.toFixed(0)} ms`;
       $('inspect-total').textContent = fmt(result.total);
       $('inspect-units').textContent = result.units;
       $('inspect-share').textContent = `${Number(result.worldSharePct).toFixed(result.worldSharePct < 1 ? 2 : 1)}%`;
       $('inspect-density').textContent = fmt(result.densityPerSquareKm);
+      $('inspect-tab-state').textContent = `${fmt(result.total)} ${result.units}`.toUpperCase();
       const max = Math.max(1,...result.top.map(item => item.value));
       $('inspect-top').innerHTML = result.top.length ? result.top.map(item =>
         `<div class="rank-row"><span>${escapeHtml(item.label)}</span><span>${fmt(item.value)}</span><div class="rank-bar"><i style="width:${item.value/max*100}%"></i></div></div>`).join('')
         : '<div class="rank-row"><span>No objects from this lens are inside the selection.</span></div>';
     } catch (error) {
+      if (token !== state.inspectToken) return;
+      $('inspect-tab-state').textContent = 'QUERY FAILED';
       $('inspect-top').innerHTML = `<div class="rank-row"><span>${escapeHtml(error.message)}</span></div>`;
     }
   }
@@ -777,11 +789,23 @@
   }
 
   function focusJobActivity(log = false) {
-    const panel = document.querySelector('.jobs-panel');
+    showRightPanel('jobs');
+    const panel = $('job-bench-pane');
     const target = log ? $('job-log-card') : document.querySelector('.job-current');
     panel.scrollTo({ top:Math.max(0, target.offsetTop-34), behavior:'smooth' });
     target.classList.add('attention');
     setTimeout(() => target.classList.remove('attention'), 1200);
+  }
+
+  function showRightPanel(panel) {
+    state.rightPanel = panel;
+    const jobs = panel === 'jobs';
+    $('job-bench-pane').hidden = !jobs;
+    $('inspector').hidden = jobs;
+    $('job-bench-tab').classList.toggle('active', jobs);
+    $('inspect-panel-tab').classList.toggle('active', !jobs);
+    $('job-bench-tab').setAttribute('aria-selected', String(jobs));
+    $('inspect-panel-tab').setAttribute('aria-selected', String(!jobs));
   }
 
   function renderJob(job) {
@@ -911,7 +935,10 @@
     $('render-selected').addEventListener('click', () => submitRender(false));
     $('render-all').addEventListener('click', () => submitRender(true));
     $('runs-nav').addEventListener('click', () => focusJobActivity(false));
-    $('job-activity').addEventListener('click', () => focusJobActivity(false));
+    $('job-bench-tab').addEventListener('click', () => showRightPanel('jobs'));
+    $('inspect-panel-tab').addEventListener('click', () => showRightPanel('inspect'));
+    $('inspect-nav').addEventListener('click', () => { setTool('inspect'); toast('Drag a green area to explain it'); });
+    $('inspect-start').addEventListener('click', () => { setTool('inspect'); toast('Drag a green area to explain it'); });
     $('view-job-log').addEventListener('click', () => focusJobActivity(true));
     $('cancel-job').addEventListener('click', async () => { if(state.lastJob) await fetchJson(`${API}/jobs/${state.lastJob.id}/cancel`,{method:'POST'}); });
     $('reload-manifest').addEventListener('click', loadManifest);
@@ -922,7 +949,7 @@
       copyText(command);
     });
     $('copy-monitor-command').addEventListener('click', () => copyText('.\\lab.ps1 watch-jobs -IntervalSeconds 15'));
-    $('inspect-close').addEventListener('click', closeInspector);
+    $('inspect-close').addEventListener('click', () => showRightPanel('jobs'));
     $('inspect-zoom').addEventListener('click', () => state.currentSelectionBounds && state.map.fitBounds(state.currentSelectionBounds,{padding:[30,30]}));
     $('inspect-copy').addEventListener('click', () => state.currentSelectionBounds && copyText(boundsLabel(state.currentSelectionBounds)));
     ['threshold-64','threshold-16','threshold-exact'].forEach(id => $(id).addEventListener('change', () => { applyRaster(); scheduleExactPoints(); }));
@@ -947,11 +974,15 @@
   }
 
   function closeInspector() {
-    $('inspector').hidden = true;
+    ++state.inspectToken;
     state.currentSelectionBounds = null;
     if (state.selectionRect && state.map) state.map.removeLayer(state.selectionRect);
     if (state.miniSelectionRect && state.minimap) state.minimap.removeLayer(state.miniSelectionRect);
     state.selectionRect = state.miniSelectionRect = null;
+    $('inspect-content').hidden = true;
+    $('inspect-empty').hidden = false;
+    $('inspect-tab-state').textContent = 'NO AREA';
+    showRightPanel('jobs');
   }
 
   bootstrap();

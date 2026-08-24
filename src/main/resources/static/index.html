@@ -22,7 +22,7 @@
     <button class="active">◉ World</button>
     <button disabled>⇄ Changes <small>later track</small></button>
     <button id="runs-nav">◷ Runs <small id="run-nav-state">idle</small></button>
-    <button>⌕ Inspect</button>
+    <button id="inspect-nav">⌕ Inspect</button>
     <span class="nav-note">Disposable lab · production is untouched</span>
   </nav>
 
@@ -122,26 +122,19 @@
       <div class="coords" id="coords">Move for coordinates · Shift+drag to box zoom</div>
       <div class="transition-toast" id="transition-toast"></div>
 
-      <section class="inspector" id="inspector" hidden>
-        <header>
-          <div><span class="eyebrow">WHY THIS AREA?</span><strong id="inspect-title">Region inspection</strong></div>
-          <span id="inspect-bounds" class="mono"></span>
-          <div class="header-spacer"></div>
-          <button id="inspect-zoom">Zoom to selection</button>
-          <button id="inspect-copy">Copy bounds</button>
-          <button id="inspect-close" class="icon-button">×</button>
-        </header>
-        <div class="inspect-body">
-          <div class="inspect-stat"><span>SELECTED</span><strong id="inspect-total">—</strong><small id="inspect-units">objects</small></div>
-          <div class="inspect-stat"><span>WORLD SHARE</span><strong id="inspect-share">—</strong><small>of this lens</small></div>
-          <div class="inspect-stat"><span>DENSITY</span><strong id="inspect-density">—</strong><small>per km²</small></div>
-          <div class="inspect-ranked"><div class="ranked-heading"><span>WHAT MAKES IT BRIGHT</span><span id="inspect-query-time">—</span></div><div id="inspect-top"></div></div>
-        </div>
-      </section>
     </section>
 
-    <aside class="jobs-panel scroll-panel">
-      <div class="panel-title"><span>JOB BENCH</span><button class="live-indicator" id="job-activity" title="Show latest job">● IDLE</button></div>
+    <aside class="jobs-panel">
+      <div class="panel-tabs" role="tablist" aria-label="Right panel">
+        <button class="panel-tab active" id="job-bench-tab" role="tab" aria-selected="true" aria-controls="job-bench-pane">
+          <span>JOB BENCH</span><small class="live-indicator" id="job-activity">● IDLE</small>
+        </button>
+        <button class="panel-tab" id="inspect-panel-tab" role="tab" aria-selected="false" aria-controls="inspector">
+          <span>INSPECT</span><small id="inspect-tab-state">NO AREA</small>
+        </button>
+      </div>
+
+      <div class="right-pane scroll-panel" id="job-bench-pane" role="tabpanel" aria-labelledby="job-bench-tab">
 
       <section class="card">
         <div class="card-heading"><span>CREATE RASTERS</span><span id="job-target">—</span></div>
@@ -197,6 +190,35 @@
       <section class="card logs-card" id="job-log-card">
         <div class="card-heading"><span>JOB LOG · <b id="log-count">0 lines</b></span><button id="copy-monitor-command">Copy 15s terminal</button></div>
         <pre id="job-log">Waiting for a job.</pre>
+      </section>
+      </div>
+
+      <section class="right-pane inspector scroll-panel" id="inspector" role="tabpanel" aria-labelledby="inspect-panel-tab" hidden>
+        <div class="inspect-empty" id="inspect-empty">
+          <span class="eyebrow">WHY THIS AREA?</span>
+          <strong>Select an area to explain</strong>
+          <p>Choose Inspect, then drag a green window across a bright cluster. Results stay here while the map remains full height.</p>
+          <button id="inspect-start" class="primary full">Draw inspection area</button>
+        </div>
+
+        <div id="inspect-content" hidden>
+          <header class="inspect-header">
+            <div><span class="eyebrow">WHY THIS AREA?</span><strong id="inspect-title">Region inspection</strong><span id="inspect-bounds" class="mono"></span></div>
+            <button id="inspect-close" class="icon-button" title="Return to Job Bench">×</button>
+          </header>
+          <div class="inspect-actions">
+            <button id="inspect-zoom">Zoom to selection</button>
+            <button id="inspect-copy">Copy bounds</button>
+          </div>
+          <div class="inspect-body">
+            <div class="inspect-stats">
+              <div class="inspect-stat"><span>SELECTED</span><strong id="inspect-total">—</strong><small id="inspect-units">objects</small></div>
+              <div class="inspect-stat"><span>WORLD SHARE</span><strong id="inspect-share">—</strong><small>of this lens</small></div>
+              <div class="inspect-stat"><span>DENSITY</span><strong id="inspect-density">—</strong><small>per km²</small></div>
+            </div>
+            <div class="inspect-ranked"><div class="ranked-heading"><span>WHAT MAKES IT BRIGHT</span><span id="inspect-query-time">—</span></div><div id="inspect-top"></div></div>
+          </div>
+        </div>
       </section>
     </aside>
   </main>

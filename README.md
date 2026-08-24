@@ -54,6 +54,8 @@ viewport; **Render active lens** creates the checked full-world resolution ladde
 
 The map prompt names the current semantic scale and the payoff of the next step. Its gold action
 activates Box zoom directly, then changes to **Inspect an area** once exact objects are available.
+Inspection results open in the right-column **Inspect** tab, where the selection summary and ranked
+prefab explanation can use the full vertical workspace without covering the map.
 
 ## Prepare a cache from a save
 
