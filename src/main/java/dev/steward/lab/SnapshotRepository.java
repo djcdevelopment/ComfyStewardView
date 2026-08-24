@@ -85,21 +85,29 @@ public final class SnapshotRepository {
             double minX, double maxX, double minZ, double maxZ, int topN) throws SQLException {
         validateBounds(minX, maxX, minZ, maxZ);
         LensDefinition lens = lenses.require(lensId);
-        topN = Math.max(1, Math.min(50, topN));
+        topN = topN <= 0 ? 0 : Math.max(1, Math.min(50, topN));
         double selectedTotal;
+        long positionCount;
+        int categoryCount = 0;
         ArrayNode top = mapper.createArrayNode();
 
         try (Connection connection = open()) {
             selectedTotal = scalarValue(connection, snapshotId, lens, minX, maxX, minZ, maxZ);
+            positionCount = lens.source() == LensDefinition.Source.ZDO
+                ? Math.round(selectedTotal)
+                : positionCount(connection, snapshotId, lens, minX, maxX, minZ, maxZ);
             String group = lens.groupExpression();
-            String sql = "SELECT " + group + " AS label, " + lens.valueExpression() + " AS value " +
+            String groupedSql = "SELECT " + group + " AS label, " + lens.valueExpression() + " AS value " +
                 "FROM " + lens.table() + " WHERE snapshot_id = ? AND " + lens.predicate() +
-                boundsClause(lens) + " GROUP BY 1 ORDER BY value DESC LIMIT ?";
+                boundsClause(lens) + " GROUP BY 1";
+            String sql = "SELECT label, value, COUNT(*) OVER () AS category_count FROM (" +
+                groupedSql + ") AS lens_groups ORDER BY value DESC" + (topN > 0 ? " LIMIT ?" : "");
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 int index = bindBounds(statement, 1, snapshotId, minX, maxX, minZ, maxZ);
-                statement.setInt(index, topN);
+                if (topN > 0) statement.setInt(index, topN);
                 try (ResultSet rows = statement.executeQuery()) {
                     while (rows.next()) {
+                        categoryCount = rows.getInt("category_count");
                         ObjectNode item = top.addObject();
                         item.put("label", rows.getString("label"));
                         item.put("value", rows.getDouble("value"));
@@ -129,6 +137,10 @@ public final class SnapshotRepository {
         result.put("worldSharePct", worldTotal == 0 ? 0 : selectedTotal / worldTotal * 100.0);
         result.put("areaSquareKm", areaKm2);
         result.put("densityPerSquareKm", areaKm2 == 0 ? 0 : selectedTotal / areaKm2);
+        result.put("positionCount", positionCount);
+        result.put("categoryCount", categoryCount);
+        result.put("returnedCategories", top.size());
+        result.put("completeCategories", topN == 0 || top.size() >= categoryCount);
         result.put("units", lens.units());
         result.set("top", top);
         return result;
@@ -201,6 +213,22 @@ public final class SnapshotRepository {
             }
             try (ResultSet row = statement.executeQuery()) {
                 return row.next() ? row.getDouble("value") : 0;
+            }
+        }
+    }
+
+    private long positionCount(Connection connection, long snapshotId, LensDefinition lens,
+            double minX, double maxX, double minZ, double maxZ) throws SQLException {
+        String boundedRows = "SELECT " + lens.xColumn() + " AS x, " + lens.zColumn() + " AS z, " +
+            lens.groupExpression() + " AS label FROM " + lens.table() +
+            " WHERE snapshot_id = ? AND " + lens.predicate() + boundsClause(lens);
+        String sql = lens.source() == LensDefinition.Source.ZDO
+            ? "SELECT COUNT(*) AS value FROM (" + boundedRows + ") AS positions"
+            : "SELECT COUNT(*) AS value FROM (" + boundedRows + " GROUP BY 1,2,3) AS positions";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            bindBounds(statement, 1, snapshotId, minX, maxX, minZ, maxZ);
+            try (ResultSet row = statement.executeQuery()) {
+                return row.next() ? row.getLong("value") : 0;
             }
         }
     }

@@ -44,6 +44,7 @@
     contextOverlay: null,
     miniContextOverlay: null,
     exactLayer: null,
+    exactScope: null,
     exactRenderer: null,
     selectionRenderer: null,
     selectionRect: null,
@@ -62,6 +63,8 @@
     currentToneFocus: 0,
     currentToneExponent: ANALYSIS_TONE_EXPONENT,
     currentSelectionBounds: null,
+    currentSelectionPositionCount: null,
+    selectionItemsLoading: false,
     rawImages: new Map(),
     coloredImages: new Map(),
     rasterToken: 0,
@@ -616,18 +619,18 @@
     const hottest = `Hottest ${size} m cell: ${fmt(entry.maxRaw)}.`;
     if (size >= 1000) return {
       title: `World overview · ${lens.label}`,
-      copy: `Bright cells are the strongest concentrations. Box one to trade this 1 km summary for ${nextSize || 320} m structure. ${hottest}${fallback}`,
-      action: { type:'box', label:'Box a hotspot' }
+      copy: `Bright cells are the strongest concentrations. Scroll toward one for ${nextSize || 320} m structure, or inspect any region now. ${hottest}${fallback}`,
+      action: { type:'inspect', label:'Inspect an area' }
     };
     if (size >= 320) return {
       title: `Continental pattern · ${lens.label}`,
-      copy: `Compare the large settlement regions, then box a bright cluster to reveal ${nextSize || 64} m districts. ${hottest}${fallback}`,
-      action: { type:'box', label:'Draw zoom window' }
+      copy: `Compare the large settlement regions. Scroll toward a bright cluster for ${nextSize || 64} m districts, or inspect one now. ${hottest}${fallback}`,
+      action: { type:'inspect', label:'Inspect an area' }
     };
     if (size > 64) return {
       title: `District pattern · ${lens.label}`,
-      copy: `Large blocks are resolving into neighborhoods. Box a bright cluster to reveal ${nextSize || 64} m structure. ${hottest}${fallback}`,
-      action: { type:'box', label:'Draw zoom window' }
+      copy: `Large blocks are resolving into neighborhoods. Scroll toward a bright cluster for ${nextSize || 64} m structure, or inspect one now. ${hottest}${fallback}`,
+      action: { type:'inspect', label:'Inspect an area' }
     };
     if (size >= 64) return {
       title: `Regional pattern · ${lens.label}`,
@@ -654,11 +657,29 @@
   function syncStoryAction() {
     const button = $('story-action');
     const action = state.storyAction;
-    if (!action) return;
+    if (!action) { syncSelectionAction(); return; }
     const active = action.type === state.tool && (action.type === 'box' || action.type === 'inspect');
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
     button.textContent = active ? (action.type === 'box' ? 'Drag on map…' : 'Drag an area…') : action.label;
+    syncSelectionAction();
+  }
+
+  function syncSelectionAction() {
+    const button = $('story-selection-action');
+    const hasSelection = Boolean(state.currentSelectionBounds);
+    button.hidden = !hasSelection;
+    if (!hasSelection) return;
+    const showing = state.exactScope === 'selection';
+    button.disabled = state.selectionItemsLoading || state.currentSelectionPositionCount == null;
+    button.classList.toggle('active',showing);
+    button.setAttribute('aria-pressed', String(showing));
+    button.textContent = state.selectionItemsLoading ? 'Loading items…' : showing ? 'Hide items' : 'Show items';
+    button.title = state.currentSelectionPositionCount == null
+      ? 'Waiting for the selection count.'
+      : state.currentSelectionPositionCount > EXACT_POINT_LIMIT
+      ? `${fmt(state.currentSelectionPositionCount)} item positions are selected; tighten the green area below ${fmt(EXACT_POINT_LIMIT)} to draw them.`
+      : `Draw the ${fmt(state.currentSelectionPositionCount)} selected item position${state.currentSelectionPositionCount === 1 ? '' : 's'} on the map.`;
   }
 
   function updateMiniViewport() {
@@ -765,7 +786,11 @@
   async function inspectBounds(bounds) {
     const token = ++state.inspectToken;
     const returnToPan = state.tool === 'inspect';
+    if (state.exactScope === 'selection') removeExactMarkers();
     state.currentSelectionBounds = bounds;
+    state.currentSelectionPositionCount = null;
+    state.selectionItemsLoading = false;
+    syncSelectionAction();
     if (state.selectionRect) state.map.removeLayer(state.selectionRect);
     state.selectionRect = L.rectangle(bounds, { pane:'selectionPane', renderer:state.selectionRenderer, className:'selection-rectangle', color:'#70d29a', weight:2, fillOpacity:.1 }).addTo(state.map);
     if (state.miniSelectionRect) state.minimap.removeLayer(state.miniSelectionRect);
@@ -784,6 +809,8 @@
     $('inspect-title').textContent = `Explaining ${state.lensById.get(state.lensId)?.label || state.lensId}`;
     $('inspect-total').textContent = $('inspect-share').textContent = $('inspect-density').textContent = '…';
     $('inspect-point-warning').hidden = true;
+    $('inspect-ranked-label').textContent = 'WHAT MAKES IT BRIGHT · TOP TYPES';
+    $('inspect-show-all').hidden = true;
     $('inspect-top').innerHTML = '<div class="rank-row"><span>Scanning selected bounds…</span></div>';
     const started = performance.now();
     try {
@@ -796,19 +823,59 @@
       $('inspect-share').textContent = `${Number(result.worldSharePct).toFixed(result.worldSharePct < 1 ? 2 : 1)}%`;
       $('inspect-density').textContent = fmt(result.densityPerSquareKm);
       $('inspect-tab-state').textContent = `${fmt(result.total)} ${result.units}`.toUpperCase();
+      state.currentSelectionPositionCount = Number(result.positionCount ?? result.total);
+      syncSelectionAction();
       const pointWarning = $('inspect-point-warning');
-      pointWarning.hidden = Number(result.total) <= EXACT_POINT_LIMIT;
+      pointWarning.hidden = state.currentSelectionPositionCount <= EXACT_POINT_LIMIT;
+      const positionSubject = state.currentSelectionPositionCount === Number(result.total)
+        ? `${fmt(result.total)} ${result.units}`
+        : `${fmt(state.currentSelectionPositionCount)} item positions representing ${fmt(result.total)} ${result.units}`;
       pointWarning.textContent = pointWarning.hidden ? ''
-        : `${fmt(result.total)} ${result.units} are inside this area. This summary is complete; exact dots stay hidden above ${fmt(EXACT_POINT_LIMIT)}.`;
-      const max = Math.max(1,...result.top.map(item => item.value));
-      $('inspect-top').innerHTML = result.top.length ? result.top.map(item =>
-        `<div class="rank-row"><span>${escapeHtml(item.label)}</span><span>${fmt(item.value)}</span><div class="rank-bar"><i style="width:${item.value/max*100}%"></i></div></div>`).join('')
-        : '<div class="rank-row"><span>No objects from this lens are inside the selection.</span></div>';
+        : `${positionSubject} are inside this area. This summary is complete; exact dots stay hidden above ${fmt(EXACT_POINT_LIMIT)} positions.`;
+      renderInspectionRanks(result,false);
     } catch (error) {
       if (token !== state.inspectToken) return;
       $('inspect-tab-state').textContent = 'QUERY FAILED';
       $('inspect-point-warning').hidden = true;
       $('inspect-top').innerHTML = `<div class="rank-row"><span>${escapeHtml(error.message)}</span></div>`;
+    }
+  }
+
+  function renderInspectionRanks(result, expanded) {
+    const items = result.top || [];
+    const categoryCount = Number(result.categoryCount ?? items.length);
+    const max = Math.max(1,...items.map(item => item.value));
+    $('inspect-ranked-label').textContent = categoryCount
+      ? `WHAT MAKES IT BRIGHT · ${expanded || result.completeCategories ? 'ALL' : `TOP ${items.length} OF`} ${fmt(categoryCount)} TYPES`
+      : 'WHAT MAKES IT BRIGHT · NO TYPES';
+    $('inspect-top').innerHTML = items.length ? items.map(item =>
+      `<div class="rank-row"><span>${escapeHtml(item.label)}</span><span>${fmt(item.value)}</span><div class="rank-bar"><i style="width:${item.value/max*100}%"></i></div></div>`).join('')
+      : '<div class="rank-row"><span>No objects from this lens are inside the selection.</span></div>';
+    const showAll = $('inspect-show-all');
+    showAll.hidden = expanded || Boolean(result.completeCategories) || categoryCount <= items.length;
+    showAll.disabled = false;
+    showAll.textContent = `Show all ${fmt(categoryCount)} types in selection`;
+  }
+
+  async function loadAllSelectionCategories() {
+    const bounds = state.currentSelectionBounds;
+    if (!bounds) return;
+    const token = ++state.inspectToken;
+    const button = $('inspect-show-all');
+    button.disabled = true;
+    button.textContent = 'Loading every type…';
+    const started = performance.now();
+    try {
+      const result = await fetchJson(`${API}/selection?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&topN=0&${boundsQuery(bounds)}`);
+      if (token !== state.inspectToken) return;
+      $('inspect-query-time').textContent = `${(performance.now()-started).toFixed(0)} ms`;
+      renderInspectionRanks(result,true);
+      toast(`${fmt(result.categoryCount)} item types in this selection`);
+    } catch (error) {
+      if (token !== state.inspectToken) return;
+      button.disabled = false;
+      button.textContent = 'Show all in selection';
+      toast(`Could not load every type · ${error.message}`);
     }
   }
 
@@ -818,6 +885,55 @@
 
   function boundsLabel(bounds) {
     return `X ${Math.round(bounds.getWest())} → ${Math.round(bounds.getEast())} · Z ${Math.round(bounds.getSouth())} → ${Math.round(bounds.getNorth())}`;
+  }
+
+  async function toggleSelectionItems() {
+    const bounds = state.currentSelectionBounds;
+    if (!bounds) return;
+    if (state.exactScope === 'selection') {
+      removeExactMarkers();
+      $('exact-state').textContent = 'RASTER';
+      syncCompositeOpacity();
+      updateDetailLadder();
+      scheduleExactPoints();
+      toast('Selected items hidden');
+      return;
+    }
+    clearTimeout(state.exactTimer);
+    const token = ++state.exactToken;
+    state.exactEnabled = true;
+    $('exact-toggle').checked = true;
+    state.selectionItemsLoading = true;
+    syncSelectionAction();
+    const started = performance.now();
+    try {
+      const result = await fetchJson(`${API}/points?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&limit=${EXACT_POINT_LIMIT}&${boundsQuery(bounds)}`);
+      if (token !== state.exactToken) return;
+      state.metrics.exact = performance.now()-started;
+      const lens = state.lensById.get(state.lensId);
+      if (result.truncated) {
+        removeExactMarkers();
+        const positionCount = state.currentSelectionPositionCount || result.minimumCount;
+        $('exact-state').textContent = `> ${fmt(result.limit)} SELECTED · RASTER`;
+        const warning = $('inspect-point-warning');
+        warning.hidden = false;
+        warning.textContent = `${fmt(positionCount)} item positions are inside this area. The selection summary is complete; tighten the green area below ${fmt(result.limit)} to draw every item.`;
+        toast(`${fmt(positionCount)} positions · tighten the green area to show items`);
+        return;
+      }
+      installPointMarkers(result.points,lens,'selection');
+      $('exact-state').textContent = `${fmt(result.points.length)} SELECTED POINTS`;
+      toast(`${fmt(result.points.length)} selected item position${result.points.length === 1 ? '' : 's'} shown`);
+      updateMetrics();
+    } catch (error) {
+      if (token !== state.exactToken) return;
+      toast(`Could not show selected items · ${error.message}`);
+    } finally {
+      if (token === state.exactToken) {
+        state.selectionItemsLoading = false;
+        syncSelectionAction();
+      }
+    }
   }
 
   function scheduleExactPoints() {
@@ -1022,17 +1138,7 @@
         removeLocalDetail();
       }
       state.metrics.detail = performance.now()-detailStarted;
-      removeExactMarkers();
-      const group = L.layerGroup([], { pane:'exactPane' });
-      for (const point of result.points) {
-        L.circleMarker(worldToLatLng(point.x,point.z), {
-          pane:'exactPane', renderer:state.exactRenderer, radius:4.2, weight:1.3, color:'#f5f7fb',
-          fillColor:lens.accent, fillOpacity:1, opacity:.96
-        }).bindTooltip(`${escapeHtml(point.label)} · ${fmt(point.value)}`).addTo(group);
-      }
-      state.exactLayer = group.addTo(state.map);
-      syncCompositeOpacity();
-      updateDetailLadder();
+      installPointMarkers(result.points,lens,'viewport');
       $('exact-state').textContent = `${result.points.length} POINTS \u00b7 ${detail ? `${detail.cellSize} M` : 'RASTER'}`;
       const exactTitle = result.points.length
         ? `${fmt(result.points.length)} exact ${lens.units} in this viewport`
@@ -1041,7 +1147,7 @@
         ? `The ${detail.cellSize} m local density surface and these positions come from the same complete bounded query. Inspect a cluster or pan onward.`
         : `The ${state.currentEntry.cellSize} m raster has yielded to queryable object positions. Inspect a cluster or pan onward.`;
       setStory(result.points.length ? 'ready' : '', exactTitle, exactCopy,
-        result.points.length ? { type:'inspect', label:'Inspect an area' } : { type:'box', label:'Try nearby' });
+        { type:'inspect', label:'Inspect an area' });
       updateMetrics();
     } catch (error) {
       if (token !== state.exactToken) return;
@@ -1060,9 +1166,28 @@
     $('exact-state').textContent = 'RASTER';
   }
 
+  function installPointMarkers(points, lens, scope) {
+    removeExactMarkers();
+    if (!points.length) return;
+    const group = L.layerGroup([], { pane:'exactPane' });
+    for (const point of points) {
+      L.circleMarker(worldToLatLng(point.x,point.z), {
+        pane:'exactPane', renderer:state.exactRenderer, radius:4.2, weight:1.3, color:'#f5f7fb',
+        fillColor:lens.accent, fillOpacity:1, opacity:.96
+      }).bindTooltip(`${escapeHtml(point.label)} · ${fmt(point.value)}`).addTo(group);
+    }
+    state.exactLayer = group.addTo(state.map);
+    state.exactScope = scope;
+    syncCompositeOpacity();
+    updateDetailLadder();
+    syncSelectionAction();
+  }
+
   function removeExactMarkers() {
     if (state.exactLayer && state.map) state.map.removeLayer(state.exactLayer);
     state.exactLayer = null;
+    state.exactScope = null;
+    syncSelectionAction();
   }
 
   async function submitRender(allLenses) {
@@ -1307,6 +1432,7 @@
       setTool('box');
       toast('Drag a gold window around a bright cluster');
     });
+    $('story-selection-action').addEventListener('click', toggleSelectionItems);
     $('render-selected').addEventListener('click', () => submitRender(false));
     $('render-all').addEventListener('click', () => submitRender(true));
     $('runs-nav').addEventListener('click', () => focusJobActivity(false));
@@ -1327,6 +1453,7 @@
     $('inspect-close').addEventListener('click', () => showRightPanel('jobs'));
     $('inspect-zoom').addEventListener('click', () => state.currentSelectionBounds && state.map.fitBounds(state.currentSelectionBounds,{padding:[30,30]}));
     $('inspect-copy').addEventListener('click', () => state.currentSelectionBounds && copyText(boundsLabel(state.currentSelectionBounds)));
+    $('inspect-show-all').addEventListener('click', loadAllSelectionCategories);
     ['threshold-160','threshold-80','threshold-64','threshold-16','threshold-exact','threshold-detail4'].forEach(id => $(id).addEventListener('change', () => { applyRaster(); scheduleExactPoints(); }));
     $('opacity-detail-zoom').addEventListener('change', syncCompositeOpacity);
     document.addEventListener('keydown', event => {
@@ -1353,15 +1480,23 @@
 
   function closeInspector() {
     ++state.inspectToken;
+    const hadSelectionItems = state.exactScope === 'selection';
+    if (hadSelectionItems) removeExactMarkers();
     state.currentSelectionBounds = null;
+    state.currentSelectionPositionCount = null;
+    state.selectionItemsLoading = false;
     if (state.selectionRect && state.map) state.map.removeLayer(state.selectionRect);
     if (state.miniSelectionRect && state.minimap) state.minimap.removeLayer(state.miniSelectionRect);
     state.selectionRect = state.miniSelectionRect = null;
     $('inspect-content').hidden = true;
     $('inspect-empty').hidden = false;
     $('inspect-point-warning').hidden = true;
+    $('inspect-show-all').hidden = true;
+    $('inspect-ranked-label').textContent = 'WHAT MAKES IT BRIGHT \u00b7 TOP TYPES';
     $('inspect-tab-state').textContent = 'NO AREA';
+    syncSelectionAction();
     showRightPanel('jobs');
+    if (hadSelectionItems) scheduleExactPoints();
   }
 
   bootstrap();

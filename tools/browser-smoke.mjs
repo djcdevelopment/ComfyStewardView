@@ -27,6 +27,9 @@ let storyActionState = null;
 let densePointState = null;
 let denseUiState = null;
 let earlyInspectState = null;
+let earlySelectionItemsState = null;
+let expandedInspectState = null;
+let selectedItemsState = null;
 let localDetail8State = null;
 let localDetail4State = null;
 let bufferedHandoffState = null;
@@ -219,6 +222,8 @@ if (exercise) {
   await new Promise(resolve => setTimeout(resolve, 1800));
   const earlyInspectResult = await cdp('Runtime.evaluate', { expression: `(() => {
     const warning=document.querySelector('#inspect-point-warning');
+    const selectionAction=document.querySelector('#story-selection-action');
+    const showAll=document.querySelector('#inspect-show-all');
     return {
       tool:document.querySelector('#tool-state')?.textContent,
       selectionPresent:Boolean(document.querySelector('.selection-rectangle')),
@@ -227,10 +232,35 @@ if (exercise) {
       tabState:document.querySelector('#inspect-tab-state')?.textContent,
       warningVisible:Boolean(warning && !warning.hidden),
       warning:warning?.textContent,
-      exactPointCanvases:document.querySelectorAll('.leaflet-exact-pane canvas').length
+      exactPointCanvases:document.querySelectorAll('.leaflet-exact-pane canvas').length,
+      selectionActionVisible:Boolean(selectionAction && !selectionAction.hidden),
+      selectionActionText:selectionAction?.textContent,
+      rankedLabel:document.querySelector('#inspect-ranked-label')?.textContent,
+      rankRows:document.querySelectorAll('#inspect-top .rank-row').length,
+      showAllVisible:Boolean(showAll && !showAll.hidden),
+      showAllText:showAll?.textContent
     };
   })()`, returnByValue:true });
   earlyInspectState = earlyInspectResult.result.value;
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#story-selection-action')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 1300));
+  const earlySelectionItemsResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    actionText:document.querySelector('#story-selection-action')?.textContent,
+    actionDisabled:document.querySelector('#story-selection-action')?.disabled,
+    exactState:document.querySelector('#exact-state')?.textContent,
+    warning:document.querySelector('#inspect-point-warning')?.textContent,
+    exactPointCanvases:document.querySelectorAll('.leaflet-exact-pane canvas').length
+  }))()`, returnByValue:true });
+  earlySelectionItemsState = earlySelectionItemsResult.result.value;
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#inspect-show-all')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 2600));
+  const expandedInspectResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    rankedLabel:document.querySelector('#inspect-ranked-label')?.textContent,
+    rankRows:document.querySelectorAll('#inspect-top .rank-row').length,
+    showAllHidden:document.querySelector('#inspect-show-all')?.hidden,
+    queryTime:document.querySelector('#inspect-query-time')?.textContent
+  }))()`, returnByValue:true });
+  expandedInspectState = expandedInspectResult.result.value;
   const earlyInspectShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
   await writeFile(earlyInspectOutput, Buffer.from(earlyInspectShot.data, 'base64'));
   await cdp('Runtime.evaluate', { expression: `document.querySelector('#inspect-close')?.click()` });
@@ -326,12 +356,7 @@ if (exercise) {
   };
   await cdp('Runtime.evaluate', { expression: `document.querySelector('#go-world')?.click()` });
   await new Promise(resolve => setTimeout(resolve, 900));
-  if (useStoryAction) {
-    await cdp('Runtime.evaluate', { expression: `document.querySelector('#story-action')?.click()` });
-    await new Promise(resolve => setTimeout(resolve, 150));
-  }
-
-  await drag(r.x+r.w*.37, r.y+r.h*.3, r.x+r.w*.66, r.y+r.h*.72, !useStoryAction, true);
+  await drag(r.x+r.w*.37, r.y+r.h*.3, r.x+r.w*.66, r.y+r.h*.72, true, true);
   if (!marqueeOnly) {
     await new Promise(resolve => setTimeout(resolve, 1800));
     await drag(r.x+r.w*.38, r.y+r.h*.32, r.x+r.w*.68, r.y+r.h*.72, true);
@@ -349,6 +374,16 @@ if (exercise) {
     await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-tool="inspect"]')?.click()` });
     await drag(r.x+r.w*.60, r.y+r.h*.68, r.x+r.w*.72, r.y+r.h*.90);
     await new Promise(resolve => setTimeout(resolve, 1800));
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('#story-selection-action')?.click()` });
+    await new Promise(resolve => setTimeout(resolve, 1300));
+    const selectedItemsResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+      actionText:document.querySelector('#story-selection-action')?.textContent,
+      actionActive:document.querySelector('#story-selection-action')?.classList.contains('active'),
+      exactState:document.querySelector('#exact-state')?.textContent,
+      exactPointCanvases:document.querySelectorAll('.leaflet-exact-pane canvas').length,
+      selectionPresent:document.querySelector('.selection-rectangle')?.isConnected === true
+    }))()`, returnByValue:true });
+    selectedItemsState = selectedItemsResult.result.value;
     const tabResult = await cdp('Runtime.evaluate', { expression: `(() => {
       const selection = document.querySelector('.selection-rectangle');
       document.querySelector('#job-bench-tab').click();
@@ -538,7 +573,8 @@ console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marquee
   scale320Output:scalePreviews ? scale320Output : null, scale160Output:scalePreviews ? scale160Output : null,
   scale80Output:scalePreviews ? scale80Output : null, scale64Output:scalePreviews ? scale64Output : null,
   state, marqueeState, inspectorTabState, panGestureState, densePointState, denseUiState, earlyInspectState,
-  postInspectPanState, storyActionState, localDetail8State, localDetail4State, bufferedHandoffState,
+  earlySelectionItemsState, expandedInspectState, selectedItemsState, postInspectPanState, storyActionState,
+  localDetail8State, localDetail4State, bufferedHandoffState,
   rasterStyleState, scalePreviewState, errors }, null, 2));
 await cdp('Browser.close').catch(() => {});
 socket.close();
@@ -574,7 +610,9 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       scalePreviewState?.scale160?.opacity !== .82 || !/z-4\.00/.test(scalePreviewState?.scale160?.viewport || '') ||
       scalePreviewState?.scale80?.opacity !== .82 || !/z-3\.00/.test(scalePreviewState?.scale80?.viewport || '') ||
       scalePreviewState?.scale64?.opacity !== .82 || !/z-2\.00/.test(scalePreviewState?.scale64?.viewport || '') ||
-      !/Draw zoom window/.test(scalePreviewState?.scale80?.storyAction || '') ||
+      !/Inspect an area/.test(scalePreviewState?.scale320?.storyAction || '') ||
+      !/Inspect an area/.test(scalePreviewState?.scale160?.storyAction || '') ||
+      !/Inspect an area/.test(scalePreviewState?.scale80?.storyAction || '') ||
       !/Inspect an area/.test(scalePreviewState?.scale64?.storyAction || '') ||
       /\+$/.test(scalePreviewState?.scale320?.legendLastTick || '') || !/\+$/.test(scalePreviewState?.scale160?.legendLastTick || '') ||
       !/\+$/.test(scalePreviewState?.scale80?.legendLastTick || '') || !/\+$/.test(scalePreviewState?.scale64?.legendLastTick || ''))) ||
@@ -595,10 +633,20 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       !earlyInspectState?.inspectorVisible || earlyInspectState?.total <= 5000 ||
       !earlyInspectState?.warningVisible || !/summary is complete/.test(earlyInspectState?.warning || '') ||
       !/5,000/.test(earlyInspectState?.warning || '') || earlyInspectState?.exactPointCanvases !== 0 ||
-      (useStoryAction && (!storyActionState?.active || storyActionState?.tool !== 'BOX')) ||
+      !earlyInspectState?.selectionActionVisible || earlyInspectState?.selectionActionText !== 'Show items' ||
+      earlyInspectState?.rankRows !== 10 || !/TOP 10 OF/.test(earlyInspectState?.rankedLabel || '') ||
+      !earlyInspectState?.showAllVisible || !/Show all/.test(earlyInspectState?.showAllText || '') ||
+      earlySelectionItemsState?.actionText !== 'Show items' || !/SELECTED.*RASTER/.test(earlySelectionItemsState?.exactState || '') ||
+      !/tighten the green area/.test(earlySelectionItemsState?.warning || '') || earlySelectionItemsState?.exactPointCanvases !== 0 ||
+      !expandedInspectState?.showAllHidden || expandedInspectState?.rankRows <= earlyInspectState?.rankRows ||
+      !/ALL/.test(expandedInspectState?.rankedLabel || '') ||
+      (useStoryAction && (!storyActionState?.active || storyActionState?.tool !== 'INSPECT')) ||
       (!marqueeOnly && (!state.inspectorVisible || !/jobs-panel/.test(state.inspectorParent || '') || state.inspectorPosition === 'absolute' ||
         state.inspectRankRows < 1 || !inspectorTabState?.jobsVisible || !inspectorTabState?.inspectVisible ||
         !inspectorTabState?.selectionPreserved || !inspectorTabState?.inspectTabActive ||
+        selectedItemsState?.actionText !== 'Hide items' || !selectedItemsState?.actionActive ||
+        !/SELECTED POINTS/.test(selectedItemsState?.exactState || '') || selectedItemsState?.exactPointCanvases < 1 ||
+        !selectedItemsState?.selectionPresent ||
         postInspectPanState?.readyCursor !== 'grab' || postInspectPanState?.activeCursor !== 'grabbing' ||
         !postInspectPanState?.activeWhileHeld || !postInspectPanState?.released || !postInspectPanState?.viewportMoved ||
         postInspectPanState?.toolBefore !== 'PAN' || postInspectPanState?.toolAfter !== 'PAN' ||

@@ -117,8 +117,11 @@
 
       <div class="map-story" id="map-story">
         <span class="status-dot"></span>
-        <div><strong id="story-title">Preparing spatial lab…</strong><p id="story-copy">Reading cache metadata and available lens artifacts.</p></div>
-        <button id="story-action" hidden>Render this lens</button>
+        <div class="map-story-copy"><strong id="story-title">Preparing spatial lab…</strong><p id="story-copy">Reading cache metadata and available lens artifacts.</p></div>
+        <div class="map-story-actions">
+          <button id="story-action" hidden>Render this lens</button>
+          <button id="story-selection-action" class="selection-action" hidden>Show items</button>
+        </div>
       </div>
 
       <div class="map-status" id="map-status">NO RASTER</div>
@@ -240,7 +243,11 @@
               <div class="inspect-stat"><span>DENSITY</span><strong id="inspect-density">—</strong><small>per km²</small></div>
             </div>
             <div class="inspect-warning" id="inspect-point-warning" hidden></div>
-            <div class="inspect-ranked"><div class="ranked-heading"><span>WHAT MAKES IT BRIGHT</span><span id="inspect-query-time">—</span></div><div id="inspect-top"></div></div>
+            <div class="inspect-ranked">
+              <div class="ranked-heading"><span id="inspect-ranked-label">WHAT MAKES IT BRIGHT · TOP TYPES</span><span id="inspect-query-time">—</span></div>
+              <div id="inspect-top"></div>
+              <button id="inspect-show-all" class="ranked-more" hidden>Show all in selection</button>
+            </div>
           </div>
         </div>
       </section>

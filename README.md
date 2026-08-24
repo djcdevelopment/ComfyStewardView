@@ -2,7 +2,7 @@
 
 An intentionally disposable interaction lab for Steward's spatial analysis loop:
 
-> choose a lens → see the large-scale signal → box-zoom → receive finer evidence → inspect exact objects
+> choose a lens → see the large-scale signal → scroll closer → inspect an area → reveal exact objects
 
 The lab is a separate repository so scale, menus, gestures, image generation, and instrumentation
 can be changed aggressively without destabilizing the deployed Steward UI. It reads Steward's
@@ -48,22 +48,26 @@ total duration, cache hits, cancellation, simulated latency, and injected failur
 The result explicitly distinguishes newly generated rasters from cached artifacts, so a fast cache
 hit cannot masquerade as expensive generation.
 
-Hold `Shift` and drag anywhere on the map for a temporary gold dashed zoom window. The persistent
-**Box zoom** tool offers the same marquee without holding a modifier. Both gestures change only the
-viewport; **Render active lens** creates the checked full-world resolution ladder.
+The wheel or trackpad is the primary zoom control. Hold `Shift` and drag anywhere on the map for an
+optional precision gold dashed zoom window; the persistent **Box zoom** tool offers the same marquee
+without holding a modifier. Both gestures change only the viewport; **Render active lens** creates the
+checked full-world resolution ladder.
 
-The map prompt names the current semantic scale and the payoff of the next step. Its gold action
-activates Box zoom through the broad overview scales, then changes to **Inspect an area** for the
-64 and 16 metre raster stages—before exact dots are available.
-Inspection results open in the right-column **Inspect** tab, where the selection summary and ranked
-prefab explanation can use the full vertical workspace without covering the map.
+The map prompt names the current semantic scale and the payoff of the next step. Whenever a raster is
+visible, its gold action is **Inspect an area**; zoom remains on the wheel at every scale. Inspection
+results open in the right-column **Inspect** tab, where the selection summary and ranked prefab
+explanation can use the full vertical workspace without covering the map. The first response explicitly
+shows the top 10 of the complete category count, and **Show all in selection** expands the real grouped
+result rather than a client-side sample.
 
 The cache chip names the worlds actually present in the attached read-only cache. Dense exact queries
 never draw an arbitrary database-order prefix: the complete raster remains visible until every exact
 object in the viewport fits within the 5,000-point display budget. Inspection is independent of that
 display budget: a green selection returns its complete aggregate count and explanation, and identifies
-when exact dots remain hidden. In Pan mode, hold and drag the map; the grab cursor
-changes to a closed hand for the duration of the gesture.
+when exact dots remain hidden. Once the count is known, **Show items** draws every selected position when
+the green area contains at most 5,000 positions. A larger selection stays as a complete raster-backed
+summary and asks for a tighter green area instead of showing a biased prefix. In Pan mode, hold and
+drag the map; the grab cursor changes to a closed hand for the duration of the gesture.
 
 The 16 metre image remains the finest full-world artifact. Once a bounded viewport fits within the
 exact-object budget, the browser derives 8 metre and then 4 metre local density surfaces from that same

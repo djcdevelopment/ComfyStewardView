@@ -62,7 +62,25 @@ class LensRendererTest {
         ObjectNode selection = repository.selection(7, "birch-trees", -200, 500, -200, 500, 10);
         assertEquals(3, selection.path("total").asInt());
         assertEquals(3, selection.path("worldTotal").asInt());
+        assertEquals(3, selection.path("positionCount").asInt());
+        assertEquals(2, selection.path("categoryCount").asInt());
+        assertEquals(2, selection.path("returnedCategories").asInt());
+        assertTrue(selection.path("completeCategories").asBoolean());
         assertEquals("Birch1", selection.withArray("top").get(0).path("label").asText());
+
+        ObjectNode preview = repository.selection(7, "birch-trees", -200, 500, -200, 500, 1);
+        assertEquals(2, preview.path("categoryCount").asInt());
+        assertEquals(1, preview.path("returnedCategories").asInt());
+        assertFalse(preview.path("completeCategories").asBoolean());
+
+        ObjectNode allCategories = repository.selection(7, "birch-trees", -200, 500, -200, 500, 0);
+        assertEquals(2, allCategories.withArray("top").size());
+        assertTrue(allCategories.path("completeCategories").asBoolean());
+
+        ObjectNode coins = repository.selection(7, "coins", -200, 500, -200, 500, 10);
+        assertEquals(25, coins.path("total").asInt());
+        assertEquals(1, coins.path("positionCount").asInt(),
+            "Value lenses use drawable positions, not summed units, for the point budget");
 
         ObjectNode points = repository.exactPoints(7, "birch-trees", -200, 500, -200, 500, 20);
         assertEquals(3, points.withArray("points").size());
