@@ -66,6 +66,8 @@ The 16 metre image remains the finest full-world artifact. Once a bounded viewpo
 exact-object budget, the browser derives 8 metre and then 4 metre local density surfaces from that same
 complete query. The finer surface and the dots therefore describe the same objects; a truncated result
 produces neither, and the complete 16 metre raster remains authoritative until the view is tighter.
+When local detail arrives it replaces, rather than stacks over, the 16 metre analysis image. The inferred
+context recedes to a faint locator layer; hold **peek beneath the analysis** to restore it at full opacity.
 
 ## Prepare a cache from a save
 

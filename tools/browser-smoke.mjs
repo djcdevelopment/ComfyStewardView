@@ -245,7 +245,8 @@ if (exercise) {
       const result = await cdp('Runtime.evaluate', { expression: `(() => {
         const local = document.querySelector('.local-detail-raster');
         const world = document.querySelector('.analysis-raster');
-        return {
+        const context = document.querySelector('.leaflet-context-pane .context-raster');
+        const detailState = {
           scale:document.querySelector('#scale-state')?.textContent,
           status:document.querySelector('#map-status')?.textContent,
           exactState:document.querySelector('#exact-state')?.textContent,
@@ -256,9 +257,18 @@ if (exercise) {
           localOpacity:local ? Number(getComputedStyle(local).opacity) : null,
           localNaturalSize:local ? { width:local.naturalWidth, height:local.naturalHeight } : null,
           worldOpacity:world ? Number(getComputedStyle(world).opacity) : null,
+          contextOpacity:context ? Number(getComputedStyle(context).opacity) : null,
+          contextOpacityLabel:document.querySelector('#context-opacity-value')?.textContent,
           activeSteps:[...document.querySelectorAll('#detail-ladder .active')].map(step => step.dataset.detail),
           exactPointCanvases:document.querySelectorAll('.leaflet-exact-pane canvas').length
         };
+        const peek = document.querySelector('#peek-context');
+        peek.dispatchEvent(new PointerEvent('pointerdown', { bubbles:true }));
+        detailState.peekContextOpacity = context ? Number(getComputedStyle(context).opacity) : null;
+        detailState.peekLocalOpacity = local ? Number(getComputedStyle(local).opacity) : null;
+        peek.dispatchEvent(new PointerEvent('pointerup', { bubbles:true }));
+        detailState.restoredContextOpacity = context ? Number(getComputedStyle(context).opacity) : null;
+        return detailState;
       })()`, returnByValue:true });
       return result.result.value;
     };
@@ -349,5 +359,13 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
         localDetail4State?.localCount !== 1 || localDetail4State?.localCellSize !== 4 ||
         localDetail4State?.localImageRendering !== 'auto' || !localDetail4State?.activeSteps?.includes('4') ||
         !localDetail4State?.activeSteps?.includes('points') || localDetail4State?.exactPointCanvases < 1 ||
-        localDetail8State?.worldOpacity >= localDetail8State?.localOpacity ||
-        localDetail4State?.worldOpacity >= localDetail4State?.localOpacity))))) process.exitCode = 1;
+        localDetail8State?.worldOpacity !== 0 || localDetail8State?.contextOpacity >= .2 ||
+        localDetail8State?.contextOpacity >= localDetail8State?.localOpacity ||
+        !/→/.test(localDetail8State?.contextOpacityLabel || '') ||
+        localDetail8State?.peekContextOpacity < .6 || localDetail8State?.peekLocalOpacity !== .03 ||
+        localDetail8State?.restoredContextOpacity !== localDetail8State?.contextOpacity ||
+        localDetail4State?.worldOpacity !== 0 || localDetail4State?.contextOpacity >= .2 ||
+        localDetail4State?.contextOpacity >= localDetail4State?.localOpacity ||
+        !/→/.test(localDetail4State?.contextOpacityLabel || '') ||
+        localDetail4State?.peekContextOpacity < .6 || localDetail4State?.peekLocalOpacity !== .03 ||
+        localDetail4State?.restoredContextOpacity !== localDetail4State?.contextOpacity))))) process.exitCode = 1;

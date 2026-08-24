@@ -9,6 +9,7 @@
 5. At close range, bounded 8 m and 4 m density surfaces bridge the full-world 16 m raster into exact points. Each local surface and its points come from the same complete bounded query.
 6. If a viewport exceeds the exact-point budget, no spatially biased prefix is shown; the complete raster remains authoritative and asks for a tighter viewport.
 7. Pan mode uses a grab cursor and visibly closes the hand only while the held drag is moving the map.
+8. A local surface replaces the 16 m analysis raster instead of blending two analytical grids. Inferred context becomes a faint locator layer, while press-and-hold peek restores it for orientation.
 
 ## Independent dimensions
 

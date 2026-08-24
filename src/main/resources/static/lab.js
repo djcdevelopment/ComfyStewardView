@@ -343,6 +343,7 @@
       if (token !== state.rasterToken) { state.map.removeLayer(overlay); return; }
       state.overlay = overlay;
       state.currentEntry = entry;
+      syncCompositeOpacity();
       state.metrics.fetch = image.fetchMs;
       state.metrics.decode = image.colorMs;
       state.metrics.swap = performance.now() - swapStarted;
@@ -389,6 +390,7 @@
       const overlay = L.imageOverlay(imageUrl, leafletBounds(bounds), { pane:'contextPane', opacity:state.contextOpacity, interactive:false, className:'context-raster' }).addTo(state.map);
       if (state.contextOverlay) state.map.removeLayer(state.contextOverlay);
       state.contextOverlay = overlay;
+      syncCompositeOpacity();
       const mini = L.imageOverlay(miniImageUrl, leafletBounds(miniBounds), { opacity:1, interactive:false, className:'context-raster' }).addTo(state.minimap);
       if (state.miniContextOverlay) state.minimap.removeLayer(state.miniContextOverlay);
       state.miniContextOverlay = mini;
@@ -741,9 +743,9 @@
     state.detailObjectUrl = detail.url;
     state.detailResolution = detail.cellSize;
     state.detailOverlay = L.imageOverlay(detail.url, detail.bounds, {
-      pane:'detailPane', opacity:state.analysisOpacity*.82, interactive:false, className:'local-detail-raster'
+      pane:'detailPane', opacity:0, interactive:false, className:'local-detail-raster'
     }).addTo(state.map);
-    syncAnalysisOpacity();
+    syncCompositeOpacity();
     updateLegend(detail,lens);
     $('scale-state').textContent = `AUTO \u2192 ${detail.cellSize} M LOCAL`;
     $('map-status').textContent = `${lens.label} \u00b7 ${detail.cellSize} m local cells + exact objects \u00b7 snapshot #${state.snapshotId} \u00b7 ${state.palette}`;
@@ -768,10 +770,23 @@
     });
   }
 
-  function syncAnalysisOpacity() {
-    if (state.overlay) state.overlay.setOpacity(state.detailOverlay
-      ? state.analysisOpacity*.22 : state.exactLayer ? state.analysisOpacity*.38 : state.analysisOpacity);
-    if (state.detailOverlay) state.detailOverlay.setOpacity(state.analysisOpacity*.82);
+  function syncCompositeOpacity() {
+    const hasLocalDetail = Boolean(state.detailOverlay);
+    if (state.overlay) state.overlay.setOpacity(hasLocalDetail
+      ? 0 : state.exactLayer ? state.analysisOpacity*.38 : state.analysisOpacity);
+    if (state.detailOverlay) state.detailOverlay.setOpacity(state.analysisOpacity);
+    if (state.contextOverlay) {
+      const closeContextFactor = state.bootstrap?.contextAuthoritative ? .55 : .18;
+      state.contextOverlay.setOpacity(hasLocalDetail
+        ? state.contextOpacity*closeContextFactor : state.contextOpacity);
+    }
+    const requestedContext = Math.round(state.contextOpacity*100);
+    const effectiveContext = Math.round(state.contextOpacity*
+      (hasLocalDetail ? (state.bootstrap?.contextAuthoritative ? .55 : .18) : 1)*100);
+    $('context-opacity-value').textContent = hasLocalDetail
+      ? `${requestedContext}% → ${effectiveContext}%` : `${requestedContext}%`;
+    $('context-opacity-value').title = hasLocalDetail
+      ? 'Close detail is active; context has receded automatically. Hold peek to restore it.' : '';
   }
 
   function restoreWorldRasterPresentation() {
@@ -827,7 +842,7 @@
         }).bindTooltip(`${escapeHtml(point.label)} · ${fmt(point.value)}`).addTo(group);
       }
       state.exactLayer = group.addTo(state.map);
-      syncAnalysisOpacity();
+      syncCompositeOpacity();
       updateDetailLadder();
       $('exact-state').textContent = `${result.points.length} POINTS \u00b7 ${detail ? `${detail.cellSize} M` : 'RASTER'}`;
       const exactTitle = result.points.length
@@ -851,7 +866,7 @@
     state.exactLayer = null;
     removeLocalDetail();
     state.metrics.detail = null;
-    syncAnalysisOpacity();
+    syncCompositeOpacity();
     updateDetailLadder();
     restoreWorldRasterPresentation();
     $('exact-state').textContent = 'RASTER';
@@ -1063,18 +1078,21 @@
     $('analysis-opacity').addEventListener('input', event => {
       state.analysisOpacity = Number(event.target.value);
       $('analysis-opacity-value').textContent = `${Math.round(state.analysisOpacity*100)}%`;
-      syncAnalysisOpacity();
+      syncCompositeOpacity();
     });
     $('context-opacity').addEventListener('input', event => {
       state.contextOpacity = Number(event.target.value);
-      $('context-opacity-value').textContent = `${Math.round(state.contextOpacity*100)}%`;
-      if (state.contextOverlay) state.contextOverlay.setOpacity(state.contextOpacity);
+      syncCompositeOpacity();
     });
     $('context-on').addEventListener('click', () => { state.contextEnabled=true; $('context-on').classList.add('active'); $('context-off').classList.remove('active'); applyContext(); });
     $('context-off').addEventListener('click', () => { state.contextEnabled=false; $('context-off').classList.add('active'); $('context-on').classList.remove('active'); removeContext(); });
     const peek = $('peek-context');
-    const peekOn = () => { if(state.overlay) state.overlay.setOpacity(.05); if(state.detailOverlay) state.detailOverlay.setOpacity(.05); };
-    const peekOff = syncAnalysisOpacity;
+    const peekOn = () => {
+      if (state.overlay) state.overlay.setOpacity(.03);
+      if (state.detailOverlay) state.detailOverlay.setOpacity(.03);
+      if (state.contextOverlay) state.contextOverlay.setOpacity(state.contextOpacity);
+    };
+    const peekOff = syncCompositeOpacity;
     peek.addEventListener('pointerdown', peekOn); peek.addEventListener('pointerup', peekOff); peek.addEventListener('pointerleave', peekOff);
     $('tool-buttons').addEventListener('click', event => { const button=event.target.closest('[data-tool]'); if(button) setTool(button.dataset.tool); });
     $('exact-toggle').addEventListener('change', event => { state.exactEnabled=event.target.checked; scheduleExactPoints(); });
