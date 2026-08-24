@@ -3,6 +3,10 @@
 
   const $ = id => document.getElementById(id);
   const API = '/api';
+  const PUBLIC_MODE = new URLSearchParams(location.search).get('lab') !== '1';
+  document.body.classList.toggle('public-experience', PUBLIC_MODE);
+  document.body.classList.toggle('lab-experience', !PUBLIC_MODE);
+  document.title = PUBLIC_MODE ? 'Steward — World View' : 'Steward Spatial Lab';
   const ANALYSIS_TONE_EXPONENT = 1.18;
   const ANALYSIS_OVERVIEW_TONE_EXPONENT = 1.75;
   const ANALYSIS_TONE_PERCENTILE = .995;
@@ -110,10 +114,13 @@
       initMap();
       await loadManifest();
       bindEvents();
-      state.pollTimer = setInterval(pollJobs, 500);
-      pollJobs();
+      if (!PUBLIC_MODE) {
+        state.pollTimer = setInterval(pollJobs, 500);
+        pollJobs();
+      }
     } catch (error) {
-      setStory('error', 'Lab could not start', error.message);
+      setStory('error', PUBLIC_MODE ? 'This world view could not open' : 'Lab could not start',
+        PUBLIC_MODE ? 'Please refresh and try again.' : error.message);
       console.error(error);
     }
   }
@@ -182,6 +189,9 @@
     const snapshot = state.bootstrap?.snapshots?.find(s => Number(s.snapshotId) === Number(state.snapshotId));
     $('zdo-count').textContent = snapshot ? fmt(snapshot.zdoCount) : '—';
     $('job-target').textContent = snapshot ? `#${snapshot.snapshotId}` : '—';
+    const worldName = snapshot?.worldName || snapshot?.worldId || 'World';
+    $('public-world-name').textContent = worldName;
+    if (PUBLIC_MODE) document.title = `Steward — ${worldName}`;
   }
 
   function updateLensCopy() {
@@ -271,7 +281,9 @@
       applyContext();
       applyRaster().then(() => {
         const after = state.currentEntry?.cellSize;
-        if (before && after && before !== after) toast(`${before} m aggregate → ${after} m detail`);
+        if (before && after && before !== after) toast(PUBLIC_MODE
+          ? scaleMoment(after)
+          : `${before} m aggregate → ${after} m detail`);
       });
       document.body.classList.remove('map-view-moving');
       updateMiniViewport();
@@ -283,6 +295,15 @@
       scheduleExactPoints();
     });
     setTool(state.tool);
+  }
+
+  function scaleMoment(cellSize) {
+    const size = Number(cellSize);
+    if (size >= 1000) return 'World overview';
+    if (size >= 320) return 'Settlement regions';
+    if (size > 64) return 'District detail';
+    if (size >= 64) return 'Neighborhood detail';
+    return 'Close detail';
   }
 
   function drawGrid() {
@@ -300,7 +321,9 @@
     } catch (error) {
       state.metrics.manifest = performance.now() - started;
       state.manifest = { snapshotId: state.snapshotId, layers: [] };
-      setStory('', 'No raster ladder yet', 'Render a lens to begin the overview → zoom → explain loop.', true);
+      setStory('', PUBLIC_MODE ? 'This view is not ready yet' : 'No raster ladder yet',
+        PUBLIC_MODE ? 'Please try again shortly.' : 'Render a lens to begin the overview → zoom → explain loop.',
+        PUBLIC_MODE ? null : true);
     }
     updateAvailability();
     updateMetrics();
@@ -374,14 +397,17 @@
       if (state.overlay) { state.map.removeLayer(state.overlay); state.overlay = null; }
       $('legend').hidden = true;
       $('map-status').textContent = `${state.lensById.get(state.lensId)?.label || state.lensId} · NOT RENDERED`;
-      setStory('', `${state.lensById.get(state.lensId)?.label} is ready to test`, 'Create the selected resolution ladder, then zoom into the signal.', true);
+      setStory('', PUBLIC_MODE ? 'This view is not ready yet' : `${state.lensById.get(state.lensId)?.label} is ready to test`,
+        PUBLIC_MODE ? 'Please try again shortly.' : 'Create the selected resolution ladder, then zoom into the signal.',
+        PUBLIC_MODE ? null : true);
       clearExactPoints();
       return;
     }
 
     const token = ++state.rasterToken;
     const lens = state.lensById.get(state.lensId);
-    if (!holdingLocalDetail) setStory('', `Loading ${lens.label} at ${entry.cellSize} m…`, 'Fetching gray8 evidence and applying the selected color ramp.');
+    if (!holdingLocalDetail) setStory('', PUBLIC_MODE ? 'Opening community construction…' : `Loading ${lens.label} at ${entry.cellSize} m…`,
+      PUBLIC_MODE ? 'Finding where the world is most active.' : 'Fetching gray8 evidence and applying the selected color ramp.');
     try {
       const image = await coloredImage(artifactUrl(entry), state.palette, entry);
       if (token !== state.rasterToken) return;
@@ -416,7 +442,9 @@
       scheduleExactPoints();
     } catch (error) {
       if (token !== state.rasterToken) return;
-      setStory('error', 'Raster load failed', error.message, true);
+      setStory('error', PUBLIC_MODE ? 'This view could not load' : 'Raster load failed',
+        PUBLIC_MODE ? 'Please refresh and try again.' : error.message,
+        PUBLIC_MODE ? null : true);
     }
   }
 
@@ -587,7 +615,7 @@
   function updateLegend(entry, lens, toneCap = 1, toneFocus = 1,
       toneExponent = analysisToneExponent(entry?.cellSize)) {
     $('legend').hidden = false;
-    $('legend-title').textContent = `${lens.label} per ${entry.cellSize} m cell`;
+    $('legend-title').textContent = PUBLIC_MODE ? 'Construction intensity' : `${lens.label} per ${entry.cellSize} m cell`;
     $('legend-gradient').className = `legend-gradient ${state.palette}`;
     const capped = Number(toneCap) < .9999;
     const fullyFocused = Number(toneFocus) >= .9999;
@@ -604,6 +632,10 @@
       : 'Scale-locked focus gradually introduces the P99.5 detail cap as cell size decreases.';
     $('legend').dataset.toneCap = Number(toneCap).toFixed(4);
     $('legend').dataset.toneExponent = Number(toneExponent).toFixed(4);
+    if (PUBLIC_MODE) {
+      $('legend-ticks').innerHTML = '<span>Quiet</span><span>Busy</span>';
+      return;
+    }
     const stops = [0,.25,.5,.75,1];
     const ticks = stops.map(stop => Math.round(Math.expm1(Number(entry.maxLog || 1)*Number(toneCap)*Math.pow(stop,1/toneExponent))));
     $('legend-ticks').innerHTML = ticks.map((tick,index) =>
@@ -617,6 +649,33 @@
       .map(layer => Number(layer.cellSize)))].sort((a,b) => b-a);
     const nextSize = finerSizes[0];
     const hottest = `Hottest ${size} m cell: ${fmt(entry.maxRaw)}.`;
+    if (PUBLIC_MODE) {
+      if (size >= 1000) return {
+        title: 'Find where the community has built',
+        copy: 'Brighter areas show stronger concentrations of construction. Scroll toward a settlement, or inspect any area.',
+        action: { type:'inspect', label:'Inspect an area' }
+      };
+      if (size >= 320) return {
+        title: 'Settlement regions are taking shape',
+        copy: 'Scroll closer to see their structure, or inspect an area to learn what is there.',
+        action: { type:'inspect', label:'Inspect an area' }
+      };
+      if (size > 64) return {
+        title: 'Districts are coming into view',
+        copy: 'Follow a bright cluster closer, or inspect an area to see what makes it stand out.',
+        action: { type:'inspect', label:'Inspect an area' }
+      };
+      if (size >= 64) return {
+        title: 'Neighborhood patterns are visible',
+        copy: 'Inspect any area to count and explain what the community built there.',
+        action: { type:'inspect', label:'Inspect an area' }
+      };
+      return {
+        title: 'Explore individual neighborhoods',
+        copy: 'Inspect an area to understand what is here, or keep scrolling to reveal individual objects.',
+        action: { type:'inspect', label:'Inspect an area' }
+      };
+    }
     if (size >= 1000) return {
       title: `World overview · ${lens.label}`,
       copy: `Bright cells are the strongest concentrations. Scroll toward one for ${nextSize || 320} m structure, or inspect any region now. ${hottest}${fallback}`,
@@ -710,7 +769,7 @@
     $('tool-state').textContent = tool.toUpperCase();
     $('coords').textContent = `${tool.toUpperCase()} · move for coordinates · Shift+drag box zoom`;
     syncStoryAction();
-    if (tool === 'inspect') showRightPanel('inspect');
+    if (tool === 'inspect' && !PUBLIC_MODE) showRightPanel('inspect');
   }
 
   function startDrawing(event) {
@@ -806,7 +865,9 @@
     }
     const query = boundsQuery(bounds);
     $('inspect-bounds').textContent = boundsLabel(bounds);
-    $('inspect-title').textContent = `Explaining ${state.lensById.get(state.lensId)?.label || state.lensId}`;
+    $('inspect-title').textContent = PUBLIC_MODE
+      ? 'What was built here?'
+      : `Explaining ${state.lensById.get(state.lensId)?.label || state.lensId}`;
     $('inspect-total').textContent = $('inspect-share').textContent = $('inspect-density').textContent = '…';
     $('inspect-point-warning').hidden = true;
     $('inspect-ranked-label').textContent = 'WHAT MAKES IT BRIGHT · TOP TYPES';
@@ -830,7 +891,8 @@
       const positionSubject = state.currentSelectionPositionCount === Number(result.total)
         ? `${fmt(result.total)} ${result.units}`
         : `${fmt(state.currentSelectionPositionCount)} item positions representing ${fmt(result.total)} ${result.units}`;
-      pointWarning.textContent = pointWarning.hidden ? ''
+      pointWarning.textContent = pointWarning.hidden ? '' : PUBLIC_MODE
+        ? `${positionSubject} are inside this area. Zoom closer or inspect a smaller area to show every item.`
         : `${positionSubject} are inside this area. This summary is complete; exact dots stay hidden above ${fmt(EXACT_POINT_LIMIT)} positions.`;
       renderInspectionRanks(result,false);
     } catch (error) {
@@ -917,8 +979,12 @@
         $('exact-state').textContent = `> ${fmt(result.limit)} SELECTED · RASTER`;
         const warning = $('inspect-point-warning');
         warning.hidden = false;
-        warning.textContent = `${fmt(positionCount)} item positions are inside this area. The selection summary is complete; tighten the green area below ${fmt(result.limit)} to draw every item.`;
-        toast(`${fmt(positionCount)} positions · tighten the green area to show items`);
+        warning.textContent = PUBLIC_MODE
+          ? `${fmt(positionCount)} items are inside this area. Zoom closer or inspect a smaller area to show them all.`
+          : `${fmt(positionCount)} item positions are inside this area. The selection summary is complete; tighten the green area below ${fmt(result.limit)} to draw every item.`;
+        toast(PUBLIC_MODE
+          ? `${fmt(positionCount)} items · choose a smaller area to show them`
+          : `${fmt(positionCount)} positions · tighten the green area to show items`);
         return;
       }
       installPointMarkers(result.points,lens,'selection');
@@ -1111,8 +1177,10 @@
         clearExactPoints(false);
         restoreWorldRasterPresentation();
         $('exact-state').textContent = `> ${fmt(result.limit)} · RASTER`;
-        setStory('warn', `At least ${fmt(result.minimumCount)} ${lens.units} in this viewport`,
-          `The raster is complete. Draw a green area for its full count and explanation; zoom closer only when you want every position.`,
+        setStory('warn', PUBLIC_MODE ? 'Zoom closer to reveal individual objects' : `At least ${fmt(result.minimumCount)} ${lens.units} in this viewport`,
+          PUBLIC_MODE
+            ? 'There is more here than can be shown clearly at once. Inspect any area now, or scroll closer.'
+            : `The raster is complete. Draw a green area for its full count and explanation; zoom closer only when you want every position.`,
           { type:'inspect', label:'Inspect an area' });
         updateMetrics();
         return;
@@ -1140,12 +1208,14 @@
       state.metrics.detail = performance.now()-detailStarted;
       installPointMarkers(result.points,lens,'viewport');
       $('exact-state').textContent = `${result.points.length} POINTS \u00b7 ${detail ? `${detail.cellSize} M` : 'RASTER'}`;
-      const exactTitle = result.points.length
-        ? `${fmt(result.points.length)} exact ${lens.units} in this viewport`
-        : `No exact ${lens.units} in this viewport`;
-      const exactCopy = detail
-        ? `The ${detail.cellSize} m local density surface and these positions come from the same complete bounded query. Inspect a cluster or pan onward.`
-        : `The ${state.currentEntry.cellSize} m raster has yielded to queryable object positions. Inspect a cluster or pan onward.`;
+      const exactTitle = PUBLIC_MODE
+        ? result.points.length ? `${fmt(result.points.length)} objects in view` : 'No objects in view'
+        : result.points.length ? `${fmt(result.points.length)} exact ${lens.units} in this viewport` : `No exact ${lens.units} in this viewport`;
+      const exactCopy = PUBLIC_MODE
+        ? 'Inspect a cluster to learn what it contains, or drag the map to keep exploring.'
+        : detail
+          ? `The ${detail.cellSize} m local density surface and these positions come from the same complete bounded query. Inspect a cluster or pan onward.`
+          : `The ${state.currentEntry.cellSize} m raster has yielded to queryable object positions. Inspect a cluster or pan onward.`;
       setStory(result.points.length ? 'ready' : '', exactTitle, exactCopy,
         { type:'inspect', label:'Inspect an area' });
       updateMetrics();
@@ -1298,6 +1368,8 @@
     $('inspect-panel-tab').classList.toggle('active', !jobs);
     $('job-bench-tab').setAttribute('aria-selected', String(jobs));
     $('inspect-panel-tab').setAttribute('aria-selected', String(!jobs));
+    document.body.classList.toggle('inspection-open', PUBLIC_MODE && !jobs);
+    requestAnimationFrame(() => state.map?.invalidateSize({ pan:false }));
   }
 
   function renderJob(job) {

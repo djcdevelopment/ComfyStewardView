@@ -3,6 +3,7 @@ param(
     [ValidateSet('serve', 'render', 'prepare-command', 'watch-jobs')]
     [string]$Command = 'serve',
     [string]$CachePath = '',
+    [string]$ArtifactsPath = '',
     [long]$Snapshot = 0,
     [string]$Lens = 'build-density,birch-trees,all-zdos',
     [string]$Resolutions = '320,160,80,64,16',
@@ -87,8 +88,20 @@ if ($Command -eq 'watch-jobs') {
 }
 
 if (-not $CachePath) {
+    $era17Candidate = Join-Path $repo 'data\era17-cache.duckdb'
     $candidate = Join-Path $env:LOCALAPPDATA 'steward-publish\out\world-cache.duckdb'
-    $CachePath = if (Test-Path -LiteralPath $candidate) { $candidate } else { Join-Path $repo 'data\world-cache.duckdb' }
+    $CachePath = if ($Command -in @('serve', 'render') -and (Test-Path -LiteralPath $era17Candidate)) {
+        $era17Candidate
+    } elseif (Test-Path -LiteralPath $candidate) {
+        $candidate
+    } else {
+        Join-Path $repo 'data\world-cache.duckdb'
+    }
+}
+
+if (-not $ArtifactsPath) {
+    $artifactFolder = if ([IO.Path]::GetFileName($CachePath) -eq 'era17-cache.duckdb') { 'era17-artifacts' } else { 'artifacts' }
+    $ArtifactsPath = Join-Path $repo "data\$artifactFolder"
 }
 
 if ($Command -eq 'prepare-command') {
@@ -110,7 +123,7 @@ if (-not (Test-Path -LiteralPath $jar)) {
     if ($LASTEXITCODE -ne 0) { throw "Lab build failed with exit code $LASTEXITCODE" }
 }
 
-$arguments = @('-Xmx2g', '-jar', $jar, $Command, '--cache', $CachePath, '--artifacts', (Join-Path $repo 'data\artifacts'))
+$arguments = @('-Xmx2g', '-jar', $jar, $Command, '--cache', $CachePath, '--artifacts', $ArtifactsPath)
 if ($Command -eq 'serve') {
     $arguments += @('--port', [string]$Port)
     if ($ContextImage) { $arguments += @('--context-image', $ContextImage) }

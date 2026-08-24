@@ -14,11 +14,14 @@ const scale320Output = path.join(parsedOutput.dir, `${parsedOutput.name}-320m${p
 const scale160Output = path.join(parsedOutput.dir, `${parsedOutput.name}-160m${parsedOutput.ext || '.png'}`);
 const scale80Output = path.join(parsedOutput.dir, `${parsedOutput.name}-80m${parsedOutput.ext || '.png'}`);
 const scale64Output = path.join(parsedOutput.dir, `${parsedOutput.name}-64m${parsedOutput.ext || '.png'}`);
+const publicInspectOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-inspect${parsedOutput.ext || '.png'}`);
 const exercise = process.argv.includes('--exercise');
 const scalePreviews = process.argv.includes('--scale-previews');
 const marqueeOnly = process.argv.includes('--marquee-only');
 const useStoryAction = process.argv.includes('--story-action');
 const submitJob = process.argv.includes('--submit-job');
+const publicInspect = process.argv.includes('--public-inspect');
+const publicExperience = new URL(targetUrl).searchParams.get('lab') !== '1';
 let marqueeState = null;
 let inspectorTabState = null;
 let panGestureState = null;
@@ -35,6 +38,8 @@ let localDetail4State = null;
 let bufferedHandoffState = null;
 let rasterStyleState = null;
 let scalePreviewState = null;
+let publicInspectState = null;
+let publicClosedState = null;
 const profile = path.resolve('data/browser-smoke-profile');
 await mkdir(profile, { recursive: true });
 
@@ -111,6 +116,63 @@ const rasterStyleResult = await cdp('Runtime.evaluate', { expression: `(() => {
   return { initial, cells, restored:capture() };
 })()`, returnByValue:true });
 rasterStyleState = rasterStyleResult.result.value;
+
+if (publicInspect) {
+  const mapRectResult = await cdp('Runtime.evaluate', {
+    expression: `(() => { const r=document.querySelector('#map').getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height}; })()`,
+    returnByValue:true
+  });
+  const mapRect = mapRectResult.result.value;
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#story-action')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 120));
+  await cdp('Runtime.evaluate', { expression: `
+    document.querySelectorAll('.map-story,.navigator-shell,.map-status,.legend,.leaflet-control-container')
+      .forEach(element => element.style.pointerEvents='none');
+  ` });
+  await cdp('Input.dispatchMouseEvent', {
+    type:'mousePressed', x:mapRect.x+mapRect.w*.43, y:mapRect.y+mapRect.h*.43,
+    button:'left', buttons:1, clickCount:1
+  });
+  await cdp('Input.dispatchMouseEvent', {
+    type:'mouseMoved', x:mapRect.x+mapRect.w*.59, y:mapRect.y+mapRect.h*.62,
+    button:'left', buttons:1
+  });
+  await cdp('Input.dispatchMouseEvent', {
+    type:'mouseReleased', x:mapRect.x+mapRect.w*.59, y:mapRect.y+mapRect.h*.62,
+    button:'left', buttons:0, clickCount:1
+  });
+  await cdp('Runtime.evaluate', { expression: `
+    document.querySelectorAll('.map-story,.navigator-shell,.map-status,.legend,.leaflet-control-container')
+      .forEach(element => element.style.pointerEvents='');
+  ` });
+  await new Promise(resolve => setTimeout(resolve, 2200));
+  const publicInspectResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    inspectionOpen:document.body.classList.contains('inspection-open'),
+    jobsPanelDisplay:getComputedStyle(document.querySelector('.jobs-panel')).display,
+    inspectorVisible:!document.querySelector('#inspector')?.hidden,
+    jobBenchDisplay:getComputedStyle(document.querySelector('#job-bench-pane')).display,
+    selectionPresent:Boolean(document.querySelector('.selection-rectangle')),
+    selectionAction:document.querySelector('#story-selection-action')?.textContent,
+    selectionActionVisible:!document.querySelector('#story-selection-action')?.hidden,
+    inspectTitle:document.querySelector('#inspect-title')?.textContent,
+    inspectTotal:document.querySelector('#inspect-total')?.textContent,
+    rankRows:document.querySelectorAll('#inspect-top .rank-row').length,
+    mapWidth:document.querySelector('#map').getBoundingClientRect().width
+  }))()`, returnByValue:true });
+  publicInspectState = publicInspectResult.result.value;
+  const publicInspectShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(publicInspectOutput, Buffer.from(publicInspectShot.data, 'base64'));
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#inspect-close')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 350));
+  const publicClosedResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    inspectionOpen:document.body.classList.contains('inspection-open'),
+    jobsPanelDisplay:getComputedStyle(document.querySelector('.jobs-panel')).display,
+    selectionPresent:Boolean(document.querySelector('.selection-rectangle')),
+    selectionActionVisible:!document.querySelector('#story-selection-action')?.hidden,
+    mapWidth:document.querySelector('#map').getBoundingClientRect().width
+  }))()`, returnByValue:true });
+  publicClosedState = publicClosedResult.result.value;
+}
 
 if (scalePreviews) {
   const captureScale = async outputPath => {
@@ -554,6 +616,12 @@ const evaluated = await cdp('Runtime.evaluate', {
     }),
     exactSvgPaths: document.querySelectorAll('.leaflet-exact-pane path').length,
     viewport: document.querySelector('#viewport-label')?.textContent,
+    publicExperience: document.body.classList.contains('public-experience'),
+    publicWorld: document.querySelector('#public-world-name')?.textContent,
+    primaryNavDisplay: getComputedStyle(document.querySelector('.primary-nav')).display,
+    controlsDisplay: getComputedStyle(document.querySelector('.controls-panel')).display,
+    jobsPanelDisplay: getComputedStyle(document.querySelector('.jobs-panel')).display,
+    mapWidth: document.querySelector('#map').getBoundingClientRect().width,
     minimapImages: [...document.querySelectorAll('#minimap img.leaflet-image-layer')].map(img => ({
       src: img.getAttribute('src'), opacity: getComputedStyle(img).opacity,
       width: img.naturalWidth, height: img.naturalHeight,
@@ -572,14 +640,28 @@ console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marquee
   detailOutput:exercise ? detailOutput : null,
   scale320Output:scalePreviews ? scale320Output : null, scale160Output:scalePreviews ? scale160Output : null,
   scale80Output:scalePreviews ? scale80Output : null, scale64Output:scalePreviews ? scale64Output : null,
+  publicInspectOutput:publicInspect ? publicInspectOutput : null,
   state, marqueeState, inspectorTabState, panGestureState, densePointState, denseUiState, earlyInspectState,
   earlySelectionItemsState, expandedInspectState, selectedItemsState, postInspectPanState, storyActionState,
   localDetail8State, localDetail4State, bufferedHandoffState,
-  rasterStyleState, scalePreviewState, errors }, null, 2));
+  rasterStyleState, scalePreviewState, publicInspectState, publicClosedState, errors }, null, 2));
 await cdp('Browser.close').catch(() => {});
 socket.close();
 setTimeout(() => browser.kill(), 1000).unref();
 if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state.status} ${state.title}`) ||
+    (publicExperience && (!state.publicExperience || !/Comfy Era 17/.test(state.publicWorld || '') ||
+      state.primaryNavDisplay !== 'none' || state.controlsDisplay !== 'none' ||
+      (!publicInspect && state.jobsPanelDisplay !== 'none'))) ||
+    (!publicExperience && (state.publicExperience || state.primaryNavDisplay === 'none' ||
+      state.controlsDisplay === 'none' || state.jobsPanelDisplay === 'none')) ||
+    (publicInspect && (!publicExperience || !publicInspectState?.inspectionOpen ||
+      publicInspectState?.jobsPanelDisplay !== 'flex' || !publicInspectState?.inspectorVisible ||
+      publicInspectState?.jobBenchDisplay !== 'none' || !publicInspectState?.selectionPresent ||
+      !publicInspectState?.selectionActionVisible || publicInspectState?.selectionAction !== 'Show items' ||
+      publicInspectState?.inspectTitle !== 'What was built here?' || publicInspectState?.rankRows < 1 ||
+      publicClosedState?.inspectionOpen || publicClosedState?.jobsPanelDisplay !== 'none' ||
+      !publicClosedState?.selectionPresent || !publicClosedState?.selectionActionVisible ||
+      publicClosedState?.mapWidth <= publicInspectState?.mapWidth)) ||
     rasterStyleState?.initial?.mode !== 'smooth' || rasterStyleState?.initial?.world !== 'auto' ||
     rasterStyleState?.initial?.context !== 'auto' || rasterStyleState?.initial?.worldOpacity !== 1 ||
     rasterStyleState?.initial?.contextOpacity !== .42 || !rasterStyleState?.initial?.smoothActive ||
