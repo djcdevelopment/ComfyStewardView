@@ -68,6 +68,14 @@ complete query. The finer surface and the dots therefore describe the same objec
 produces neither, and the complete 16 metre raster remains authoritative until the view is tighter.
 When local detail arrives it replaces, rather than stacks over, the 16 metre analysis image. The inferred
 context recedes to a faint locator layer; hold **peek beneath the analysis** to restore it at full opacity.
+Close-detail transitions are double-buffered: movement pauses the exact dots but retains the last complete
+8/4 metre surface until its replacement image has decoded. Hidden full-world rasters refresh without a
+crossfade, so they cannot flash back over a valid local surface.
+
+Raster surfaces use smooth browser interpolation by default across the entire 1000/320/64/16/8/4 metre
+ladder, so neighboring cells read as a continuous field while zooming. **Cell grid** switches every raster
+back to hard pixel edges for auditing the underlying bins. This display choice never changes cell values,
+legend thresholds, point queries, or generated artifacts.
 
 ## Prepare a cache from a save
 

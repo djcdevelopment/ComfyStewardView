@@ -19,6 +19,7 @@
     snapshotId: 0,
     lensId: 'build-density',
     resolution: 'auto',
+    rasterStyle: 'smooth',
     palette: 'ember',
     analysisOpacity: .72,
     contextOpacity: .62,
@@ -151,6 +152,17 @@
     $('context-copy').textContent = state.bootstrap.contextAuthoritative
       ? `${state.bootstrap.contextLabel} is supplied as the cartographic underlay.`
       : 'The surface ZDO field is an inferred coastline, not a terrain heightmap.';
+    setRasterStyle(state.rasterStyle);
+  }
+
+  function setRasterStyle(style) {
+    state.rasterStyle = style === 'cells' ? 'cells' : 'smooth';
+    document.body.classList.toggle('raster-cells', state.rasterStyle === 'cells');
+    document.querySelectorAll('#raster-style-buttons [data-raster-style]').forEach(button => {
+      const active = button.dataset.rasterStyle === state.rasterStyle;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
   }
 
   function updateSnapshotHeader() {
@@ -317,7 +329,9 @@
     if (!state.map || !state.manifest) return;
     const requested = desiredResolution();
     const entry = layerFor(state.lensId, requested);
-    $('scale-state').textContent = state.resolution === 'auto' ? `AUTO → ${entry?.cellSize || requested} M` : `${requested} M`;
+    const holdingLocalDetail = Boolean(state.detailOverlay);
+    if (!holdingLocalDetail) $('scale-state').textContent = state.resolution === 'auto'
+      ? `AUTO → ${entry?.cellSize || requested} M` : `${requested} M`;
     updateAvailability();
     if (!entry) {
       state.currentEntry = null;
@@ -331,7 +345,7 @@
 
     const token = ++state.rasterToken;
     const lens = state.lensById.get(state.lensId);
-    setStory('', `Loading ${lens.label} at ${entry.cellSize} m…`, 'Fetching gray8 evidence and applying the selected color ramp.');
+    if (!holdingLocalDetail) setStory('', `Loading ${lens.label} at ${entry.cellSize} m…`, 'Fetching gray8 evidence and applying the selected color ramp.');
     try {
       const image = await coloredImage(artifactUrl(entry), state.palette);
       if (token !== state.rasterToken) return;
@@ -339,8 +353,10 @@
       const overlay = L.imageOverlay(image.url, leafletBounds(entry.bounds), {
         pane: 'analysisPane', opacity: 0, interactive: false, className: 'analysis-raster'
       }).addTo(state.map);
-      await crossfade(state.overlay, overlay, state.analysisOpacity);
+      const previousOverlay = state.overlay;
+      if (!holdingLocalDetail) await crossfade(previousOverlay, overlay, state.analysisOpacity);
       if (token !== state.rasterToken) { state.map.removeLayer(overlay); return; }
+      if (holdingLocalDetail && previousOverlay) state.map.removeLayer(previousOverlay);
       state.overlay = overlay;
       state.currentEntry = entry;
       syncCompositeOpacity();
@@ -348,12 +364,14 @@
       state.metrics.decode = image.colorMs;
       state.metrics.swap = performance.now() - swapStarted;
       state.metrics.bytes = image.bytes;
-      updateLegend(entry, lens);
       updateDetailLadder();
-      $('map-status').textContent = `${lens.label} · ${entry.cellSize} m cells · snapshot #${state.snapshotId} · ${state.palette}`;
-      const fallback = Number(entry.cellSize) !== Number(requested) ? ` Nearest available scale: ${entry.cellSize} m.` : '';
-      const guidance = rasterGuidance(entry, lens, fallback);
-      setStory('ready', guidance.title, guidance.copy, guidance.action);
+      if (!state.detailOverlay) {
+        updateLegend(entry, lens);
+        $('map-status').textContent = `${lens.label} · ${entry.cellSize} m cells · snapshot #${state.snapshotId} · ${state.palette}`;
+        const fallback = Number(entry.cellSize) !== Number(requested) ? ` Nearest available scale: ${entry.cellSize} m.` : '';
+        const guidance = rasterGuidance(entry, lens, fallback);
+        setStory('ready', guidance.title, guidance.copy, guidance.action);
+      }
       updateMetrics();
       scheduleExactPoints();
     } catch (error) {
@@ -688,9 +706,13 @@
   function pauseExactPoints() {
     clearTimeout(state.exactTimer);
     const hadCloseDetail = Boolean(state.exactLayer || state.detailOverlay);
-    clearExactPoints();
+    ++state.exactToken;
+    removeExactMarkers();
+    syncCompositeOpacity();
+    updateDetailLadder();
     document.body.classList.add('map-view-moving');
-    if (hadCloseDetail) $('exact-state').textContent = 'MOVING';
+    if (hadCloseDetail) $('exact-state').textContent = state.detailResolution
+      ? `MOVING · ${state.detailResolution} M HELD` : 'MOVING';
   }
 
   function desiredLocalDetailResolution() {
@@ -738,17 +760,35 @@
     return { url:URL.createObjectURL(blob), bytes:blob.size, bounds, cellSize, width, height, maxRaw, maxLog };
   }
 
-  function installLocalDetail(detail, lens) {
-    removeLocalDetail();
+  async function installLocalDetail(detail, lens, token) {
+    const candidate = L.imageOverlay(detail.url, detail.bounds, {
+      pane:'detailPane', opacity:0, interactive:false, className:'local-detail-raster'
+    });
+    const loaded = new Promise(resolve => {
+      const timer = setTimeout(() => resolve(false),1500);
+      candidate.once('load', () => { clearTimeout(timer); resolve(true); });
+      candidate.once('error', () => { clearTimeout(timer); resolve(false); });
+    });
+    candidate.addTo(state.map);
+    const ready = await loaded;
+    if (!ready || token !== state.exactToken) {
+      state.map.removeLayer(candidate);
+      URL.revokeObjectURL(detail.url);
+      return false;
+    }
+    const previousOverlay = state.detailOverlay;
+    const previousUrl = state.detailObjectUrl;
+    if (previousOverlay) previousOverlay.setOpacity(0);
+    state.detailOverlay = candidate;
     state.detailObjectUrl = detail.url;
     state.detailResolution = detail.cellSize;
-    state.detailOverlay = L.imageOverlay(detail.url, detail.bounds, {
-      pane:'detailPane', opacity:0, interactive:false, className:'local-detail-raster'
-    }).addTo(state.map);
     syncCompositeOpacity();
+    if (previousOverlay) state.map.removeLayer(previousOverlay);
+    if (previousUrl) URL.revokeObjectURL(previousUrl);
     updateLegend(detail,lens);
     $('scale-state').textContent = `AUTO \u2192 ${detail.cellSize} M LOCAL`;
     $('map-status').textContent = `${lens.label} \u00b7 ${detail.cellSize} m local cells + exact objects \u00b7 snapshot #${state.snapshotId} \u00b7 ${state.palette}`;
+    return true;
   }
 
   function removeLocalDetail() {
@@ -810,10 +850,10 @@
     try {
       const result = await fetchJson(`${API}/points?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&limit=5000&${boundsQuery(bounds)}`);
       if (token !== state.exactToken) return;
-      clearExactPoints(false);
       const lens = state.lensById.get(state.lensId);
       state.metrics.exact = performance.now()-started;
       if (result.truncated) {
+        clearExactPoints(false);
         restoreWorldRasterPresentation();
         $('exact-state').textContent = `> ${fmt(result.limit)} · RASTER`;
         setStory('', `Zoom closer to reveal exact ${lens.units}`,
@@ -832,8 +872,18 @@
         if (detail?.url) URL.revokeObjectURL(detail.url);
         return;
       }
+      if (detail) {
+        const installed = await installLocalDetail(detail,lens,token);
+        if (token !== state.exactToken) return;
+        if (!installed) {
+          detail = null;
+          removeLocalDetail();
+        }
+      } else {
+        removeLocalDetail();
+      }
       state.metrics.detail = performance.now()-detailStarted;
-      if (detail) installLocalDetail(detail,lens);
+      removeExactMarkers();
       const group = L.layerGroup([], { pane:'exactPane' });
       for (const point of result.points) {
         L.circleMarker(worldToLatLng(point.x,point.z), {
@@ -862,14 +912,18 @@
 
   function clearExactPoints(increment = true) {
     if (increment) ++state.exactToken;
-    if (state.exactLayer && state.map) state.map.removeLayer(state.exactLayer);
-    state.exactLayer = null;
+    removeExactMarkers();
     removeLocalDetail();
     state.metrics.detail = null;
     syncCompositeOpacity();
     updateDetailLadder();
     restoreWorldRasterPresentation();
     $('exact-state').textContent = 'RASTER';
+  }
+
+  function removeExactMarkers() {
+    if (state.exactLayer && state.map) state.map.removeLayer(state.exactLayer);
+    state.exactLayer = null;
   }
 
   async function submitRender(allLenses) {
@@ -1069,6 +1123,10 @@
       state.resolution = button.dataset.resolution;
       document.querySelectorAll('#resolution-buttons button').forEach(b => b.classList.toggle('active', b === button));
       applyContext(); applyRaster();
+    });
+    $('raster-style-buttons').addEventListener('click', event => {
+      const button = event.target.closest('[data-raster-style]');
+      if (button) setRasterStyle(button.dataset.rasterStyle);
     });
     document.querySelectorAll('.palette').forEach(button => button.addEventListener('click', () => {
       state.palette = button.dataset.palette;

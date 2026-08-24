@@ -20,6 +20,8 @@ let densePointState = null;
 let denseUiState = null;
 let localDetail8State = null;
 let localDetail4State = null;
+let bufferedHandoffState = null;
+let rasterStyleState = null;
 const profile = path.resolve('data/browser-smoke-profile');
 await mkdir(profile, { recursive: true });
 
@@ -73,6 +75,22 @@ await cdp('Page.enable');
 await cdp('Runtime.enable');
 await cdp('Page.navigate', { url: targetUrl });
 await new Promise(resolve => setTimeout(resolve, 6000));
+
+const rasterStyleResult = await cdp('Runtime.evaluate', { expression: `(() => {
+  const capture = () => ({
+    mode: document.body.classList.contains('raster-cells') ? 'cells' : 'smooth',
+    world: getComputedStyle(document.querySelector('.analysis-raster')).imageRendering,
+    context: getComputedStyle(document.querySelector('.context-raster')).imageRendering,
+    smoothActive: document.querySelector('[data-raster-style="smooth"]')?.classList.contains('active'),
+    cellsActive: document.querySelector('[data-raster-style="cells"]')?.classList.contains('active')
+  });
+  const initial = capture();
+  document.querySelector('[data-raster-style="cells"]')?.click();
+  const cells = capture();
+  document.querySelector('[data-raster-style="smooth"]')?.click();
+  return { initial, cells, restored:capture() };
+})()`, returnByValue:true });
+rasterStyleState = rasterStyleResult.result.value;
 
 if (submitJob) {
   await cdp('Runtime.evaluate', { expression: `
@@ -273,6 +291,49 @@ if (exercise) {
       return result.result.value;
     };
     localDetail8State = await captureLocalDetail(99);
+    const handoffBefore = await cdp('Runtime.evaluate', { expression: `(() => {
+      const local = document.querySelector('.local-detail-raster');
+      return { src:local?.getAttribute('src'), scale:document.querySelector('#scale-state')?.textContent };
+    })()`, returnByValue:true });
+    await cdp('Runtime.evaluate', { expression: `(() => {
+      window.__labOriginalFetch = window.fetch;
+      window.fetch = async (...args) => {
+        if (String(args[0]).includes('/api/points')) await new Promise(resolve => setTimeout(resolve,650));
+        return window.__labOriginalFetch(...args);
+      };
+      document.querySelector('#threshold-detail4').value = '-99';
+      document.querySelector('.leaflet-control-zoom-in')?.click();
+    })()` });
+    await new Promise(resolve => setTimeout(resolve,420));
+    const handoffHeld = await cdp('Runtime.evaluate', { expression: `(() => {
+      const local = document.querySelector('.local-detail-raster');
+      const world = document.querySelector('.analysis-raster');
+      return {
+        src:local?.getAttribute('src'), localCount:document.querySelectorAll('.local-detail-raster').length,
+        localOpacity:local ? Number(getComputedStyle(local).opacity) : null,
+        worldOpacity:world ? Number(getComputedStyle(world).opacity) : null,
+        scale:document.querySelector('#scale-state')?.textContent,
+        exactState:document.querySelector('#exact-state')?.textContent,
+        story:document.querySelector('#story-title')?.textContent
+      };
+    })()`, returnByValue:true });
+    await new Promise(resolve => setTimeout(resolve,1500));
+    const handoffAfter = await cdp('Runtime.evaluate', { expression: `(() => {
+      const local = document.querySelector('.local-detail-raster');
+      window.fetch = window.__labOriginalFetch;
+      delete window.__labOriginalFetch;
+      return {
+        src:local?.getAttribute('src'), localCount:document.querySelectorAll('.local-detail-raster').length,
+        localOpacity:local ? Number(getComputedStyle(local).opacity) : null,
+        scale:document.querySelector('#scale-state')?.textContent,
+        exactState:document.querySelector('#exact-state')?.textContent
+      };
+    })()`, returnByValue:true });
+    bufferedHandoffState = {
+      before:handoffBefore.result.value,
+      held:handoffHeld.result.value,
+      after:handoffAfter.result.value
+    };
     localDetail4State = await captureLocalDetail(-99);
     const detailShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
     await writeFile(detailOutput, Buffer.from(detailShot.data, 'base64'));
@@ -331,11 +392,17 @@ await writeFile(output, Buffer.from(shot.data, 'base64'));
 console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marqueeOutput : null,
   denseOutput:exercise ? denseOutput : null, detailOutput:exercise ? detailOutput : null,
   state, marqueeState, inspectorTabState, panGestureState, densePointState, denseUiState,
-  localDetail8State, localDetail4State, errors }, null, 2));
+  localDetail8State, localDetail4State, bufferedHandoffState, rasterStyleState, errors }, null, 2));
 await cdp('Browser.close').catch(() => {});
 socket.close();
 setTimeout(() => browser.kill(), 1000).unref();
 if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state.status} ${state.title}`) ||
+    rasterStyleState?.initial?.mode !== 'smooth' || rasterStyleState?.initial?.world !== 'auto' ||
+    rasterStyleState?.initial?.context !== 'auto' || !rasterStyleState?.initial?.smoothActive ||
+    rasterStyleState?.cells?.mode !== 'cells' || !['pixelated','crisp-edges'].includes(rasterStyleState?.cells?.world) ||
+    !['pixelated','crisp-edges'].includes(rasterStyleState?.cells?.context) || !rasterStyleState?.cells?.cellsActive ||
+    rasterStyleState?.restored?.mode !== 'smooth' || rasterStyleState?.restored?.world !== 'auto' ||
+    rasterStyleState?.restored?.context !== 'auto' || !rasterStyleState?.restored?.smoothActive ||
     (submitJob && !/RUNNING|QUEUED/.test(state.jobActivity || '')) ||
     (exercise && (!marqueeState?.present || marqueeState.borderStyle !== 'dashed' || !marqueeState.active ||
       marqueeState.left < marqueeState.mapRect.left || marqueeState.top < marqueeState.mapRect.top ||
@@ -364,6 +431,13 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
         !/→/.test(localDetail8State?.contextOpacityLabel || '') ||
         localDetail8State?.peekContextOpacity < .6 || localDetail8State?.peekLocalOpacity !== .03 ||
         localDetail8State?.restoredContextOpacity !== localDetail8State?.contextOpacity ||
+        bufferedHandoffState?.held?.src !== bufferedHandoffState?.before?.src ||
+        bufferedHandoffState?.held?.localCount !== 1 || bufferedHandoffState?.held?.localOpacity <= 0 ||
+        bufferedHandoffState?.held?.worldOpacity !== 0 || !/8 M LOCAL/.test(bufferedHandoffState?.held?.scale || '') ||
+        !/HELD/.test(bufferedHandoffState?.held?.exactState || '') || /Loading/.test(bufferedHandoffState?.held?.story || '') ||
+        bufferedHandoffState?.after?.src === bufferedHandoffState?.before?.src ||
+        bufferedHandoffState?.after?.localCount !== 1 || !/4 M LOCAL/.test(bufferedHandoffState?.after?.scale || '') ||
+        !/4 M/.test(bufferedHandoffState?.after?.exactState || '') ||
         localDetail4State?.worldOpacity !== 0 || localDetail4State?.contextOpacity >= .2 ||
         localDetail4State?.contextOpacity >= localDetail4State?.localOpacity ||
         !/→/.test(localDetail4State?.contextOpacityLabel || '') ||

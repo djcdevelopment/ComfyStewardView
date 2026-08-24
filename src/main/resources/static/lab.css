@@ -83,6 +83,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .segments.three { grid-template-columns: 1fr 1fr 1fr; }
 .segments button { height: 27px; border: 0; border-radius: 3px; padding: 0 3px; color: var(--muted); background: transparent; font-size: 11px; }
 .segments button.active { color: #e8f2ff; background: #315684; box-shadow: inset 0 0 0 1px #4774ab; }
+.surface-control { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--border); }
+.surface-label { display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--dim); font: 9px var(--mono); letter-spacing: .09em; }
 .compact-grid { display: grid; gap: 10px; }
 .compact-grid label > span, .test-options label > span, .number-row > span { font: 9px var(--mono); letter-spacing: .09em; color: var(--dim); }
 .compact-grid output { float: right; color: var(--muted); font: 10px var(--mono); }
@@ -124,8 +126,10 @@ body.map-pan-active #map .leaflet-interactive { cursor: grabbing !important; }
 .leaflet-control-zoom { border: 0 !important; box-shadow: 0 3px 14px rgba(0,0,0,.35) !important; }
 .leaflet-control-zoom a { background: #121a27 !important; color: #dce6f4 !important; border-color: var(--border) !important; }
 .leaflet-control-attribution { background: rgba(10,15,23,.8) !important; color: var(--dim); }
-.analysis-raster, .context-raster { image-rendering: pixelated; image-rendering: crisp-edges; }
-.local-detail-raster { image-rendering: auto; }
+.analysis-raster, .context-raster, .local-detail-raster { image-rendering: auto; }
+body.raster-cells .analysis-raster,
+body.raster-cells .context-raster,
+body.raster-cells .local-detail-raster { image-rendering: pixelated; image-rendering: crisp-edges; }
 body.box-zoom-active #map { cursor: nwse-resize; }
 body.box-zoom-active .coords { border-color: #d5ad4e; color: #f5d87e; }
 

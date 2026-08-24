@@ -10,6 +10,8 @@
 6. If a viewport exceeds the exact-point budget, no spatially biased prefix is shown; the complete raster remains authoritative and asks for a tighter viewport.
 7. Pan mode uses a grab cursor and visibly closes the hand only while the held drag is moving the map.
 8. A local surface replaces the 16 m analysis raster instead of blending two analytical grids. Inferred context becomes a faint locator layer, while press-and-hold peek restores it for orientation.
+9. Close-detail surfaces are double-buffered. The last complete surface remains authoritative during movement and is replaced only after the next surface image loads; hidden coarse rasters never crossfade over it.
+10. Smooth surface sampling is the default at every raster scale. Cell grid reveals the same discrete bins with hard edges; changing this display mode never changes data, thresholds, or queries.
 
 ## Independent dimensions
 
@@ -18,6 +20,7 @@
 | Lens | What am I investigating? | Build, dropped, all ZDOs, coins, birch, tombstones |
 | Time | When, or what changed? | One snapshot; delta is deliberately deferred |
 | Scale | How much detail? | Auto, 1000, 320, 64, 16 m world, 8/4 m local, then exact points |
+| Surface | How should raster cells read? | Smooth interpolated field or explicit cell grid; display only |
 | Context | Where is it? | Inferred land mask or supplied terrain image |
 | Selection | Why is this place notable? | Cell click or box inspect |
 
