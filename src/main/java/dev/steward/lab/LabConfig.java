@@ -1,0 +1,96 @@
+package dev.steward.lab;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+
+public record LabConfig(
+        String mode,
+        Path cachePath,
+        Path artifactsPath,
+        Path contextImage,
+        int port,
+        boolean noBrowser,
+        long snapshotId,
+        List<String> lensIds,
+        List<Integer> resolutions,
+        boolean force) {
+
+    public static final List<Integer> ALLOWED_RESOLUTIONS = List.of(16, 64, 320, 500, 1000);
+
+    public static LabConfig parse(String[] arguments) {
+        List<String> args = new ArrayList<>(Arrays.asList(arguments));
+        String mode = !args.isEmpty() && !args.get(0).startsWith("--")
+            ? args.remove(0).toLowerCase(Locale.ROOT) : "serve";
+        if (!List.of("serve", "render").contains(mode)) {
+            throw new IllegalArgumentException("Mode must be serve or render, got: " + mode);
+        }
+
+        Path cache = defaultCache();
+        Path artifacts = Path.of("data", "artifacts");
+        Path context = null;
+        int port = 8091;
+        boolean noBrowser = false;
+        long snapshot = 0;
+        List<String> lenses = List.of("build-density", "birch-trees", "all-zdos");
+        List<Integer> resolutions = List.of(320, 64, 16);
+        boolean force = false;
+
+        for (int i = 0; i < args.size(); i++) {
+            String arg = args.get(i);
+            switch (arg) {
+                case "--cache" -> cache = Path.of(requireValue(args, ++i, arg));
+                case "--artifacts" -> artifacts = Path.of(requireValue(args, ++i, arg));
+                case "--context-image" -> context = Path.of(requireValue(args, ++i, arg));
+                case "--port" -> port = Integer.parseInt(requireValue(args, ++i, arg));
+                case "--snapshot" -> snapshot = Long.parseLong(requireValue(args, ++i, arg));
+                case "--lenses" -> lenses = split(requireValue(args, ++i, arg));
+                case "--resolutions" -> resolutions = split(requireValue(args, ++i, arg)).stream()
+                    .map(Integer::parseInt).toList();
+                case "--no-browser" -> noBrowser = true;
+                case "--force" -> force = true;
+                default -> throw new IllegalArgumentException("Unknown option: " + arg);
+            }
+        }
+
+        if (port < 1 || port > 65_535) throw new IllegalArgumentException("Invalid port: " + port);
+        for (int resolution : resolutions) {
+            if (!ALLOWED_RESOLUTIONS.contains(resolution)) {
+                throw new IllegalArgumentException("Unsupported resolution " + resolution +
+                    "; choose from " + ALLOWED_RESOLUTIONS);
+            }
+        }
+        if (context != null && !Files.isRegularFile(context)) {
+            throw new IllegalArgumentException("Context image not found: " + context);
+        }
+
+        return new LabConfig(mode, absolute(cache), absolute(artifacts),
+            context == null ? null : absolute(context), port, noBrowser, snapshot,
+            List.copyOf(lenses), List.copyOf(resolutions), force);
+    }
+
+    private static Path defaultCache() {
+        String local = System.getenv("LOCALAPPDATA");
+        if (local != null) {
+            Path published = Path.of(local, "steward-publish", "out", "world-cache.duckdb");
+            if (Files.isRegularFile(published)) return published;
+        }
+        return Path.of("data", "world-cache.duckdb");
+    }
+
+    private static String requireValue(List<String> args, int index, String option) {
+        if (index >= args.size()) throw new IllegalArgumentException(option + " requires a value");
+        return args.get(index);
+    }
+
+    private static List<String> split(String raw) {
+        return Arrays.stream(raw.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+    }
+
+    private static Path absolute(Path path) {
+        return path.toAbsolutePath().normalize();
+    }
+}

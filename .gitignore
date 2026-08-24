@@ -1,0 +1,9 @@
+/target/
+/data/
+*.db
+*.duckdb
+*.duckdb.wal
+lab-config.local.json
+.idea/
+.vscode/
+*.iml
