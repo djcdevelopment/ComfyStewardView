@@ -3,6 +3,8 @@
 
   const $ = id => document.getElementById(id);
   const API = '/api';
+  const ANALYSIS_TONE_EXPONENT = 1.18;
+  const ANALYSIS_TONE_PERCENTILE = .998;
   const palettes = {
     ember: [[0,[10,20,36]],[.36,[40,76,124]],[.67,[172,178,142]],[.88,[249,125,91]],[1,[255,224,166]]],
     moss: [[0,[10,30,23]],[.36,[31,92,62]],[.72,[103,176,116]],[1,[238,245,203]]],
@@ -51,6 +53,7 @@
     ignoreClickUntil: 0,
     storyAction: null,
     currentEntry: null,
+    currentToneCap: 1,
     currentSelectionBounds: null,
     rawImages: new Map(),
     coloredImages: new Map(),
@@ -359,6 +362,7 @@
       if (holdingLocalDetail && previousOverlay) state.map.removeLayer(previousOverlay);
       state.overlay = overlay;
       state.currentEntry = entry;
+      state.currentToneCap = image.toneCap;
       syncCompositeOpacity();
       state.metrics.fetch = image.fetchMs;
       state.metrics.decode = image.colorMs;
@@ -366,7 +370,7 @@
       state.metrics.bytes = image.bytes;
       updateDetailLadder();
       if (!state.detailOverlay) {
-        updateLegend(entry, lens);
+        updateLegend(entry, lens, image.toneCap);
         $('map-status').textContent = `${lens.label} · ${entry.cellSize} m cells · snapshot #${state.snapshotId} · ${state.palette}`;
         const fallback = Number(entry.cellSize) !== Number(requested) ? ` Nearest available scale: ${entry.cellSize} m.` : '';
         const guidance = rasterGuidance(entry, lens, fallback);
@@ -456,17 +460,19 @@
     context.drawImage(raw.bitmap, 0, 0);
     const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
     const ramp = palettes[paletteName] || palettes.ember;
+    const focused = paletteName !== 'context' && paletteName !== 'navigator';
+    const toneCap = focused ? occupiedToneCap(pixels.data) : 1;
     for (let i = 0; i < pixels.data.length; i += 4) {
       if (pixels.data[i+3] === 0) continue;
       const encoded = pixels.data[i] / 255;
-      const tone = paletteName === 'context' || paletteName === 'navigator'
-        ? encoded : analysisTone(encoded);
+      const tone = focused ? analysisTone(encoded, toneCap) : encoded;
       const [r,g,b] = rampColor(ramp, tone);
       pixels.data[i] = r; pixels.data[i+1] = g; pixels.data[i+2] = b; pixels.data[i+3] = 255;
     }
     context.putImageData(pixels, 0, 0);
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-    const result = { url: URL.createObjectURL(blob), bytes: raw.bytes, fetchMs: raw.fetchMs, colorMs: performance.now() - colorStarted };
+    const result = { url: URL.createObjectURL(blob), bytes: raw.bytes, fetchMs: raw.fetchMs,
+      colorMs: performance.now() - colorStarted, toneCap };
     state.coloredImages.set(cacheKey, result);
     return result;
   }
@@ -480,8 +486,30 @@
     return a.map((value,index) => Math.round(value + (b[index]-value)*u));
   }
 
-  function analysisTone(t) {
-    return Math.pow(Math.max(0, Math.min(1, t)), 1.18);
+  function occupiedToneCap(data) {
+    const histogram = new Uint32Array(256);
+    let total = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i+3] === 0) continue;
+      histogram[data[i]]++;
+      total++;
+    }
+    return toneCapFromHistogram(histogram,total);
+  }
+
+  function toneCapFromHistogram(histogram,total) {
+    if (!total) return 1;
+    const target = Math.max(1,Math.floor((total-1)*ANALYSIS_TONE_PERCENTILE)+1);
+    let seen = 0;
+    for (let value = 0; value < histogram.length; value++) {
+      seen += histogram[value];
+      if (seen >= target) return Math.max(.25,value/255);
+    }
+    return 1;
+  }
+
+  function analysisTone(t, cap = 1) {
+    return Math.pow(Math.max(0, Math.min(1, t/Math.max(.01,cap))), ANALYSIS_TONE_EXPONENT);
   }
 
   async function crossfade(oldOverlay, newOverlay, targetOpacity) {
@@ -504,12 +532,21 @@
     if (oldOverlay) state.map.removeLayer(oldOverlay);
   }
 
-  function updateLegend(entry, lens) {
+  function updateLegend(entry, lens, toneCap = 1) {
     $('legend').hidden = false;
     $('legend-title').textContent = `${lens.label} per ${entry.cellSize} m cell`;
     $('legend-gradient').className = `legend-gradient ${state.palette}`;
-    const ticks = [0,.25,.5,.75,1].map(t => Math.round(Math.expm1(Number(entry.maxLog || 1)*t)));
-    $('legend-ticks').innerHTML = ticks.map(tick => `<span>${fmt(tick)}</span>`).join('');
+    const focused = Number(toneCap) < .9999;
+    const legendMode = $('legend').querySelector('.legend-heading span');
+    legendMode.textContent = focused ? 'P99.8 LOG' : 'LOG';
+    legendMode.title = focused
+      ? 'The brightest color begins at the occupied-cell 99.8th percentile; higher outliers share the capped color.'
+      : 'Logarithmic value scale';
+    $('legend').dataset.toneCap = Number(toneCap).toFixed(4);
+    const stops = [0,.25,.5,.75,1];
+    const ticks = stops.map(stop => Math.round(Math.expm1(Number(entry.maxLog || 1)*Number(toneCap)*Math.pow(stop,1/ANALYSIS_TONE_EXPONENT))));
+    $('legend-ticks').innerHTML = ticks.map((tick,index) =>
+      `<span>${fmt(tick)}${focused && index === ticks.length-1 ? '+' : ''}</span>`).join('');
   }
 
   function rasterGuidance(entry, lens, fallback) {
@@ -750,6 +787,15 @@
       maxRaw = Math.max(maxRaw, cells[index]);
     }
     const maxLog = Math.max(1, Math.log1p(maxRaw));
+    const histogram = new Uint32Array(256);
+    let occupied = 0;
+    for (let index = 0; index < cells.length; index++) {
+      if (cells[index] <= 0) continue;
+      const encoded = Math.max(1,Math.min(255,Math.round(Math.log1p(cells[index])/maxLog*255)));
+      histogram[encoded]++;
+      occupied++;
+    }
+    const toneCap = toneCapFromHistogram(histogram,occupied);
     const canvas = document.createElement('canvas');
     canvas.width = width; canvas.height = height;
     const context = canvas.getContext('2d');
@@ -757,14 +803,14 @@
     const ramp = palettes[state.palette] || palettes.ember;
     for (let index = 0; index < cells.length; index++) {
       if (cells[index] <= 0) continue;
-      const [r,g,b] = rampColor(ramp, analysisTone(Math.log1p(cells[index])/maxLog));
+      const [r,g,b] = rampColor(ramp, analysisTone(Math.log1p(cells[index])/maxLog,toneCap));
       const offset = index*4;
       image.data[offset] = r; image.data[offset+1] = g; image.data[offset+2] = b; image.data[offset+3] = 255;
     }
     context.putImageData(image,0,0);
     const blob = await new Promise(resolve => canvas.toBlob(resolve,'image/png'));
     if (!blob) throw new Error('Could not encode local detail surface');
-    return { url:URL.createObjectURL(blob), bytes:blob.size, bounds, cellSize, width, height, maxRaw, maxLog };
+    return { url:URL.createObjectURL(blob), bytes:blob.size, bounds, cellSize, width, height, maxRaw, maxLog, toneCap };
   }
 
   async function installLocalDetail(detail, lens, token) {
@@ -792,7 +838,7 @@
     syncCompositeOpacity();
     if (previousOverlay) state.map.removeLayer(previousOverlay);
     if (previousUrl) URL.revokeObjectURL(previousUrl);
-    updateLegend(detail,lens);
+    updateLegend(detail,lens,detail.toneCap);
     $('scale-state').textContent = `AUTO \u2192 ${detail.cellSize} M LOCAL`;
     $('map-status').textContent = `${lens.label} \u00b7 ${detail.cellSize} m local cells + exact objects \u00b7 snapshot #${state.snapshotId} \u00b7 ${state.palette}`;
     return true;
@@ -840,7 +886,7 @@
     const entry = state.currentEntry;
     if (!entry || entry.lensId !== state.lensId) return;
     const lens = state.lensById.get(state.lensId);
-    updateLegend(entry,lens);
+    updateLegend(entry,lens,state.currentToneCap);
     $('scale-state').textContent = state.resolution === 'auto' ? `AUTO \u2192 ${entry.cellSize} M` : `${entry.cellSize} M`;
     $('map-status').textContent = `${lens.label} \u00b7 ${entry.cellSize} m cells \u00b7 snapshot #${state.snapshotId} \u00b7 ${state.palette}`;
   }

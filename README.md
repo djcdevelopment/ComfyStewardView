@@ -77,9 +77,11 @@ ladder, so neighboring cells read as a continuous field while zooming. **Cell gr
 back to hard pixel edges for auditing the underlying bins. This display choice never changes cell values,
 legend thresholds, point queries, or generated artifacts.
 
-The analysis palette applies a fixed focus curve to reserve its brightest colors for genuine peaks, while
-the inferred all-ZDO context starts at a subordinate opacity. The curve is client-side presentation over
-the same logarithmic cell values; context and navigator imagery retain their neutral mapping.
+The analysis palette applies a fixed focus curve and normalizes each raster against the occupied-cell
+99.8th percentile, preventing one extreme cell from flattening the rest of a resolution. Values above that
+robust cap share the brightest color; the legend labels the cap with `+`, while the in-map narrative still
+reports the absolute hottest cell. The inferred all-ZDO context starts at a subordinate opacity and retains
+its neutral, uncapped mapping.
 
 ## Prepare a cache from a save
 
