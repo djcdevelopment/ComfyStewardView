@@ -5,14 +5,15 @@
 1. The world overview states what the selected lens measures and why it may matter.
 2. A coarse raster reveals concentrations without pretending to explain them. The in-map prompt names the current scale, the next payoff, and a direct action.
 3. Shift-drag, the prompt action, or persistent Box zoom shows the same gold dashed window, then loads the next useful resolution and reports the transition.
-4. Inspect selects a region and opens the right-column Inspect tab to answer why it is bright: total, density, world share, and top prefabs. Switching to Job Bench and back preserves the selection.
+4. Inspect is a one-shot gesture: selecting a region opens the right-column Inspect tab, pins the green evidence window, and immediately returns the map to Pan. The explanation shows total, density, world share, and top prefabs; switching to Job Bench and back preserves the selection.
 5. At close range, bounded 8 m and 4 m density surfaces bridge the full-world 16 m raster into exact points. Each local surface and its points come from the same complete bounded query.
 6. If a viewport exceeds the exact-point budget, no spatially biased prefix is shown; the complete raster remains authoritative and asks for a tighter viewport.
 7. Pan mode uses a grab cursor and visibly closes the hand only while the held drag is moving the map.
 8. A local surface replaces the 16 m analysis raster instead of blending two analytical grids. Inferred context becomes a faint locator layer, while press-and-hold peek restores it for orientation.
 9. Close-detail surfaces are double-buffered. The last complete surface remains authoritative during movement and is replaced only after the next surface image loads; hidden coarse rasters never crossfade over it.
 10. Smooth surface sampling is the default at every raster scale. Cell grid reveals the same discrete bins with hard edges; changing this display mode never changes data, thresholds, or queries.
-11. Analysis tone uses a stable client-side focus curve normalized to each raster's occupied-cell 99.8th percentile. The legend marks the robust upper threshold with `+`, the narrative retains the absolute maximum, and inferred context remains subordinate and uncapped.
+11. Analysis tone uses a stable client-side focus curve normalized to each raster's occupied-cell 99.5th percentile. Coarse artifacts use a 2x display copy to tighten smooth interpolation without changing evidence. The legend marks the robust upper threshold with `+`, the narrative retains the absolute maximum, and inferred context remains subordinate and uncapped.
+12. Analysis opacity is semantic by zoom: world overviews below z-4 stay at 100%, while z-4 and closer use the adjustable detail-opacity target. The effective value is explicit beside the control.
 
 ## Independent dimensions
 

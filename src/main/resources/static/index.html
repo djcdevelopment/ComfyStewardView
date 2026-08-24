@@ -60,7 +60,7 @@
       </section>
 
       <section class="card compact-grid">
-        <label><span>ANALYSIS OPACITY</span><output id="analysis-opacity-value">82%</output>
+        <label><span>DETAIL ANALYSIS OPACITY</span><output id="analysis-opacity-value">82% → 100%</output>
           <input id="analysis-opacity" type="range" min="0" max="1" value="0.82" step="0.01">
         </label>
         <label><span>CONTEXT OPACITY</span><output id="context-opacity-value">42%</output>
@@ -92,9 +92,9 @@
         <div class="segments three" id="tool-buttons">
           <button data-tool="pan" class="active">Pan</button>
           <button data-tool="box" title="Drag a gold window, or hold Shift while dragging from any tool">Box zoom</button>
-          <button data-tool="inspect">Inspect</button>
+          <button data-tool="inspect" title="Draw one green inspection area, then return to Pan">Inspect</button>
         </div>
-        <p class="microcopy"><kbd>Click + drag</kbd> pan · <kbd>Shift</kbd> + drag box zoom · <kbd>P</kbd> pan · <kbd>Z</kbd> box · <kbd>I</kbd> inspect</p>
+        <p class="microcopy"><kbd>Click + drag</kbd> pan · <kbd>Shift</kbd> + drag box zoom · Inspect returns to Pan after selection · <kbd>P</kbd> pan · <kbd>Z</kbd> box · <kbd>I</kbd> inspect</p>
       </section>
 
       <section class="card exact-card">
@@ -198,6 +198,7 @@
         <div class="card-heading"><span>INTERACTION TUNING</span><span>live</span></div>
         <label class="number-row"><span>320 → 64 zoom</span><input id="threshold-64" type="number" value="-3.25" step="0.25"></label>
         <label class="number-row"><span>64 → 16 zoom</span><input id="threshold-16" type="number" value="-1.25" step="0.25"></label>
+        <label class="number-row"><span>100% opacity until</span><input id="opacity-detail-zoom" type="number" value="-4.00" step="0.25"></label>
         <label class="number-row"><span>Exact-points zoom</span><input id="threshold-exact" type="number" value="-0.25" step="0.25"></label>
         <label class="number-row"><span>8 → 4 local zoom</span><input id="threshold-detail4" type="number" value="1.25" step="0.25"></label>
         <label class="number-row"><span>Crossfade</span><input id="crossfade-ms" type="number" value="220" min="0" max="2000" step="20"><em>ms</em></label>

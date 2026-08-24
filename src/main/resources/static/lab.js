@@ -4,7 +4,10 @@
   const $ = id => document.getElementById(id);
   const API = '/api';
   const ANALYSIS_TONE_EXPONENT = 1.18;
-  const ANALYSIS_TONE_PERCENTILE = .998;
+  const ANALYSIS_TONE_PERCENTILE = .995;
+  const ANALYSIS_TONE_LABEL = 'P99.5';
+  const ANALYSIS_DISPLAY_SCALE = 2;
+  const ANALYSIS_DISPLAY_SCALE_MAX_PIXELS = 1_000_000;
   const palettes = {
     ember: [[0,[10,20,36]],[.36,[40,76,124]],[.67,[172,178,142]],[.88,[249,125,91]],[1,[255,224,166]]],
     moss: [[0,[10,30,23]],[.36,[31,92,62]],[.72,[103,176,116]],[1,[238,245,203]]],
@@ -321,6 +324,11 @@
     return 320;
   }
 
+  function effectiveAnalysisOpacity() {
+    const detailZoom = Number($('opacity-detail-zoom')?.value ?? -4);
+    return state.map && state.map.getZoom() < detailZoom ? 1 : state.analysisOpacity;
+  }
+
   function layerFor(lensId, resolution, allowFallback = true) {
     const candidates = (state.manifest?.layers || []).filter(layer => layer.lensId === lensId);
     const exact = candidates.find(layer => Number(layer.cellSize) === Number(resolution));
@@ -356,8 +364,9 @@
       const overlay = L.imageOverlay(image.url, leafletBounds(entry.bounds), {
         pane: 'analysisPane', opacity: 0, interactive: false, className: 'analysis-raster'
       }).addTo(state.map);
+      overlay.getElement().dataset.displayScale = String(image.displayScale);
       const previousOverlay = state.overlay;
-      if (!holdingLocalDetail) await crossfade(previousOverlay, overlay, state.analysisOpacity);
+      if (!holdingLocalDetail) await crossfade(previousOverlay, overlay, effectiveAnalysisOpacity());
       if (token !== state.rasterToken) { state.map.removeLayer(overlay); return; }
       if (holdingLocalDetail && previousOverlay) state.map.removeLayer(previousOverlay);
       state.overlay = overlay;
@@ -470,9 +479,21 @@
       pixels.data[i] = r; pixels.data[i+1] = g; pixels.data[i+2] = b; pixels.data[i+3] = 255;
     }
     context.putImageData(pixels, 0, 0);
-    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const displayScale = focused && canvas.width*canvas.height <= ANALYSIS_DISPLAY_SCALE_MAX_PIXELS
+      ? ANALYSIS_DISPLAY_SCALE : 1;
+    let outputCanvas = canvas;
+    if (displayScale > 1) {
+      outputCanvas = document.createElement('canvas');
+      outputCanvas.width = canvas.width*displayScale;
+      outputCanvas.height = canvas.height*displayScale;
+      const outputContext = outputCanvas.getContext('2d');
+      outputContext.imageSmoothingEnabled = false;
+      outputContext.drawImage(canvas, 0, 0, outputCanvas.width, outputCanvas.height);
+    }
+    const blob = await new Promise(resolve => outputCanvas.toBlob(resolve, 'image/png'));
     const result = { url: URL.createObjectURL(blob), bytes: raw.bytes, fetchMs: raw.fetchMs,
-      colorMs: performance.now() - colorStarted, toneCap };
+      colorMs: performance.now() - colorStarted, toneCap, displayScale,
+      sourceWidth: canvas.width, sourceHeight: canvas.height };
     state.coloredImages.set(cacheKey, result);
     return result;
   }
@@ -519,12 +540,13 @@
       if (oldOverlay) state.map.removeLayer(oldOverlay);
       return;
     }
+    const oldOpacity = oldOverlay ? Number(oldOverlay.options.opacity ?? state.analysisOpacity) : 0;
     const started = performance.now();
     await new Promise(resolve => {
       const frame = now => {
         const t = Math.min(1, (now-started)/duration);
         newOverlay.setOpacity(targetOpacity*t);
-        if (oldOverlay) oldOverlay.setOpacity(state.analysisOpacity*(1-t));
+        if (oldOverlay) oldOverlay.setOpacity(oldOpacity*(1-t));
         if (t < 1) requestAnimationFrame(frame); else resolve();
       };
       requestAnimationFrame(frame);
@@ -538,9 +560,9 @@
     $('legend-gradient').className = `legend-gradient ${state.palette}`;
     const focused = Number(toneCap) < .9999;
     const legendMode = $('legend').querySelector('.legend-heading span');
-    legendMode.textContent = focused ? 'P99.8 LOG' : 'LOG';
+    legendMode.textContent = focused ? `${ANALYSIS_TONE_LABEL} LOG` : 'LOG';
     legendMode.title = focused
-      ? 'The brightest color begins at the occupied-cell 99.8th percentile; higher outliers share the capped color.'
+      ? 'The brightest color begins at the occupied-cell 99.5th percentile; higher outliers share the capped color.'
       : 'Logarithmic value scale';
     $('legend').dataset.toneCap = Number(toneCap).toFixed(4);
     const stops = [0,.25,.5,.75,1];
@@ -697,6 +719,7 @@
 
   async function inspectBounds(bounds) {
     const token = ++state.inspectToken;
+    const returnToPan = state.tool === 'inspect';
     state.currentSelectionBounds = bounds;
     if (state.selectionRect) state.map.removeLayer(state.selectionRect);
     state.selectionRect = L.rectangle(bounds, { pane:'selectionPane', renderer:state.selectionRenderer, className:'selection-rectangle', color:'#70d29a', weight:2, fillOpacity:.1 }).addTo(state.map);
@@ -707,6 +730,10 @@
     $('inspect-tab-state').textContent = 'QUERYING';
     showRightPanel('inspect');
     $('inspector').scrollTop = 0;
+    if (returnToPan) {
+      setTool('pan');
+      toast('Inspection pinned · drag to pan');
+    }
     const query = boundsQuery(bounds);
     $('inspect-bounds').textContent = boundsLabel(bounds);
     $('inspect-title').textContent = `Explaining ${state.lensById.get(state.lensId)?.label || state.lensId}`;
@@ -865,8 +892,9 @@
 
   function syncCompositeOpacity() {
     const hasLocalDetail = Boolean(state.detailOverlay);
+    const effectiveAnalysis = effectiveAnalysisOpacity();
     if (state.overlay) state.overlay.setOpacity(hasLocalDetail
-      ? 0 : state.exactLayer ? state.analysisOpacity*.38 : state.analysisOpacity);
+      ? 0 : state.exactLayer ? effectiveAnalysis*.38 : effectiveAnalysis);
     if (state.detailOverlay) state.detailOverlay.setOpacity(state.analysisOpacity);
     if (state.contextOverlay) {
       const closeContextFactor = state.bootstrap?.contextAuthoritative ? .55 : .18;
@@ -880,6 +908,13 @@
       ? `${requestedContext}% → ${effectiveContext}%` : `${requestedContext}%`;
     $('context-opacity-value').title = hasLocalDetail
       ? 'Close detail is active; context has receded automatically. Hold peek to restore it.' : '';
+    const requestedAnalysis = Math.round(state.analysisOpacity*100);
+    const shownAnalysis = Math.round((hasLocalDetail ? state.analysisOpacity : effectiveAnalysis)*100);
+    $('analysis-opacity-value').textContent = requestedAnalysis === shownAnalysis
+      ? `${shownAnalysis}%` : `${requestedAnalysis}% → ${shownAnalysis}%`;
+    $('analysis-opacity-value').title = requestedAnalysis === shownAnalysis
+      ? 'Analysis opacity at this zoom.'
+      : `World overview is pinned to 100% below zoom ${Number($('opacity-detail-zoom')?.value ?? -4).toFixed(2)}; the slider sets closer-detail opacity.`;
   }
 
   function restoreWorldRasterPresentation() {
@@ -1188,7 +1223,6 @@
     }));
     $('analysis-opacity').addEventListener('input', event => {
       state.analysisOpacity = Number(event.target.value);
-      $('analysis-opacity-value').textContent = `${Math.round(state.analysisOpacity*100)}%`;
       syncCompositeOpacity();
     });
     $('context-opacity').addEventListener('input', event => {
@@ -1243,6 +1277,7 @@
     $('inspect-zoom').addEventListener('click', () => state.currentSelectionBounds && state.map.fitBounds(state.currentSelectionBounds,{padding:[30,30]}));
     $('inspect-copy').addEventListener('click', () => state.currentSelectionBounds && copyText(boundsLabel(state.currentSelectionBounds)));
     ['threshold-64','threshold-16','threshold-exact','threshold-detail4'].forEach(id => $(id).addEventListener('change', () => { applyRaster(); scheduleExactPoints(); }));
+    $('opacity-detail-zoom').addEventListener('change', syncCompositeOpacity);
     document.addEventListener('keydown', event => {
       if (/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) return;
       if (event.key === 'Shift' && state.tool === 'pan' && !state.drawing) state.map.dragging.disable();

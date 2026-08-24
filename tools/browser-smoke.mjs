@@ -11,6 +11,7 @@ const denseOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-dense${par
 const detailOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-detail-4m${parsedOutput.ext || '.png'}`);
 const scale320Output = path.join(parsedOutput.dir, `${parsedOutput.name}-320m${parsedOutput.ext || '.png'}`);
 const scale64Output = path.join(parsedOutput.dir, `${parsedOutput.name}-64m${parsedOutput.ext || '.png'}`);
+const opacityBreakpointOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-opacity-z4${parsedOutput.ext || '.png'}`);
 const exercise = process.argv.includes('--exercise');
 const scalePreviews = process.argv.includes('--scale-previews');
 const marqueeOnly = process.argv.includes('--marquee-only');
@@ -19,6 +20,8 @@ const submitJob = process.argv.includes('--submit-job');
 let marqueeState = null;
 let inspectorTabState = null;
 let panGestureState = null;
+let postInspectPanState = null;
+let storyActionState = null;
 let densePointState = null;
 let denseUiState = null;
 let localDetail8State = null;
@@ -87,6 +90,7 @@ const rasterStyleResult = await cdp('Runtime.evaluate', { expression: `(() => {
     context: getComputedStyle(document.querySelector('.context-raster')).imageRendering,
     worldOpacity: Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
     contextOpacity: Number(getComputedStyle(document.querySelector('.context-raster')).opacity),
+    opacityLabel: document.querySelector('#analysis-opacity-value')?.textContent,
     toneCap: Number(document.querySelector('#legend')?.dataset.toneCap),
     legendMode: document.querySelector('#legend .legend-heading span')?.textContent,
     legendLastTick: document.querySelector('#legend-ticks span:last-child')?.textContent,
@@ -108,21 +112,42 @@ if (scalePreviews) {
     status:document.querySelector('#map-status')?.textContent,
     toneCap:Number(document.querySelector('#legend')?.dataset.toneCap),
     legendMode:document.querySelector('#legend .legend-heading span')?.textContent,
-    legendLastTick:document.querySelector('#legend-ticks span:last-child')?.textContent
+    legendLastTick:document.querySelector('#legend-ticks span:last-child')?.textContent,
+    displayScale:Number(document.querySelector('.analysis-raster')?.dataset.displayScale),
+    naturalWidth:document.querySelector('.analysis-raster')?.naturalWidth,
+    naturalHeight:document.querySelector('.analysis-raster')?.naturalHeight,
+    opacity:Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
+    opacityLabel:document.querySelector('#analysis-opacity-value')?.textContent,
+    viewport:document.querySelector('#viewport-label')?.textContent
   }))()`, returnByValue:true });
   const scale320Shot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
   await writeFile(scale320Output, Buffer.from(scale320Shot.data, 'base64'));
   await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
   await new Promise(resolve => setTimeout(resolve, 700));
+  const detailBreakpointResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    status:document.querySelector('#map-status')?.textContent,
+    opacity:Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
+    opacityLabel:document.querySelector('#analysis-opacity-value')?.textContent,
+    viewport:document.querySelector('#viewport-label')?.textContent
+  }))()`, returnByValue:true });
+  const detailBreakpointShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(opacityBreakpointOutput, Buffer.from(detailBreakpointShot.data, 'base64'));
   await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
   await new Promise(resolve => setTimeout(resolve, 1600));
   const scale64Result = await cdp('Runtime.evaluate', { expression: `(() => ({
     status:document.querySelector('#map-status')?.textContent,
     toneCap:Number(document.querySelector('#legend')?.dataset.toneCap),
     legendMode:document.querySelector('#legend .legend-heading span')?.textContent,
-    legendLastTick:document.querySelector('#legend-ticks span:last-child')?.textContent
+    legendLastTick:document.querySelector('#legend-ticks span:last-child')?.textContent,
+    displayScale:Number(document.querySelector('.analysis-raster')?.dataset.displayScale),
+    naturalWidth:document.querySelector('.analysis-raster')?.naturalWidth,
+    naturalHeight:document.querySelector('.analysis-raster')?.naturalHeight,
+    opacity:Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
+    opacityLabel:document.querySelector('#analysis-opacity-value')?.textContent,
+    viewport:document.querySelector('#viewport-label')?.textContent
   }))()`, returnByValue:true });
-  scalePreviewState = { scale320:scale320Result.result.value, scale64:scale64Result.result.value };
+  scalePreviewState = { scale320:scale320Result.result.value,
+    detailBreakpoint:detailBreakpointResult.result.value, scale64:scale64Result.result.value };
   const scale64Shot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
   await writeFile(scale64Output, Buffer.from(scale64Shot.data, 'base64'));
   await cdp('Runtime.evaluate', { expression: `document.querySelector('#go-world')?.click()` });
@@ -185,6 +210,12 @@ if (exercise) {
   if (useStoryAction) {
     await cdp('Runtime.evaluate', { expression: `document.querySelector('#story-action')?.click()` });
     await new Promise(resolve => setTimeout(resolve, 150));
+    const storyActionResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+      active:document.querySelector('#story-action')?.classList.contains('active'),
+      tool:document.querySelector('#tool-state')?.textContent
+    }))()`, returnByValue:true });
+    storyActionState = storyActionResult.result.value;
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-tool="pan"]')?.click()` });
   }
   const rectResult = await cdp('Runtime.evaluate', {
     expression: `(() => { const r=document.querySelector('#map').getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height}; })()`,
@@ -260,6 +291,10 @@ if (exercise) {
   };
   await cdp('Runtime.evaluate', { expression: `document.querySelector('#go-world')?.click()` });
   await new Promise(resolve => setTimeout(resolve, 900));
+  if (useStoryAction) {
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('#story-action')?.click()` });
+    await new Promise(resolve => setTimeout(resolve, 150));
+  }
 
   await drag(r.x+r.w*.37, r.y+r.h*.3, r.x+r.w*.66, r.y+r.h*.72, !useStoryAction, true);
   if (!marqueeOnly) {
@@ -289,6 +324,42 @@ if (exercise) {
         inspectTabActive:document.querySelector('#inspect-panel-tab').classList.contains('active') };
     })()`, returnByValue:true });
     inspectorTabState = tabResult.result.value;
+
+    const postInspectBefore = await cdp('Runtime.evaluate', { expression: `(() => ({
+      cursor:getComputedStyle(document.querySelector('#map')).cursor,
+      tool:document.querySelector('#tool-state')?.textContent,
+      selection:document.querySelector('.selection-rectangle')?.isConnected === true,
+      mapPaneTransform:document.querySelector('#map .leaflet-map-pane')?.style.transform || ''
+    }))()`, returnByValue:true });
+    const inspectPanStartX = r.x+r.w*.48, inspectPanStartY = r.y+r.h*.48;
+    const inspectPanEndX = r.x+r.w*.55, inspectPanEndY = r.y+r.h*.55;
+    await cdp('Input.dispatchMouseEvent', { type:'mousePressed', x:inspectPanStartX, y:inspectPanStartY, button:'left', buttons:1, clickCount:1 });
+    await cdp('Input.dispatchMouseEvent', { type:'mouseMoved', x:inspectPanEndX, y:inspectPanEndY, button:'left', buttons:1 });
+    await new Promise(resolve => setTimeout(resolve, 180));
+    const postInspectActive = await cdp('Runtime.evaluate', { expression: `(() => ({
+      cursor:getComputedStyle(document.querySelector('#map')).cursor,
+      active:document.body.classList.contains('map-pan-active'),
+      mapPaneTransform:document.querySelector('#map .leaflet-map-pane')?.style.transform || ''
+    }))()`, returnByValue:true });
+    await cdp('Input.dispatchMouseEvent', { type:'mouseReleased', x:inspectPanEndX, y:inspectPanEndY, button:'left', buttons:0, clickCount:1 });
+    await new Promise(resolve => setTimeout(resolve, 700));
+    const postInspectAfter = await cdp('Runtime.evaluate', { expression: `(() => ({
+      active:document.body.classList.contains('map-pan-active'),
+      tool:document.querySelector('#tool-state')?.textContent,
+      selection:document.querySelector('.selection-rectangle')?.isConnected === true
+    }))()`, returnByValue:true });
+    postInspectPanState = {
+      readyCursor:postInspectBefore.result.value.cursor,
+      activeCursor:postInspectActive.result.value.cursor,
+      activeWhileHeld:postInspectActive.result.value.active,
+      released:!postInspectAfter.result.value.active,
+      viewportMoved:postInspectBefore.result.value.mapPaneTransform !== postInspectActive.result.value.mapPaneTransform,
+      toolBefore:postInspectBefore.result.value.tool,
+      toolAfter:postInspectAfter.result.value.tool,
+      selectionPreserved:postInspectBefore.result.value.selection && postInspectAfter.result.value.selection
+    };
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('#inspect-zoom')?.click()` });
+    await new Promise(resolve => setTimeout(resolve, 900));
 
     const captureLocalDetail = async threshold => {
       await cdp('Runtime.evaluate', { expression: `(() => {
@@ -429,17 +500,20 @@ await writeFile(output, Buffer.from(shot.data, 'base64'));
 console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marqueeOutput : null,
   denseOutput:exercise ? denseOutput : null, detailOutput:exercise ? detailOutput : null,
   scale320Output:scalePreviews ? scale320Output : null, scale64Output:scalePreviews ? scale64Output : null,
+  opacityBreakpointOutput:scalePreviews ? opacityBreakpointOutput : null,
   state, marqueeState, inspectorTabState, panGestureState, densePointState, denseUiState,
-  localDetail8State, localDetail4State, bufferedHandoffState, rasterStyleState, scalePreviewState, errors }, null, 2));
+  postInspectPanState, storyActionState, localDetail8State, localDetail4State, bufferedHandoffState,
+  rasterStyleState, scalePreviewState, errors }, null, 2));
 await cdp('Browser.close').catch(() => {});
 socket.close();
 setTimeout(() => browser.kill(), 1000).unref();
 if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state.status} ${state.title}`) ||
     rasterStyleState?.initial?.mode !== 'smooth' || rasterStyleState?.initial?.world !== 'auto' ||
-    rasterStyleState?.initial?.context !== 'auto' || rasterStyleState?.initial?.worldOpacity !== .82 ||
+    rasterStyleState?.initial?.context !== 'auto' || rasterStyleState?.initial?.worldOpacity !== 1 ||
     rasterStyleState?.initial?.contextOpacity !== .42 || !rasterStyleState?.initial?.smoothActive ||
+    !/82%.*100%/.test(rasterStyleState?.initial?.opacityLabel || '') ||
     !(rasterStyleState?.initial?.toneCap > 0 && rasterStyleState?.initial?.toneCap < 1) ||
-    rasterStyleState?.initial?.legendMode !== 'P99.8 LOG' || !/\+$/.test(rasterStyleState?.initial?.legendLastTick || '') ||
+    rasterStyleState?.initial?.legendMode !== 'P99.5 LOG' || !/\+$/.test(rasterStyleState?.initial?.legendLastTick || '') ||
     rasterStyleState?.cells?.mode !== 'cells' || !['pixelated','crisp-edges'].includes(rasterStyleState?.cells?.world) ||
     !['pixelated','crisp-edges'].includes(rasterStyleState?.cells?.context) || !rasterStyleState?.cells?.cellsActive ||
     rasterStyleState?.restored?.mode !== 'smooth' || rasterStyleState?.restored?.world !== 'auto' ||
@@ -447,7 +521,12 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
     (scalePreviews && (!/320 m cells/.test(scalePreviewState?.scale320?.status || '') ||
       !/64 m cells/.test(scalePreviewState?.scale64?.status || '') ||
       !(scalePreviewState?.scale64?.toneCap < scalePreviewState?.scale320?.toneCap) ||
-      scalePreviewState?.scale320?.legendMode !== 'P99.8 LOG' || scalePreviewState?.scale64?.legendMode !== 'P99.8 LOG' ||
+      scalePreviewState?.scale320?.legendMode !== 'P99.5 LOG' || scalePreviewState?.scale64?.legendMode !== 'P99.5 LOG' ||
+      scalePreviewState?.scale320?.displayScale !== 2 || scalePreviewState?.scale64?.displayScale !== 2 ||
+      scalePreviewState?.scale320?.naturalWidth < 300 || scalePreviewState?.scale64?.naturalWidth < 1600 ||
+      scalePreviewState?.scale320?.opacity !== 1 || !/z-5\.00/.test(scalePreviewState?.scale320?.viewport || '') ||
+      scalePreviewState?.detailBreakpoint?.opacity !== .82 || !/z-4\.00/.test(scalePreviewState?.detailBreakpoint?.viewport || '') ||
+      scalePreviewState?.scale64?.opacity !== .82 || !/z-3\.00/.test(scalePreviewState?.scale64?.viewport || '') ||
       !/\+$/.test(scalePreviewState?.scale320?.legendLastTick || '') || !/\+$/.test(scalePreviewState?.scale64?.legendLastTick || ''))) ||
     (submitJob && !/RUNNING|QUEUED/.test(state.jobActivity || '')) ||
     (exercise && (!marqueeState?.present || marqueeState.borderStyle !== 'dashed' || !marqueeState.active ||
@@ -461,10 +540,14 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       !panGestureState?.viewportMoved || !/Zoom closer/.test(denseUiState?.title || '') ||
       !/RASTER/.test(denseUiState?.exactState || '') || !/Tighten viewport/.test(denseUiState?.action || '') ||
       denseUiState?.exactPointCanvases !== 0 || denseUiState?.localDetailRasters !== 0 ||
-      (useStoryAction && (!state.storyActionActive || state.toolState !== 'BOX')) ||
+      (useStoryAction && (!storyActionState?.active || storyActionState?.tool !== 'BOX')) ||
       (!marqueeOnly && (!state.inspectorVisible || !/jobs-panel/.test(state.inspectorParent || '') || state.inspectorPosition === 'absolute' ||
         state.inspectRankRows < 1 || !inspectorTabState?.jobsVisible || !inspectorTabState?.inspectVisible ||
         !inspectorTabState?.selectionPreserved || !inspectorTabState?.inspectTabActive ||
+        postInspectPanState?.readyCursor !== 'grab' || postInspectPanState?.activeCursor !== 'grabbing' ||
+        !postInspectPanState?.activeWhileHeld || !postInspectPanState?.released || !postInspectPanState?.viewportMoved ||
+        postInspectPanState?.toolBefore !== 'PAN' || postInspectPanState?.toolAfter !== 'PAN' ||
+        !postInspectPanState?.selectionPreserved ||
         !/Birch trees/.test(state.status) || state.exactState === 'RASTER' ||
         localDetail8State?.localCount !== 1 || localDetail8State?.localCellSize !== 8 ||
         localDetail8State?.localImageRendering !== 'auto' || !localDetail8State?.activeSteps?.includes('8') ||

@@ -78,10 +78,13 @@ back to hard pixel edges for auditing the underlying bins. This display choice n
 legend thresholds, point queries, or generated artifacts.
 
 The analysis palette applies a fixed focus curve and normalizes each raster against the occupied-cell
-99.8th percentile, preventing one extreme cell from flattening the rest of a resolution. Values above that
+99.5th percentile, preventing one extreme cell from flattening the rest of a resolution. Values above that
 robust cap share the brightest color; the legend labels the cap with `+`, while the in-map narrative still
-reports the absolute hottest cell. The inferred all-ZDO context starts at a subordinate opacity and retains
-its neutral, uncapped mapping.
+reports the absolute hottest cell. Coarse analysis artifacts receive a 2x nearest-neighbor display copy
+before smooth browser interpolation, tightening cell transitions without changing their values or bounds.
+World-overview zooms below z-4 hold analysis at 100% opacity; at z-4 and inward, the detail-opacity control
+takes over so enlarged cells do not become glare. The inferred all-ZDO context starts at a subordinate
+opacity and retains its neutral, uncapped mapping.
 
 ## Prepare a cache from a save
 
