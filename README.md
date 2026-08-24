@@ -52,6 +52,9 @@ Hold `Shift` and drag anywhere on the map for a temporary gold dashed zoom windo
 **Box zoom** tool offers the same marquee without holding a modifier. Both gestures change only the
 viewport; **Render active lens** creates the checked full-world resolution ladder.
 
+The map prompt names the current semantic scale and the payoff of the next step. Its gold action
+activates Box zoom directly, then changes to **Inspect an area** once exact objects are available.
+
 ## Prepare a cache from a save
 
 The lab does not duplicate Steward's hand-written save parser. It emits the exact command that

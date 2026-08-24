@@ -33,13 +33,17 @@
     miniContextOverlay: null,
     exactLayer: null,
     exactRenderer: null,
+    selectionRenderer: null,
     selectionRect: null,
     miniSelectionRect: null,
     miniViewport: null,
     drawRect: null,
     drawStart: null,
+    drawMode: null,
     drawing: false,
-    nativeBoxZoom: false,
+    boxGestureActive: false,
+    ignoreClickUntil: 0,
+    storyAction: null,
     currentEntry: null,
     currentSelectionBounds: null,
     rawImages: new Map(),
@@ -161,7 +165,7 @@
       maxZoom: 4,
       zoomSnap: .25,
       preferCanvas: true,
-      boxZoom: true,
+      boxZoom: false,
       zoomAnimation: !reducedMotion,
       fadeAnimation: !reducedMotion,
       markerZoomAnimation: !reducedMotion
@@ -172,6 +176,7 @@
     state.map.createPane('exactPane').style.zIndex = 360;
     state.map.createPane('selectionPane').style.zIndex = 430;
     state.exactRenderer = L.canvas({ pane:'exactPane', padding:.25 });
+    state.selectionRenderer = L.svg({ pane:'selectionPane', padding:.1 });
     state.map.fitBounds(state.worldBounds.pad(.03), { animate: false });
     drawGrid();
 
@@ -193,30 +198,20 @@
     state.minimap.on('click', event => state.map.panTo(event.latlng));
     updateMiniViewport();
 
+    state.map.getContainer().addEventListener('mousedown', event => {
+      if (event.button === 0 && event.shiftKey && state.tool === 'pan') state.map.dragging.disable();
+    }, true);
     state.map.on('mousemove', event => {
       const world = latLngToWorld(event.latlng);
-      $('coords').textContent = state.nativeBoxZoom
+      $('coords').textContent = state.boxGestureActive
         ? 'BOX ZOOM · release to fit the gold window'
         : `X ${Math.round(world.x).toLocaleString()} · Z ${Math.round(world.z).toLocaleString()} · ${state.tool.toUpperCase()} · Shift+drag zoom`;
       if (state.drawing && state.drawRect) state.drawRect.setBounds([state.drawStart, event.latlng]);
     });
     state.map.on('mousedown', startDrawing);
     state.map.on('mouseup', finishDrawing);
-    state.map.on('boxzoomstart', () => {
-      state.nativeBoxZoom = true;
-      document.body.classList.add('box-zoom-active');
-      $('coords').textContent = 'BOX ZOOM · release to fit the gold window';
-    });
-    state.map.on('boxzoomend', event => {
-      state.nativeBoxZoom = false;
-      document.body.classList.remove('box-zoom-active');
-      const bounds = event.boxZoomBounds;
-      const width = Math.abs(bounds.getEast()-bounds.getWest());
-      const height = Math.abs(bounds.getNorth()-bounds.getSouth());
-      toast(`Box zoom accepted · ${fmt(width)} × ${fmt(height)} m`);
-    });
     state.map.on('click', event => {
-      if (state.tool !== 'pan' || state.drawing) return;
+      if (state.tool !== 'pan' || state.drawing || performance.now() < state.ignoreClickUntil) return;
       inspectCell(event.latlng);
     });
     state.map.on('zoomend', () => {
@@ -325,7 +320,8 @@
       updateLegend(entry, lens);
       $('map-status').textContent = `${lens.label} · ${entry.cellSize} m cells · snapshot #${state.snapshotId} · ${state.palette}`;
       const fallback = Number(entry.cellSize) !== Number(requested) ? ` Nearest available scale: ${entry.cellSize} m.` : '';
-      setStory('ready', `${lens.label}: ${fmt(entry.totalValue)} ${lens.units}`, `${lens.payoff} Hottest cell: ${fmt(entry.maxRaw)}.${fallback}`);
+      const guidance = rasterGuidance(entry, lens, fallback);
+      setStory('ready', guidance.title, guidance.copy, guidance.action);
       updateMetrics();
       scheduleExactPoints();
     } catch (error) {
@@ -458,11 +454,49 @@
     $('legend-ticks').innerHTML = ticks.map(tick => `<span>${fmt(tick)}</span>`).join('');
   }
 
-  function setStory(kind, title, copy, action = false) {
+  function rasterGuidance(entry, lens, fallback) {
+    const size = Number(entry.cellSize);
+    const hottest = `Hottest ${size} m cell: ${fmt(entry.maxRaw)}.`;
+    if (size >= 1000) return {
+      title: `World overview · ${lens.label}`,
+      copy: `Bright cells are the strongest concentrations. Box one to trade this 1 km summary for 320 m structure. ${hottest}${fallback}`,
+      action: { type:'box', label:'Box a hotspot' }
+    };
+    if (size >= 320) return {
+      title: `Continental pattern · ${lens.label}`,
+      copy: `Compare the large settlement regions, then box a bright cluster to reveal 64 m neighborhoods. ${hottest}${fallback}`,
+      action: { type:'box', label:'Draw zoom window' }
+    };
+    if (size >= 64) return {
+      title: `Regional pattern · ${lens.label}`,
+      copy: `Settlement shape is visible now. Box a bright cluster for 16 m detail; tighten once more for individual objects. ${hottest}${fallback}`,
+      action: { type:'box', label:'Draw zoom window' }
+    };
+    return {
+      title: `Neighborhood pattern · ${lens.label}`,
+      copy: `These are ${size} m cells. Box a small hotspot once more and they yield to queryable individual objects. ${hottest}${fallback}`,
+      action: { type:'box', label:'Reveal objects' }
+    };
+  }
+
+  function setStory(kind, title, copy, action = null) {
+    const config = action === true ? { type:'render', label:'Render this lens' } : action;
+    state.storyAction = config || null;
     $('map-story').className = `map-story ${kind || ''}`;
     $('story-title').textContent = title;
     $('story-copy').textContent = copy;
-    $('story-action').hidden = !action;
+    $('story-action').hidden = !config;
+    syncStoryAction();
+  }
+
+  function syncStoryAction() {
+    const button = $('story-action');
+    const action = state.storyAction;
+    if (!action) return;
+    const active = action.type === state.tool && (action.type === 'box' || action.type === 'inspect');
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+    button.textContent = active ? (action.type === 'box' ? 'Drag on map…' : 'Drag an area…') : action.label;
   }
 
   function updateMiniViewport() {
@@ -483,48 +517,73 @@
   }
 
   function setTool(tool) {
+    cancelDrawing();
     state.tool = tool;
-    state.drawing = false;
-    if (state.drawRect) { state.map.removeLayer(state.drawRect); state.drawRect = null; }
     if (tool === 'pan') state.map.dragging.enable(); else state.map.dragging.disable();
     document.querySelectorAll('#tool-buttons button').forEach(button => button.classList.toggle('active', button.dataset.tool === tool));
     $('tool-state').textContent = tool.toUpperCase();
     $('coords').textContent = `${tool.toUpperCase()} · move for coordinates · Shift+drag box zoom`;
+    syncStoryAction();
   }
 
   function startDrawing(event) {
-    if (event.originalEvent.shiftKey || state.tool === 'pan' || event.originalEvent.button !== 0) return;
+    const original = event.originalEvent;
+    const mode = original.shiftKey ? 'box' : state.tool;
+    if (original.button !== 0 || mode === 'pan') return;
     state.drawing = true;
     state.drawStart = event.latlng;
+    state.drawMode = mode;
     if (state.drawRect) state.map.removeLayer(state.drawRect);
-    const isBox = state.tool === 'box';
+    const isBox = mode === 'box';
+    state.boxGestureActive = isBox;
+    if (isBox) {
+      document.body.classList.add('box-zoom-active');
+      $('coords').textContent = 'BOX ZOOM · release to fit the gold window';
+    }
     state.drawRect = L.rectangle([event.latlng,event.latlng], {
       pane:'selectionPane', className:isBox ? 'box-zoom-rectangle' : 'selection-rectangle',
+      renderer:state.selectionRenderer, interactive:false,
       color:isBox ? '#f3cf69' : '#70d29a', fillColor:isBox ? '#f3cf69' : '#70d29a',
       dashArray:isBox ? '7,5' : null, weight:isBox ? 2 : 1, fillOpacity:isBox ? .1 : .12
     }).addTo(state.map);
-    L.DomEvent.preventDefault(event.originalEvent);
+    L.DomEvent.preventDefault(original);
   }
 
   function finishDrawing(event) {
     if (!state.drawing || !state.drawRect) return;
-    state.drawing = false;
+    const mode = state.drawMode;
     const bounds = state.drawRect.getBounds();
     const width = Math.abs(bounds.getEast()-bounds.getWest());
     const height = Math.abs(bounds.getNorth()-bounds.getSouth());
-    if (width < 5 || height < 5) {
-      state.map.removeLayer(state.drawRect); state.drawRect = null;
-      inspectCell(event.latlng);
+    const startPoint = state.map.latLngToContainerPoint(state.drawStart);
+    const endPoint = state.map.latLngToContainerPoint(event.latlng);
+    const isClick = Math.abs(endPoint.x-startPoint.x) < 8 || Math.abs(endPoint.y-startPoint.y) < 8;
+    state.ignoreClickUntil = performance.now() + 250;
+    if (isClick) {
+      cancelDrawing();
+      if (mode === 'inspect') inspectCell(event.latlng);
+      else toast('Drag a larger gold window to zoom');
       return;
     }
-    if (state.tool === 'box') {
+    if (mode === 'box') {
       state.map.fitBounds(bounds, { padding:[24,24], animate:!matchMedia('(prefers-reduced-motion: reduce)').matches });
-      state.map.removeLayer(state.drawRect); state.drawRect = null;
+      cancelDrawing();
       toast(`Box zoom · ${fmt(width)} × ${fmt(height)} m`);
     } else {
       inspectBounds(bounds);
-      state.map.removeLayer(state.drawRect); state.drawRect = null;
+      cancelDrawing();
     }
+  }
+
+  function cancelDrawing() {
+    state.drawing = false;
+    state.drawStart = null;
+    state.drawMode = null;
+    state.boxGestureActive = false;
+    document.body.classList.remove('box-zoom-active');
+    if (state.drawRect && state.map) state.map.removeLayer(state.drawRect);
+    state.drawRect = null;
+    if (state.map && state.tool === 'pan') state.map.dragging.enable();
   }
 
   function inspectCell(latlng) {
@@ -540,7 +599,7 @@
   async function inspectBounds(bounds) {
     state.currentSelectionBounds = bounds;
     if (state.selectionRect) state.map.removeLayer(state.selectionRect);
-    state.selectionRect = L.rectangle(bounds, { pane:'selectionPane', className:'selection-rectangle', color:'#70d29a', weight:2, fillOpacity:.1 }).addTo(state.map);
+    state.selectionRect = L.rectangle(bounds, { pane:'selectionPane', renderer:state.selectionRenderer, className:'selection-rectangle', color:'#70d29a', weight:2, fillOpacity:.1 }).addTo(state.map);
     if (state.miniSelectionRect) state.minimap.removeLayer(state.miniSelectionRect);
     state.miniSelectionRect = L.rectangle(bounds, { color:'#70d29a', weight:1, fillOpacity:.08, interactive:false }).addTo(state.minimap);
     $('inspector').hidden = false;
@@ -610,7 +669,8 @@
       const exactCopy = result.truncated
         ? `Showing the first ${fmt(result.points.length)} objects. Tighten the viewport to resolve the full cluster.`
         : `The ${state.currentEntry.cellSize} m raster has yielded to queryable object positions. Inspect a cluster or pan onward.`;
-      setStory(result.points.length ? 'ready' : '', exactTitle, exactCopy);
+      setStory(result.points.length ? 'ready' : '', exactTitle, exactCopy,
+        result.points.length ? { type:'inspect', label:'Inspect an area' } : { type:'box', label:'Try nearby' });
       updateMetrics();
     } catch (error) {
       if (token !== state.exactToken) return;
@@ -836,7 +896,18 @@
     $('fit-world').addEventListener('click', () => state.map.fitBounds(state.worldBounds.pad(.03)));
     $('go-world').addEventListener('click', () => state.map.fitBounds(state.worldBounds.pad(.03)));
     $('go-spawn').addEventListener('click', () => state.map.setView(worldToLatLng(0,0), -1.5));
-    $('story-action').addEventListener('click', () => submitRender(false));
+    $('story-action').addEventListener('click', () => {
+      const action = state.storyAction;
+      if (!action) return;
+      if (action.type === 'render') return submitRender(false);
+      if (action.type === 'inspect') {
+        setTool('inspect');
+        toast('Drag a green area to explain it');
+        return;
+      }
+      setTool('box');
+      toast('Drag a gold window around a bright cluster');
+    });
     $('render-selected').addEventListener('click', () => submitRender(false));
     $('render-all').addEventListener('click', () => submitRender(true));
     $('runs-nav').addEventListener('click', () => focusJobActivity(false));
@@ -857,14 +928,21 @@
     ['threshold-64','threshold-16','threshold-exact'].forEach(id => $(id).addEventListener('change', () => { applyRaster(); scheduleExactPoints(); }));
     document.addEventListener('keydown', event => {
       if (/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) return;
+      if (event.key === 'Shift' && state.tool === 'pan' && !state.drawing) state.map.dragging.disable();
       if (event.key.toLowerCase()==='p') setTool('pan');
       if (event.key.toLowerCase()==='z') setTool('box');
       if (event.key.toLowerCase()==='i') setTool('inspect');
       if (event.key==='Escape') {
-        state.nativeBoxZoom = false;
-        document.body.classList.remove('box-zoom-active');
+        cancelDrawing();
         setTool('pan'); closeInspector();
       }
+    });
+    document.addEventListener('keyup', event => {
+      if (event.key === 'Shift' && state.tool === 'pan' && !state.drawing) state.map.dragging.enable();
+    });
+    window.addEventListener('blur', () => {
+      if (state.drawing) cancelDrawing();
+      else if (state.tool === 'pan') state.map.dragging.enable();
     });
   }
 

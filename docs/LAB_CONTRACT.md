@@ -3,8 +3,8 @@
 ## Product loop
 
 1. The world overview states what the selected lens measures and why it may matter.
-2. A coarse raster reveals concentrations without pretending to explain them.
-3. Shift-drag or persistent Box zoom shows a gold dashed window, then loads the next useful resolution and reports the transition.
+2. A coarse raster reveals concentrations without pretending to explain them. The in-map prompt names the current scale, the next payoff, and a direct action.
+3. Shift-drag, the prompt action, or persistent Box zoom shows the same gold dashed window, then loads the next useful resolution and reports the transition.
 4. Inspect selects a region and answers why it is bright: total, density, world share, and top prefabs.
 5. At close range, bounded exact points replace aggregate ambiguity.
 

@@ -96,30 +96,31 @@ kbd { padding: 1px 4px; border: 1px solid var(--border-2); border-radius: 3px; b
 
 .map-stage { position: relative; min-width: 0; overflow: hidden; background: #0b1018; }
 #map { width: 100%; height: 100%; background: #0b111c; cursor: crosshair; }
-.leaflet-container { background: #0b111c; font-family: var(--sans); }
+#map:focus, #map:focus-visible { outline: none; box-shadow: none; }
+.leaflet-container { position: relative; overflow: hidden; background: #0b111c; font-family: var(--sans); }
+.leaflet-pane,
+.leaflet-pane > svg,
+.leaflet-pane > canvas,
+.leaflet-image-layer,
+.leaflet-layer { position: absolute; left: 0; top: 0; }
 .leaflet-control-zoom { border: 0 !important; box-shadow: 0 3px 14px rgba(0,0,0,.35) !important; }
 .leaflet-control-zoom a { background: #121a27 !important; color: #dce6f4 !important; border-color: var(--border) !important; }
 .leaflet-control-attribution { background: rgba(10,15,23,.8) !important; color: var(--dim); }
 .analysis-raster, .context-raster { image-rendering: pixelated; image-rendering: crisp-edges; }
-.leaflet-zoom-box {
-  border: 2px dashed #f3cf69 !important;
-  outline: 1px solid rgba(255,255,255,.88);
-  outline-offset: -4px;
-  background: rgba(243,207,105,.12) !important;
-  box-shadow: 0 0 20px rgba(243,207,105,.32);
-}
 body.box-zoom-active #map { cursor: nwse-resize; }
 body.box-zoom-active .coords { border-color: #d5ad4e; color: #f5d87e; }
 
-.map-story { position: absolute; z-index: 900; left: 49px; top: 12px; max-width: min(620px, calc(100% - 360px)); display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 6px; background: rgba(14,20,30,.92); box-shadow: 0 6px 20px rgba(0,0,0,.3); backdrop-filter: blur(6px); }
+.map-story { position: absolute; z-index: 900; left: 49px; top: 12px; max-width: min(700px, calc(100% - 250px)); display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 6px; background: rgba(14,20,30,.92); box-shadow: 0 6px 20px rgba(0,0,0,.3); backdrop-filter: blur(6px); }
 .map-story .status-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 8px currentColor; }
+.map-story > div { flex: 1 1 auto; min-width: 0; }
 .map-story.ready .status-dot { background: var(--green); }
 .map-story.error .status-dot { background: var(--red); }
 .map-story.working { border-color: #8c6c2e; }
 .map-story.working .status-dot { background: var(--amber); animation: pulse .8s infinite; }
 .map-story strong { display: block; font-size: 12px; }
 .map-story p { margin: 2px 0 0; color: var(--muted); font: 10px/1.4 var(--mono); }
-.map-story button { margin-left: auto; white-space: nowrap; padding: 6px 9px; border-radius: 4px; background: #345f95; }
+.map-story button { flex: 0 0 auto; margin-left: auto; white-space: nowrap; padding: 7px 10px; border: 1px solid #ca9f3e; border-radius: 4px; background: #59451e; color: #ffe298; }
+.map-story button.active { background: #8a691f; border-color: #f0c453; box-shadow: 0 0 0 2px rgba(240,196,83,.16), 0 0 14px rgba(240,196,83,.18); }
 .map-status { position: absolute; z-index: 900; right: 12px; top: 12px; max-width: 310px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 7px 9px; border: 1px solid var(--border); border-radius: 5px; background: rgba(14,20,30,.9); color: var(--muted); font: 10px var(--mono); }
 
 .navigator-shell { position: absolute; z-index: 900; right: 12px; bottom: 84px; width: 214px; border: 1px solid var(--border-2); border-radius: 6px; overflow: hidden; background: rgba(13,18,27,.94); box-shadow: 0 8px 26px rgba(0,0,0,.4); }
@@ -192,12 +193,12 @@ select, input[type="number"] { height: 27px; border: 1px solid var(--border); bo
 
 .exact-point { stroke-width: 1; }
 .selection-rectangle { stroke: #70d29a; fill: #70d29a; fill-opacity: .11; }
-.box-zoom-rectangle { stroke: #f3cf69; stroke-width: 2; stroke-dasharray: 7 5; fill: #f3cf69; fill-opacity: .1; }
+.box-zoom-rectangle { stroke: #f3cf69; stroke-width: 2; stroke-dasharray: 7 5; fill: #f3cf69; fill-opacity: .12; filter: drop-shadow(0 0 1px rgba(255,255,255,.95)) drop-shadow(0 0 5px rgba(243,207,105,.8)); }
 
 @media (max-width: 1250px) {
   .workspace { grid-template-columns: 270px minmax(420px,1fr); }
   .jobs-panel { position: absolute; z-index: 1300; right: 0; top: 94px; bottom: 0; width: 348px; box-shadow: -10px 0 30px rgba(0,0,0,.45); }
-  .map-story { max-width: calc(100% - 280px); }
+  .map-story { max-width: calc(100% - 410px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

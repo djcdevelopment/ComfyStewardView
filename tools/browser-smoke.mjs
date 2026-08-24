@@ -8,6 +8,8 @@ const output = path.resolve(process.argv[3] || 'data/browser-smoke.png');
 const parsedOutput = path.parse(output);
 const marqueeOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-marquee${parsedOutput.ext || '.png'}`);
 const exercise = process.argv.includes('--exercise');
+const marqueeOnly = process.argv.includes('--marquee-only');
+const useStoryAction = process.argv.includes('--story-action');
 const submitJob = process.argv.includes('--submit-job');
 let marqueeState = null;
 const profile = path.resolve('data/browser-smoke-profile');
@@ -80,6 +82,10 @@ if (exercise) {
     document.querySelector('[data-tool="pan"]')?.click();
   ` });
   await new Promise(resolve => setTimeout(resolve, 1200));
+  if (useStoryAction) {
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('#story-action')?.click()` });
+    await new Promise(resolve => setTimeout(resolve, 150));
+  }
   const rectResult = await cdp('Runtime.evaluate', {
     expression: `(() => { const r=document.querySelector('#map').getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height}; })()`,
     returnByValue: true
@@ -92,12 +98,32 @@ if (exercise) {
     if (captureMarquee) {
       await new Promise(resolve => setTimeout(resolve, 180));
       const captured = await cdp('Runtime.evaluate', { expression: `(() => {
-        const box = document.querySelector('.leaflet-zoom-box');
+        const box = document.querySelector('.box-zoom-rectangle');
         if (!box) return { present:false };
         const style = getComputedStyle(box), rect = box.getBoundingClientRect();
-        return { present:true, borderStyle:style.borderTopStyle, borderColor:style.borderTopColor,
-          backgroundColor:style.backgroundColor, width:rect.width, height:rect.height,
-          active:document.body.classList.contains('box-zoom-active') };
+        const map = document.querySelector('#map');
+        const svg = box.ownerSVGElement;
+        const mapStyle = getComputedStyle(map);
+        const pane = box.closest('.leaflet-pane');
+        const paneStyle = getComputedStyle(pane);
+        const paneRect = pane.getBoundingClientRect();
+        const mapPane = pane.closest('.leaflet-map-pane'), mapPaneStyle = getComputedStyle(mapPane);
+        const mapPaneRect = mapPane.getBoundingClientRect();
+        const svgStyle = getComputedStyle(svg);
+        const mapRect = map.getBoundingClientRect(), svgRect = svg.getBoundingClientRect();
+        return { present:true, borderStyle:style.strokeDasharray === 'none' ? 'solid' : 'dashed',
+          borderColor:style.stroke, backgroundColor:style.fill, strokeOpacity:style.strokeOpacity,
+          fillOpacity:style.fillOpacity, opacity:style.opacity, display:style.display, visibility:style.visibility,
+          left:rect.left, top:rect.top, width:rect.width, height:rect.height, path:box.getAttribute('d'),
+          paneZIndex:paneStyle.zIndex, active:document.body.classList.contains('box-zoom-active'),
+          paneRect:{left:paneRect.left,top:paneRect.top,width:paneRect.width,height:paneRect.height},
+          paneTransform:paneStyle.transform, panePosition:paneStyle.position, paneTop:paneStyle.top, paneLeft:paneStyle.left,
+          mapPaneRect:{left:mapPaneRect.left,top:mapPaneRect.top,width:mapPaneRect.width,height:mapPaneRect.height},
+          mapPaneTransform:mapPaneStyle.transform,
+          mapOutline:mapStyle.outlineStyle, mapBoxShadow:mapStyle.boxShadow,
+          mapRect:{left:mapRect.left,top:mapRect.top,width:mapRect.width,height:mapRect.height},
+          svgRect:{left:svgRect.left,top:svgRect.top,width:svgRect.width,height:svgRect.height},
+          svgTransform:svgStyle.transform, svgViewBox:svg.getAttribute('viewBox') };
       })()`, returnByValue:true });
       marqueeState = captured.result.value;
       const marqueeShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
@@ -105,23 +131,25 @@ if (exercise) {
     }
     await cdp('Input.dispatchMouseEvent', { type:'mouseReleased', x:x2, y:y2, button:'left', buttons:0, clickCount:1, modifiers });
   };
-  await drag(r.x+r.w*.37, r.y+r.h*.3, r.x+r.w*.66, r.y+r.h*.72, true, true);
-  await new Promise(resolve => setTimeout(resolve, 1800));
-  await drag(r.x+r.w*.38, r.y+r.h*.32, r.x+r.w*.68, r.y+r.h*.72, true);
-  await new Promise(resolve => setTimeout(resolve, 2200));
-  await drag(r.x+r.w*.38, r.y+r.h*.32, r.x+r.w*.68, r.y+r.h*.72, true);
-  await new Promise(resolve => setTimeout(resolve, 2200));
-  await drag(r.x+r.w*.34, r.y+r.h*.28, r.x+r.w*.72, r.y+r.h*.76, true);
-  await new Promise(resolve => setTimeout(resolve, 2800));
-  await drag(r.x+r.w*.34, r.y+r.h*.28, r.x+r.w*.72, r.y+r.h*.76, true);
-  await new Promise(resolve => setTimeout(resolve, 3200));
-  await drag(r.x+r.w*.3, r.y+r.h*.24, r.x+r.w*.76, r.y+r.h*.8, true);
-  await new Promise(resolve => setTimeout(resolve, 3200));
-  await drag(r.x+r.w*.3, r.y+r.h*.24, r.x+r.w*.76, r.y+r.h*.8, true);
-  await new Promise(resolve => setTimeout(resolve, 3200));
-  await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-tool="inspect"]')?.click()` });
-  await drag(r.x+r.w*.44, r.y+r.h*.42, r.x+r.w*.59, r.y+r.h*.62);
-  await new Promise(resolve => setTimeout(resolve, 1800));
+  await drag(r.x+r.w*.37, r.y+r.h*.3, r.x+r.w*.66, r.y+r.h*.72, !useStoryAction, true);
+  if (!marqueeOnly) {
+    await new Promise(resolve => setTimeout(resolve, 1800));
+    await drag(r.x+r.w*.38, r.y+r.h*.32, r.x+r.w*.68, r.y+r.h*.72, true);
+    await new Promise(resolve => setTimeout(resolve, 2200));
+    await drag(r.x+r.w*.38, r.y+r.h*.32, r.x+r.w*.68, r.y+r.h*.72, true);
+    await new Promise(resolve => setTimeout(resolve, 2200));
+    await drag(r.x+r.w*.34, r.y+r.h*.28, r.x+r.w*.72, r.y+r.h*.76, true);
+    await new Promise(resolve => setTimeout(resolve, 2800));
+    await drag(r.x+r.w*.34, r.y+r.h*.28, r.x+r.w*.72, r.y+r.h*.76, true);
+    await new Promise(resolve => setTimeout(resolve, 3200));
+    await drag(r.x+r.w*.3, r.y+r.h*.24, r.x+r.w*.76, r.y+r.h*.8, true);
+    await new Promise(resolve => setTimeout(resolve, 3200));
+    await drag(r.x+r.w*.3, r.y+r.h*.24, r.x+r.w*.76, r.y+r.h*.8, true);
+    await new Promise(resolve => setTimeout(resolve, 3200));
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-tool="inspect"]')?.click()` });
+    await drag(r.x+r.w*.44, r.y+r.h*.42, r.x+r.w*.59, r.y+r.h*.62);
+    await new Promise(resolve => setTimeout(resolve, 1800));
+  }
 }
 
 const evaluated = await cdp('Runtime.evaluate', {
@@ -136,6 +164,11 @@ const evaluated = await cdp('Runtime.evaluate', {
     jobSummary: document.querySelector('#job-summary')?.textContent,
     inspectorVisible: !document.querySelector('#inspector')?.hidden,
     exactState: document.querySelector('#exact-state')?.textContent,
+    toolState: document.querySelector('#tool-state')?.textContent,
+    storyAction: document.querySelector('#story-action')?.textContent,
+    storyActionActive: document.querySelector('#story-action')?.classList.contains('active'),
+    leafletPanePosition: getComputedStyle(document.querySelector('#map .leaflet-pane')).position,
+    leafletZoomButtonSize: (() => { const r=document.querySelector('.leaflet-control-zoom-in').getBoundingClientRect(); return {width:r.width,height:r.height}; })(),
     exactCanvases: [...document.querySelectorAll('.leaflet-exact-pane canvas')].map(canvas => {
       const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
       let alphaPixels = 0, minX = canvas.width, minY = canvas.height, maxX = -1, maxY = -1;
@@ -169,5 +202,10 @@ socket.close();
 setTimeout(() => browser.kill(), 1000).unref();
 if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state.status} ${state.title}`) ||
     (submitJob && !/RUNNING|QUEUED/.test(state.jobActivity || '')) ||
-    (exercise && (!state.inspectorVisible || !/Birch trees/.test(state.status) || state.exactState === 'RASTER' ||
-      !marqueeState?.present || marqueeState.borderStyle !== 'dashed' || !marqueeState.active))) process.exitCode = 1;
+    (exercise && (!marqueeState?.present || marqueeState.borderStyle !== 'dashed' || !marqueeState.active ||
+      marqueeState.left < marqueeState.mapRect.left || marqueeState.top < marqueeState.mapRect.top ||
+      marqueeState.left + marqueeState.width > marqueeState.mapRect.left + marqueeState.mapRect.width ||
+      marqueeState.top + marqueeState.height > marqueeState.mapRect.top + marqueeState.mapRect.height ||
+      state.leafletPanePosition !== 'absolute' || state.leafletZoomButtonSize.width < 24 || state.leafletZoomButtonSize.height < 24 ||
+      (useStoryAction && (!state.storyActionActive || state.toolState !== 'BOX')) ||
+      (!marqueeOnly && (!state.inspectorVisible || !/Birch trees/.test(state.status) || state.exactState === 'RASTER'))))) process.exitCode = 1;
