@@ -57,6 +57,7 @@
     storyAction: null,
     currentEntry: null,
     currentToneCap: 1,
+    currentToneFocus: 0,
     currentSelectionBounds: null,
     rawImages: new Map(),
     coloredImages: new Map(),
@@ -316,12 +317,23 @@
   function desiredResolution() {
     if (state.resolution !== 'auto') return Number(state.resolution);
     const zoom = state.map?.getZoom() ?? -5;
+    const threshold160 = Number($('threshold-160').value);
+    const threshold80 = Number($('threshold-80').value);
     const threshold64 = Number($('threshold-64').value);
     const threshold16 = Number($('threshold-16').value);
     if (zoom >= threshold16) return 16;
     if (zoom >= threshold64) return 64;
+    if (zoom >= threshold80) return 80;
+    if (zoom >= threshold160) return 160;
     if (zoom < -5.4) return 1000;
     return 320;
+  }
+
+  function analysisScaleFocus(cellSize) {
+    const size = Math.max(1, Number(cellSize || 64));
+    const coarse = 320;
+    const detail = 64;
+    return Math.max(0, Math.min(1, Math.log(coarse/size) / Math.log(coarse/detail)));
   }
 
   function effectiveAnalysisOpacity() {
@@ -358,7 +370,7 @@
     const lens = state.lensById.get(state.lensId);
     if (!holdingLocalDetail) setStory('', `Loading ${lens.label} at ${entry.cellSize} m…`, 'Fetching gray8 evidence and applying the selected color ramp.');
     try {
-      const image = await coloredImage(artifactUrl(entry), state.palette);
+      const image = await coloredImage(artifactUrl(entry), state.palette, entry);
       if (token !== state.rasterToken) return;
       const swapStarted = performance.now();
       const overlay = L.imageOverlay(image.url, leafletBounds(entry.bounds), {
@@ -372,6 +384,7 @@
       state.overlay = overlay;
       state.currentEntry = entry;
       state.currentToneCap = image.toneCap;
+      state.currentToneFocus = image.toneFocus;
       syncCompositeOpacity();
       state.metrics.fetch = image.fetchMs;
       state.metrics.decode = image.colorMs;
@@ -379,7 +392,7 @@
       state.metrics.bytes = image.bytes;
       updateDetailLadder();
       if (!state.detailOverlay) {
-        updateLegend(entry, lens, image.toneCap);
+        updateLegend(entry, lens, image.toneCap, image.toneFocus);
         $('map-status').textContent = `${lens.label} · ${entry.cellSize} m cells · snapshot #${state.snapshotId} · ${state.palette}`;
         const fallback = Number(entry.cellSize) !== Number(requested) ? ` Nearest available scale: ${entry.cellSize} m.` : '';
         const guidance = rasterGuidance(entry, lens, fallback);
@@ -410,8 +423,8 @@
         const contextEntry = layerFor('all-zdos', desiredResolution());
         const navigatorEntry = layerFor('all-zdos', 320);
         if (!contextEntry || !navigatorEntry) { removeContext(); return; }
-        const context = await coloredImage(artifactUrl(contextEntry), 'context');
-        const navigator = await coloredImage(artifactUrl(navigatorEntry), 'navigator');
+        const context = await coloredImage(artifactUrl(contextEntry), 'context', contextEntry);
+        const navigator = await coloredImage(artifactUrl(navigatorEntry), 'navigator', navigatorEntry);
         if (token !== state.contextToken) return;
         imageUrl = context.url;
         miniImageUrl = navigator.url;
@@ -447,7 +460,7 @@
     return L.latLngBounds([bounds.minZ, bounds.minX], [bounds.maxZ, bounds.maxX]);
   }
 
-  async function coloredImage(url, paletteName) {
+  async function coloredImage(url, paletteName, layer = null) {
     const cacheKey = `${url}|${paletteName}`;
     if (state.coloredImages.has(cacheKey)) return state.coloredImages.get(cacheKey);
     let raw = state.rawImages.get(url);
@@ -470,7 +483,9 @@
     const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
     const ramp = palettes[paletteName] || palettes.ember;
     const focused = paletteName !== 'context' && paletteName !== 'navigator';
-    const toneCap = focused ? occupiedToneCap(pixels.data) : 1;
+    const toneFocus = focused ? analysisScaleFocus(layer?.cellSize) : 0;
+    const robustToneCap = focused ? occupiedToneCap(pixels.data) : 1;
+    const toneCap = 1-(1-robustToneCap)*toneFocus;
     for (let i = 0; i < pixels.data.length; i += 4) {
       if (pixels.data[i+3] === 0) continue;
       const encoded = pixels.data[i] / 255;
@@ -492,7 +507,7 @@
     }
     const blob = await new Promise(resolve => outputCanvas.toBlob(resolve, 'image/png'));
     const result = { url: URL.createObjectURL(blob), bytes: raw.bytes, fetchMs: raw.fetchMs,
-      colorMs: performance.now() - colorStarted, toneCap, displayScale,
+      colorMs: performance.now() - colorStarted, toneCap, toneFocus, displayScale,
       sourceWidth: canvas.width, sourceHeight: canvas.height };
     state.coloredImages.set(cacheKey, result);
     return result;
@@ -554,39 +569,51 @@
     if (oldOverlay) state.map.removeLayer(oldOverlay);
   }
 
-  function updateLegend(entry, lens, toneCap = 1) {
+  function updateLegend(entry, lens, toneCap = 1, toneFocus = 1) {
     $('legend').hidden = false;
     $('legend-title').textContent = `${lens.label} per ${entry.cellSize} m cell`;
     $('legend-gradient').className = `legend-gradient ${state.palette}`;
-    const focused = Number(toneCap) < .9999;
+    const capped = Number(toneCap) < .9999;
+    const fullyFocused = Number(toneFocus) >= .9999;
     const legendMode = $('legend').querySelector('.legend-heading span');
-    legendMode.textContent = focused ? `${ANALYSIS_TONE_LABEL} LOG` : 'LOG';
-    legendMode.title = focused
+    legendMode.textContent = !capped ? 'MAX LOG' : fullyFocused ? `${ANALYSIS_TONE_LABEL} LOG` : 'SCALE LOG';
+    legendMode.title = !capped
+      ? 'This overview is anchored to the absolute layer maximum so large cells do not overstate hotspot area.'
+      : fullyFocused
       ? 'The brightest color begins at the occupied-cell 99.5th percentile; higher outliers share the capped color.'
-      : 'Logarithmic value scale';
+      : 'Scale-locked focus gradually introduces the P99.5 detail cap as cell size decreases.';
     $('legend').dataset.toneCap = Number(toneCap).toFixed(4);
     const stops = [0,.25,.5,.75,1];
     const ticks = stops.map(stop => Math.round(Math.expm1(Number(entry.maxLog || 1)*Number(toneCap)*Math.pow(stop,1/ANALYSIS_TONE_EXPONENT))));
     $('legend-ticks').innerHTML = ticks.map((tick,index) =>
-      `<span>${fmt(tick)}${focused && index === ticks.length-1 ? '+' : ''}</span>`).join('');
+      `<span>${fmt(tick)}${capped && index === ticks.length-1 ? '+' : ''}</span>`).join('');
   }
 
   function rasterGuidance(entry, lens, fallback) {
     const size = Number(entry.cellSize);
+    const finerSizes = [...new Set((state.manifest?.layers || [])
+      .filter(layer => layer.lensId === entry.lensId && Number(layer.cellSize) < size)
+      .map(layer => Number(layer.cellSize)))].sort((a,b) => b-a);
+    const nextSize = finerSizes[0];
     const hottest = `Hottest ${size} m cell: ${fmt(entry.maxRaw)}.`;
     if (size >= 1000) return {
       title: `World overview · ${lens.label}`,
-      copy: `Bright cells are the strongest concentrations. Box one to trade this 1 km summary for 320 m structure. ${hottest}${fallback}`,
+      copy: `Bright cells are the strongest concentrations. Box one to trade this 1 km summary for ${nextSize || 320} m structure. ${hottest}${fallback}`,
       action: { type:'box', label:'Box a hotspot' }
     };
     if (size >= 320) return {
       title: `Continental pattern · ${lens.label}`,
-      copy: `Compare the large settlement regions, then box a bright cluster to reveal 64 m neighborhoods. ${hottest}${fallback}`,
+      copy: `Compare the large settlement regions, then box a bright cluster to reveal ${nextSize || 64} m districts. ${hottest}${fallback}`,
+      action: { type:'box', label:'Draw zoom window' }
+    };
+    if (size > 64) return {
+      title: `District pattern · ${lens.label}`,
+      copy: `Large blocks are resolving into neighborhoods. Box a bright cluster to reveal ${nextSize || 64} m structure. ${hottest}${fallback}`,
       action: { type:'box', label:'Draw zoom window' }
     };
     if (size >= 64) return {
       title: `Regional pattern · ${lens.label}`,
-      copy: `Settlement shape is visible now. Box a bright cluster for 16 m detail; tighten once more for individual objects. ${hottest}${fallback}`,
+      copy: `Settlement shape is visible now. Box a bright cluster for ${nextSize || 16} m detail; tighten once more for individual objects. ${hottest}${fallback}`,
       action: { type:'box', label:'Draw zoom window' }
     };
     return {
@@ -865,7 +892,7 @@
     syncCompositeOpacity();
     if (previousOverlay) state.map.removeLayer(previousOverlay);
     if (previousUrl) URL.revokeObjectURL(previousUrl);
-    updateLegend(detail,lens,detail.toneCap);
+    updateLegend(detail,lens,detail.toneCap,1);
     $('scale-state').textContent = `AUTO \u2192 ${detail.cellSize} M LOCAL`;
     $('map-status').textContent = `${lens.label} \u00b7 ${detail.cellSize} m local cells + exact objects \u00b7 snapshot #${state.snapshotId} \u00b7 ${state.palette}`;
     return true;
@@ -921,7 +948,7 @@
     const entry = state.currentEntry;
     if (!entry || entry.lensId !== state.lensId) return;
     const lens = state.lensById.get(state.lensId);
-    updateLegend(entry,lens,state.currentToneCap);
+    updateLegend(entry,lens,state.currentToneCap,state.currentToneFocus);
     $('scale-state').textContent = state.resolution === 'auto' ? `AUTO \u2192 ${entry.cellSize} M` : `${entry.cellSize} M`;
     $('map-status').textContent = `${lens.label} \u00b7 ${entry.cellSize} m cells \u00b7 snapshot #${state.snapshotId} \u00b7 ${state.palette}`;
   }
@@ -1276,7 +1303,7 @@
     $('inspect-close').addEventListener('click', () => showRightPanel('jobs'));
     $('inspect-zoom').addEventListener('click', () => state.currentSelectionBounds && state.map.fitBounds(state.currentSelectionBounds,{padding:[30,30]}));
     $('inspect-copy').addEventListener('click', () => state.currentSelectionBounds && copyText(boundsLabel(state.currentSelectionBounds)));
-    ['threshold-64','threshold-16','threshold-exact','threshold-detail4'].forEach(id => $(id).addEventListener('change', () => { applyRaster(); scheduleExactPoints(); }));
+    ['threshold-160','threshold-80','threshold-64','threshold-16','threshold-exact','threshold-detail4'].forEach(id => $(id).addEventListener('change', () => { applyRaster(); scheduleExactPoints(); }));
     $('opacity-detail-zoom').addEventListener('change', syncCompositeOpacity);
     document.addEventListener('keydown', event => {
       if (/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) return;

@@ -79,6 +79,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .lens-copy p, .microcopy { margin: 5px 0 0; color: var(--dim); font: 10px/1.55 var(--mono); }
 
 .segments { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 5px; background: #121827; }
+.segments.scale-ladder { grid-template-columns: repeat(7, 1fr); }
+.segments.scale-ladder button { font-size: 10px; }
 .segments.two { grid-template-columns: 1fr 1fr; }
 .segments.three { grid-template-columns: 1fr 1fr 1fr; }
 .segments button { height: 27px; border: 0; border-radius: 3px; padding: 0 3px; color: var(--muted); background: transparent; font-size: 11px; }

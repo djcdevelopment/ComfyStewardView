@@ -41,10 +41,12 @@
 
       <section class="card">
         <div class="card-heading"><span>SCALE</span><span id="scale-state">AUTO</span></div>
-        <div class="segments" id="resolution-buttons">
+        <div class="segments scale-ladder" id="resolution-buttons">
           <button data-resolution="auto" class="active">Auto</button>
           <button data-resolution="1000">1000</button>
           <button data-resolution="320">320</button>
+          <button data-resolution="160">160</button>
+          <button data-resolution="80">80</button>
           <button data-resolution="64">64</button>
           <button data-resolution="16">16</button>
         </div>
@@ -156,6 +158,8 @@
         <div class="check-grid" id="job-resolutions">
           <label><input type="checkbox" value="1000">1000 m</label>
           <label><input type="checkbox" value="320" checked>320 m</label>
+          <label><input type="checkbox" value="160" checked>160 m</label>
+          <label><input type="checkbox" value="80" checked>80 m</label>
           <label><input type="checkbox" value="64" checked>64 m</label>
           <label><input type="checkbox" value="16" checked>16 m</label>
         </div>
@@ -196,7 +200,9 @@
 
       <section class="card">
         <div class="card-heading"><span>INTERACTION TUNING</span><span>live</span></div>
-        <label class="number-row"><span>320 → 64 zoom</span><input id="threshold-64" type="number" value="-3.25" step="0.25"></label>
+        <label class="number-row"><span>320 → 160 zoom</span><input id="threshold-160" type="number" value="-4.25" step="0.25"></label>
+        <label class="number-row"><span>160 → 80 zoom</span><input id="threshold-80" type="number" value="-3.25" step="0.25"></label>
+        <label class="number-row"><span>80 → 64 zoom</span><input id="threshold-64" type="number" value="-2.25" step="0.25"></label>
         <label class="number-row"><span>64 → 16 zoom</span><input id="threshold-16" type="number" value="-1.25" step="0.25"></label>
         <label class="number-row"><span>100% opacity until</span><input id="opacity-detail-zoom" type="number" value="-4.00" step="0.25"></label>
         <label class="number-row"><span>Exact-points zoom</span><input id="threshold-exact" type="number" value="-0.25" step="0.25"></label>

@@ -5,7 +5,7 @@ param(
     [string]$CachePath = '',
     [long]$Snapshot = 0,
     [string]$Lens = 'build-density,birch-trees,all-zdos',
-    [string]$Resolutions = '320,64,16',
+    [string]$Resolutions = '320,160,80,64,16',
     [string]$WorldPath = '',
     [string]$ContextImage = '',
     [int]$Port = 8091,

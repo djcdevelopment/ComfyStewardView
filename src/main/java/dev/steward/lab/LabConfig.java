@@ -19,7 +19,7 @@ public record LabConfig(
         List<Integer> resolutions,
         boolean force) {
 
-    public static final List<Integer> ALLOWED_RESOLUTIONS = List.of(16, 64, 320, 500, 1000);
+    public static final List<Integer> ALLOWED_RESOLUTIONS = List.of(16, 64, 80, 160, 320, 500, 1000);
 
     public static LabConfig parse(String[] arguments) {
         List<String> args = new ArrayList<>(Arrays.asList(arguments));
@@ -36,7 +36,7 @@ public record LabConfig(
         boolean noBrowser = false;
         long snapshot = 0;
         List<String> lenses = List.of("build-density", "birch-trees", "all-zdos");
-        List<Integer> resolutions = List.of(320, 64, 16);
+        List<Integer> resolutions = List.of(320, 160, 80, 64, 16);
         boolean force = false;
 
         for (int i = 0; i < args.size(); i++) {

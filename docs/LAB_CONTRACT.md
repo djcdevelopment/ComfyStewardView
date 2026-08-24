@@ -12,7 +12,7 @@
 8. A local surface replaces the 16 m analysis raster instead of blending two analytical grids. Inferred context becomes a faint locator layer, while press-and-hold peek restores it for orientation.
 9. Close-detail surfaces are double-buffered. The last complete surface remains authoritative during movement and is replaced only after the next surface image loads; hidden coarse rasters never crossfade over it.
 10. Smooth surface sampling is the default at every raster scale. Cell grid reveals the same discrete bins with hard edges; changing this display mode never changes data, thresholds, or queries.
-11. Analysis tone uses a stable client-side focus curve normalized to each raster's occupied-cell 99.5th percentile. Coarse artifacts use a 2x display copy to tighten smooth interpolation without changing evidence. The legend marks the robust upper threshold with `+`, the narrative retains the absolute maximum, and inferred context remains subordinate and uncapped.
+11. Analysis tone is scale-locked: 320 m and coarser layers use their absolute maximum, 160/80 m progressively introduce focus, and 64 m and finer use the occupied-cell P99.5 cap. The 160/80 m rungs keep spatial refinement near 2× per transition. Coarse artifacts use a 2x display copy to tighten smooth interpolation without changing evidence. The legend names the mode, marks capped thresholds with `+`, and retains the absolute maximum in the narrative.
 12. Analysis opacity is semantic by zoom: world overviews below z-4 stay at 100%, while z-4 and closer use the adjustable detail-opacity target. The effective value is explicit beside the control.
 
 ## Independent dimensions
@@ -21,7 +21,7 @@
 |---|---|---|
 | Lens | What am I investigating? | Build, dropped, all ZDOs, coins, birch, tombstones |
 | Time | When, or what changed? | One snapshot; delta is deliberately deferred |
-| Scale | How much detail? | Auto, 1000, 320, 64, 16 m world, 8/4 m local, then exact points |
+| Scale | How much detail? | Auto, 1000, 320, 160, 80, 64, 16 m world, 8/4 m local, then exact points |
 | Surface | How should raster cells read? | Smooth interpolated field or explicit cell grid; display only |
 | Context | Where is it? | Inferred land mask or supplied terrain image |
 | Selection | Why is this place notable? | Cell click or box inspect |

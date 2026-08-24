@@ -10,8 +10,9 @@ const marqueeOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-marquee$
 const denseOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-dense${parsedOutput.ext || '.png'}`);
 const detailOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-detail-4m${parsedOutput.ext || '.png'}`);
 const scale320Output = path.join(parsedOutput.dir, `${parsedOutput.name}-320m${parsedOutput.ext || '.png'}`);
+const scale160Output = path.join(parsedOutput.dir, `${parsedOutput.name}-160m${parsedOutput.ext || '.png'}`);
+const scale80Output = path.join(parsedOutput.dir, `${parsedOutput.name}-80m${parsedOutput.ext || '.png'}`);
 const scale64Output = path.join(parsedOutput.dir, `${parsedOutput.name}-64m${parsedOutput.ext || '.png'}`);
-const opacityBreakpointOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-opacity-z4${parsedOutput.ext || '.png'}`);
 const exercise = process.argv.includes('--exercise');
 const scalePreviews = process.argv.includes('--scale-previews');
 const marqueeOnly = process.argv.includes('--marquee-only');
@@ -106,50 +107,30 @@ const rasterStyleResult = await cdp('Runtime.evaluate', { expression: `(() => {
 rasterStyleState = rasterStyleResult.result.value;
 
 if (scalePreviews) {
-  await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
-  await new Promise(resolve => setTimeout(resolve, 1400));
-  const scale320Result = await cdp('Runtime.evaluate', { expression: `(() => ({
-    status:document.querySelector('#map-status')?.textContent,
-    toneCap:Number(document.querySelector('#legend')?.dataset.toneCap),
-    legendMode:document.querySelector('#legend .legend-heading span')?.textContent,
-    legendLastTick:document.querySelector('#legend-ticks span:last-child')?.textContent,
-    displayScale:Number(document.querySelector('.analysis-raster')?.dataset.displayScale),
-    naturalWidth:document.querySelector('.analysis-raster')?.naturalWidth,
-    naturalHeight:document.querySelector('.analysis-raster')?.naturalHeight,
-    opacity:Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
-    opacityLabel:document.querySelector('#analysis-opacity-value')?.textContent,
-    viewport:document.querySelector('#viewport-label')?.textContent
-  }))()`, returnByValue:true });
-  const scale320Shot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
-  await writeFile(scale320Output, Buffer.from(scale320Shot.data, 'base64'));
-  await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
-  await new Promise(resolve => setTimeout(resolve, 700));
-  const detailBreakpointResult = await cdp('Runtime.evaluate', { expression: `(() => ({
-    status:document.querySelector('#map-status')?.textContent,
-    opacity:Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
-    opacityLabel:document.querySelector('#analysis-opacity-value')?.textContent,
-    viewport:document.querySelector('#viewport-label')?.textContent
-  }))()`, returnByValue:true });
-  const detailBreakpointShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
-  await writeFile(opacityBreakpointOutput, Buffer.from(detailBreakpointShot.data, 'base64'));
-  await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
-  await new Promise(resolve => setTimeout(resolve, 1600));
-  const scale64Result = await cdp('Runtime.evaluate', { expression: `(() => ({
-    status:document.querySelector('#map-status')?.textContent,
-    toneCap:Number(document.querySelector('#legend')?.dataset.toneCap),
-    legendMode:document.querySelector('#legend .legend-heading span')?.textContent,
-    legendLastTick:document.querySelector('#legend-ticks span:last-child')?.textContent,
-    displayScale:Number(document.querySelector('.analysis-raster')?.dataset.displayScale),
-    naturalWidth:document.querySelector('.analysis-raster')?.naturalWidth,
-    naturalHeight:document.querySelector('.analysis-raster')?.naturalHeight,
-    opacity:Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
-    opacityLabel:document.querySelector('#analysis-opacity-value')?.textContent,
-    viewport:document.querySelector('#viewport-label')?.textContent
-  }))()`, returnByValue:true });
-  scalePreviewState = { scale320:scale320Result.result.value,
-    detailBreakpoint:detailBreakpointResult.result.value, scale64:scale64Result.result.value };
-  const scale64Shot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
-  await writeFile(scale64Output, Buffer.from(scale64Shot.data, 'base64'));
+  const captureScale = async outputPath => {
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
+    await new Promise(resolve => setTimeout(resolve, 1400));
+    const result = await cdp('Runtime.evaluate', { expression: `(() => ({
+      status:document.querySelector('#map-status')?.textContent,
+      toneCap:Number(document.querySelector('#legend')?.dataset.toneCap),
+      legendMode:document.querySelector('#legend .legend-heading span')?.textContent,
+      legendLastTick:document.querySelector('#legend-ticks span:last-child')?.textContent,
+      displayScale:Number(document.querySelector('.analysis-raster')?.dataset.displayScale),
+      naturalWidth:document.querySelector('.analysis-raster')?.naturalWidth,
+      naturalHeight:document.querySelector('.analysis-raster')?.naturalHeight,
+      opacity:Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
+      opacityLabel:document.querySelector('#analysis-opacity-value')?.textContent,
+      viewport:document.querySelector('#viewport-label')?.textContent
+    }))()`, returnByValue:true });
+    const shot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+    await writeFile(outputPath, Buffer.from(shot.data, 'base64'));
+    return result.result.value;
+  };
+  const scale320 = await captureScale(scale320Output);
+  const scale160 = await captureScale(scale160Output);
+  const scale80 = await captureScale(scale80Output);
+  const scale64 = await captureScale(scale64Output);
+  scalePreviewState = { scale320, scale160, scale80, scale64 };
   await cdp('Runtime.evaluate', { expression: `document.querySelector('#go-world')?.click()` });
   await new Promise(resolve => setTimeout(resolve, 1200));
 }
@@ -499,8 +480,8 @@ await writeFile(output, Buffer.from(shot.data, 'base64'));
 
 console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marqueeOutput : null,
   denseOutput:exercise ? denseOutput : null, detailOutput:exercise ? detailOutput : null,
-  scale320Output:scalePreviews ? scale320Output : null, scale64Output:scalePreviews ? scale64Output : null,
-  opacityBreakpointOutput:scalePreviews ? opacityBreakpointOutput : null,
+  scale320Output:scalePreviews ? scale320Output : null, scale160Output:scalePreviews ? scale160Output : null,
+  scale80Output:scalePreviews ? scale80Output : null, scale64Output:scalePreviews ? scale64Output : null,
   state, marqueeState, inspectorTabState, panGestureState, densePointState, denseUiState,
   postInspectPanState, storyActionState, localDetail8State, localDetail4State, bufferedHandoffState,
   rasterStyleState, scalePreviewState, errors }, null, 2));
@@ -512,22 +493,32 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
     rasterStyleState?.initial?.context !== 'auto' || rasterStyleState?.initial?.worldOpacity !== 1 ||
     rasterStyleState?.initial?.contextOpacity !== .42 || !rasterStyleState?.initial?.smoothActive ||
     !/82%.*100%/.test(rasterStyleState?.initial?.opacityLabel || '') ||
-    !(rasterStyleState?.initial?.toneCap > 0 && rasterStyleState?.initial?.toneCap < 1) ||
-    rasterStyleState?.initial?.legendMode !== 'P99.5 LOG' || !/\+$/.test(rasterStyleState?.initial?.legendLastTick || '') ||
+    rasterStyleState?.initial?.toneCap !== 1 || rasterStyleState?.initial?.legendMode !== 'MAX LOG' ||
+    /\+$/.test(rasterStyleState?.initial?.legendLastTick || '') ||
     rasterStyleState?.cells?.mode !== 'cells' || !['pixelated','crisp-edges'].includes(rasterStyleState?.cells?.world) ||
     !['pixelated','crisp-edges'].includes(rasterStyleState?.cells?.context) || !rasterStyleState?.cells?.cellsActive ||
     rasterStyleState?.restored?.mode !== 'smooth' || rasterStyleState?.restored?.world !== 'auto' ||
     rasterStyleState?.restored?.context !== 'auto' || !rasterStyleState?.restored?.smoothActive ||
     (scalePreviews && (!/320 m cells/.test(scalePreviewState?.scale320?.status || '') ||
+      !/160 m cells/.test(scalePreviewState?.scale160?.status || '') ||
+      !/80 m cells/.test(scalePreviewState?.scale80?.status || '') ||
       !/64 m cells/.test(scalePreviewState?.scale64?.status || '') ||
-      !(scalePreviewState?.scale64?.toneCap < scalePreviewState?.scale320?.toneCap) ||
-      scalePreviewState?.scale320?.legendMode !== 'P99.5 LOG' || scalePreviewState?.scale64?.legendMode !== 'P99.5 LOG' ||
-      scalePreviewState?.scale320?.displayScale !== 2 || scalePreviewState?.scale64?.displayScale !== 2 ||
-      scalePreviewState?.scale320?.naturalWidth < 300 || scalePreviewState?.scale64?.naturalWidth < 1600 ||
+      scalePreviewState?.scale320?.toneCap !== 1 ||
+      !(scalePreviewState?.scale320?.toneCap > scalePreviewState?.scale160?.toneCap &&
+        scalePreviewState?.scale160?.toneCap > scalePreviewState?.scale80?.toneCap &&
+        scalePreviewState?.scale80?.toneCap > scalePreviewState?.scale64?.toneCap) ||
+      scalePreviewState?.scale320?.legendMode !== 'MAX LOG' || scalePreviewState?.scale160?.legendMode !== 'SCALE LOG' ||
+      scalePreviewState?.scale80?.legendMode !== 'SCALE LOG' || scalePreviewState?.scale64?.legendMode !== 'P99.5 LOG' ||
+      scalePreviewState?.scale320?.displayScale !== 2 || scalePreviewState?.scale160?.displayScale !== 2 ||
+      scalePreviewState?.scale80?.displayScale !== 2 || scalePreviewState?.scale64?.displayScale !== 2 ||
+      scalePreviewState?.scale320?.naturalWidth !== 332 || scalePreviewState?.scale160?.naturalWidth !== 664 ||
+      scalePreviewState?.scale80?.naturalWidth !== 1326 || scalePreviewState?.scale64?.naturalWidth !== 1658 ||
       scalePreviewState?.scale320?.opacity !== 1 || !/z-5\.00/.test(scalePreviewState?.scale320?.viewport || '') ||
-      scalePreviewState?.detailBreakpoint?.opacity !== .82 || !/z-4\.00/.test(scalePreviewState?.detailBreakpoint?.viewport || '') ||
-      scalePreviewState?.scale64?.opacity !== .82 || !/z-3\.00/.test(scalePreviewState?.scale64?.viewport || '') ||
-      !/\+$/.test(scalePreviewState?.scale320?.legendLastTick || '') || !/\+$/.test(scalePreviewState?.scale64?.legendLastTick || ''))) ||
+      scalePreviewState?.scale160?.opacity !== .82 || !/z-4\.00/.test(scalePreviewState?.scale160?.viewport || '') ||
+      scalePreviewState?.scale80?.opacity !== .82 || !/z-3\.00/.test(scalePreviewState?.scale80?.viewport || '') ||
+      scalePreviewState?.scale64?.opacity !== .82 || !/z-2\.00/.test(scalePreviewState?.scale64?.viewport || '') ||
+      /\+$/.test(scalePreviewState?.scale320?.legendLastTick || '') || !/\+$/.test(scalePreviewState?.scale160?.legendLastTick || '') ||
+      !/\+$/.test(scalePreviewState?.scale80?.legendLastTick || '') || !/\+$/.test(scalePreviewState?.scale64?.legendLastTick || ''))) ||
     (submitJob && !/RUNNING|QUEUED/.test(state.jobActivity || '')) ||
     (exercise && (!marqueeState?.present || marqueeState.borderStyle !== 'dashed' || !marqueeState.active ||
       marqueeState.left < marqueeState.mapRect.left || marqueeState.top < marqueeState.mapRect.top ||

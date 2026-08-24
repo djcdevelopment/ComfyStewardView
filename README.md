@@ -40,7 +40,7 @@ To generate the first scale ladder from the command line:
 
 ```powershell
 .\lab.ps1 render -Snapshot 108 -Lens 'build-density,birch-trees,all-zdos' `
-  -Resolutions '320,64,16'
+  -Resolutions '320,160,80,64,16'
 ```
 
 The same job can be launched from the lab's Job bench, where query time, image time, file size,
@@ -72,14 +72,15 @@ Close-detail transitions are double-buffered: movement pauses the exact dots but
 8/4 metre surface until its replacement image has decoded. Hidden full-world rasters refresh without a
 crossfade, so they cannot flash back over a valid local surface.
 
-Raster surfaces use smooth browser interpolation by default across the entire 1000/320/64/16/8/4 metre
+Raster surfaces use smooth browser interpolation by default across the entire 1000/320/160/80/64/16/8/4 metre
 ladder, so neighboring cells read as a continuous field while zooming. **Cell grid** switches every raster
 back to hard pixel edges for auditing the underlying bins. This display choice never changes cell values,
 legend thresholds, point queries, or generated artifacts.
 
-The analysis palette applies a fixed focus curve and normalizes each raster against the occupied-cell
-99.5th percentile, preventing one extreme cell from flattening the rest of a resolution. Values above that
-robust cap share the brightest color; the legend labels the cap with `+`, while the in-map narrative still
+The analysis palette uses a scale-locked focus curve: 320 m and coarser overviews retain their absolute
+maximum, then 160/80 m surfaces progressively introduce the occupied-cell P99.5 cap used at 64 m and finer.
+This keeps a large parent cell from painting an implausibly broad coral region while preserving strong local
+highlights. Capped values share the brightest color and the legend marks them with `+`; the narrative still
 reports the absolute hottest cell. Coarse analysis artifacts receive a 2x nearest-neighbor display copy
 before smooth browser interpolation, tightening cell transitions without changing their values or bounds.
 World-overview zooms below z-4 hold analysis at 100% opacity; at z-4 and inward, the detail-opacity control
@@ -109,7 +110,7 @@ to the source save. Use a copied or immutable save artifact, not a live server f
 - Tombstones — where player deaths concentrate.
 
 Every lens is rendered as an aligned gray8 raster. Color is applied in the browser, allowing
-palette and opacity changes without rebuilding images. The full-world scale ladder is 1000, 320,
+palette and opacity changes without rebuilding images. The full-world scale ladder is 1000, 320, 160, 80,
 64, and 16 metre cells. Bounded 8 and 4 metre client-side surfaces bridge the last step into exact
 points without allocating enormous full-world images.
 
