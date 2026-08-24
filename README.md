@@ -53,13 +53,16 @@ Hold `Shift` and drag anywhere on the map for a temporary gold dashed zoom windo
 viewport; **Render active lens** creates the checked full-world resolution ladder.
 
 The map prompt names the current semantic scale and the payoff of the next step. Its gold action
-activates Box zoom directly, then changes to **Inspect an area** once exact objects are available.
+activates Box zoom through the broad overview scales, then changes to **Inspect an area** for the
+64 and 16 metre raster stages—before exact dots are available.
 Inspection results open in the right-column **Inspect** tab, where the selection summary and ranked
 prefab explanation can use the full vertical workspace without covering the map.
 
 The cache chip names the worlds actually present in the attached read-only cache. Dense exact queries
 never draw an arbitrary database-order prefix: the complete raster remains visible until every exact
-object in the viewport fits within the point budget. In Pan mode, hold and drag the map; the grab cursor
+object in the viewport fits within the 5,000-point display budget. Inspection is independent of that
+display budget: a green selection returns its complete aggregate count and explanation, and identifies
+when exact dots remain hidden. In Pan mode, hold and drag the map; the grab cursor
 changes to a closed hand for the duration of the gesture.
 
 The 16 metre image remains the finest full-world artifact. Once a bounded viewport fits within the

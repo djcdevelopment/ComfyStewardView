@@ -9,6 +9,7 @@
   const ANALYSIS_TONE_LABEL = 'P99.5';
   const ANALYSIS_DISPLAY_SCALE = 2;
   const ANALYSIS_DISPLAY_SCALE_MAX_PIXELS = 1_000_000;
+  const EXACT_POINT_LIMIT = 5_000;
   const palettes = {
     ember: [[0,[10,20,36]],[.36,[40,76,124]],[.67,[172,178,142]],[.88,[249,125,91]],[1,[255,224,166]]],
     moss: [[0,[10,30,23]],[.36,[31,92,62]],[.72,[103,176,116]],[1,[238,245,203]]],
@@ -630,13 +631,13 @@
     };
     if (size >= 64) return {
       title: `Regional pattern · ${lens.label}`,
-      copy: `Settlement shape is visible now. Box a bright cluster for ${nextSize || 16} m detail; tighten once more for individual objects. ${hottest}${fallback}`,
-      action: { type:'box', label:'Draw zoom window' }
+      copy: `Settlement shape is visible now. Draw a green area to count and explain it, or zoom farther for ${nextSize || 16} m detail. ${hottest}${fallback}`,
+      action: { type:'inspect', label:'Inspect an area' }
     };
     return {
       title: `Neighborhood pattern · ${lens.label}`,
-      copy: `These are ${size} m cells. Box a small hotspot once more and they yield to queryable individual objects. ${hottest}${fallback}`,
-      action: { type:'box', label:'Reveal objects' }
+      copy: `These ${size} m cells are queryable now. Draw a green area to count and explain it; zoom closer only when you want every position. ${hottest}${fallback}`,
+      action: { type:'inspect', label:'Inspect an area' }
     };
   }
 
@@ -782,6 +783,7 @@
     $('inspect-bounds').textContent = boundsLabel(bounds);
     $('inspect-title').textContent = `Explaining ${state.lensById.get(state.lensId)?.label || state.lensId}`;
     $('inspect-total').textContent = $('inspect-share').textContent = $('inspect-density').textContent = '…';
+    $('inspect-point-warning').hidden = true;
     $('inspect-top').innerHTML = '<div class="rank-row"><span>Scanning selected bounds…</span></div>';
     const started = performance.now();
     try {
@@ -794,6 +796,10 @@
       $('inspect-share').textContent = `${Number(result.worldSharePct).toFixed(result.worldSharePct < 1 ? 2 : 1)}%`;
       $('inspect-density').textContent = fmt(result.densityPerSquareKm);
       $('inspect-tab-state').textContent = `${fmt(result.total)} ${result.units}`.toUpperCase();
+      const pointWarning = $('inspect-point-warning');
+      pointWarning.hidden = Number(result.total) <= EXACT_POINT_LIMIT;
+      pointWarning.textContent = pointWarning.hidden ? ''
+        : `${fmt(result.total)} ${result.units} are inside this area. This summary is complete; exact dots stay hidden above ${fmt(EXACT_POINT_LIMIT)}.`;
       const max = Math.max(1,...result.top.map(item => item.value));
       $('inspect-top').innerHTML = result.top.length ? result.top.map(item =>
         `<div class="rank-row"><span>${escapeHtml(item.label)}</span><span>${fmt(item.value)}</span><div class="rank-bar"><i style="width:${item.value/max*100}%"></i></div></div>`).join('')
@@ -801,6 +807,7 @@
     } catch (error) {
       if (token !== state.inspectToken) return;
       $('inspect-tab-state').textContent = 'QUERY FAILED';
+      $('inspect-point-warning').hidden = true;
       $('inspect-top').innerHTML = `<div class="rank-row"><span>${escapeHtml(error.message)}</span></div>`;
     }
   }
@@ -980,7 +987,7 @@
     const bounds = localDetailBounds(state.map.getBounds(),detailResolution);
     const started = performance.now();
     try {
-      const result = await fetchJson(`${API}/points?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&limit=5000&${boundsQuery(bounds)}`);
+      const result = await fetchJson(`${API}/points?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&limit=${EXACT_POINT_LIMIT}&${boundsQuery(bounds)}`);
       if (token !== state.exactToken) return;
       const lens = state.lensById.get(state.lensId);
       state.metrics.exact = performance.now()-started;
@@ -988,9 +995,9 @@
         clearExactPoints(false);
         restoreWorldRasterPresentation();
         $('exact-state').textContent = `> ${fmt(result.limit)} · RASTER`;
-        setStory('', `Zoom closer to reveal exact ${lens.units}`,
-          `At least ${fmt(result.minimumCount)} ${lens.units} are inside this viewport. The raster remains complete; tighten the view to reveal every position together.`,
-          { type:'box', label:'Tighten viewport' });
+        setStory('warn', `At least ${fmt(result.minimumCount)} ${lens.units} in this viewport`,
+          `The raster is complete. Draw a green area for its full count and explanation; zoom closer only when you want every position.`,
+          { type:'inspect', label:'Inspect an area' });
         updateMetrics();
         return;
       }
@@ -1352,6 +1359,7 @@
     state.selectionRect = state.miniSelectionRect = null;
     $('inspect-content').hidden = true;
     $('inspect-empty').hidden = false;
+    $('inspect-point-warning').hidden = true;
     $('inspect-tab-state').textContent = 'NO AREA';
     showRightPanel('jobs');
   }

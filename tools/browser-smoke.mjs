@@ -8,6 +8,7 @@ const output = path.resolve(process.argv[3] || 'data/browser-smoke.png');
 const parsedOutput = path.parse(output);
 const marqueeOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-marquee${parsedOutput.ext || '.png'}`);
 const denseOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-dense${parsedOutput.ext || '.png'}`);
+const earlyInspectOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-early-inspect${parsedOutput.ext || '.png'}`);
 const detailOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-detail-4m${parsedOutput.ext || '.png'}`);
 const scale320Output = path.join(parsedOutput.dir, `${parsedOutput.name}-320m${parsedOutput.ext || '.png'}`);
 const scale160Output = path.join(parsedOutput.dir, `${parsedOutput.name}-160m${parsedOutput.ext || '.png'}`);
@@ -25,6 +26,7 @@ let postInspectPanState = null;
 let storyActionState = null;
 let densePointState = null;
 let denseUiState = null;
+let earlyInspectState = null;
 let localDetail8State = null;
 let localDetail4State = null;
 let bufferedHandoffState = null;
@@ -122,6 +124,7 @@ if (scalePreviews) {
       naturalHeight:document.querySelector('.analysis-raster')?.naturalHeight,
       opacity:Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
       opacityLabel:document.querySelector('#analysis-opacity-value')?.textContent,
+      storyAction:document.querySelector('#story-action')?.textContent,
       viewport:document.querySelector('#viewport-label')?.textContent
     }))()`, returnByValue:true });
     const shot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
@@ -182,6 +185,55 @@ if (exercise) {
   denseUiState = denseUiResult.result.value;
   const denseShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
   await writeFile(denseOutput, Buffer.from(denseShot.data, 'base64'));
+  const earlyInspectRect = await cdp('Runtime.evaluate', {
+    expression: `(() => { const r=document.querySelector('#map').getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height}; })()`,
+    returnByValue:true
+  });
+  const denseMap = earlyInspectRect.result.value;
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#story-action')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 120));
+  await cdp('Runtime.evaluate', { expression: `
+    document.querySelectorAll('.map-story,.navigator-shell,.map-status,.legend,.leaflet-control-container')
+      .forEach(element => element.style.pointerEvents='none');
+  ` });
+  await cdp('Input.dispatchMouseEvent', {
+    type:'mousePressed', x:denseMap.x+denseMap.w*.01, y:denseMap.y+denseMap.h*.01,
+    button:'left', buttons:1, clickCount:1
+  });
+  await cdp('Input.dispatchMouseEvent', {
+    type:'mouseMoved', x:denseMap.x+denseMap.w*.5, y:denseMap.y+denseMap.h*.5,
+    button:'left', buttons:1
+  });
+  await cdp('Input.dispatchMouseEvent', {
+    type:'mouseMoved', x:denseMap.x+denseMap.w*.99, y:denseMap.y+denseMap.h*.99,
+    button:'left', buttons:1
+  });
+  await cdp('Input.dispatchMouseEvent', {
+    type:'mouseReleased', x:denseMap.x+denseMap.w*.99, y:denseMap.y+denseMap.h*.99,
+    button:'left', buttons:0, clickCount:1
+  });
+  await cdp('Runtime.evaluate', { expression: `
+    document.querySelectorAll('.map-story,.navigator-shell,.map-status,.legend,.leaflet-control-container')
+      .forEach(element => element.style.pointerEvents='');
+  ` });
+  await new Promise(resolve => setTimeout(resolve, 1800));
+  const earlyInspectResult = await cdp('Runtime.evaluate', { expression: `(() => {
+    const warning=document.querySelector('#inspect-point-warning');
+    return {
+      tool:document.querySelector('#tool-state')?.textContent,
+      selectionPresent:Boolean(document.querySelector('.selection-rectangle')),
+      inspectorVisible:!document.querySelector('#inspector')?.hidden,
+      total:Number((document.querySelector('#inspect-total')?.textContent || '').replace(/[^0-9]/g,'')),
+      tabState:document.querySelector('#inspect-tab-state')?.textContent,
+      warningVisible:Boolean(warning && !warning.hidden),
+      warning:warning?.textContent,
+      exactPointCanvases:document.querySelectorAll('.leaflet-exact-pane canvas').length
+    };
+  })()`, returnByValue:true });
+  earlyInspectState = earlyInspectResult.result.value;
+  const earlyInspectShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(earlyInspectOutput, Buffer.from(earlyInspectShot.data, 'base64'));
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#inspect-close')?.click()` });
   await cdp('Runtime.evaluate', { expression: `document.querySelector('#go-world')?.click()` });
   await new Promise(resolve => setTimeout(resolve, 1100));
 
@@ -481,10 +533,11 @@ await mkdir(path.dirname(output), { recursive: true });
 await writeFile(output, Buffer.from(shot.data, 'base64'));
 
 console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marqueeOutput : null,
-  denseOutput:exercise ? denseOutput : null, detailOutput:exercise ? detailOutput : null,
+  denseOutput:exercise ? denseOutput : null, earlyInspectOutput:exercise ? earlyInspectOutput : null,
+  detailOutput:exercise ? detailOutput : null,
   scale320Output:scalePreviews ? scale320Output : null, scale160Output:scalePreviews ? scale160Output : null,
   scale80Output:scalePreviews ? scale80Output : null, scale64Output:scalePreviews ? scale64Output : null,
-  state, marqueeState, inspectorTabState, panGestureState, densePointState, denseUiState,
+  state, marqueeState, inspectorTabState, panGestureState, densePointState, denseUiState, earlyInspectState,
   postInspectPanState, storyActionState, localDetail8State, localDetail4State, bufferedHandoffState,
   rasterStyleState, scalePreviewState, errors }, null, 2));
 await cdp('Browser.close').catch(() => {});
@@ -521,6 +574,8 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       scalePreviewState?.scale160?.opacity !== .82 || !/z-4\.00/.test(scalePreviewState?.scale160?.viewport || '') ||
       scalePreviewState?.scale80?.opacity !== .82 || !/z-3\.00/.test(scalePreviewState?.scale80?.viewport || '') ||
       scalePreviewState?.scale64?.opacity !== .82 || !/z-2\.00/.test(scalePreviewState?.scale64?.viewport || '') ||
+      !/Draw zoom window/.test(scalePreviewState?.scale80?.storyAction || '') ||
+      !/Inspect an area/.test(scalePreviewState?.scale64?.storyAction || '') ||
       /\+$/.test(scalePreviewState?.scale320?.legendLastTick || '') || !/\+$/.test(scalePreviewState?.scale160?.legendLastTick || '') ||
       !/\+$/.test(scalePreviewState?.scale80?.legendLastTick || '') || !/\+$/.test(scalePreviewState?.scale64?.legendLastTick || ''))) ||
     (submitJob && !/RUNNING|QUEUED/.test(state.jobActivity || '')) ||
@@ -532,9 +587,14 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       !/ONLY/.test(state.cacheChip || '') || !densePointState?.truncated || densePointState.presented !== 0 ||
       densePointState.minimumCount !== densePointState.limit + 1 || panGestureState?.readyCursor !== 'grab' ||
       panGestureState?.activeCursor !== 'grabbing' || !panGestureState?.activeWhileHeld || !panGestureState?.released ||
-      !panGestureState?.viewportMoved || !/Zoom closer/.test(denseUiState?.title || '') ||
-      !/RASTER/.test(denseUiState?.exactState || '') || !/Tighten viewport/.test(denseUiState?.action || '') ||
+      !panGestureState?.viewportMoved || !/At least/.test(denseUiState?.title || '') ||
+      !/complete/.test(denseUiState?.copy || '') || !/RASTER/.test(denseUiState?.exactState || '') ||
+      !/Inspect an area/.test(denseUiState?.action || '') ||
       denseUiState?.exactPointCanvases !== 0 || denseUiState?.localDetailRasters !== 0 ||
+      earlyInspectState?.tool !== 'PAN' || !earlyInspectState?.selectionPresent ||
+      !earlyInspectState?.inspectorVisible || earlyInspectState?.total <= 5000 ||
+      !earlyInspectState?.warningVisible || !/summary is complete/.test(earlyInspectState?.warning || '') ||
+      !/5,000/.test(earlyInspectState?.warning || '') || earlyInspectState?.exactPointCanvases !== 0 ||
       (useStoryAction && (!storyActionState?.active || storyActionState?.tool !== 'BOX')) ||
       (!marqueeOnly && (!state.inspectorVisible || !/jobs-panel/.test(state.inspectorParent || '') || state.inspectorPosition === 'absolute' ||
         state.inspectRankRows < 1 || !inspectorTabState?.jobsVisible || !inspectorTabState?.inspectVisible ||

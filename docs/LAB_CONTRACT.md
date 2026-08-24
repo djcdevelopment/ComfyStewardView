@@ -5,9 +5,9 @@
 1. The world overview states what the selected lens measures and why it may matter.
 2. A coarse raster reveals concentrations without pretending to explain them. The in-map prompt names the current scale, the next payoff, and a direct action.
 3. Shift-drag, the prompt action, or persistent Box zoom shows the same gold dashed window, then loads the next useful resolution and reports the transition.
-4. Inspect is a one-shot gesture: selecting a region opens the right-column Inspect tab, pins the green evidence window, and immediately returns the map to Pan. The explanation shows total, density, world share, and top prefabs; switching to Job Bench and back preserves the selection.
+4. Inspect is a one-shot gesture available from the last two raster stages, before exact points are drawable: selecting a region opens the right-column Inspect tab, pins the green evidence window, and immediately returns the map to Pan. The explanation shows the complete aggregate total, density, world share, and top prefabs; switching to Job Bench and back preserves the selection.
 5. At close range, bounded 8 m and 4 m density surfaces bridge the full-world 16 m raster into exact points. Each local surface and its points come from the same complete bounded query.
-6. If a viewport exceeds the exact-point budget, no spatially biased prefix is shown; the complete raster remains authoritative and asks for a tighter viewport.
+6. If a viewport exceeds the 5,000-point display budget, no spatially biased prefix is shown; the complete raster remains authoritative and offers Inspect. A green selection is not constrained by the dot budget: it reports its complete aggregate count and explains when exact dots remain hidden.
 7. Pan mode uses a grab cursor and visibly closes the hand only while the held drag is moving the map.
 8. A local surface replaces the 16 m analysis raster instead of blending two analytical grids. Inferred context becomes a faint locator layer, while press-and-hold peek restores it for orientation.
 9. Close-detail surfaces are double-buffered. The last complete surface remains authoritative during movement and is replaced only after the next surface image loads; hidden coarse rasters never crossfade over it.
