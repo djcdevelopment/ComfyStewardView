@@ -11,6 +11,7 @@ import com.valheim.viewer.db.BaselineBuilder;
 import com.valheim.viewer.db.RenderedLayerBuilder;
 import com.valheim.viewer.db.SnapshotIngestService;
 import com.valheim.viewer.db.SnapshotProvenance;
+import com.valheim.viewer.export.BuildingGeometryExporter;
 import com.valheim.viewer.extractor.AlertBuilder;
 import com.valheim.viewer.extractor.AlertResult;
 import com.valheim.viewer.extractor.ClassificationStore;
@@ -75,6 +76,8 @@ public class Main {
         boolean deferIndexes = false;
         String importArchivePath = null;
         int importLatest = 6;
+        String exportGeometryPath = null;
+        boolean exportAllCategories = false;
 
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -133,6 +136,12 @@ public class Main {
                 case "--import-latest":
                     if (i + 1 < args.length) importLatest = Integer.parseInt(args[++i]);
                     break;
+                case "--export-building-geometry":
+                    if (i + 1 < args.length) exportGeometryPath = args[++i];
+                    break;
+                case "--export-all-categories":
+                    exportAllCategories = true;
+                    break;
                 default:
                     if (!args[i].startsWith("--")) dbPath = args[i];
             }
@@ -143,7 +152,7 @@ public class Main {
         File dbFile = new File(dbPath);
         if (!dbFile.exists()) {
             System.err.println("ERROR: Save file not found: " + dbFile.getAbsolutePath());
-            System.err.println("Usage: java -Xmx3g -jar world-viewer.jar [save.db] [--port 8003] [--build-cache] [--render-layers] [--batch-only] [--cache-fields] [--defer-indexes] [--import-archive <dir>] [--import-latest N] [--static-dir <dir>]");
+            System.err.println("Usage: java -Xmx3g -jar world-viewer.jar [save.db] [--port 8003] [--build-cache] [--render-layers] [--batch-only] [--cache-fields] [--defer-indexes] [--import-archive <dir>] [--import-latest N] [--static-dir <dir>] [--export-building-geometry <out.parquet>] [--export-all-categories]");
             System.exit(1);
         }
 
@@ -195,6 +204,20 @@ public class Main {
             }
         }
 
+        BuildingGeometryExporter geometryExporter = null;
+        if (exportGeometryPath != null) {
+            try {
+                geometryExporter = new BuildingGeometryExporter(
+                    new File(exportGeometryPath), exportAllCategories);
+                parser.setGeometryExporter(geometryExporter);
+                log.info("Building-geometry export lane active: {}", exportGeometryPath);
+            } catch (Exception e) {
+                log.error("Failed to initialize building-geometry exporter", e);
+                System.exit(1);
+                return;
+            }
+        }
+
         // Parse FIRST (synchronously), then start Javalin
         // This tests whether Javalin startup interferes with parse performance
         log.info("Parsing world data...");
@@ -205,6 +228,9 @@ public class Main {
             log.error("Parse failed", e);
             if (analyticsCache != null) {
                 try { analyticsCache.close(); } catch (Exception ignored) {}
+            }
+            if (geometryExporter != null) {
+                try { geometryExporter.close(); } catch (Exception ignored) {}
             }
             System.exit(1);
             return;
@@ -222,6 +248,19 @@ public class Main {
             }
         }
         log.info("Parse complete: {} ZDOs (interesting) in {}ms", store.size(), store.parseDurationMs);
+
+        if (geometryExporter != null) {
+            // Export is a batch lane: finalize the parquet and stop before contracts/API work.
+            try {
+                geometryExporter.close();
+            } catch (Exception e) {
+                log.error("Failed to finalize building-geometry export", e);
+                System.exit(1);
+                return;
+            }
+            System.exit(0);
+            return;
+        }
 
         if (probeHashArg != null) {
             printProbeReport(parser, store);

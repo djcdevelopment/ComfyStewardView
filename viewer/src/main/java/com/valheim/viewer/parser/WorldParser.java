@@ -1,6 +1,7 @@
 package com.valheim.viewer.parser;
 
 import com.valheim.viewer.db.AnalyticsCache;
+import com.valheim.viewer.export.BuildingGeometryExporter;
 import com.valheim.viewer.store.ZdoFlatStore;
 import com.valheim.viewer.store.ZdoFlatStore.Categories;
 import com.valheim.viewer.store.ZdoFlatStore.PlayerRecord;
@@ -149,6 +150,18 @@ public class WorldParser {
 
     public void setAnalyticsCache(AnalyticsCache analyticsCache) {
         this.analyticsCache = analyticsCache;
+    }
+
+    // Optional one-shot geometry sink (--export-building-geometry). When attached, the
+    // 12-byte rotation the parser otherwise seeks over is decoded into these scratch
+    // fields, which parseZdo fills before any recordCacheZdo call. Safe as instance
+    // state because parse() drives parseZdo from a single-threaded loop.
+    private BuildingGeometryExporter geometryExporter = null;
+    private boolean curHasRot = false;
+    private float curRotX, curRotY, curRotZ;
+
+    public void setGeometryExporter(BuildingGeometryExporter exporter) {
+        this.geometryExporter = exporter;
     }
 
     // ----- Reconciliation probe (diagnostic; empty = off) -------------------
@@ -434,9 +447,19 @@ public class WorldParser {
         if (probe != null) probe.count++;
         Map<String, String> probeProps = (probe != null) ? new LinkedHashMap<>() : null;
 
-        // Skip rotation if present
-        if ((flags & FLAG_ROTATION) != 0) {
-            buf.position(buf.position() + 12);
+        // Rotation: 12 bytes (Vector3 euler) when the flag is set. Decoded only for the
+        // geometry export lane; otherwise skipped exactly as before.
+        curHasRot = (flags & FLAG_ROTATION) != 0;
+        if (curHasRot) {
+            if (geometryExporter != null) {
+                curRotX = buf.getFloat();
+                curRotY = buf.getFloat();
+                curRotZ = buf.getFloat();
+            } else {
+                buf.position(buf.position() + 12);
+            }
+        } else {
+            curRotX = curRotY = curRotZ = 0f;
         }
 
         boolean validPos = Math.abs(x) < 100_000f && Math.abs(z) < 100_000f;
@@ -826,6 +849,10 @@ public class WorldParser {
         // Census first: every classification path funnels through here, and the count must not
         // depend on whether the analytics cache happens to be enabled.
         if (category >= 0 && category < store.categoryCounts.length) store.categoryCounts[category]++;
+        if (geometryExporter != null && geometryExporter.wants(category)) {
+            geometryExporter.accept(zdoIndex, hash, store.nameForHash(hash), category,
+                x, y, z, curHasRot, curRotX, curRotY, curRotZ, creator, flags);
+        }
         if (analyticsCache == null) return;
         analyticsCache.insertZdo(zdoIndex, hash, store.nameForHash(hash), category,
             x, y, z, creator, owner, spawntime, flags);
