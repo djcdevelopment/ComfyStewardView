@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.*;
 import com.valheim.viewer.contract.Alert;
 import com.valheim.viewer.contract.Sector;
+import com.valheim.viewer.contract.SpatialAnchorExport;
 import com.valheim.viewer.contract.Structure;
 import com.valheim.viewer.contract.WorldContracts;
 import com.valheim.viewer.db.AnalyticsCache;
@@ -201,6 +202,7 @@ public class ApiServer {
         // &biome=meadows|black_forest|swamp|mountain|plains|mistlands|ashlands
         // &limit=N &offset=N
         app.get("/api/v1/structures", this::handleStructures);
+        app.get("/api/v1/spatial-anchors/export", this::handleSpatialAnchorExport);
 
         // PA5 — Forensics endpoints (item-level intelligence sourced from inventory parse)
         // Per-container coin caches sorted desc
@@ -1680,5 +1682,47 @@ public class ApiServer {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    private void handleSpatialAnchorExport(Context ctx) {
+        String anchorId = ctx.queryParam("anchor_id");
+        if (anchorId == null || anchorId.isBlank()) {
+            anchorId = "spatial_zone_01";
+        }
+        String frame = ctx.queryParam("frame");
+        if (frame == null || frame.isBlank()) {
+            frame = "structure:village_01";
+        }
+        if (frame.startsWith("world:")) {
+            ctx.status(400).result("{\"error\":\"SpatialAnchor must be relative to a local reference frame, not absolute world coordinates.\"}");
+            return;
+        }
+
+        double cx = 0.0;
+        double cy = 0.0;
+        double cz = 0.0;
+        double radius = 10.0;
+
+        try {
+            if (ctx.queryParam("center_x") != null) cx = Double.parseDouble(ctx.queryParam("center_x"));
+            if (ctx.queryParam("center_y") != null) cy = Double.parseDouble(ctx.queryParam("center_y"));
+            if (ctx.queryParam("center_z") != null) cz = Double.parseDouble(ctx.queryParam("center_z"));
+            if (ctx.queryParam("radius_meters") != null) radius = Double.parseDouble(ctx.queryParam("radius_meters"));
+        } catch (NumberFormatException e) {
+            ctx.status(400).result("{\"error\":\"Invalid numeric parameter in center bounds or radius.\"}");
+            return;
+        }
+
+        String mode = ctx.queryParam("binding_mode");
+        if (mode == null || mode.isBlank()) mode = "resolved_at_install";
+
+        String reference = ctx.queryParam("reference");
+        if (reference == null || reference.isBlank()) reference = "piece:hearth_root";
+
+        SpatialAnchorExport export = new SpatialAnchorExport(
+            anchorId, frame, new com.valheim.viewer.contract.Vec3(cx, cy, cz), radius, mode, reference
+        );
+
+        ctx.json(export);
     }
 }
