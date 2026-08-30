@@ -29,7 +29,20 @@ public final class AnalyticsCacheReader implements AutoCloseable {
     private final Connection conn;
     private volatile long snapshotId;
 
-    public record SnapshotInfo(long snapshotId, String worldId, String dictionaryVersion) {}
+    /** Immutable provenance needed when a snapshot row crosses into another repository. */
+    public record SnapshotInfo(
+            long snapshotId,
+            String worldId,
+            String dictionaryVersion,
+            String fileHash) {}
+
+    /** One exact ZDO row from one immutable snapshot. */
+    public record ZdoInfo(
+            int zdoIndex,
+            String prefab,
+            double x,
+            double y,
+            double z) {}
 
     private record SnapshotListEntry(
             long snapshotId,
@@ -226,12 +239,31 @@ public final class AnalyticsCacheReader implements AutoCloseable {
 
     public SnapshotInfo snapshotInfo(long targetSnapshotId) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(
-                "SELECT snapshot_id, world_id, prefab_dictionary_version " +
+                "SELECT snapshot_id, world_id, prefab_dictionary_version, file_hash " +
                 "FROM world_snapshot WHERE snapshot_id = ?")) {
             ps.setLong(1, targetSnapshotId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) return null;
-                return new SnapshotInfo(rs.getLong(1), rs.getString(2), rs.getString(3));
+                return new SnapshotInfo(rs.getLong(1), rs.getString(2), rs.getString(3), rs.getString(4));
+            }
+        }
+    }
+
+    /** Resolve a selected map row against its snapshot instead of trusting browser-supplied geometry. */
+    public ZdoInfo zdoInfo(long targetSnapshotId, int zdoIndex) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT zdo_index, prefab_name, x, y, z FROM zdo " +
+                "WHERE snapshot_id = ? AND zdo_index = ?")) {
+            ps.setLong(1, targetSnapshotId);
+            ps.setInt(2, zdoIndex);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return new ZdoInfo(
+                    rs.getInt("zdo_index"),
+                    rs.getString("prefab_name"),
+                    rs.getDouble("x"),
+                    rs.getDouble("y"),
+                    rs.getDouble("z"));
             }
         }
     }

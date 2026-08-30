@@ -86,9 +86,12 @@ java -Xmx6g -jar viewer\target\world-viewer-1.0.0.jar `
 Then start the viewer with the cache attached:
 
 ```powershell
+$env:STEWARD_QUEST_IMPORT_TOKEN = '<64-hex-operator-secret>'
 java -Xmx6g -jar viewer\target\world-viewer-1.0.0.jar `
   path\to\world.db `
   --cache viewer\target\world-cache.duckdb `
+  --quest-evidence-db viewer\target\quest-evidence.duckdb `
+  --source-revision <40-character-git-commit> `
   --render-dir viewer\target\rendered `
   --port 7080 `
   --no-browser
@@ -100,11 +103,54 @@ Supported analytics flags:
 --build-cache
 --rebuild-cache
 --cache <path>
+--quest-evidence-db <path>
+--source-revision <40-hex>
+--quest-import-token <secret>
 --render-layers
 --render-dir <dir>
 --batch-only
 --cache-fields
 ```
+
+Prefer `STEWARD_QUEST_IMPORT_TOKEN` for normal operation so the secret is not placed in shell
+history or the Java process command line. The command-line flag is retained for disposable test
+runs. `Deploy-Steward.ps1` provisions the environment variable in the remote deployment.
+
+## Quest spatial round trip
+
+The Map and Explore views can select one real ZDO from the active snapshot and download a
+`comfy-quest-spatial-anchor/v1` file. The server re-reads the ZDO and snapshot provenance from
+DuckDB; coordinates supplied by the browser are never trusted. Both world-fixed and
+Charm-relative spheres are supported.
+
+The operator loop is:
+
+1. Select a point marker on Map, or click **Use anchor** on an Explore row.
+2. Choose the frame and radius, then download the anchor.
+3. Import it in Quest Studio's Author card, play that exact compiled revision, and download
+   spatial evidence from Studio's Observe card.
+4. Enter the Steward import token and import the evidence file. Steward verifies its content
+   hash and 3D distance, stores it idempotently, and draws it only over the referenced snapshot.
+
+The API boundary is deliberately file-shaped and narrow:
+
+- `POST /api/v1/quest/spatial-anchor/export`
+- `POST /api/v1/quest/evidence/import` (requires `X-Steward-Quest-Token`)
+- `GET /api/v1/quest/evidence/overlays?snapshot=N`
+
+Contract hashes canonicalize finite JSON numbers as lowercase IEEE-754 binary64 bits (with
+signed zero normalized), so Java and .NET do not depend on different decimal formatting rules.
+
+Quest evidence lives in `quest-evidence.duckdb`, never in the rebuildable analytics cache.
+Cache refresh and publish scripts preserve that database. Overlay lookup requires the selected
+snapshot's ID, world ID, and file SHA together, so a rebuilt cache cannot reuse an ID and inherit
+evidence from different bytes. The map draws an X/Z projection of each sphere. Positional
+observations expose center Y, observed Y, and Runtime's true 3D distance; `count_in_area`
+observations expose the bounded current/required tally without inventing a representative point.
+
+Local contract and persistence verification is automated in
+`SpatialExchangeContractTest`. A live AM4/game lap remains a separate deployment verification;
+the local suite does not imply that the currently deployed service contains this feature.
 
 ## Documentation
 
@@ -128,6 +174,7 @@ Useful entry points:
 - Optional DuckDB analytics cache with `world_snapshot`, `zdo`, `zdo_field`, `container_item`, and `render_cell`.
 - Unified World / Changes / History / Explore shell with grouped World navigation, explicit time-scope badges, legacy deep-link redirects, and a segmented Coin trail view.
 - Snapshot-aware Map, Explore, and selection workflows; boot-snapshot views are labeled rather than silently following the snapshot selector.
+- Snapshot-backed Quest sphere export and a hash-verified Runtime evidence overlay backed by a dedicated DuckDB store.
 - Snapshot Map rasters for Build density, Dropped, All ZDOs, and Coins at every cell size advertised by the manifest, with client-side ramp and opacity controls.
 - Changes Map rasters for Build activity and All ZDO change, composited from aligned added/removed gray8 channels with a dual logarithmic legend. Changes and Map share the same ordered comparison pair.
 - Rendered overlay and DB-backed drilldown routes:
@@ -155,7 +202,6 @@ This is the consolidated backlog pulled from the handoff docs and batch analytic
 - Local bounded 3D prefab viewer.
 - Per-container inventory drill-down in the live UI.
 - Alert noise reduction for orphaned portals.
-- Snapshot-aware point overlays; they are intentionally labeled as pinned to the boot snapshot today.
 - The remaining v4 operational-polish work: consistent stale/retry states across every leaf view, spawn-time aggregate/histogram, accessibility and reduced-motion checks, responsive regression coverage, and publish telemetry.
 - Naming the residual unresolved prefab hashes (129 hashes / 0.54% of ZDOs on ComfyEra16, mostly modded and ZoneSystem location prefabs). The bundled dictionary resolves 99.5%; `GET /api/v1/prefabs/unresolved` is the live worklist. See [docs/comfy-integration/PREFAB_DICTIONARY.md](docs/comfy-integration/PREFAB_DICTIONARY.md).
 

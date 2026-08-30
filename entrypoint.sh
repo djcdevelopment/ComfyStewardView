@@ -7,6 +7,7 @@ set -eu
 
 WORLD_FILE="${WORLD_FILE:-/world/ComfyEra16.db}"
 CACHE=/data/world-cache.duckdb
+QUEST_EVIDENCE=/data/quest-evidence.duckdb
 RENDER=/data/rendered
 MARKER=/data/.cache-complete
 # UI override, pushed by tools/Push-StewardUi.ps1. Empty is the normal state on a
@@ -35,4 +36,5 @@ mkdir -p "$STATIC"
 echo "[entrypoint] starting viewer (refreshing any stale rendered layers first)"
 exec java $JAVA_OPTS -jar /app/world-viewer.jar "$WORLD_FILE" \
   --cache "$CACHE" --render-layers --render-dir "$RENDER" --static-dir "$STATIC" \
+  --quest-evidence-db "$QUEST_EVIDENCE" \
   --port 8003 --no-browser

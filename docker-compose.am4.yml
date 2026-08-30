@@ -21,6 +21,10 @@ services:
       JAVA_OPTS: "-Xmx6g -Djava.awt.headless=true"
       # Publish owns this instance's history; API ingest would be clobbered by the next publish.
       STEWARD_DISABLE_INGEST: "1"
+      # Full commit that built the running jar. Anchor exports fail closed without it.
+      STEWARD_SOURCE_REVISION: "${STEWARD_SOURCE_REVISION:-}"
+      # Required for the only public write endpoint; never embedded in the page or image.
+      STEWARD_QUEST_IMPORT_TOKEN: "${STEWARD_QUEST_IMPORT_TOKEN:-}"
     mem_limit: 8g
     restart: unless-stopped
 

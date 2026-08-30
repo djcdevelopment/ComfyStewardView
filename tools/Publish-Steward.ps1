@@ -663,7 +663,7 @@ if (-not $Push) {
 
     if ($ActivateWorld) {
         $activeWorldName = $omenWorld.Name
-        Invoke-Ssh "printf 'STEWARD_WORLD_FILE=/world/$activeWorldName\n' > $RemoteRoot/.env.new && mv $RemoteRoot/.env.new $RemoteRoot/.env" | Out-Null
+        Invoke-Ssh "umask 077; sed '/^STEWARD_WORLD_FILE=/d' $RemoteRoot/.env > $RemoteRoot/.env.new && printf 'STEWARD_WORLD_FILE=/world/$activeWorldName\n' >> $RemoteRoot/.env.new && mv $RemoteRoot/.env.new $RemoteRoot/.env && chmod 600 $RemoteRoot/.env" | Out-Null
         Write-Host "      selected /world/$activeWorldName as the Steward boot world"
     }
 

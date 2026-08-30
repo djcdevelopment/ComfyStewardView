@@ -9,6 +9,7 @@ import com.valheim.viewer.contract.Structure;
 import com.valheim.viewer.contract.WorldContracts;
 import com.valheim.viewer.db.AnalyticsCache;
 import com.valheim.viewer.db.AnalyticsCacheReader;
+import com.valheim.viewer.db.QuestEvidenceStore;
 import com.valheim.viewer.db.RenderedDeltaLayerBuilder;
 import com.valheim.viewer.db.RenderedLayerBuilder;
 import com.valheim.viewer.db.SnapshotDeltaEngine;
@@ -30,7 +31,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.*;
@@ -58,6 +61,9 @@ public class ApiServer {
     private volatile SectorResult sectorResult = null;
     private volatile ClassificationStore classification = null;
     private volatile AnalyticsCacheReader analyticsCacheReader = null;
+    private volatile QuestEvidenceStore questEvidenceStore = null;
+    private volatile String sourceRevision = null;
+    private volatile String questImportToken = null;
 
     public ApiServer(WorldParser parser) {
         this(parser, null);
@@ -139,6 +145,15 @@ public class ApiServer {
         this.analyticsCacheReader = analyticsCacheReader;
     }
 
+    public void setQuestIntegration(
+            String sourceRevision,
+            QuestEvidenceStore questEvidenceStore,
+            String questImportToken) {
+        this.sourceRevision = sourceRevision;
+        this.questEvidenceStore = questEvidenceStore;
+        this.questImportToken = questImportToken;
+    }
+
     private void registerRoutes() {
         // Loading status — polled by frontend during parse
         app.get("/api/v1/status", this::handleStatus);
@@ -202,7 +217,9 @@ public class ApiServer {
         // &biome=meadows|black_forest|swamp|mountain|plains|mistlands|ashlands
         // &limit=N &offset=N
         app.get("/api/v1/structures", this::handleStructures);
-        app.get("/api/v1/spatial-anchors/export", this::handleSpatialAnchorExport);
+        app.post("/api/v1/quest/spatial-anchor/export", this::handleSpatialAnchorExport);
+        app.post("/api/v1/quest/evidence/import", this::handleQuestEvidenceImport);
+        app.get("/api/v1/quest/evidence/overlays", this::handleQuestEvidenceOverlays);
 
         // PA5 — Forensics endpoints (item-level intelligence sourced from inventory parse)
         // Per-container coin caches sorted desc
@@ -1685,44 +1702,103 @@ public class ApiServer {
     }
 
     private void handleSpatialAnchorExport(Context ctx) {
-        String anchorId = ctx.queryParam("anchor_id");
-        if (anchorId == null || anchorId.isBlank()) {
-            anchorId = "spatial_zone_01";
-        }
-        String frame = ctx.queryParam("frame");
-        if (frame == null || frame.isBlank()) {
-            frame = "structure:village_01";
-        }
-        if (frame.startsWith("world:")) {
-            ctx.status(400).result("{\"error\":\"SpatialAnchor must be relative to a local reference frame, not absolute world coordinates.\"}");
-            return;
-        }
-
-        double cx = 0.0;
-        double cy = 0.0;
-        double cz = 0.0;
-        double radius = 10.0;
-
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
         try {
-            if (ctx.queryParam("center_x") != null) cx = Double.parseDouble(ctx.queryParam("center_x"));
-            if (ctx.queryParam("center_y") != null) cy = Double.parseDouble(ctx.queryParam("center_y"));
-            if (ctx.queryParam("center_z") != null) cz = Double.parseDouble(ctx.queryParam("center_z"));
-            if (ctx.queryParam("radius_meters") != null) radius = Double.parseDouble(ctx.queryParam("radius_meters"));
-        } catch (NumberFormatException e) {
-            ctx.status(400).result("{\"error\":\"Invalid numeric parameter in center bounds or radius.\"}");
+            SpatialAnchorExport.SpatialAnchorRequest request =
+                SpatialAnchorExport.parseRequest(ctx.body());
+            AnalyticsCacheReader.SnapshotInfo snapshot = reader.snapshotInfo(request.snapshotId);
+            if (snapshot == null) {
+                apiErrorCode(ctx, 404, "snapshot_not_found");
+                return;
+            }
+            AnalyticsCacheReader.ZdoInfo piece =
+                reader.zdoInfo(request.snapshotId, request.zdoIndex);
+            if (piece == null) {
+                apiErrorCode(ctx, 404, "snapshot_piece_not_found");
+                return;
+            }
+            SpatialAnchorExport export =
+                SpatialAnchorExport.fromSnapshot(request, snapshot, piece, sourceRevision);
+            String fileName = request.anchorId + ".spatial-anchor.json";
+            ctx.header("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
+            ctx.contentType("application/vnd.comfy.quest-spatial-anchor+json")
+                .result(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(export));
+        } catch (SpatialAnchorExport.ContractException e) {
+            int status = "source_revision_unavailable".equals(e.code()) ||
+                "anchor_snapshot_provenance_invalid".equals(e.code()) ? 409 : 400;
+            apiErrorCode(ctx, status, e.code());
+        } catch (Exception e) {
+            log.error("Spatial anchor export failed", e);
+            apiErrorCode(ctx, 500, "spatial_anchor_export_failed");
+        }
+    }
+
+    private void handleQuestEvidenceImport(Context ctx) {
+        QuestEvidenceStore evidence = questEvidenceStore;
+        if (evidence == null) {
+            apiErrorCode(ctx, 503, "quest_evidence_store_unavailable");
             return;
         }
+        if (questImportToken == null || questImportToken.isBlank()) {
+            apiErrorCode(ctx, 503, "quest_evidence_import_disabled");
+            return;
+        }
+        String supplied = ctx.header("X-Steward-Quest-Token");
+        if (supplied == null || !MessageDigest.isEqual(
+                questImportToken.getBytes(StandardCharsets.UTF_8),
+                supplied.getBytes(StandardCharsets.UTF_8))) {
+            apiErrorCode(ctx, 403, "quest_evidence_import_forbidden");
+            return;
+        }
+        try {
+            QuestEvidenceStore.ImportReceipt receipt = evidence.importJson(ctx.body());
+            ObjectNode response = mapper.createObjectNode();
+            response.put("schema", "comfy-steward-quest-evidence-import/v1");
+            response.put("contentSha256", receipt.contentSha256());
+            response.put("recordCount", receipt.recordCount());
+            response.put("alreadyPresent", receipt.alreadyPresent());
+            ctx.status(receipt.alreadyPresent() ? 200 : 201).json(response);
+        } catch (com.valheim.viewer.contract.SpatialEvidenceContract.ContractException e) {
+            apiErrorCode(ctx, 400, e.code());
+        } catch (Exception e) {
+            log.error("Quest evidence import failed", e);
+            apiErrorCode(ctx, 500, "quest_evidence_import_failed");
+        }
+    }
 
-        String mode = ctx.queryParam("binding_mode");
-        if (mode == null || mode.isBlank()) mode = "resolved_at_install";
+    private void handleQuestEvidenceOverlays(Context ctx) {
+        AnalyticsCacheReader reader = requireAnalyticsCache(ctx);
+        if (reader == null) return;
+        QuestEvidenceStore evidence = questEvidenceStore;
+        if (evidence == null) {
+            apiErrorCode(ctx, 503, "quest_evidence_store_unavailable");
+            return;
+        }
+        try {
+            Long snapshotId = resolveSnapshotParam(ctx, reader, "snapshot", true);
+            if (snapshotId == null) return;
+            AnalyticsCacheReader.SnapshotInfo snapshot = reader.snapshotInfo(snapshotId);
+            if (snapshot == null) {
+                apiErrorCode(ctx, 404, "snapshot_not_found");
+                return;
+            }
+            if (snapshot.worldId() == null || snapshot.worldId().isBlank() ||
+                    snapshot.fileHash() == null ||
+                    !snapshot.fileHash().matches("(?i)^[0-9a-f]{64}$")) {
+                apiErrorCode(ctx, 409, "snapshot_provenance_unavailable");
+                return;
+            }
+            ctx.json(evidence.overlays(mapper, snapshot));
+        } catch (Exception e) {
+            log.error("Quest evidence overlay query failed", e);
+            apiErrorCode(ctx, 500, "quest_evidence_overlay_query_failed");
+        }
+    }
 
-        String reference = ctx.queryParam("reference");
-        if (reference == null || reference.isBlank()) reference = "piece:hearth_root";
-
-        SpatialAnchorExport export = new SpatialAnchorExport(
-            anchorId, frame, new com.valheim.viewer.contract.Vec3(cx, cy, cz), radius, mode, reference
-        );
-
-        ctx.json(export);
+    private void apiErrorCode(Context ctx, int status, String code) {
+        ObjectNode error = mapper.createObjectNode();
+        error.put("error", code);
+        ctx.status(status).json(error);
     }
 }

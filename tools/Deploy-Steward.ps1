@@ -13,9 +13,13 @@
   the exact command and verifies the public URL if the route already exists.
 
 .PARAMETER RefreshWorld
-  Re-snapshot the world file and wipe the analytics cache volume so the next
-  boot rebuilds cache + rendered layers against the new snapshot. Without it,
-  an existing snapshot is kept (static frozen sample).
+  Re-snapshot the world file and clear only rebuildable analytics artifacts so
+  the next boot rebuilds cache + rendered layers against the new snapshot.
+  Imported Quest evidence remains in its dedicated database.
+
+.PARAMETER QuestImportToken
+  Optional 64-hex operator secret. An existing remote token is preserved when
+  omitted; a new one is generated and shown once only when none exists.
 #>
 [CmdletBinding()]
 param(
@@ -25,6 +29,7 @@ param(
     [string]$WorldSource = '/home/derek/comfy-valheim-lab/server-state/config/worlds_local/ComfyEra16.db',
     [string]$PublicBaseUrl = 'https://am4.tail8e749c.ts.net',
     [string]$PublicPath  = '/steward',
+    [string]$QuestImportToken = '',
     [int]   $TimeoutMinutes = 30,
     [switch]$RefreshWorld
 )
@@ -32,6 +37,20 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $startedAt = (Get-Date).ToUniversalTime().ToString('o')
+$sourceRevision = "$(git -C $repoRoot rev-parse HEAD 2>$null)".Trim()
+if ($LASTEXITCODE -ne 0 -or $sourceRevision -notmatch '^[0-9a-fA-F]{40}$') {
+    throw 'could not resolve the full Steward source revision for the image'
+}
+$dirty = @(git -C $repoRoot status --porcelain --untracked-files=normal)
+if ($LASTEXITCODE -ne 0 -or $dirty.Count -ne 0) {
+    throw 'deployment requires a clean Steward checkout so STEWARD_SOURCE_REVISION names the exact image source'
+}
+$questImportTokenProvided = -not [string]::IsNullOrWhiteSpace($QuestImportToken)
+if ($questImportTokenProvided -and $QuestImportToken -notmatch '^[0-9a-fA-F]{64}$') {
+    throw '-QuestImportToken must be exactly 64 hexadecimal characters'
+}
+$generatedQuestImportToken = $false
+$questImportTokenRotated = $false
 
 function Invoke-Ssh {
     param([string]$Command, [switch]$AllowFailure)
@@ -46,7 +65,26 @@ function Invoke-Ssh {
 Write-Host "[1/7] SSH preflight to '$SshTarget'..."
 Invoke-Ssh 'true' | Out-Null
 Invoke-Ssh "mkdir -p $RemoteRoot/world" | Out-Null
-Invoke-Ssh "test -f $RemoteRoot/.env || printf 'STEWARD_WORLD_FILE=/world/ComfyEra16.db\n' > $RemoteRoot/.env" | Out-Null
+Invoke-Ssh "umask 077; test -f $RemoteRoot/.env || printf 'STEWARD_WORLD_FILE=/world/ComfyEra16.db\n' > $RemoteRoot/.env; chmod 600 $RemoteRoot/.env" | Out-Null
+$existingQuestImportToken = "$(Invoke-Ssh "sed -n 's/^STEWARD_QUEST_IMPORT_TOKEN=//p' $RemoteRoot/.env | tail -n 1")".Trim()
+if (-not $questImportTokenProvided) {
+    if ($existingQuestImportToken -match '^[0-9a-fA-F]{64}$') {
+        $QuestImportToken = $existingQuestImportToken
+    } else {
+        $tokenBytes = New-Object byte[] 32
+        $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+        try { $rng.GetBytes($tokenBytes) } finally { $rng.Dispose() }
+        $QuestImportToken = ([BitConverter]::ToString($tokenBytes)).Replace('-', '').ToLowerInvariant()
+        $generatedQuestImportToken = $true
+    }
+}
+$questImportTokenRotated = -not [string]::Equals(
+    $existingQuestImportToken, $QuestImportToken, [StringComparison]::Ordinal)
+Invoke-Ssh "umask 077; sed '/^STEWARD_SOURCE_REVISION=/d' $RemoteRoot/.env > $RemoteRoot/.env.new && printf 'STEWARD_SOURCE_REVISION=$sourceRevision\n' >> $RemoteRoot/.env.new && mv $RemoteRoot/.env.new $RemoteRoot/.env && chmod 600 $RemoteRoot/.env" | Out-Null
+Invoke-Ssh "umask 077; sed '/^STEWARD_QUEST_IMPORT_TOKEN=/d' $RemoteRoot/.env > $RemoteRoot/.env.new && printf 'STEWARD_QUEST_IMPORT_TOKEN=$QuestImportToken\n' >> $RemoteRoot/.env.new && mv $RemoteRoot/.env.new $RemoteRoot/.env && chmod 600 $RemoteRoot/.env" | Out-Null
+if ($generatedQuestImportToken) {
+    Write-Warning "Generated a new Quest evidence import token; save it in your password manager: $QuestImportToken"
+}
 
 # --- 2. Stage build context ----------------------------------------------
 Write-Host '[2/7] Staging build context...'
@@ -79,9 +117,9 @@ if ($haveSnapshot -and -not $RefreshWorld) {
     Write-Host "[3/7] World snapshot already present ($worldDest) - keeping frozen copy."
 } else {
     if ($RefreshWorld) {
-        Write-Host '[3/7] -RefreshWorld: stopping container and wiping cache volume...'
+        Write-Host '[3/7] -RefreshWorld: stopping container and clearing rebuildable cache artifacts...'
         Invoke-Ssh "cd $RemoteRoot/build && docker compose --env-file $RemoteRoot/.env -f docker-compose.am4.yml down" -AllowFailure | Out-Null
-        Invoke-Ssh 'docker volume rm steward_steward-data' -AllowFailure | Out-Null
+        Invoke-Ssh "docker run --rm -v steward_steward-data:/data alpine sh -c 'rm -f /data/world-cache.duckdb /data/world-cache.duckdb.wal /data/.cache-complete; rm -rf /data/rendered'" -AllowFailure | Out-Null
     }
     Write-Host "[3/7] Snapshotting $WorldSource -> $worldDest ..."
     $snapScript = 'set -eu; SRC={0}; DST={1}; for i in 1 2 3; do m1=$(stat -c %Y "$SRC"); cp "$SRC" "$DST.tmp"; m2=$(stat -c %Y "$SRC"); if [ "$m1" = "$m2" ]; then mv "$DST.tmp" "$DST"; echo snapshot-ok; exit 0; fi; echo "source changed mid-copy, retrying"; sleep 5; done; rm -f "$DST.tmp"; echo snapshot-torn; exit 1' -f $WorldSource, $worldDest
@@ -134,15 +172,15 @@ if (-not $publicOk) {
 }
 
 # --- Receipt --------------------------------------------------------------
-$gitSha = (git -C $repoRoot rev-parse --short HEAD 2>$null)
 $receipt = [ordered]@{
     deployed_at   = $startedAt
     finished_at   = (Get-Date).ToUniversalTime().ToString('o')
     ssh_target    = $SshTarget
-    git_sha       = "$gitSha".Trim()
+    git_sha       = $sourceRevision
     world_source  = $WorldSource
     world_dest    = $worldDest
     world_refreshed = [bool]$RefreshWorld
+    quest_import_token_rotated = $questImportTokenRotated
     port          = $Port
     public_url    = $publicUrl
     public_verified = $publicOk

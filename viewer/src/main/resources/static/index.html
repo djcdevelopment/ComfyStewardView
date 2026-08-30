@@ -440,6 +440,37 @@
         </div>
       </section>
 
+      <section class="card">
+        <div class="card-header">
+          <span class="eyebrow !text-gray-300">QUEST ROUND TRIP</span><span class="flex-1"></span>
+          <span class="scope-badge snapshot">3D sphere</span>
+        </div>
+        <div class="p-3 flex flex-col gap-2">
+          <div class="endpoint leading-snug">Click a snapshot point on this map, or choose a row in Explore. Steward resolves the exported position from DuckDB.</div>
+          <div class="state-strip" :class="questSelectedPiece ? 'ok' : 'warn'">
+            <template x-if="questSelectedPiece"><span class="min-w-0"><b x-text="questSelectedPiece.prefab"></b><br/><span class="font-mono" x-text="`snapshot #${questSelectedPiece.snapshotId} · ZDO ${questSelectedPiece.zdoIndex} · (${questSelectedPiece.x.toFixed(1)}, ${questSelectedPiece.y.toFixed(1)}, ${questSelectedPiece.z.toFixed(1)})`"></span></span></template>
+            <template x-if="!questSelectedPiece"><span>No snapshot piece selected.</span></template>
+          </div>
+          <label class="flex flex-col gap-1"><span class="eyebrow">AREA ID</span><input class="sv-input w-full" x-model.trim="questAnchorId" maxlength="64" placeholder="hearth-sphere"/></label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex flex-col gap-1"><span class="eyebrow">FRAME</span><select class="sv-select w-full" x-model="questAnchorMode"><option value="world">World</option><option value="binding_relative">Charm-relative</option></select></label>
+            <label class="flex flex-col gap-1"><span class="eyebrow">RADIUS (M)</span><input class="sv-input w-full" type="number" min="1" max="100" step=".5" x-model.number="questRadiusMeters"/></label>
+          </div>
+          <button class="btn-primary w-full" :disabled="!questSelectedPiece || questHandoffState==='working'" @click="downloadQuestAnchor()" x-text="questHandoffState==='working' ? 'Building anchor…' : 'Download Quest anchor'"></button>
+          <div class="endpoint leading-snug" :style="questHandoffState==='error' ? 'color:#d9635f' : ''" x-text="questHandoffMessage"></div>
+          <div class="border-t border-gray-700 mt-1 pt-2 flex flex-col gap-2">
+            <label class="flex flex-col gap-1"><span class="eyebrow">IMPORT TOKEN</span><input class="sv-input w-full" type="password" x-model="questImportToken" autocomplete="off" placeholder="Operator token"/></label>
+            <label class="btn-secondary w-full text-center cursor-pointer">Import Quest evidence<input class="hidden" type="file" accept=".json,application/json,application/vnd.comfy.quest-spatial-evidence+json" @change="importQuestEvidence($event)"/></label>
+            <label class="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" x-model="showQuestEvidence" @change="drawQuestEvidence()" class="accent-blue-500"/>
+              <span class="flex-1">Runtime evidence overlay</span><span class="endpoint" x-text="questEvidenceRows.length"></span>
+            </label>
+            <div class="endpoint leading-snug" :style="questEvidenceState==='error' ? 'color:#d9635f' : ''" x-text="questEvidenceMessage"></div>
+            <div class="endpoint leading-snug" x-show="questEvidenceRows.length">Circles are the X/Z projection. Positional tooltips retain both Y values and true 3D distance; count observations retain the Runtime tally.</div>
+          </div>
+        </div>
+      </section>
+
       <section class="card p-3">
         <div class="flex items-center gap-2 mb-2"><span class="eyebrow">SPAWN FRACTION</span><span class="flex-1"></span><span class="endpoint" x-show="spawnHistogram && spawnHistogram.available" x-text="spawnHistogram ? `distribution · snapshot #${spawnHistogram.snapshotId}` : ''"></span></div>
         <div x-cloak x-show="spawnHistogram && spawnHistogram.available" class="mb-2">
@@ -1376,6 +1407,7 @@
                   <th class="text-right p-1">Y</th>
                   <th class="text-right p-1">Z</th>
                   <th class="text-left p-1">Creator ID</th>
+                  <th class="text-right p-1">Quest</th>
                 </tr>
               </thead>
               <tbody>
@@ -1388,6 +1420,7 @@
                     <td class="p-1 text-right text-gray-300" x-text="row.y.toFixed(1)"></td>
                     <td class="p-1 text-right text-gray-300" x-text="row.z.toFixed(1)"></td>
                     <td class="p-1 text-gray-400 font-mono" x-text="row.creatorId || '—'"></td>
+                    <td class="p-1 text-right"><button class="btn-secondary" @click.stop="selectQuestPiece(row)" x-text="questPieceSelected(row) ? 'Selected' : 'Use anchor'"></button></td>
                   </tr>
                 </template>
               </tbody>
@@ -1532,6 +1565,20 @@ function app() {
     exploreBounds: null,
     exploreState: 'idle',
     exploreError: '',
+    questSelectedPiece: null,
+    questSelectionLayer: null,
+    questAnchorId: 'quest-area',
+    questAnchorMode: 'world',
+    questRadiusMeters: 12,
+    questHandoffState: 'idle',
+    questHandoffMessage: 'Select a real snapshot piece to begin.',
+    questEvidenceRows: [],
+    questEvidenceLayer: null,
+    questImportToken: '',
+    showQuestEvidence: true,
+    questEvidenceState: 'idle',
+    questEvidenceMessage: 'No Runtime evidence loaded for this snapshot.',
+    _questEvidenceToken: 0,
 
     // Loading
     loadStatus: 'Connecting...', loadPct: 0, loadParsed: 0, loadTotal: 0,
@@ -1667,6 +1714,7 @@ function app() {
       // dropdown sits empty until someone happens to open the History tab.
       // Awaited so the rendered-layer manifest fetch below carries the selected snapshot.
       await this.loadSnapshots();
+      await this.loadQuestEvidence();
       await this.loadRenderedManifest();
       await this.preferDeltaOnOpen();
       this.loadHeaderCounts();
@@ -3084,7 +3132,10 @@ function app() {
               color: overlay.color, weight: 1,
               fillColor: overlay.color, fillOpacity: 0.65,
             });
-            if (row.prefab) circle.bindTooltip(row.prefab, { permanent: false, direction: 'top' });
+            if (row.prefab) circle.bindTooltip(
+              `${escapeHtml(row.prefab)}<br><span class="endpoint">click to use as Quest anchor</span>`,
+              { permanent: false, direction: 'top' });
+            circle.on('click', () => this.selectQuestPiece(row));
             markers.addLayer(circle);
             overlay.shown++;
           }
@@ -3761,7 +3812,10 @@ function app() {
       this.selectionData = [];
       this.selectionBounds = null;
       this.selectionOpen = false;
+      this.questSelectedPiece = null;
+      this.drawQuestSelection();
       await this.loadSnapshots();
+      await this.loadQuestEvidence();
       await this.loadRenderedManifest();
       if (this.mapRasterMode === 'changes') await this.loadDeltaRenderedManifest();
       // The landing preference is per world: a world with rendered pairs should open on its
@@ -3778,10 +3832,18 @@ function app() {
       this.selectionData = [];
       this.selectionBounds = null;
       this.exploreResults = null;
+      if (this.questSelectedPiece &&
+          String(this.questSelectedPiece.snapshotId) !== String(snapshotId)) {
+        this.questSelectedPiece = null;
+        this.questHandoffState = 'idle';
+        this.questHandoffMessage = 'Select a piece from snapshot #' + snapshotId + '.';
+        this.drawQuestSelection();
+      }
       this.loadHeaderCounts();
       this.loadLandMask();
       // Raster layers are per-snapshot; swap the manifest (which re-applies the overlay).
       if (this.mapRasterMode === 'snapshot') await this.loadRenderedManifest();
+      await Promise.all([this.loadQuestEvidence(), this.applyFilters()]);
     },
 
     async loadDelta() {
@@ -3971,6 +4033,208 @@ function app() {
       if (token === this._deltaCompareToken && this.deltaPairOrdered()) await this.loadDeltaRenderedManifest();
     },
 
+    questPieceSelected(row) {
+      return this.questSelectedPiece &&
+        String(this.questSelectedPiece.snapshotId) === String(this.selectedSnapshotId) &&
+        Number(this.questSelectedPiece.zdoIndex) === Number(row?.zdoIndex);
+    },
+
+    selectQuestPiece(row) {
+      if (!this.selectedSnapshotId || row?.zdoIndex == null ||
+          !Number.isFinite(Number(row.x)) || !Number.isFinite(Number(row.y)) ||
+          !Number.isFinite(Number(row.z))) return;
+      this.questSelectedPiece = {
+        snapshotId: Number(this.selectedSnapshotId),
+        zdoIndex: Number(row.zdoIndex),
+        prefab: String(row.prefab || 'unnamed-piece'),
+        x: Number(row.x), y: Number(row.y), z: Number(row.z),
+      };
+      if (!this.questAnchorId || this.questAnchorId === 'quest-area') {
+        let candidate = (this.questSelectedPiece.prefab + '-area')
+          .replace(/[^A-Za-z0-9_$-]/g, '-').replace(/-+/g, '-').slice(0, 64);
+        this.questAnchorId = candidate || 'quest-area';
+      }
+      this.questHandoffState = 'ready';
+      this.questHandoffMessage = 'Selected from snapshot #' + this.selectedSnapshotId +
+        '. The server will re-resolve this ZDO before export.';
+      this.drawQuestSelection();
+    },
+
+    drawQuestSelection() {
+      if (this.questSelectionLayer && this.map) this.map.removeLayer(this.questSelectionLayer);
+      this.questSelectionLayer = null;
+      const piece = this.questSelectedPiece;
+      if (!piece || !this.map ||
+          String(piece.snapshotId) !== String(this.selectedSnapshotId)) return;
+      const marker = L.circleMarker(worldToLatLng(piece.x, piece.z), {
+        radius: 9, color: '#38bdf8', weight: 3,
+        fillColor: '#38bdf8', fillOpacity: 0.15,
+      });
+      marker.bindTooltip(
+        '<b>Quest anchor selection</b><br>' + escapeHtml(piece.prefab) +
+        '<br>X ' + piece.x.toFixed(2) + ' · Y ' + piece.y.toFixed(2) +
+        ' · Z ' + piece.z.toFixed(2));
+      marker.addTo(this.map);
+      this.questSelectionLayer = marker;
+    },
+
+    async downloadQuestAnchor() {
+      const piece = this.questSelectedPiece;
+      const radius = Number(this.questRadiusMeters);
+      if (!piece || String(piece.snapshotId) !== String(this.selectedSnapshotId)) {
+        this.questHandoffState = 'error';
+        this.questHandoffMessage = 'Select a piece from the active snapshot.';
+        return;
+      }
+      if (!/^[A-Za-z0-9_$-]{1,64}$/.test(this.questAnchorId || '')) {
+        this.questHandoffState = 'error';
+        this.questHandoffMessage = 'Area ID must use 1–64 letters, digits, _, $, or -.';
+        return;
+      }
+      if (!Number.isFinite(radius) || radius < 1 || radius > 100) {
+        this.questHandoffState = 'error';
+        this.questHandoffMessage = 'Radius must be between 1 and 100 meters.';
+        return;
+      }
+      this.questHandoffState = 'working';
+      this.questHandoffMessage = 'Resolving snapshot provenance and geometry…';
+      try {
+        const response = await fetch(API + '/quest/spatial-anchor/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            snapshot_id: Number(piece.snapshotId),
+            zdo_index: Number(piece.zdoIndex),
+            anchor_id: this.questAnchorId,
+            mode: this.questAnchorMode,
+            radius_meters: radius,
+          }),
+        });
+        if (!response.ok) {
+          let error = null;
+          try { error = await response.json(); } catch(e) {}
+          throw new Error(error?.error || (response.status + ' ' + response.statusText));
+        }
+        downloadBlob(await response.blob(), this.questAnchorId + '.spatial-anchor.json');
+        this.questHandoffState = 'ready';
+        this.questHandoffMessage = 'Anchor downloaded. Import it in Quest Studio’s Author card.';
+      } catch(e) {
+        this.questHandoffState = 'error';
+        this.questHandoffMessage = e.message || 'Anchor export failed.';
+      }
+    },
+
+    async importQuestEvidence(event) {
+      const input = event.target;
+      const file = input.files?.[0];
+      if (!file) return;
+      this.questEvidenceState = 'working';
+      this.questEvidenceMessage = 'Verifying and storing ' + file.name + '…';
+      try {
+        if (file.size > 256 * 1024) throw new Error('Evidence document exceeds 256 KiB.');
+        const response = await fetch(API + '/quest/evidence/import', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/vnd.comfy.quest-spatial-evidence+json',
+            'X-Steward-Quest-Token': this.questImportToken,
+          },
+          body: await file.text(),
+        });
+        let payload = null;
+        try { payload = await response.json(); } catch(e) {}
+        if (!response.ok) {
+          throw new Error(payload?.error || (response.status + ' ' + response.statusText));
+        }
+        this.questEvidenceMessage = payload.alreadyPresent
+          ? 'Evidence was already present; showing the stored observations.'
+          : 'Imported ' + payload.recordCount + ' verified runtime observation' +
+            (payload.recordCount === 1 ? '.' : 's.');
+        await this.loadQuestEvidence();
+        this.switchTab('map');
+      } catch(e) {
+        this.questEvidenceState = 'error';
+        this.questEvidenceMessage = e.message || 'Evidence import failed.';
+      } finally {
+        input.value = '';
+      }
+    },
+
+    async loadQuestEvidence() {
+      const token = ++this._questEvidenceToken;
+      if (!this.selectedSnapshotId) {
+        this.questEvidenceRows = [];
+        this.questEvidenceState = 'empty';
+        this.questEvidenceMessage = 'Select a snapshot to view Runtime evidence.';
+        this.drawQuestEvidence();
+        return;
+      }
+      this.questEvidenceState = 'loading';
+      try {
+        const payload = await fetchJson(
+          API + '/quest/evidence/overlays?snapshot=' +
+          encodeURIComponent(this.selectedSnapshotId));
+        if (token !== this._questEvidenceToken) return;
+        this.questEvidenceRows = payload.data || [];
+        this.questEvidenceState = this.questEvidenceRows.length ? 'ready' : 'empty';
+        this.questEvidenceMessage = this.questEvidenceRows.length
+          ? this.questEvidenceRows.length + ' verified observation' +
+            (this.questEvidenceRows.length === 1 ? '' : 's') +
+            ' for snapshot #' + this.selectedSnapshotId + '.'
+          : 'No imported Runtime evidence for snapshot #' + this.selectedSnapshotId + '.';
+        this.drawQuestEvidence();
+      } catch(e) {
+        if (token !== this._questEvidenceToken) return;
+        this.questEvidenceRows = [];
+        this.questEvidenceState = 'error';
+        this.questEvidenceMessage = e.message || 'Evidence overlay unavailable.';
+        this.drawQuestEvidence();
+      }
+    },
+
+    drawQuestEvidence() {
+      if (this.questEvidenceLayer && this.map) this.map.removeLayer(this.questEvidenceLayer);
+      this.questEvidenceLayer = null;
+      if (!this.map || !this.showQuestEvidence || !this.questEvidenceRows.length) return;
+      const group = L.layerGroup();
+      for (const row of this.questEvidenceRows) {
+        const center = row.resolvedCenter;
+        const observed = row.observedPosition;
+        const radius = Number(row.radiusMeters);
+        if (!center || !Number.isFinite(radius)) continue;
+        const color = row.satisfied ? '#5fae7f' : '#d9635f';
+        const circle = L.circle(worldToLatLng(center.x, center.z), {
+          radius, color, weight: 2, fillColor: color, fillOpacity: 0.12,
+        });
+        const progress = Number(row.currentCount) + '/' + Number(row.requiredCount);
+        const observation = observed
+          ? '<br>Observed: (' + Number(observed.x).toFixed(2) + ', ' +
+            Number(observed.y).toFixed(2) + ', ' + Number(observed.z).toFixed(2) +
+            ')<br>3D distance ' + Number(row.distanceMeters).toFixed(3) + ' m'
+          : '<br>Observed object tally: ' + progress;
+        const tooltip = '<b>' + escapeHtml(row.areaId) + '</b> · ' +
+          escapeHtml(row.predicate) + '<br>3D sphere center: (' +
+          Number(center.x).toFixed(2) + ', ' + Number(center.y).toFixed(2) + ', ' +
+          Number(center.z).toFixed(2) + ')' + observation + '<br>Radius ' +
+          radius.toFixed(2) + ' m · progress ' + progress + ' · ' +
+          (row.satisfied ? 'satisfied' : 'not satisfied');
+        circle.bindTooltip(tooltip, { sticky: true });
+        group.addLayer(circle);
+        if (observed) {
+          const line = L.polyline(
+            [worldToLatLng(center.x, center.z), worldToLatLng(observed.x, observed.z)],
+            { color, weight: 1, dashArray: '4,4', interactive: false });
+          group.addLayer(line);
+          const observedMarker = L.circleMarker(worldToLatLng(observed.x, observed.z), {
+            radius: 4, color, weight: 2, fillColor: color, fillOpacity: 0.9,
+          });
+          observedMarker.bindTooltip(tooltip, { sticky: true });
+          group.addLayer(observedMarker);
+        }
+      }
+      group.addTo(this.map);
+      this.questEvidenceLayer = group;
+    },
+
     async runExploreQuery() {
       let url = `${API}/db/zdo/query?limit=100`;
       if (this.selectedSnapshotId) url += `&snapshot=${encodeURIComponent(this.selectedSnapshotId)}`;
@@ -4084,6 +4348,23 @@ function buildLut(scheme) {
 function fmtNum(cell) {
   const v = cell.getValue();
   return v != null ? Math.round(v).toLocaleString() : '';
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  })[ch]);
+}
+
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function fetchJson(url) {

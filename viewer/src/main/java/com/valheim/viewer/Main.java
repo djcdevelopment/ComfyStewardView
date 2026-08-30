@@ -6,6 +6,7 @@ import com.valheim.viewer.contract.Region;
 import com.valheim.viewer.contract.WorldContracts;
 import com.valheim.viewer.db.AnalyticsCache;
 import com.valheim.viewer.db.AnalyticsCacheReader;
+import com.valheim.viewer.db.QuestEvidenceStore;
 import com.valheim.viewer.db.RenderedDeltaLayerBuilder;
 import com.valheim.viewer.db.BaselineBuilder;
 import com.valheim.viewer.db.RenderedLayerBuilder;
@@ -61,6 +62,9 @@ public class Main {
         boolean batchOnly = false;
         boolean cacheFields = false;
         String cachePath = "world-cache.duckdb";
+        String questEvidencePath = null;
+        String sourceRevision = System.getenv("STEWARD_SOURCE_REVISION");
+        String questImportToken = System.getenv("STEWARD_QUEST_IMPORT_TOKEN");
         String renderDirPath = "rendered";
         // Serve the UI from disk instead of the copy baked into the jar. Without this, changing
         // one line of index.html costs a Maven build, an image rebuild and a container restart —
@@ -96,6 +100,15 @@ public class Main {
                     break;
                 case "--cache":
                     if (i + 1 < args.length) cachePath = args[++i];
+                    break;
+                case "--quest-evidence-db":
+                    if (i + 1 < args.length) questEvidencePath = args[++i];
+                    break;
+                case "--source-revision":
+                    if (i + 1 < args.length) sourceRevision = args[++i];
+                    break;
+                case "--quest-import-token":
+                    if (i + 1 < args.length) questImportToken = args[++i];
                     break;
                 case "--render-layers":
                     renderLayers = true;
@@ -152,7 +165,7 @@ public class Main {
         File dbFile = new File(dbPath);
         if (!dbFile.exists()) {
             System.err.println("ERROR: Save file not found: " + dbFile.getAbsolutePath());
-            System.err.println("Usage: java -Xmx3g -jar world-viewer.jar [save.db] [--port 8003] [--build-cache] [--render-layers] [--batch-only] [--cache-fields] [--defer-indexes] [--import-archive <dir>] [--import-latest N] [--static-dir <dir>] [--export-building-geometry <out.parquet>] [--export-all-categories]");
+            System.err.println("Usage: java -Xmx3g -jar world-viewer.jar [save.db] [--port 8003] [--build-cache] [--render-layers] [--batch-only] [--cache-fields] [--defer-indexes] [--import-archive <dir>] [--import-latest N] [--static-dir <dir>] [--quest-evidence-db <file>] [--source-revision <40-hex>] [--quest-import-token <secret>] [--export-building-geometry <out.parquet>] [--export-all-categories]");
             System.exit(1);
         }
 
@@ -169,6 +182,9 @@ public class Main {
             log.info("Reconciliation probe active for {} hashes: {}", probes.size(), probes);
         }
         File cacheFile = new File(cachePath);
+        File questEvidenceFile = questEvidencePath == null
+            ? new File(cacheFile.getAbsoluteFile().getParentFile(), "quest-evidence.duckdb")
+            : new File(questEvidencePath);
         File renderRoot = new File(renderDirPath);
         AnalyticsCache analyticsCache = null;
         if (buildCache) {
@@ -421,6 +437,19 @@ public class Main {
             } catch (Exception e) {
                 log.warn("Analytics cache exists but could not be opened: {}", e.toString());
             }
+        }
+        if (cacheFile.getCanonicalFile().equals(questEvidenceFile.getCanonicalFile())) {
+            throw new IllegalArgumentException(
+                "--quest-evidence-db must not point at the rebuildable analytics cache");
+        }
+        QuestEvidenceStore questEvidenceStore = new QuestEvidenceStore(questEvidenceFile);
+        server.setQuestIntegration(sourceRevision, questEvidenceStore, questImportToken);
+        log.info("Quest evidence store attached: {}", questEvidenceFile.getAbsolutePath());
+        if (sourceRevision == null || !sourceRevision.matches("(?i)^[0-9a-f]{40}$")) {
+            log.warn("No valid Steward source revision configured; spatial anchor export will return source_revision_unavailable");
+        }
+        if (questImportToken == null || questImportToken.isBlank()) {
+            log.warn("No Quest import token configured; runtime evidence import is disabled");
         }
         server.start(port);
 
