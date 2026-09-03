@@ -165,12 +165,14 @@ function niceGridStep(span) {
   return base * 10;
 }
 
-function gridVertices(manifest) {
+function gridVertices(manifest, home) {
   const [width,,depth] = manifest.dimensionsM;
-  const step = niceGridStep(Math.max(width, depth));
+  const span = Math.max(width, depth);
+  const focusSpan = Math.min(span, Math.max(1, Number(home?.radiusM) || 1) * 2);
+  const step = niceGridStep(Math.max(focusSpan, span / 12));
   const halfX = Math.ceil(Math.max(width / 2, step) / step) * step;
   const halfZ = Math.ceil(Math.max(depth / 2, step) / step) * step;
-  const y = Number(manifest.floorY) - .006;
+  const y = Number(home?.floorY ?? manifest.floorY) - .006;
   const values = [];
   const line = (a,b,color) => values.push(...a,...color,...b,...color);
   const minor = [.24,.31,.36,.42], major = [.39,.49,.55,.66];
@@ -192,6 +194,15 @@ function titleCase(value) {
 async function main() {
   if (!navigator.gpu) throw new Error('WebGPU is unavailable. Use a current hardware-accelerated browser.');
   const { manifest, bytes:instanceData } = await fetchScene();
+  const radius = Math.max(Number(manifest.radiusM) || 1, 1);
+  const homeTarget = Array.isArray(manifest.home?.target) && manifest.home.target.length === 3 &&
+      manifest.home.target.every(Number.isFinite) ? [...manifest.home.target] : [0,0,0];
+  const homeRadius = Math.max(Number(manifest.home?.radiusM) || radius, 1);
+  const clusteredHome = manifest.home?.strategy === 'densest-cluster';
+  if (!clusteredHome) {
+    document.getElementById('frame-home').hidden = true;
+    document.getElementById('frame-scene').textContent = 'Reset';
+  }
   publish({ pieces:manifest.pieces, instanceBytes:manifest.instanceBytes, instanceSha256:manifest.instanceSha256 });
   statusNode.textContent = 'REQUESTING HARDWARE ADAPTER…';
   const adapter = await navigator.gpu.requestAdapter({ powerPreference:'high-performance' });
@@ -243,7 +254,7 @@ async function main() {
     .5,-.5,-.5, .5,-.5,.5, .5,.5,-.5, .5,.5,.5
   ]);
   const lineIndices = new Uint16Array([0,1,0,2,0,4,1,3,1,5,2,3,2,6,3,7,4,5,4,6,5,7,6,7]);
-  const grid = gridVertices(manifest);
+  const grid = gridVertices(manifest, manifest.home);
   const solidVB = gpuBuffer(device, solidVertices, GPUBufferUsage.VERTEX, 'solid cube');
   const solidIB = gpuBuffer(device, solidIndices, GPUBufferUsage.INDEX, 'solid indices');
   const lineVB = gpuBuffer(device, lineVertices, GPUBufferUsage.VERTEX, 'wire cube');
@@ -320,12 +331,11 @@ async function main() {
     depthStencil:{format:'depth24plus',depthWriteEnabled:false,depthCompare:'less-equal'} });
   const bindGroup = device.createBindGroup({ layout:bindLayout, entries:[{binding:0,resource:{buffer:cameraBuffer}}] });
 
-  const radius = Math.max(Number(manifest.radiusM) || 1, 1);
   let surface = 'shaded', cameraMode = 'orbit';
   let orbitYaw = -35 * Math.PI / 180, orbitPitch = -28 * Math.PI / 180;
-  let orbitDistance = radius * 2.45, orbitTarget = [0,0,0];
-  let flyPosition = [0,0,radius * 2.45], flyYaw = Math.PI, flyPitch = 0;
-  let flySpeed = Math.max(5, radius * .35);
+  let orbitDistance = homeRadius * 2.45, orbitTarget = [...homeTarget];
+  let flyPosition = add(homeTarget,[0,0,homeRadius * 2.45]), flyYaw = Math.PI, flyPitch = 0;
+  let flySpeed = Math.max(5, homeRadius * .35), cameraScale = homeRadius, cameraFrame = 'home';
   const visible = new Set(manifest.families.map((_, index) => index));
   const keys = new Set();
   let lastViewProjection = new Float32Array(16);
@@ -343,7 +353,7 @@ async function main() {
   function cameraMatrix() {
     const eye = cameraMode === 'fly' ? flyPosition : orbitEye();
     const target = cameraMode === 'fly' ? add(flyPosition, forwardVector()) : orbitTarget;
-    const near = Math.max(.02, radius * .0003);
+    const near = Math.max(.02, cameraScale * .0003);
     const far = Math.max(radius * 20, orbitDistance * 4, 100);
     return multiply4(perspective(42*Math.PI/180, canvas.width/canvas.height, near, far), lookAt(eye,target,[0,1,0]));
   }
@@ -367,6 +377,38 @@ async function main() {
       pass.drawIndexed(wire ? 24 : 36, family.count, 0, 0, family.start);
     }
     pass.end(); device.queue.submit([encoder.finish()]);
+  }
+
+  async function captureImage() {
+    render();
+    await device.queue.onSubmittedWorkDone();
+    await frame();
+    const blob = await new Promise((resolve,reject) => canvas.toBlob(value =>
+      value ? resolve(value) : reject(new Error('The GPU canvas could not be encoded as PNG.')), 'image/png'));
+    return blob;
+  }
+
+  let savingImage = false;
+  async function saveImage() {
+    if (savingImage) return null;
+    const button = document.getElementById('save-image');
+    savingImage = true; button.disabled = true; button.textContent = 'Rendering...';
+    try {
+      const blob = await captureImage();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `steward-build-${manifest.snapshotId}-${manifest.pieces}-${surface}.png`;
+      document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      document.getElementById('image-help').textContent =
+        `${fmtBytes(blob.size)} PNG | current ${surface} view saved`;
+      statusNode.textContent = `PNG READY | ${fmt(manifest.pieces)} PIECES | ${canvas.width} x ${canvas.height}`;
+      publish({ imageBytes:blob.size, imageType:blob.type, imageCanvas:[canvas.width,canvas.height] });
+      return { bytes:blob.size, type:blob.type, width:canvas.width, height:canvas.height };
+    } finally {
+      savingImage = false; button.disabled = false; button.textContent = 'Save PNG';
+    }
   }
 
   function setSurface(value) {
@@ -400,18 +442,22 @@ async function main() {
     updateCameraHelp(); render(); publish({ cameraMode });
     if (cameraMode === 'fly' && requestLock) canvas.requestPointerLock?.();
   }
-  function resetCamera() {
+  function frameCamera(target, frameRadius, frameName) {
     if (document.pointerLockElement === canvas) document.exitPointerLock();
     cameraMode = 'orbit'; orbitYaw = -35*Math.PI/180; orbitPitch = -28*Math.PI/180;
-    orbitDistance = radius * 2.45; orbitTarget = [0,0,0];
+    cameraScale = Math.max(frameRadius, 1); cameraFrame = frameName;
+    orbitDistance = cameraScale * 2.45; orbitTarget = [...target];
+    flySpeed = Math.max(5, cameraScale * .35);
     document.querySelectorAll('[data-camera]').forEach(button =>
       button.setAttribute('aria-pressed', String(button.dataset.camera === 'orbit')));
-    updateCameraHelp(); render(); publish({ cameraMode });
+    updateCameraHelp(); render(); publish({ cameraMode, cameraFrame });
   }
+  function resetCamera() { frameCamera(homeTarget,homeRadius,'home'); }
+  function frameAll() { frameCamera([0,0,0],radius,'all'); }
   function updateCameraHelp() {
     const locked = document.pointerLockElement === canvas;
     document.getElementById('camera-help').textContent = cameraMode === 'orbit'
-      ? 'Drag to orbit · Shift-drag to pan · wheel to zoom'
+      ? `Drag to orbit · Shift-drag to pan · wheel to zoom${clusteredHome ? ` · Home restores a dense ${fmt(manifest.home.pieces)}-piece cluster` : ''}`
       : locked ? 'Mouse look · WASD move · Q/E down/up · Shift boost · Escape releases mouse'
       : 'Click the view to capture the mouse · WASD + Q/E · Shift boost';
     document.getElementById('stage-hint').textContent = cameraMode === 'orbit'
@@ -423,7 +469,12 @@ async function main() {
     button.addEventListener('click', () => setSurface(button.dataset.surface)));
   document.querySelectorAll('[data-camera]').forEach(button =>
     button.addEventListener('click', () => setCameraMode(button.dataset.camera, button.dataset.camera === 'fly')));
-  document.getElementById('frame-scene').addEventListener('click', resetCamera);
+  document.getElementById('frame-home').addEventListener('click', resetCamera);
+  document.getElementById('frame-scene').addEventListener('click', frameAll);
+  document.getElementById('save-image').addEventListener('click', () => saveImage().catch(error => {
+    document.getElementById('image-help').textContent = error.message;
+    statusNode.textContent = `PNG FAILED | ${error.message}`;
+  }));
   document.getElementById('families-all').addEventListener('click', () => {
     manifest.families.forEach((_,index) => visible.add(index));
     document.querySelectorAll('#families input').forEach(input => { input.checked = true; });
@@ -475,7 +526,7 @@ async function main() {
     event.preventDefault();
     if (cameraMode === 'orbit') {
       orbitDistance *= Math.exp(event.deltaY * .001);
-      orbitDistance = Math.max(radius * .03,Math.min(radius * 20,orbitDistance));
+      orbitDistance = Math.max(cameraScale * .03,Math.min(radius * 20,orbitDistance));
     } else {
       flyPosition = add(flyPosition,scale(forwardVector(),-event.deltaY * flySpeed * .002));
     }
@@ -525,13 +576,15 @@ async function main() {
   document.getElementById('metric-adapter').textContent = adapterInfo.description || adapterInfo.device || adapterInfo.vendor || adapterClass;
   const coverage = manifest.geometryCoverage;
   document.getElementById('quality-copy').textContent =
-    `${fmt(coverage.real)} measured · ${fmt(coverage.estimated)} family-estimated · ${fmt(coverage.unknown)} pivot marker${coverage.unknown === 1 ? '' : 's'}.`;
+    `${fmt(coverage.real)} measured | ${fmt(coverage.estimated)} family-estimated | ${fmt(coverage.unknown)} pivot marker${coverage.unknown === 1 ? '' : 's'}` +
+    `${coverage.proxyOutliers ? ` (${fmt(coverage.proxyOutliers)} oversized or compound envelopes reduced)` : ''}.`;
   updateCameraHelp(); setSurface(params.get('surface') === 'wire' ? 'wire' : 'shaded'); resetCamera();
   await device.queue.onSubmittedWorkDone(); await frame(); await frame();
   const startup = performance.now() - PAGE_STARTED;
   const viewHash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', lastViewProjection.buffer))]
     .map(value => value.toString(16).padStart(2,'0')).join('');
   document.documentElement.dataset.sceneReady = 'true';
+  document.getElementById('save-image').disabled = false;
   statusNode.textContent = `${adapterClass.toUpperCase()} · ${startup.toFixed(1)} MS START · GRID ${grid.step} M`;
   publish({
     status:'ready', schema:'steward-scene-browser/v1', pieces:manifest.pieces,
@@ -541,6 +594,7 @@ async function main() {
     adapterClassification:adapterClass, features:[...adapter.features].sort(),
     canvas:[canvas.width,canvas.height], startupMs:+startup.toFixed(2),
     drawCalls:visible.size + 1, surface, cameraMode, pointerLocked:false,
+    cameraFrame, fullRadiusM:radius, home:manifest.home,
     viewMatrixSha256:viewHash, geometryCoverage:coverage,
     families:manifest.families.map(family => family.name)
   });
@@ -568,8 +622,12 @@ async function main() {
     statusNode.textContent = `${adapterClass.toUpperCase()} · ${metrics.frameP95Ms.toFixed(2)} MS P95 · ${fmt(manifest.pieces)} PIECES`;
     publish(metrics); return window.__stewardSceneReceipt;
   }
-  window.__stewardSceneControls = { render, benchmark, setSurface, setCameraMode, resetCamera };
+  window.__stewardSceneControls = { render, benchmark, setSurface, setCameraMode, resetCamera, frameAll, captureImage, saveImage };
   if (params.get('benchmark') === '1') benchmark().catch(fail);
+  else if (params.get('capture') === '1') saveImage().catch(error => {
+    document.getElementById('image-help').textContent = error.message;
+    statusNode.textContent = `PNG FAILED | ${error.message}`;
+  });
 }
 
 main().catch(fail);

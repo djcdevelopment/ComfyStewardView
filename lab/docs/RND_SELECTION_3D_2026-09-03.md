@@ -3,9 +3,10 @@
 ## Outcome
 
 The public Comfy Era 17 map can now turn an inspected green area into an exact, shareable WebGPU scene
-in a new tab. The scene keeps every selected BUILDING ZDO through 5,000 pieces, or through 25,000 after
-an explicit confirmation. It preserves position, rotation, prefab family, geometry confidence, and the
-scope that produced the selection while withholding private identity and absolute-origin data.
+in a new tab. The scene keeps every selected BUILDING ZDO through 5,000 pieces, or through 250,000 after
+an inline confirmation in the same right-column card for Heatmap and Biomes. It preserves position,
+rotation, prefab family, geometry confidence, and the scope that produced the selection while withholding
+private identity and absolute-origin data. The browser can save its current GPU view directly to PNG.
 
 This closes a long R&D loop. Earlier experiments moved architectural source material through a
 multi-step CAD/geometry workflow, reconstructed Valheim building assemblies, and explored orthographic
@@ -80,28 +81,43 @@ prefab name/hash and X/Z coordinates. Public-cache v3 was 168,308,736 bytes with
 The catalog has 974 prefab entries. Unknown rows are not silently dropped: each receives a 0.35 m red
 pivot marker, keeping scene count and spatial evidence exact even when visual fidelity is unknown.
 
+Visual review exposed a second geometry class that the original coverage totals did not distinguish:
+large environment or compound-location meshes classified as BUILDING inputs. Thirty-six catalog entries
+have an axis over 20 m or an envelope volume over 2,000 m³; they affect 31,344 snapshot rows. The most
+obvious failure was `PineTree` at roughly 94 × 213 × 90 m, which appeared as a featureless building-sized
+block. These ZDOs are still retained, but their unsafe envelopes become 0.35 m red pivot markers and are
+reported separately as `proxyOutliers`. Flat rugs and hanging cloth remain valid thin envelopes.
+
 ## Predictions and measured edges
 
 Before promotion, the acceptance prediction was that a single compact package plus instanced shared-cube
-geometry could keep both a representative village selection and the largest intended opt-in selection
-inside a 2,000 ms startup and 20 ms p95 frame budget on hardware WebGPU, with no validation errors or
-device loss. Exact population and geometry-coverage counts had to match the server query; sampling was a
-failure, regardless of frame rate.
+geometry could keep a representative village selection and the initial opt-in stress selection inside a
+2,000 ms startup and 20 ms p95 frame budget on hardware WebGPU, with no validation errors or device loss.
+The later 250,000-piece override deliberately introduced a separate 50 ms p95 forced-scene budget. Exact
+population and geometry-coverage counts still had to match the server query; sampling remained a failure,
+regardless of frame rate.
 
 | Probe | Exact scope | Result |
 |---|---|---|
-| Pilot | X `467.8..511.6`, Z `5501.4..5535.9` | 862 pieces; 862 real; 13 families; 68,960 instance bytes; 367.0 ms startup; 16.9 ms p95 |
-| Forced stress | X `2021.7..2101.9`, Z `-4851.3..-4751.8` | 22,387 pieces; 22,199 real + 188 unknown; 13 displayed families including Unknown; 1,790,960 instance bytes; 210.2 ms startup; 16.9 ms p95 |
+| Pilot | X `467.8..511.6`, Z `5501.4..5535.9` | 862 pieces; 862 real; 13 families; 68,960 instance bytes; 389.4 ms startup; 16.9 ms p95; 289,201-byte PNG |
+| Forced stress | X `2021.7..2101.9`, Z `-4851.3..-4751.8` | 22,387 pieces; 22,197 real + 188 original unknown + 2 reduced proxies; 13 families; 1,790,960 instance bytes; 206.2 ms startup; 16.9 ms p95; 214,235-byte PNG |
+| Confirmed Meadows | Whole published bounds, `biomes=meadows` | 193,008 pieces; 188,122 real + 366 estimated + 4,520 markers, including 240 reduced proxies; 14.73 MiB instance data; 856.4 ms startup; 39.9 ms p95; 141,409-byte PNG |
 
-Both probes ran for 300 measured frames on hardware-classified Intel Xe-LPG WebGPU. Both passed shaded
-and wireframe rendering, family filtering, orbit and free-flight camera exercises, deterministic package
-integrity, zero browser/WebGPU validation errors, and zero device loss. The 22,387-piece result also
-proved the confirmation lane. The same scope without `override=true` returned 409; a forced whole-world
-request returned 413 instead of allocating a package.
+All three probes ran for 300 measured frames on hardware-classified Intel Xe-LPG WebGPU. They passed
+shaded and wireframe rendering, family filtering, orbit and free-flight camera exercises, browser PNG
+capture, deterministic package integrity, zero browser/WebGPU validation errors, and zero device loss.
+The 22,387- and 193,008-piece results proved the confirmation lane. The same scopes without
+`override=true` return 409; a forced result over 250,000 returns 413 before row materialization.
+
+The whole-Meadows envelope spans roughly 10.0 × 5.1 × 9.1 km and has a 5.8 km full radius. Framing all
+of it made local builds nearly invisible. A deterministic 64 m three-dimensional density grid now picks
+a 4,330-piece cluster with a 130 m home radius. **Home** restores that useful view after orbit or flight;
+**Frame all** remains available when the visitor wants the complete spatial relationship.
 
 The pilot instance SHA-256 was
 `3fc0ca61ccddde927b14049f76818816d9d71ae3187b189d5e5ca66a47083c93`; the stress instance SHA-256 was
-`5e530097f4f634476e637642e4700fdb384aa9bdb71f1546453c3c0abf6bb78a`.
+`f8e2a884916e7573f5ff040e9f649bcdcda7ff52af519888a1a5072c67d9e77f`; the Meadows instance SHA-256 was
+`6e4edff02cb8691766d6f9c1d69ebf2e10f14f3639c5b356c9c9abd712b19a38`.
 
 ## Decisions that survived contact with the data
 
@@ -113,6 +129,11 @@ The pilot instance SHA-256 was
   before translation. Mirroring X creates a right-handed browser frame without changing selection shape.
 - The scene origin is the selection center and the floor is relative. This improves floating-point and
   camera behavior while avoiding disclosure of an absolute 3D origin.
+- The initial camera is a presentation frame, not a change to scene membership. Compact scenes frame the
+  whole selection; kilometre-scale or vertically separated scenes open on their densest local cluster
+  and retain a separate full-selection frame.
+- Image export reuses the current WebGPU canvas, including camera, shaded/wireframe surface, and visible
+  family choices. No second server raster pipeline or sampled representation is introduced.
 - A shareable URL is a query recipe. The server rebuilds the package against the currently active,
   immutable public cache instead of accepting serialized object lists from the browser.
 - The 2D map may use a deterministic representative sample for context while retaining complete totals.
@@ -151,6 +172,15 @@ The geometry catalog originally appeared complete when filtered to only catalog 
 but that produced 914 entries and lost legitimate matches. Exporting all 974 normalized lexicon entries
 and measuring coverage against actual snapshot BUILDING rows fixed the category-assumption error.
 
+The same inclusive export also brought environmental meshes into an envelope representation designed
+for modular building pieces. The resulting giant blocks were useful `/rnd` evidence: prefab lookup and
+transform math were correct, but the representation was not. Reducing only measured outlier envelopes
+to explicit markers fixed framing without deleting their coordinates or inventing dimensions.
+
+Large selections exposed an independent camera problem. Exact membership can span kilometres and several
+kilometres of elevation, while the visitor still needs a human-scale place to begin. Separating **Home**
+from **Frame all** kept exactness and usability from fighting over one camera radius.
+
 The first clean remote release attempt found one more boundary: `core.autocrlf` had left the local shell
 entrypoint with CRLF bytes even though Git stored it as LF. Archiving the working tree built a valid image
 whose Linux entrypoint could not execute. The previous verified container was restored immediately; the
@@ -173,18 +203,20 @@ node --check src\main\resources\static\scene.js
 node --check tools\browser-smoke.mjs
 node --check tools\scene-browser-smoke.mjs
 node tools\browser-smoke.mjs http://127.0.0.1:8092/ data\scene-map-regression.png --public-inspect --terrain --biomes --terrain-close
-node tools\scene-browser-smoke.mjs http://127.0.0.1:8092/ data\scene-browser-smoke-rnd
+node tools\scene-browser-smoke.mjs http://127.0.0.1:8092/ data\scene-browser-smoke-rnd --large
 ```
 
-Deployment repeats the pilot, direct stress denial, forced stress package, over-cap denial, public-map
-health, and `/steward/` health against the staged immutable cache before declaring success.
+Deployment repeats the pilot, direct stress denial, forced stress package, confirmed whole-Meadows
+package, over-cap denial, public-map health, and `/steward/` health against the staged immutable cache
+before declaring success.
 
 ## Remaining limits and next experiments
 
 - Envelopes communicate assembly, orientation, density, and navigation—not exact meshes, materials,
   terrain, collision, wear state, or interiors. Those are separate evidence and performance questions.
 - The hardware receipt covers the release workstation's Intel path. Broader device/browser telemetry is
-  useful, but should not weaken the explicit unsupported state.
+  useful, but should not weaken the explicit unsupported state. The 193,008-piece forced case is a
+  roughly 24 fps exploration lane on this adapter, not a claim of 60 fps on every supported device.
 - Object picking, prefab labels in-world, first-person collision, terrain, and native mesh streaming may
   improve exploration. Each should begin as a separate `/rnd` prediction rather than accreting into the
   initial scene contract.

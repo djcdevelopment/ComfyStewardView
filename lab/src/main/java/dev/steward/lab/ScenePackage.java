@@ -21,11 +21,15 @@ import java.util.Map;
 /** Deterministic, exact, selection-local WebGPU scene package. */
 public final class ScenePackage {
     public static final int DIRECT_LIMIT = 5_000;
-    public static final int OVERRIDE_LIMIT = 25_000;
+    public static final int OVERRIDE_LIMIT = 250_000;
     public static final int INSTANCE_STRIDE = 80;
     public static final String CONTENT_TYPE = "application/vnd.comfysteward.scene";
     private static final double MIN_VISIBLE_AXIS = 0.01;
     private static final double UNKNOWN_MARKER_AXIS = 0.35;
+    private static final double MAX_PROXY_AXIS = 20.0;
+    private static final double MAX_PROXY_VOLUME = 2_000.0;
+    private static final double HOME_ALL_MAX_SPAN = 600.0;
+    private static final double HOME_CELL_METERS = 64.0;
     private static final Map<String, String> FAMILY_COLORS = familyColors();
 
     private final SnapshotRepository snapshots;
@@ -43,18 +47,21 @@ public final class ScenePackage {
             throw new IllegalArgumentException("3D exploration is available for Build density only");
         }
         validateBounds(minX, maxX, minZ, maxZ);
-        int limit = forced ? OVERRIDE_LIMIT : DIRECT_LIMIT;
-        List<Piece> pieces = query(snapshotId, minX, maxX, minZ, maxZ, biomes, limit);
-        if (pieces.size() > limit) {
-            if (forced) {
-                throw new CapacityException(false,
-                    "This selection exceeds the 25,000-piece 3D safety limit. Tighten the green area.");
-            }
+        long pieceCount = count(snapshotId, minX, maxX, minZ, maxZ, biomes);
+        if (pieceCount > OVERRIDE_LIMIT) {
+            throw new CapacityException(false,
+                "This selection exceeds the 250,000-piece 3D safety limit. Tighten the green area.");
+        }
+        if (!forced && pieceCount > DIRECT_LIMIT) {
             throw new CapacityException(true,
                 "This selection exceeds 5,000 pieces. Confirm the exact 3D override from the map.");
         }
-        if (pieces.isEmpty()) {
+        if (pieceCount == 0) {
             throw new IllegalArgumentException("This selection contains no building pieces to explore in 3D");
+        }
+        List<Piece> pieces = query(snapshotId, minX, maxX, minZ, maxZ, biomes, (int) pieceCount);
+        if (pieces.size() != pieceCount) {
+            throw new IllegalStateException("The exact scene changed while it was being assembled");
         }
 
         Bounds bounds = orientedBounds(pieces);
@@ -62,6 +69,7 @@ public final class ScenePackage {
         int real = 0;
         int estimated = 0;
         int unknown = 0;
+        int proxyOutliers = 0;
         ByteBuffer instances = ByteBuffer.allocate(pieces.size() * INSTANCE_STRIDE)
             .order(ByteOrder.LITTLE_ENDIAN);
         LinkedHashMap<String, FamilyRange> families = new LinkedHashMap<>();
@@ -77,6 +85,7 @@ public final class ScenePackage {
             if (piece.quality == Quality.REAL) real++;
             else if (piece.quality == Quality.ESTIMATED) estimated++;
             else unknown++;
+            if (piece.proxyOutlier) proxyOutliers++;
 
             double[] localCenter = {
                 -(piece.center[0] - origin[0]),
@@ -91,13 +100,15 @@ public final class ScenePackage {
                 }
             }
             putModel(instances, linear, localCenter);
-            float[] rgba = hexColor(family.color);
+            float[] rgba = hexColor(piece.quality == Quality.UNKNOWN
+                ? FAMILY_COLORS.get("unknown") : family.color);
             for (float channel : rgba) instances.putFloat(channel);
             radius = Math.max(radius, length(localCenter) + length(piece.extents) / 2.0);
         }
         byte[] instanceBytes = instances.array();
         String instanceSha = sha256(instanceBytes);
         ReleaseReceipt receipt = releaseReceipt();
+        HomeFrame home = homeFrame(pieces, bounds, origin, radius);
 
         ObjectNode manifest = mapper.createObjectNode();
         manifest.put("schema", "steward-zdo-scene/v1");
@@ -121,6 +132,13 @@ public final class ScenePackage {
         dimensions.add(round(bounds.high[0] - bounds.low[0], 2));
         dimensions.add(round(bounds.high[1] - bounds.low[1], 2));
         dimensions.add(round(bounds.high[2] - bounds.low[2], 2));
+        ObjectNode homeNode = manifest.putObject("home");
+        homeNode.put("strategy", home.strategy);
+        homeNode.put("pieces", home.pieces);
+        homeNode.put("radiusM", round(home.radius, 3));
+        homeNode.put("floorY", round(home.floorY, 3));
+        ArrayNode homeTarget = homeNode.putArray("target");
+        for (double value : home.target) homeTarget.add(round(value, 3));
         ObjectNode scope = manifest.putObject("scope");
         scope.put("minX", minX); scope.put("maxX", maxX);
         scope.put("minZ", minZ); scope.put("maxZ", maxZ);
@@ -130,6 +148,7 @@ public final class ScenePackage {
         coverage.put("real", real);
         coverage.put("estimated", estimated);
         coverage.put("unknown", unknown);
+        coverage.put("proxyOutliers", proxyOutliers);
         coverage.put("unknownMarkerM", UNKNOWN_MARKER_AXIS);
         ArrayNode familyNodes = manifest.putArray("families");
         for (FamilyRange family : families.values()) {
@@ -191,21 +210,54 @@ public final class ScenePackage {
         return result;
     }
 
+    private long count(long snapshotId, double minX, double maxX,
+            double minZ, double maxZ, List<String> biomes) throws SQLException {
+        StringBuilder biomeSql = new StringBuilder();
+        if (!biomes.isEmpty()) {
+            biomeSql.append(" AND biome IN (");
+            for (int i = 0; i < biomes.size(); i++) {
+                if (i > 0) biomeSql.append(',');
+                biomeSql.append('?');
+            }
+            biomeSql.append(')');
+        }
+        String sql = "SELECT COUNT(*) FROM zdo WHERE snapshot_id = ? AND category = 'BUILDING' " +
+            "AND x >= ? AND x <= ? AND z >= ? AND z <= ?" + biomeSql;
+        try (Connection connection = snapshots.open();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            int parameter = 1;
+            statement.setLong(parameter++, snapshotId);
+            statement.setDouble(parameter++, minX);
+            statement.setDouble(parameter++, maxX);
+            statement.setDouble(parameter++, minZ);
+            statement.setDouble(parameter++, maxZ);
+            for (String biome : biomes) statement.setString(parameter++, biome);
+            try (ResultSet row = statement.executeQuery()) {
+                if (!row.next()) throw new IllegalStateException("The exact scene count is unavailable");
+                return row.getLong(1);
+            }
+        }
+    }
+
     private static Piece readPiece(ResultSet row) throws SQLException {
         boolean known = row.getString("family") != null;
-        String family = known ? row.getString("family") : "unknown";
-        String source = known ? row.getString("geometry_source") : "unknown";
-        Quality quality = !known ? Quality.UNKNOWN :
-            ("family_median".equals(source) ? Quality.ESTIMATED : Quality.REAL);
-        double[] extents = known
+        double[] measuredExtents = known
             ? new double[] { row.getDouble("extent_x"), row.getDouble("extent_y"), row.getDouble("extent_z") }
             : new double[] { UNKNOWN_MARKER_AXIS, UNKNOWN_MARKER_AXIS, UNKNOWN_MARKER_AXIS };
+        boolean proxyOutlier = known && !safeProxyEnvelope(measuredExtents);
+        String family = known ? row.getString("family") : "unknown";
+        String source = !known ? "unknown" : proxyOutlier ? "proxy-outlier" : row.getString("geometry_source");
+        Quality quality = !known || proxyOutlier ? Quality.UNKNOWN :
+            ("family_median".equals(source) ? Quality.ESTIMATED : Quality.REAL);
+        double[] extents = proxyOutlier
+            ? new double[] { UNKNOWN_MARKER_AXIS, UNKNOWN_MARKER_AXIS, UNKNOWN_MARKER_AXIS }
+            : measuredExtents;
         for (int i = 0; i < 3; i++) extents[i] = Math.max(MIN_VISIBLE_AXIS, extents[i]);
         double[][] rotation = row.getBoolean("has_rot")
             ? rotation(row.getDouble("rot_x"), row.getDouble("rot_y"), row.getDouble("rot_z"))
             : identity();
         double[] pivot = { row.getDouble("x"), row.getDouble("y"), row.getDouble("z") };
-        double[] offset = known
+        double[] offset = known && !proxyOutlier
             ? new double[] { row.getDouble("center_x"), row.getDouble("center_y"), row.getDouble("center_z") }
             : new double[3];
         double[] rotatedOffset = multiply(rotation, offset);
@@ -215,7 +267,98 @@ public final class ScenePackage {
         for (double value : center) {
             if (!Double.isFinite(value)) throw new IllegalStateException("Scene contains a non-finite transform");
         }
-        return new Piece(row.getLong("zdo_index"), family, source, quality, extents, rotation, center);
+        return new Piece(row.getLong("zdo_index"), family, source, quality, extents, rotation, center, proxyOutlier);
+    }
+
+    private static boolean safeProxyEnvelope(double[] extents) {
+        double volume = 1;
+        for (double extent : extents) {
+            if (!Double.isFinite(extent) || extent > MAX_PROXY_AXIS) return false;
+            volume *= Math.max(MIN_VISIBLE_AXIS, extent);
+        }
+        return Double.isFinite(volume) && volume <= MAX_PROXY_VOLUME;
+    }
+
+    private static HomeFrame homeFrame(List<Piece> pieces, Bounds bounds, double[] origin, double radius) {
+        double maxSpan = Math.max(bounds.high[0] - bounds.low[0],
+            Math.max(bounds.high[1] - bounds.low[1], bounds.high[2] - bounds.low[2]));
+        if (maxSpan <= HOME_ALL_MAX_SPAN) {
+            return new HomeFrame("selection-all", pieces.size(), new double[3],
+                Math.max(radius, 1.0), bounds.low[1] - origin[1]);
+        }
+
+        LinkedHashMap<Cell, Integer> cellCounts = new LinkedHashMap<>();
+        for (Piece piece : pieces) {
+            Cell cell = cell(localCenter(piece, origin));
+            cellCounts.merge(cell, 1, Integer::sum);
+        }
+        Cell best = null;
+        int bestCount = -1;
+        double bestDistance = Double.POSITIVE_INFINITY;
+        for (Cell candidate : cellCounts.keySet()) {
+            int neighborhood = 0;
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        neighborhood += cellCounts.getOrDefault(
+                            new Cell(candidate.x + dx, candidate.y + dy, candidate.z + dz), 0);
+                    }
+                }
+            }
+            double distance = candidate.x * candidate.x + candidate.y * candidate.y + candidate.z * candidate.z;
+            if (neighborhood > bestCount || neighborhood == bestCount && distance < bestDistance) {
+                best = candidate;
+                bestCount = neighborhood;
+                bestDistance = distance;
+            }
+        }
+
+        double[] low = { Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY };
+        double[] high = { Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NEGATIVE_INFINITY };
+        int homePieces = 0;
+        for (Piece piece : pieces) {
+            double[] center = localCenter(piece, origin);
+            Cell cell = cell(center);
+            if (Math.abs(cell.x - best.x) > 1 || Math.abs(cell.y - best.y) > 1 ||
+                    Math.abs(cell.z - best.z) > 1) continue;
+            homePieces++;
+            double[] half = { piece.extents[0] / 2, piece.extents[1] / 2, piece.extents[2] / 2 };
+            for (int axis = 0; axis < 3; axis++) {
+                double reach = Math.abs(piece.rotation[axis][0]) * half[0] +
+                    Math.abs(piece.rotation[axis][1]) * half[1] +
+                    Math.abs(piece.rotation[axis][2]) * half[2];
+                low[axis] = Math.min(low[axis], center[axis] - reach);
+                high[axis] = Math.max(high[axis], center[axis] + reach);
+            }
+        }
+        double[] target = {
+            (low[0] + high[0]) / 2, (low[1] + high[1]) / 2, (low[2] + high[2]) / 2
+        };
+        double homeRadius = 0;
+        for (int mask = 0; mask < 8; mask++) {
+            double[] corner = {
+                (mask & 1) == 0 ? low[0] : high[0],
+                (mask & 2) == 0 ? low[1] : high[1],
+                (mask & 4) == 0 ? low[2] : high[2]
+            };
+            homeRadius = Math.max(homeRadius, length(new double[] {
+                corner[0] - target[0], corner[1] - target[1], corner[2] - target[2]
+            }));
+        }
+        return new HomeFrame("densest-cluster", homePieces, target,
+            Math.max(homeRadius, 1.0), low[1]);
+    }
+
+    private static double[] localCenter(Piece piece, double[] origin) {
+        return new double[] {
+            -(piece.center[0] - origin[0]), piece.center[1] - origin[1], piece.center[2] - origin[2]
+        };
+    }
+
+    private static Cell cell(double[] center) {
+        return new Cell((long) Math.floor(center[0] / HOME_CELL_METERS),
+            (long) Math.floor(center[1] / HOME_CELL_METERS),
+            (long) Math.floor(center[2] / HOME_CELL_METERS));
     }
 
     private ReleaseReceipt releaseReceipt() throws SQLException {
@@ -363,7 +506,9 @@ public final class ScenePackage {
 
     private enum Quality { REAL, ESTIMATED, UNKNOWN }
     private record Piece(long zdoIndex, String family, String source, Quality quality,
-                         double[] extents, double[][] rotation, double[] center) {}
+                         double[] extents, double[][] rotation, double[] center, boolean proxyOutlier) {}
+    private record Cell(long x, long y, long z) {}
+    private record HomeFrame(String strategy, int pieces, double[] target, double radius, double floorY) {}
     private record ReleaseReceipt(String snapshotHash, String buildingGeometrySha256,
                                   String pieceGeometrySha256) {}
     private record Bounds(double[] low, double[] high) {

@@ -269,7 +269,11 @@
             <div class="inspect-warning" id="inspect-point-warning" hidden></div>
             <section class="inspect-scene" id="inspect-scene" hidden>
               <div><span>EXPLORE THE BUILD</span><strong>Walk this exact selection</strong><small id="inspect-scene-copy">Waiting for the selection count.</small></div>
-              <a id="inspect-3d" class="scene-link" target="_blank" rel="noopener" aria-disabled="true">Explore in 3D <span aria-hidden="true">↗</span></a>
+              <div class="inspect-scene-actions">
+                <button type="button" id="inspect-scene-confirm" class="scene-confirm" aria-pressed="false" hidden>Confirm large selection</button>
+                <a id="inspect-3d" class="scene-link" target="_blank" rel="noopener" aria-disabled="true">Explore in 3D <span aria-hidden="true">↗</span></a>
+                <a id="inspect-render-image" class="scene-link scene-image-link" target="_blank" rel="noopener" aria-disabled="true">Render image <span aria-hidden="true">↗</span></a>
+              </div>
             </section>
             <div class="inspect-ranked">
               <div class="ranked-heading"><span id="inspect-ranked-label">WHAT MAKES IT BRIGHT · TOP TYPES</span><span id="inspect-query-time">—</span></div>

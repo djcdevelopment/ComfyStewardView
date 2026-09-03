@@ -121,8 +121,11 @@ biome, capacity, and override validation.
 
 The follow-on preserves the launch lesson. Terrain remains the stable starting object; Heatmap and
 Biomes remain reversible map questions; 3D is available only after an explicit inspection gives it a
-bounded question to answer. The initial 5,000-piece lane opens directly, 5,001–25,000 requires consent,
-and anything larger returns to selection rather than sampling. See
+bounded question to answer. The initial 5,000-piece lane opens directly, 5,001–250,000 requires inline
+consent from the same right-column card in either mode, and anything larger returns to selection rather
+than sampling. The confirmed lane also exposes browser-side PNG capture. Oversized environmental proxy
+envelopes remain counted but render as explicit pivot markers, while kilometre-scale selections open on
+a deterministic dense **Home** cluster and retain **Frame all** for the full relationship. See
 [ADR 0006](adr/0006-exact-selection-webgpu-scene.md) and the
 [selection-to-3D R&D retrospective](RND_SELECTION_3D_2026-09-03.md) for the implementation boundary,
 source receipts, transform decisions, and hardware measurements.

@@ -34,9 +34,16 @@
       <div class="button-row" id="camera-controls">
         <button type="button" data-camera="orbit" aria-pressed="true">Orbit</button>
         <button type="button" data-camera="fly" aria-pressed="false">Fly</button>
-        <button type="button" id="frame-scene">Reset</button>
+        <button type="button" id="frame-home" title="Return to the densest local build cluster">Home</button>
+        <button type="button" id="frame-scene" title="Frame every piece in the exact selection">Frame all</button>
       </div>
       <p id="camera-help" class="control-help">Drag to orbit · Shift-drag to pan · wheel to zoom</p>
+    </section>
+
+    <section class="control-section image-section">
+      <h2>Image</h2>
+      <div class="button-row"><button type="button" id="save-image" disabled>Save PNG</button></div>
+      <p id="image-help" class="control-help">Captures the current camera, surface, and visible families.</p>
     </section>
 
     <section class="control-section family-section">

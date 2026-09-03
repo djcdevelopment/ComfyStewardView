@@ -23,6 +23,7 @@
   const BIOME_HIGHLIGHT_FILL_ALPHA = 72;
   const WORLD_GLOBE_RADIUS_METERS = 10_500;
   const EXACT_POINT_LIMIT = 5_000;
+  const SCENE_OVERRIDE_LIMIT = 250_000;
   const QUICK_START_DISMISSAL_KEY = 'steward-world-quick-start-scene-v1';
   const palettes = {
     ember: [[0,[10,20,36]],[.36,[40,76,124]],[.67,[172,178,142]],[.88,[249,125,91]],[1,[255,224,166]]],
@@ -90,6 +91,7 @@
     currentScopeBounds: null,
     inspectionScope: null,
     currentSelectionPositionCount: null,
+    sceneOverrideConfirmed: false,
     selectionItemsLoading: false,
     itemPageCursors: [null],
     itemPageIndex: 0,
@@ -301,14 +303,19 @@
   }
 
   function syncSceneAction() {
-    const card = $('inspect-scene'), link = $('inspect-3d'), copy = $('inspect-scene-copy');
+    const card = $('inspect-scene'), link = $('inspect-3d'), imageLink = $('inspect-render-image');
+    const confirm = $('inspect-scene-confirm'), copy = $('inspect-scene-copy');
     const available = PUBLIC_MODE && state.bootstrap?.sceneAvailable === true;
     card.hidden = !available;
     if (!available) return;
     const count = state.currentSelectionPositionCount;
-    link.removeAttribute('href');
-    link.removeAttribute('data-confirm-count');
-    link.setAttribute('aria-disabled', 'true');
+    for (const action of [link,imageLink]) {
+      action.removeAttribute('href');
+      action.setAttribute('aria-disabled', 'true');
+    }
+    confirm.hidden = true;
+    confirm.disabled = false;
+    confirm.setAttribute('aria-pressed', 'false');
     if (count == null || !state.inspectionScope) {
       copy.textContent = 'Waiting for the exact selection count.';
       return;
@@ -317,8 +324,11 @@
       copy.textContent = 'There are no building pieces in this selection.';
       return;
     }
-    if (count > 25_000) {
-      copy.textContent = `${fmt(count)} pieces exceed the 25,000-piece safety limit. Tighten the green area.`;
+    if (count > SCENE_OVERRIDE_LIMIT) {
+      copy.textContent = `${fmt(count)} pieces exceed the ${fmt(SCENE_OVERRIDE_LIMIT)}-piece safety limit. Tighten the green area.`;
+      confirm.hidden = false;
+      confirm.disabled = true;
+      confirm.textContent = `${fmt(SCENE_OVERRIDE_LIMIT)} piece maximum`;
       return;
     }
     const scope = state.inspectionScope;
@@ -329,15 +339,29 @@
       minZ:String(scope.bounds.minZ), maxZ:String(scope.bounds.maxZ)
     }).toString();
     if (scope.biomes.length) url.searchParams.set('biomes', scope.biomes.join(','));
-    if (count > EXACT_POINT_LIMIT) {
+    const overrideRequired = count > EXACT_POINT_LIMIT;
+    if (overrideRequired && !state.sceneOverrideConfirmed) {
+      confirm.hidden = false;
+      confirm.textContent = `Allow ${fmt(count)} exact pieces`;
+      copy.textContent = `${fmt(count)} exact pieces. Confirm the larger GPU scene here; nothing will be sampled.`;
+      return;
+    }
+    if (overrideRequired) {
       url.searchParams.set('override', 'true');
-      link.dataset.confirmCount = String(count);
-      copy.textContent = `${fmt(count)} exact pieces. Opening requires one confirmation; nothing is sampled.`;
+      confirm.hidden = false;
+      confirm.disabled = true;
+      confirm.setAttribute('aria-pressed', 'true');
+      confirm.textContent = `${fmt(count)} pieces confirmed`;
+      copy.textContent = `Override confirmed for ${fmt(count)} exact pieces. Explore interactively or render the current view as a PNG.`;
     } else {
-      copy.textContent = `${fmt(count)} exact piece${count === 1 ? '' : 's'}, with saved positions and rotations.`;
+      copy.textContent = `${fmt(count)} exact piece${count === 1 ? '' : 's'}, with saved positions and rotations. Explore it or render a PNG.`;
     }
     link.href = url.href;
     link.setAttribute('aria-disabled', 'false');
+    const imageUrl = new URL(url.href);
+    imageUrl.searchParams.set('capture', '1');
+    imageLink.href = imageUrl.href;
+    imageLink.setAttribute('aria-disabled', 'false');
   }
 
   function setBiomeFilter(id) {
@@ -1442,6 +1466,7 @@
     state.currentScopeBounds = bounds;
     state.inspectionScope = null;
     state.currentSelectionPositionCount = null;
+    state.sceneOverrideConfirmed = false;
     state.selectionItemsLoading = false;
     state.itemPageCursors = [null];
     state.itemPageIndex = 0;
@@ -2440,15 +2465,16 @@
       const item = event.target.closest('[data-item-x]');
       if (item) focusItem(Number(item.dataset.itemX), Number(item.dataset.itemZ));
     });
-    $('inspect-3d').addEventListener('click', event => {
-      const link = event.currentTarget;
-      if (link.getAttribute('aria-disabled') === 'true' || !link.href) {
-        event.preventDefault();
-        return;
-      }
-      const count = Number(link.dataset.confirmCount || 0);
-      if (count && !window.confirm(
-          `Open all ${fmt(count)} selected pieces in 3D? This exact scene is larger and may take a moment to prepare.`)) {
+    $('inspect-scene-confirm').addEventListener('click', () => {
+      const count = state.currentSelectionPositionCount;
+      if (count == null || count <= EXACT_POINT_LIMIT || count > SCENE_OVERRIDE_LIMIT) return;
+      state.sceneOverrideConfirmed = true;
+      syncSceneAction();
+      toast(`${fmt(count)} exact pieces confirmed`);
+    });
+    for (const id of ['inspect-3d','inspect-render-image']) $(id).addEventListener('click', event => {
+      const action = event.currentTarget;
+      if (action.getAttribute('aria-disabled') === 'true' || !action.href) {
         event.preventDefault();
       }
     });

@@ -418,8 +418,18 @@ try {
         $stressSceneHeaders -notmatch '(?im)^x-steward-scene-pieces:\s*22387\s*$') {
         throw 'The exact 22,387-piece forced scene contract failed.'
     }
+    $largeScenePieces = [long]$biomeSelection.total
+    if ($largeScenePieces -le 5000 -or $largeScenePieces -gt 250000) {
+        throw "The Meadows verification scope has an unexpected $largeScenePieces pieces."
+    }
+    $largeSceneQuery = "snapshot=$SnapshotId&lens=build-density&minX=-26500&maxX=26500&minZ=-20500&maxZ=27500&biomes=meadows&override=true"
+    $largeSceneHeaders = Invoke-Ssh "curl --compressed -sS -m 90 -D - -o /dev/null 'http://127.0.0.1:$Port/api/scene?$largeSceneQuery'"
+    if ($largeSceneHeaders -notmatch 'HTTP/\S+ 200' -or
+        $largeSceneHeaders -notmatch "(?im)^x-steward-scene-pieces:\s*$largeScenePieces\s*`$") {
+        throw "The exact $largeScenePieces-piece confirmed Meadows scene contract failed."
+    }
     $overLimitCode = (Invoke-Ssh "curl -sS -m 30 -o /dev/null -w '%{http_code}' 'http://127.0.0.1:$Port/api/scene?snapshot=$SnapshotId&lens=build-density&minX=-12288&maxX=12288&minZ=-12288&maxZ=12288&override=true'").Trim()
-    if ($overLimitCode -ne '413') { throw "The 25,000-piece scene ceiling returned $overLimitCode instead of 413." }
+    if ($overLimitCode -ne '413') { throw "The 250,000-piece scene ceiling returned $overLimitCode instead of 413." }
     $jobsCode = (Invoke-Ssh "curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:$Port/api/jobs").Trim()
     $scopeCode = (Invoke-Ssh "curl -sS -o /dev/null -w '%{http_code}' 'http://127.0.0.1:$Port/api/manifest?snapshot=$($SnapshotId - 1)'").Trim()
     $hiddenArtifactCode = (Invoke-Ssh "curl -sS -o /dev/null -w '%{http_code}' 'http://127.0.0.1:$Port/api/artifacts/$SnapshotId/dropped-items-320.png'").Trim()
@@ -487,6 +497,8 @@ $receipt = [ordered]@{
     unknown_geometry_rows = [long]$cacheMetadata.unknownGeometryRows
     scene_pilot_pieces = 862
     scene_stress_pieces = 22387
+    scene_large_pieces = $largeScenePieces
+    scene_override_limit = 250000
     terrain_context_style = $contextManifest.style
     terrain_context_overview_sha256 = (@($contextManifest.variants) | Where-Object id -eq 'overview').sha256
     terrain_context_detail_sha256 = (@($contextManifest.variants) | Where-Object id -eq 'detail').sha256

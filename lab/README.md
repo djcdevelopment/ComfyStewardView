@@ -42,10 +42,14 @@ Its header offers two optional, mutually exclusive questions over that neutral c
 - **Quick start guide** opens automatically once per browser after the map is ready, unless the visitor
   is returning from Discord authentication. Every dismissal is remembered under a versioned key; the
   `?` action always opens the guide again.
-- **Open exact selection in 3D** appears after inspection. Up to 5,000 pieces open directly; 5,001–25,000
-  require an explicit confirmation; larger selections must be tightened. The new tab rebuilds the
-  authoritative selection server-side, then renders oriented prefab envelopes with shaded or wireframe
-  geometry and orbit or pointer-locked free-flight controls. It never substitutes a sample.
+- **Explore the build** appears in the inspector's right column in both Heatmap and Biomes. Up to 5,000
+  pieces open directly; 5,001–250,000 require an inline confirmation in that same location; larger
+  selections must be tightened. The new tab rebuilds the authoritative selection server-side, then
+  renders oriented prefab envelopes with shaded or wireframe geometry and orbit or pointer-locked
+  free-flight controls. It never substitutes a sample. The same confirmed action can render the
+  current GPU-authored view to PNG without asking the server for a second raster representation.
+  Kilometre-scale and vertically separated selections start on a useful dense **Home** cluster;
+  **Frame all** remains available for the complete scene.
 - **Submit feedback** is anonymous by default. A visitor can optionally use Discord OAuth's
   `identify` scope to attach a verified display name. The access token is discarded immediately;
   the feedback is delivered by webhook to the private Steward feedback channel and explicitly pings
@@ -267,10 +271,13 @@ points without allocating enormous full-world images.
 - SQL is assembled only from built-in lens definitions; browser input cannot supply SQL.
 - Cache access is read-only.
 - The public 3D endpoint has a dedicated one-at-a-time concurrency gate and six-requests-per-minute
-  client limit. It serves only exact selections: 5,000 direct, 25,000 after an explicit override, and
-  no server or client sampling.
+  client limit. It serves only exact selections: 5,000 direct, 250,000 after an explicit override, and
+  no server or client sampling. It counts before materializing so an over-limit scope is rejected
+  without allocating a scene package.
 - The scene is a geometry-envelope explorer, not a claim of native mesh, terrain, collision, or material
   fidelity. Estimated envelopes and unknown markers are labeled in the UI and package manifest.
+  Oversized environmental or compound catalog envelopes are preserved as small red pivot markers;
+  this keeps every ZDO in the exact result without presenting a tree or location proxy as a giant block.
 - `.db`, `.duckdb`, generated images, and local configuration are ignored by Git.
 - The production repository and production deployment are not modified by this lab.
 
@@ -286,8 +293,10 @@ node tools\scene-browser-smoke.mjs http://127.0.0.1:8092/ data\scene-smoke
 ```
 
 The scene browser gate uses hardware WebGPU and checks the exact pilot and stress populations, package
-receipts, shaded/wireframe controls, camera movement, browser/validation errors, device loss, startup
-under 2 seconds, and p95 frame time at or below 20 ms. It intentionally has no WebGL fallback: visitors
+receipts, shaded/wireframe controls, Home/full-selection framing, camera movement, GPU-authored PNG
+capture, browser/validation errors, device loss, startup under 2 seconds, and p95 frame time at or below
+20 ms. Passing `--large` also exercises the confirmed whole-Meadows scene against its explicit 50 ms
+p95 forced-scene budget. It intentionally has no WebGL fallback: visitors
 without WebGPU receive an explicit unsupported screen and can return to the map.
 
 ## Why this remains a lab

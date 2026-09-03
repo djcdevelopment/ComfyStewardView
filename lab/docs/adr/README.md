@@ -10,4 +10,4 @@ accepted decision with a new ADR rather than rewriting its history.
 | [0003](0003-terrain-first-progressive-map.md) | Accepted | Make terrain the neutral canvas and analysis tools reversible questions. |
 | [0004](0004-isolated-world-deployment.md) | Accepted | Deploy `/world/` independently from the existing Steward service. |
 | [0005](0005-anonymous-first-feedback.md) | Accepted | Keep feedback anonymous by default with optional ephemeral Discord identity. |
-| [0006](0006-exact-selection-webgpu-scene.md) | Accepted | Rebuild bounded selections as exact, sanitized, selection-local WebGPU scenes. |
+| [0006](0006-exact-selection-webgpu-scene.md) | Accepted | Rebuild bounded selections as exact, sanitized, selection-local WebGPU scenes with explicit large-scope and proxy-envelope guardrails. |

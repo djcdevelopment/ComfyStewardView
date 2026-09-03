@@ -50,6 +50,7 @@ let bufferedHandoffState = null;
 let rasterStyleState = null;
 let scalePreviewState = null;
 let publicInspectState = null;
+let publicSceneConfirmedState = null;
 let publicClosedState = null;
 let publicShellState = null;
 let terrainCloseState = null;
@@ -427,15 +428,15 @@ if (publicInspect) {
       .forEach(element => element.style.pointerEvents='none');
   ` });
   await cdp('Input.dispatchMouseEvent', {
-    type:'mousePressed', x:mapRect.x+mapRect.w*.43, y:mapRect.y+mapRect.h*.43,
+    type:'mousePressed', x:mapRect.x+mapRect.w*.48, y:mapRect.y+mapRect.h*.48,
     button:'left', buttons:1, clickCount:1
   });
   await cdp('Input.dispatchMouseEvent', {
-    type:'mouseMoved', x:mapRect.x+mapRect.w*.59, y:mapRect.y+mapRect.h*.62,
+    type:'mouseMoved', x:mapRect.x+mapRect.w*.53, y:mapRect.y+mapRect.h*.54,
     button:'left', buttons:1
   });
   await cdp('Input.dispatchMouseEvent', {
-    type:'mouseReleased', x:mapRect.x+mapRect.w*.59, y:mapRect.y+mapRect.h*.62,
+    type:'mouseReleased', x:mapRect.x+mapRect.w*.53, y:mapRect.y+mapRect.h*.54,
     button:'left', buttons:0, clickCount:1
   });
   await cdp('Runtime.evaluate', { expression: `
@@ -456,11 +457,30 @@ if (publicInspect) {
     sceneVisible:!document.querySelector('#inspect-scene')?.hidden,
     sceneDisabled:document.querySelector('#inspect-3d')?.getAttribute('aria-disabled'),
     sceneHref:document.querySelector('#inspect-3d')?.getAttribute('href'),
+    imageDisabled:document.querySelector('#inspect-render-image')?.getAttribute('aria-disabled'),
+    imageHref:document.querySelector('#inspect-render-image')?.getAttribute('href'),
+    confirmVisible:!document.querySelector('#inspect-scene-confirm')?.hidden,
+    confirmDisabled:document.querySelector('#inspect-scene-confirm')?.disabled,
+    confirmText:document.querySelector('#inspect-scene-confirm')?.textContent,
     sceneCopy:document.querySelector('#inspect-scene-copy')?.textContent,
     rankRows:document.querySelectorAll('#inspect-top .rank-row').length,
     mapWidth:document.querySelector('#map').getBoundingClientRect().width
   }))()`, returnByValue:true });
   publicInspectState = publicInspectResult.result.value;
+  if (publicInspectState.confirmVisible && !publicInspectState.confirmDisabled) {
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('#inspect-scene-confirm')?.click()` });
+    const confirmedResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+      mode:document.body.classList.contains('biome-mode') ? 'biomes' : 'heatmap',
+      pressed:document.querySelector('#inspect-scene-confirm')?.getAttribute('aria-pressed'),
+      confirmText:document.querySelector('#inspect-scene-confirm')?.textContent,
+      sceneDisabled:document.querySelector('#inspect-3d')?.getAttribute('aria-disabled'),
+      sceneHref:document.querySelector('#inspect-3d')?.getAttribute('href'),
+      imageDisabled:document.querySelector('#inspect-render-image')?.getAttribute('aria-disabled'),
+      imageHref:document.querySelector('#inspect-render-image')?.getAttribute('href'),
+      sceneCopy:document.querySelector('#inspect-scene-copy')?.textContent
+    }))()`, returnByValue:true });
+    publicSceneConfirmedState = confirmedResult.result.value;
+  }
   const publicInspectShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
   await writeFile(publicInspectOutput, Buffer.from(publicInspectShot.data, 'base64'));
   await cdp('Runtime.evaluate', { expression: `document.querySelector('#inspect-close')?.click()` });
@@ -636,9 +656,28 @@ if (biomes) {
       itemRange:document.querySelector('#inspect-items-range')?.textContent,
       nextEnabled:document.querySelector('#inspect-items-next')?.disabled === false,
       selectionPresent:Boolean(document.querySelector('.selection-rectangle')),
-      alphaPixels
+      alphaPixels,
+      sceneVisible:!document.querySelector('#inspect-scene')?.hidden,
+      sceneDisabled:document.querySelector('#inspect-3d')?.getAttribute('aria-disabled'),
+      imageDisabled:document.querySelector('#inspect-render-image')?.getAttribute('aria-disabled'),
+      confirmVisible:!document.querySelector('#inspect-scene-confirm')?.hidden,
+      confirmDisabled:document.querySelector('#inspect-scene-confirm')?.disabled,
+      confirmText:document.querySelector('#inspect-scene-confirm')?.textContent
     };
   })()`, returnByValue:true });
+  let biomeSceneConfirmed = null;
+  if (selectedResult.result.value.confirmVisible && !selectedResult.result.value.confirmDisabled) {
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('#inspect-scene-confirm')?.click()` });
+    const confirmedResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+      mode:document.body.classList.contains('biome-mode') ? 'biomes' : 'heatmap',
+      pressed:document.querySelector('#inspect-scene-confirm')?.getAttribute('aria-pressed'),
+      sceneDisabled:document.querySelector('#inspect-3d')?.getAttribute('aria-disabled'),
+      sceneHref:document.querySelector('#inspect-3d')?.getAttribute('href'),
+      imageDisabled:document.querySelector('#inspect-render-image')?.getAttribute('aria-disabled'),
+      imageHref:document.querySelector('#inspect-render-image')?.getAttribute('href')
+    }))()`, returnByValue:true });
+    biomeSceneConfirmed = confirmedResult.result.value;
+  }
   const firstRange = selectedResult.result.value.itemRange;
   await cdp('Runtime.evaluate', { expression: `document.querySelector('#inspect-items-next')?.click()` });
   await waitForExpression(`document.querySelector('#inspect-items-range')?.textContent !== ${JSON.stringify(firstRange)}`, 30000);
@@ -672,6 +711,7 @@ if (biomes) {
     lasso:lassoResult.result.value,
     beforeInspect:beforeInspectResult.result.value,
     selected:selectedResult.result.value,
+    sceneConfirmed:biomeSceneConfirmed,
     nextRange:(await cdp('Runtime.evaluate', { expression:`document.querySelector('#inspect-items-range')?.textContent`, returnByValue:true })).result.value,
     close:closeResult.result.value,
     restored:restoredResult.result.value
@@ -1179,7 +1219,7 @@ console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marquee
   state, marqueeState, inspectorTabState, panGestureState, densePointState, denseUiState, earlyInspectState,
   earlySelectionItemsState, expandedInspectState, selectedItemsState, postInspectPanState, storyActionState,
   localDetail8State, localDetail4State, bufferedHandoffState,
-  rasterStyleState, scalePreviewState, publicInspectState, publicClosedState, publicShellState,
+  rasterStyleState, scalePreviewState, publicInspectState, publicSceneConfirmedState, publicClosedState, publicShellState,
   terrainCloseState, biomeState, terrainState, initialTerrainState, modeTransitionState, errors }, null, 2));
 await cdp('Browser.close').catch(() => {});
 socket.close();
@@ -1237,8 +1277,14 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       !publicInspectState?.selectionActionVisible || publicInspectState?.selectionAction !== 'Show items' ||
       publicInspectState?.inspectTitle !== 'What was built here?' || publicInspectState?.rankRows < 1 ||
       !publicInspectState?.sceneVisible || /Waiting/.test(publicInspectState?.sceneCopy || '') ||
-      !['true','false'].includes(publicInspectState?.sceneDisabled) ||
-      (publicInspectState?.sceneDisabled === 'false' && !/scene\.html\?snapshot=107&lens=build-density/.test(publicInspectState?.sceneHref || '')) ||
+      !publicInspectState?.confirmVisible || publicInspectState?.confirmDisabled ||
+      publicInspectState?.sceneDisabled !== 'true' || publicInspectState?.imageDisabled !== 'true' ||
+      publicSceneConfirmedState?.mode !== 'heatmap' || publicSceneConfirmedState?.pressed !== 'true' ||
+      publicSceneConfirmedState?.sceneDisabled !== 'false' || publicSceneConfirmedState?.imageDisabled !== 'false' ||
+      !/scene\.html\?snapshot=107&lens=build-density/.test(publicSceneConfirmedState?.sceneHref || '') ||
+      !/[?&]override=true/.test(publicSceneConfirmedState?.sceneHref || '') ||
+      !/[?&]override=true/.test(publicSceneConfirmedState?.imageHref || '') ||
+      !/[?&]capture=1/.test(publicSceneConfirmedState?.imageHref || '') ||
       publicClosedState?.inspectionOpen || publicClosedState?.jobsPanelDisplay !== 'none' ||
       !publicClosedState?.selectionPresent || !publicClosedState?.selectionActionVisible ||
       publicClosedState?.mapWidth <= publicInspectState?.mapWidth)) ||
@@ -1282,6 +1328,14 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       !/Meadows/.test(biomeState?.selected?.inspectTitle || '') ||
       biomeState?.selected?.itemRows !== 100 || !biomeState?.selected?.nextEnabled ||
       biomeState?.selected?.selectionPresent || biomeState?.selected?.alphaPixels < 1 ||
+      !biomeState?.selected?.sceneVisible || !biomeState?.selected?.confirmVisible ||
+      biomeState?.selected?.confirmDisabled || biomeState?.selected?.sceneDisabled !== 'true' ||
+      biomeState?.selected?.imageDisabled !== 'true' || biomeState?.sceneConfirmed?.mode !== 'biomes' ||
+      biomeState?.sceneConfirmed?.pressed !== 'true' || biomeState?.sceneConfirmed?.sceneDisabled !== 'false' ||
+      biomeState?.sceneConfirmed?.imageDisabled !== 'false' ||
+      !/[?&]biomes=meadows/.test(biomeState?.sceneConfirmed?.sceneHref || '') ||
+      !/[?&]override=true/.test(biomeState?.sceneConfirmed?.sceneHref || '') ||
+      !/[?&]capture=1/.test(biomeState?.sceneConfirmed?.imageHref || '') ||
       biomeState?.nextRange === biomeState?.selected?.itemRange || biomeState?.close?.tiles < 1 ||
       biomeState?.close?.alphaPixels < 1 || biomeState?.restored?.mode ||
       biomeState?.restored?.heatOpacity <= 0 || !biomeState?.restored?.legendVisible)) ||

@@ -29,9 +29,10 @@ cache rather than the production cache.
 6. A green area enables inspection. Inspection returns complete aggregates, a deterministic map
    sample when necessary, and cursor-paged objects rather than implying that a database-order prefix
    is complete.
-7. Inspection can open an exact selection in a separate 3D tab. The map link preserves the inspected
-   snapshot, lens, bounds, biome scope, and explicit large-selection override; the server revalidates
-   and rebuilds that scope instead of trusting client-supplied objects.
+7. Inspection exposes the same **Explore the build** card in the right column for Heatmap and Biomes.
+   It can open an exact selection in a separate 3D tab or render that GPU view to PNG. The links preserve
+   the inspected snapshot, lens, bounds, biome scope, and explicit large-selection override; the server
+   revalidates and rebuilds that scope instead of trusting client-supplied objects.
 8. Quick Start opens after the public map becomes ready once per browser-versioned dismissal key.
    CTA, close button, Escape, and backdrop all record dismissal; `?` always reopens it. A Discord OAuth
    return suppresses automatic opening so feedback retains dialog priority.
@@ -75,23 +76,30 @@ cache rather than the production cache.
 ## Exact selection-to-3D contract
 
 1. The selection summary is the authority for the link. At most 5,000 pieces open directly. A result
-   from 5,001 through 25,000 requires an explicit confirmation that writes `override=true` into the
-   new-tab URL. More than 25,000 pieces cannot be opened and asks the visitor to tighten the area.
+   from 5,001 through 250,000 requires an explicit inline confirmation in the inspector's right column
+   that writes `override=true` into the new-tab URL. More than 250,000 pieces cannot be opened and asks
+   the visitor to tighten the area. Heatmap and Biomes use the same placement and gate.
 2. `/api/scene` accepts only the published snapshot and Build density lens, finite ordered bounds,
    canonical public biome groups, and the override bit. The repository repeats those checks and always
    executes an exact count/query; it never accepts client object IDs or a client-generated package.
 3. A package is deterministic for a fixed cache, release label, and scope: rows are ordered by family
    then ZDO index, and the header contains `SV3D`, a version, JSON-manifest length, fixed 80-byte
    instance stride, and an integrity hash for the instance region. One response supplies the whole scene.
-4. Every known piece is an oriented prefab envelope. Rotation follows Unity Euler order `Ry × Rx × Rz`;
-   the prefab center offset is rotated before translation. The browser mirrors X into a right-handed,
-   selection-local coordinate frame. Unknown prefabs render as red pivot markers rather than vanishing.
+4. Every safe known piece is an oriented prefab envelope. Rotation follows Unity Euler order
+   `Ry × Rx × Rz`; the prefab center offset is rotated before translation. The browser mirrors X into a
+   right-handed, selection-local coordinate frame. Unknown prefabs render as red pivot markers rather
+   than vanishing. Catalog envelopes with a non-finite extent, an axis over 20 m, or volume
+   over 2,000 m³ are also reduced to a 0.35 m pivot marker and counted as `proxyOutliers`; their ZDOs are
+   retained, but unsafe environmental or compound proxy bounds cannot dominate framing.
 5. Public scene data omits creator/owner identity, flags, raw ZDO fields, source paths, absolute Y, and
    absolute world origin. The manifest exposes only relative floor and bounds plus aggregate provenance
    hashes and known/estimated/unknown coverage counts.
 6. The browser is dependency-free WebGPU with no WebGL fallback. Shaded and wireframe views use shared
    cube geometry and instancing; family toggles change visibility without refetching. Orbit, pan, wheel,
-   frame, reset, and pointer-locked WASD/QE/Shift free flight are all local presentation controls.
+   frame, reset, and pointer-locked WASD/QE/Shift free flight are all local presentation controls. PNG
+   export captures the current WebGPU canvas, camera, surface, and visible families in the browser.
+   Compact scopes frame the full selection; scopes spanning more than 600 m on any axis start at a
+   deterministic dense local Home cluster and retain an explicit Frame all action.
 7. Scene generation has its own six-per-minute client rate limit and one-query concurrency gate. The
    unsupported, capacity, validation, network, and device-loss states are explicit and recover to the map.
 
@@ -145,10 +153,12 @@ must be visible before mouse-up. The persistent Box zoom tool uses the same visu
 The public map regression additionally covers the clean initial state, every Quick Start dismissal
 path, Discord-return priority, mode activation/deactivation and direct switching, retained biome
 choices, Biomes + None, off-globe clicks, semantic raster scales, bounded inspection, representative
-samples, item pagination, and the state of the exact-3D action. A separate hardware-WebGPU regression
+samples, item pagination, and the inline exact-3D/PNG gate in both Heatmap and Biomes. A separate hardware-WebGPU regression
 covers the 862-piece pilot and 22,387-piece forced stress selection, package integrity, real/estimated/
 unknown counts, shaded/wireframe switching, family controls, both camera modes, browser and WebGPU
-validation errors, device loss, startup at or below 2,000 ms, and p95 frame time at or below 20 ms.
+validation errors, device loss, PNG capture, startup at or below 2,000 ms, and p95 frame time at or below
+20 ms. Its opt-in large case covers the confirmed 193,008-piece whole-Meadows scope, proxy-outlier
+receipt, dense-cluster Home/full-selection framing, and a separate 50 ms p95 forced-scene budget.
 
 ## Artifact packages
 

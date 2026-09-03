@@ -29,7 +29,7 @@ class ScenePackageTest {
 
     @Test void packagesExactDeterministicSelectionWithoutAbsoluteOriginOrPrivateFields() throws Exception {
         Path cache = temporary.resolve("scene.duckdb");
-        createFixture(cache, false);
+        createFixture(cache, 0);
         ObjectMapper mapper = new ObjectMapper();
         ScenePackage scenes = new ScenePackage(
             new SnapshotRepository(cache, new LensRegistry(), mapper, true), mapper);
@@ -39,7 +39,7 @@ class ScenePackageTest {
         ScenePackage.Result second = scenes.build(7, "build-density", -10, 10, -10, 10,
             List.of(), false, "test-release");
 
-        assertEquals(3, first.pieces());
+        assertEquals(4, first.pieces());
         assertArrayEquals(first.bytes(), second.bytes(), "identical scope must produce identical bytes");
         ByteBuffer header = ByteBuffer.wrap(first.bytes()).order(ByteOrder.LITTLE_ENDIAN);
         byte[] magic = new byte[4]; header.get(magic);
@@ -48,11 +48,14 @@ class ScenePackageTest {
         int manifestLength = header.getInt();
         int instanceOffset = header.getInt();
         assertEquals(0, instanceOffset % 4);
-        assertEquals(3 * ScenePackage.INSTANCE_STRIDE, first.bytes().length - instanceOffset);
+        assertEquals(4 * ScenePackage.INSTANCE_STRIDE, first.bytes().length - instanceOffset);
         assertTrue(manifestLength > 0);
 
-        int roofRecord = instanceOffset;
-        int wallRecord = instanceOffset + 2 * ScenePackage.INSTANCE_STRIDE;
+        int roofRecord = instanceOffset + ScenePackage.INSTANCE_STRIDE;
+        int wallRecord = instanceOffset + 3 * ScenePackage.INSTANCE_STRIDE;
+        assertEquals(.35f, header.getFloat(instanceOffset), 1e-5);
+        assertEquals(.35f, header.getFloat(instanceOffset + 20), 1e-5);
+        assertEquals(.35f, header.getFloat(instanceOffset + 40), 1e-5);
         assertEquals(4f, header.getFloat(wallRecord + 48) - header.getFloat(roofRecord + 48), 1e-5);
         assertEquals(.5f, header.getFloat(wallRecord + 52) - header.getFloat(roofRecord + 52), 1e-5);
         assertEquals(-1.5f, header.getFloat(wallRecord + 56) - header.getFloat(roofRecord + 56), 1e-5);
@@ -66,11 +69,13 @@ class ScenePackageTest {
         assertFalse(manifest.path("forced").asBoolean());
         assertEquals(1, manifest.path("geometryCoverage").path("real").asInt());
         assertEquals(1, manifest.path("geometryCoverage").path("estimated").asInt());
-        assertEquals(1, manifest.path("geometryCoverage").path("unknown").asInt());
-        assertEquals(3, manifest.withArray("families").size());
-        assertEquals("roof", manifest.withArray("families").get(0).path("name").asText());
-        assertEquals("unknown", manifest.withArray("families").get(1).path("name").asText());
-        assertEquals("wall", manifest.withArray("families").get(2).path("name").asText());
+        assertEquals(2, manifest.path("geometryCoverage").path("unknown").asInt());
+        assertEquals(1, manifest.path("geometryCoverage").path("proxyOutliers").asInt());
+        assertEquals(4, manifest.withArray("families").size());
+        assertEquals("misc", manifest.withArray("families").get(0).path("name").asText());
+        assertEquals("roof", manifest.withArray("families").get(1).path("name").asText());
+        assertEquals("unknown", manifest.withArray("families").get(2).path("name").asText());
+        assertEquals("wall", manifest.withArray("families").get(3).path("name").asText());
         assertNull(manifest.findValue("origin"));
         assertNull(manifest.findValue("creator"));
         assertNull(manifest.findValue("owner"));
@@ -80,7 +85,7 @@ class ScenePackageTest {
 
         ScenePackage.Result meadows = scenes.build(7, "build-density", -10, 10, -10, 10,
             List.of("meadows"), false, "test-release");
-        assertEquals(2, meadows.pieces());
+        assertEquals(3, meadows.pieces());
         assertEquals("meadows", meadows.manifest().path("scope").withArray("biomes").get(0).asText());
     }
 
@@ -98,22 +103,56 @@ class ScenePackageTest {
         assertArrayEquals(new double[] {-1, 0, 0}, combined[2], 1e-9);
     }
 
+    @Test void suppliesAUsefulDenseHomeFrameForWidelySeparatedElevation() throws Exception {
+        Path cache = temporary.resolve("home-frame.duckdb");
+        createFixture(cache, 0);
+        try (var connection = DriverManager.getConnection("jdbc:duckdb:" + cache);
+             var statement = connection.createStatement()) {
+            statement.executeUpdate("INSERT INTO zdo SELECT 7, 1000 + i::BIGINT, " +
+                "(i % 10)::DOUBLE, 0, floor(i / 10)::DOUBLE, 'piece_wall', 1, " +
+                "'BUILDING', 'meadows', false, 0, 0, 0 FROM range(100) rows(i)");
+            statement.executeUpdate("INSERT INTO zdo VALUES " +
+                "(7,9999,1000,5000,1000,'piece_wall',1,'BUILDING','meadows',false,0,0,0)");
+        }
+        ObjectMapper mapper = new ObjectMapper();
+        ScenePackage scenes = new ScenePackage(
+            new SnapshotRepository(cache, new LensRegistry(), mapper, true), mapper);
+
+        ScenePackage.Result result = scenes.build(
+            7, "build-density", -10, 1100, -10, 1100, List.of(), false, "test");
+        var home = result.manifest().path("home");
+        assertEquals("densest-cluster", home.path("strategy").asText());
+        assertTrue(home.path("pieces").asInt() >= 100);
+        assertTrue(home.path("pieces").asInt() < result.pieces());
+        assertTrue(home.path("radiusM").asDouble() < 100);
+        assertEquals(3, home.withArray("target").size());
+    }
+
     @Test void enforcesDirectAndForcedExactCapsBeforeEncoding() throws Exception {
-        Path cache = temporary.resolve("large.duckdb");
-        createFixture(cache, true);
+        Path cache = temporary.resolve("confirmable.duckdb");
+        createFixture(cache, ScenePackage.DIRECT_LIMIT + 1);
         ObjectMapper mapper = new ObjectMapper();
         ScenePackage scenes = new ScenePackage(
             new SnapshotRepository(cache, new LensRegistry(), mapper, true), mapper);
 
         ScenePackage.CapacityException direct = assertThrows(ScenePackage.CapacityException.class,
-            () -> scenes.build(7, "build-density", -1, 30, -1, 1, List.of(), false, "test"));
+            () -> scenes.build(7, "build-density", -1, 300, -1, 1, List.of(), false, "test"));
         assertTrue(direct.overrideAvailable());
+        ScenePackage.Result confirmed = scenes.build(
+            7, "build-density", -1, 300, -1, 1, List.of(), true, "test");
+        assertEquals(ScenePackage.DIRECT_LIMIT + 1, confirmed.pieces());
+        assertTrue(confirmed.manifest().path("forced").asBoolean());
+
+        Path overLimitCache = temporary.resolve("over-limit.duckdb");
+        createFixture(overLimitCache, ScenePackage.OVERRIDE_LIMIT + 1);
+        ScenePackage overLimitScenes = new ScenePackage(
+            new SnapshotRepository(overLimitCache, new LensRegistry(), mapper, true), mapper);
         ScenePackage.CapacityException forced = assertThrows(ScenePackage.CapacityException.class,
-            () -> scenes.build(7, "build-density", -1, 30, -1, 1, List.of(), true, "test"));
+            () -> overLimitScenes.build(7, "build-density", -1, 300, -1, 1, List.of(), true, "test"));
         assertFalse(forced.overrideAvailable());
     }
 
-    private static void createFixture(Path cache, boolean large) throws Exception {
+    private static void createFixture(Path cache, int generatedRows) throws Exception {
         try (var connection = DriverManager.getConnection("jdbc:duckdb:" + cache);
              var statement = connection.createStatement()) {
             statement.executeUpdate("CREATE TABLE zdo (snapshot_id BIGINT, zdo_index BIGINT, " +
@@ -128,16 +167,18 @@ class ScenePackageTest {
                 "','" + "b".repeat(64) + "','" + "c".repeat(64) + "')");
             statement.executeUpdate("INSERT INTO prefab_geometry VALUES " +
                 "(1,'piece_wall','wall','mesh',2,4,.2,.5,2,0)," +
-                "(2,'piece_roof','roof','family_median',4,1,3,0,.5,0)");
-            if (large) {
+                "(2,'piece_roof','roof','family_median',4,1,3,0,.5,0)," +
+                "(3,'PineTree','misc','mesh',94.35,212.95,89.57,0,106.48,0)");
+            if (generatedRows > 0) {
                 statement.executeUpdate("INSERT INTO zdo SELECT 7, i::BIGINT, i*.001, 0, 0, " +
                     "'piece_wall', 1, 'BUILDING', 'meadows', false, 0, 0, 0 " +
-                    "FROM range(25001) rows(i)");
+                    "FROM range(" + generatedRows + ") rows(i)");
             } else {
                 statement.executeUpdate("INSERT INTO zdo VALUES " +
                     "(7,10,0,2,0,'piece_wall',1,'BUILDING','meadows',true,0,90,0)," +
                     "(7,11,4,3,1,'piece_roof',2,'BUILDING','other',false,0,0,0)," +
-                    "(7,12,-3,1,-2,'mystery',99,'BUILDING','meadows',true,15,20,25)");
+                    "(7,12,-3,1,-2,'mystery',99,'BUILDING','meadows',true,15,20,25)," +
+                    "(7,13,2,0,-4,'PineTree',3,'BUILDING','meadows',false,0,0,0)");
             }
         }
     }
