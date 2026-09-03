@@ -329,7 +329,6 @@ public final class LabServer {
         ScenePackage.Result scene = scenes.build(snapshot, lens, minX, maxX, minZ, maxZ,
             biomeQuery(ctx), booleanQuery(ctx, "override"), config.releaseVersion());
         ctx.contentType(ScenePackage.CONTENT_TYPE);
-        ctx.header("Content-Length", Integer.toString(scene.bytes().length));
         ctx.header("X-Steward-Scene-Pieces", Integer.toString(scene.pieces()));
         ctx.result(scene.bytes());
     }

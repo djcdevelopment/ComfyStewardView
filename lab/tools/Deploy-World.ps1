@@ -404,7 +404,7 @@ try {
     if (@($biomeItems.items).Count -ne 3 -or $biomeItems.hasMore -ne $true -or
         [string]::IsNullOrWhiteSpace($biomeItems.nextCursor)) { throw 'Biome item pagination query failed.' }
     $pilotSceneQuery = "snapshot=$SnapshotId&lens=build-density&minX=467.8&maxX=511.6&minZ=5501.4&maxZ=5535.9"
-    $pilotSceneHeaders = Invoke-Ssh "curl -sS -m 30 -D - -o /dev/null 'http://127.0.0.1:$Port/api/scene?$pilotSceneQuery'"
+    $pilotSceneHeaders = Invoke-Ssh "curl --compressed -sS -m 30 -D - -o /dev/null 'http://127.0.0.1:$Port/api/scene?$pilotSceneQuery'"
     if ($pilotSceneHeaders -notmatch 'HTTP/\S+ 200' -or
         $pilotSceneHeaders -notmatch '(?im)^content-type:\s*application/vnd\.comfysteward\.scene' -or
         $pilotSceneHeaders -notmatch '(?im)^x-steward-scene-pieces:\s*862\s*$') {
@@ -413,7 +413,7 @@ try {
     $stressSceneQuery = "snapshot=$SnapshotId&lens=build-density&minX=2021.7&maxX=2101.9&minZ=-4851.3&maxZ=-4751.8"
     $stressDirectCode = (Invoke-Ssh "curl -sS -m 30 -o /dev/null -w '%{http_code}' 'http://127.0.0.1:$Port/api/scene?$stressSceneQuery'").Trim()
     if ($stressDirectCode -ne '409') { throw "The scene override gate returned $stressDirectCode instead of 409." }
-    $stressSceneHeaders = Invoke-Ssh "curl -sS -m 30 -D - -o /dev/null 'http://127.0.0.1:$Port/api/scene?$stressSceneQuery&override=true'"
+    $stressSceneHeaders = Invoke-Ssh "curl --compressed -sS -m 30 -D - -o /dev/null 'http://127.0.0.1:$Port/api/scene?$stressSceneQuery&override=true'"
     if ($stressSceneHeaders -notmatch 'HTTP/\S+ 200' -or
         $stressSceneHeaders -notmatch '(?im)^x-steward-scene-pieces:\s*22387\s*$') {
         throw 'The exact 22,387-piece forced scene contract failed.'

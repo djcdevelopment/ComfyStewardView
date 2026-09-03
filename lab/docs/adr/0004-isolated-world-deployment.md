@@ -29,6 +29,10 @@ The deployment source must be a clean Git revision and is archived from the comm
 not from platform-normalized working-tree bytes. This keeps the release label exact and preserves LF
 entrypoint bytes when staging from Windows.
 
+Binary scene responses leave transfer length and compression framing to Javalin/Jetty. The release
+gate requests both exact scene fixtures with compression negotiation enabled, matching the behavior of
+the Funnel reverse proxy and preventing an internally readable but externally truncated response.
+
 ## Consequences
 
 The public view can be released and rolled back independently, with a short container replacement

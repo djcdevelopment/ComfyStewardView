@@ -157,6 +157,12 @@ whose Linux entrypoint could not execute. The previous verified container was re
 deployment tool now refuses dirty trees and archives its source from the committed `lab/` tree through Git.
 That makes source bytes, release SHA, and platform line endings one auditable unit.
 
+The first hardware check against the public route then found a subtler transport boundary. The scene
+handler supplied an uncompressed `Content-Length`; Funnel's Go transport negotiated gzip from Jetty, so
+the compressed body ended correctly but retained the larger uncompressed length and surfaced as an
+unexpected EOF. The browser correctly rejected the fetch. Letting Javalin own response framing fixed the
+route, and deployment now validates pilot and stress packages with compression negotiation enabled.
+
 ## Verification commands
 
 ```powershell
