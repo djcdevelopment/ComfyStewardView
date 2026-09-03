@@ -25,6 +25,10 @@ paths, and feedback configuration before replacement. After startup it verifies 
 expected denials, terrain assets, biome queries, paging, OAuth route shape, and both `/world/` and the
 unchanged `/steward` health. It prints an additive Funnel command only when the route is absent.
 
+The deployment source must be a clean Git revision and is archived from the committed `lab/` tree,
+not from platform-normalized working-tree bytes. This keeps the release label exact and preserves LF
+entrypoint bytes when staging from Windows.
+
 ## Consequences
 
 The public view can be released and rolled back independently, with a short container replacement

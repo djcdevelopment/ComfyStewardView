@@ -99,6 +99,8 @@ use it derives a compact, snapshot-107-only Build density and geometry query cac
 on OMEN, then stages those immutable assets with the prebuilt Era 17 image ladder. The public
 process never opens or mounts the production DuckDB file. Before starting anything, deployment verifies
 snapshot 107's file hash against the running production cache and verifies every context image checksum.
+Deployment requires a clean worktree and archives its source from the committed `lab/` tree through Git, ensuring
+the release ID, staged bytes, and Linux shell line endings describe the same revision.
 It then checks the narrow API contract, exact 862-piece pilot package, 22,387-piece confirmed stress
 package, both capacity denials, and confirms `/steward` stayed healthy. If the public route has
 not been mounted, it prints the single additive

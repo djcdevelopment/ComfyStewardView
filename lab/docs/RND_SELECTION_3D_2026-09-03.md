@@ -151,6 +151,12 @@ The geometry catalog originally appeared complete when filtered to only catalog 
 but that produced 914 entries and lost legitimate matches. Exporting all 974 normalized lexicon entries
 and measuring coverage against actual snapshot BUILDING rows fixed the category-assumption error.
 
+The first clean remote release attempt found one more boundary: `core.autocrlf` had left the local shell
+entrypoint with CRLF bytes even though Git stored it as LF. Archiving the working tree built a valid image
+whose Linux entrypoint could not execute. The previous verified container was restored immediately; the
+deployment tool now refuses dirty trees and archives its source from the committed `lab/` tree through Git.
+That makes source bytes, release SHA, and platform line endings one auditable unit.
+
 ## Verification commands
 
 ```powershell

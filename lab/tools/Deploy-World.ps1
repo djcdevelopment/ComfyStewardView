@@ -103,6 +103,15 @@ if ($buildingGeometrySha -ne $expectedBuildingGeometrySha -or
     throw 'The geometry inputs do not match the reviewed Comfy Era 17 release receipts.'
 }
 
+$gitTop = ((git -C $repoRoot rev-parse --show-toplevel 2>$null) -join '').Trim()
+$gitPrefix = ((git -C $repoRoot rev-parse --show-prefix 2>$null) -join '').Trim()
+$gitSha = ((git -C $repoRoot rev-parse --short HEAD 2>$null) -join '').Trim()
+if (-not $gitTop -or -not $gitPrefix -or $gitPrefix -notmatch '^[A-Za-z0-9._/-]+/$' -or
+    $gitPrefix.Contains('..')) { throw 'Could not resolve the committed lab subtree.' }
+if (-not $gitSha) { throw 'Could not resolve the committed release ID.' }
+$dirty = [bool]((git -C $repoRoot status --porcelain 2>$null) -join '')
+if ($dirty) { throw 'Deploy-World requires a clean Git worktree so the staged source matches its release ID.' }
+
 Write-Host '[1/7] Validating the focused Era 17 release...'
 $manifestPath = Join-Path $ArtifactRoot "$SnapshotId/manifest.json"
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
@@ -275,11 +284,8 @@ if ($publishedSnapshot.fileHash -ne $manifest.snapshot.fileHash) {
     throw "snapshot hash mismatch: cache=$($publishedSnapshot.fileHash), artifacts=$($manifest.snapshot.fileHash)"
 }
 
-$gitSha = ((git -C $repoRoot rev-parse --short HEAD 2>$null) -join '').Trim()
-if (-not $gitSha) { $gitSha = 'unknown' }
-$dirty = [bool]((git -C $repoRoot status --porcelain 2>$null) -join '')
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss')
-$releaseVersion = "$gitSha-$stamp" + $(if ($dirty) { '-dirty' } else { '' })
+$releaseVersion = "$gitSha-$stamp"
 if ($releaseVersion -notmatch '^[A-Za-z0-9._-]+$') { throw 'Generated release version is unsafe.' }
 $releaseDir = "$RemoteRoot/releases/$releaseVersion"
 $previousRelease = (Invoke-Ssh "readlink -f '$RemoteRoot/current' 2>/dev/null || true" -AllowFailure).Trim()
@@ -295,11 +301,10 @@ $artifactArchive = "$tempRoot-artifacts.tgz"
 $cacheArchive = "$tempRoot-cache.tgz"
 $contextArchive = "$tempRoot-context.tgz"
 try {
-    Push-Location $repoRoot
-    try {
-        tar -czf $sourceArchive $sourceFiles
-        if ($LASTEXITCODE -ne 0) { throw 'Could not create source archive.' }
-    } finally { Pop-Location }
+    $archivePaths = @($sourceFiles | ForEach-Object { "$gitPrefix$_" })
+    $archiveArgs = @('-C',$gitTop,'archive','--format=tar.gz',"--output=$sourceArchive",'HEAD','--') + $archivePaths
+    & git @archiveArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Could not archive the committed lab source.' }
     tar -czf $artifactArchive -C $ArtifactRoot "$SnapshotId"
     if ($LASTEXITCODE -ne 0) { throw 'Could not create artifact archive.' }
     tar -czf $cacheArchive -C (Split-Path -Parent $PublicCachePath) $cacheFile "$cacheFile.json"
@@ -316,7 +321,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Public-cache upload failed.' }
     scp -q -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 $contextArchive "${SshTarget}:$releaseDir/context.tgz"
     if ($LASTEXITCODE -ne 0) { throw 'Terrain-context upload failed.' }
-    Invoke-Ssh "tar -xzf '$releaseDir/source.tgz' -C '$releaseDir/build' && tar -xzf '$releaseDir/artifacts.tgz' -C '$releaseDir/artifacts' && tar -xzf '$releaseDir/cache.tgz' -C '$releaseDir/cache' && tar -xzf '$releaseDir/context.tgz' -C '$releaseDir/context'" | Out-Null
+    Invoke-Ssh "tar -xzf '$releaseDir/source.tgz' --strip-components=1 -C '$releaseDir/build' && tar -xzf '$releaseDir/artifacts.tgz' -C '$releaseDir/artifacts' && tar -xzf '$releaseDir/cache.tgz' -C '$releaseDir/cache' && tar -xzf '$releaseDir/context.tgz' -C '$releaseDir/context'" | Out-Null
+    $entrypointHex = Invoke-Ssh "head -n 1 '$releaseDir/build/entrypoint-public.sh' | od -An -t x1"
+    if ($entrypointHex -match '(^|\s)0d(\s|$)') {
+        throw 'The staged Linux entrypoint contains a carriage return.'
+    }
     Invoke-Ssh "printf '%s\n' 'STEWARD_WORLD_CACHE_PATH=$releaseDir/cache/$cacheFile' 'STEWARD_WORLD_ARTIFACTS_PATH=$releaseDir/artifacts' 'STEWARD_WORLD_CONTEXT_PATH=$releaseDir/context/$SnapshotId' 'STEWARD_PUBLIC_URL=$publicUrl' 'STEWARD_RELEASE_VERSION=$releaseVersion' 'STEWARD_SNAPSHOT_ID=$SnapshotId' > '$releaseDir/runtime.env'" | Out-Null
 } finally {
     if (Test-Path -LiteralPath $sourceArchive) { Remove-Item -LiteralPath $sourceArchive -Force }
