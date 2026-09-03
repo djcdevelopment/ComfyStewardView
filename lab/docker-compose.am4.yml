@@ -1,0 +1,36 @@
+name: steward-world
+
+services:
+  world:
+    build: .
+    image: "steward-world:${STEWARD_RELEASE_VERSION:-dev}"
+    container_name: steward-world
+    ports:
+      - "127.0.0.1:7081:8091"
+    volumes:
+      - "${STEWARD_WORLD_CACHE_PATH:?set STEWARD_WORLD_CACHE_PATH}:/data/world-cache.duckdb:ro"
+      - "${STEWARD_WORLD_ARTIFACTS_PATH:?set STEWARD_WORLD_ARTIFACTS_PATH}:/artifacts:ro"
+      - "${STEWARD_WORLD_CONTEXT_PATH:?set STEWARD_WORLD_CONTEXT_PATH}:/context:ro"
+    environment:
+      CACHE_PATH: /data/world-cache.duckdb
+      ARTIFACTS_PATH: /artifacts
+      CONTEXT_MANIFEST: /context/manifest.json
+      SNAPSHOT_ID: "${STEWARD_SNAPSHOT_ID:-107}"
+      PUBLIC_URL: "${STEWARD_PUBLIC_URL:-https://am4.tail8e749c.ts.net/world/}"
+      STEWARD_RELEASE_VERSION: "${STEWARD_RELEASE_VERSION:-dev}"
+      JAVA_OPTS: "-Xms256m -Xmx1g -Djava.awt.headless=true"
+      DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:-}"
+      DISCORD_CLIENT_SECRET: "${DISCORD_CLIENT_SECRET:-}"
+      DISCORD_FEEDBACK_WEBHOOK_URL: "${DISCORD_FEEDBACK_WEBHOOK_URL:?set DISCORD_FEEDBACK_WEBHOOK_URL}"
+      DISCORD_OWNER_USER_ID: "${DISCORD_OWNER_USER_ID:?set DISCORD_OWNER_USER_ID}"
+    mem_limit: 3g
+    cpus: 2.0
+    read_only: true
+    tmpfs:
+      # DuckDB JDBC extracts its native library here, so this mount must permit exec.
+      - /tmp:rw,exec,nosuid,size=512m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped

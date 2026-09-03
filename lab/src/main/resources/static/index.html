@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Steward — World View</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="./lab.css">
+</head>
+<body class="public-experience terrain-mode">
+  <header class="app-header">
+    <div class="brand">
+      <strong>Steward</strong>
+      <span class="brand-public">WORLD VIEW</span>
+      <span class="brand-lab">SPATIAL LAB</span>
+    </div>
+    <div class="public-world"><span>WORLD</span><strong id="public-world-name">Opening world…</strong></div>
+    <div class="map-view-controls" id="map-view-controls" aria-label="Map view">
+      <fieldset class="header-control-group view-layer-group">
+        <legend>EXPLORE WITH</legend>
+        <div class="view-mode-switch" role="group" aria-label="Map view mode">
+          <button type="button" data-view-mode="heatmap" aria-pressed="false">Heatmap</button>
+          <button type="button" data-view-mode="biomes" aria-pressed="false">Biomes</button>
+        </div>
+      </fieldset>
+      <fieldset id="biome-filter-group" class="header-control-group biome-filter-group" disabled aria-disabled="true">
+        <legend>BIOME TERRITORIES</legend>
+        <div id="biome-chip-list" class="biome-chip-list" role="group" aria-label="Biome territories"></div>
+        <button type="button" id="biome-view-results" class="biome-inline-inspect" title="Inspect every object in the selected biome territories">Inspect</button>
+      </fieldset>
+    </div>
+    <label class="header-field"><span>SNAPSHOT</span><select id="snapshot-select"></select></label>
+    <div class="header-chip" id="cache-chip">CACHE · CHECKING</div>
+    <div class="header-spacer"></div>
+    <div class="public-actions" aria-label="Help and feedback">
+      <button id="quick-start-open" class="header-action compact-help" aria-label="Quick start guide" title="Quick start guide">?</button>
+      <button id="feedback-open" class="header-action feedback-action">Submit feedback</button>
+    </div>
+    <div class="header-metric"><span>ZDOs</span><strong id="zdo-count">—</strong></div>
+    <div class="header-metric"><span>ACTIVE LENS</span><strong id="header-lens">—</strong></div>
+  </header>
+
+  <nav class="primary-nav">
+    <button class="active">◉ World</button>
+    <button disabled>⇄ Changes <small>later track</small></button>
+    <button id="runs-nav">◷ Runs <small id="run-nav-state">idle</small></button>
+    <button id="inspect-nav">⌕ Inspect</button>
+    <span class="nav-note">Disposable lab · production is untouched</span>
+  </nav>
+
+  <main class="workspace">
+    <aside class="controls-panel scroll-panel">
+      <div class="panel-title"><span>MAP CONTROLS</span><button class="icon-button" id="fit-world" title="Fit whole world">⌂</button></div>
+
+      <section class="card">
+        <div class="card-heading"><span>LENS</span><span id="lens-availability">—</span></div>
+        <div id="lens-list" class="lens-list"></div>
+        <div class="lens-copy">
+          <strong id="lens-question">Choose a lens</strong>
+          <p id="lens-payoff"></p>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-heading"><span>SCALE</span><span id="scale-state">AUTO</span></div>
+        <div class="segments scale-ladder" id="resolution-buttons">
+          <button data-resolution="auto" class="active">Auto</button>
+          <button data-resolution="1000">1000</button>
+          <button data-resolution="320">320</button>
+          <button data-resolution="160">160</button>
+          <button data-resolution="80">80</button>
+          <button data-resolution="64">64</button>
+          <button data-resolution="16">16</button>
+        </div>
+        <p class="microcopy" id="semantic-copy">Auto chooses a finer aggregate as you zoom, then reveals exact objects.</p>
+        <div class="surface-control">
+          <div class="surface-label"><span>SURFACE</span><span>DISPLAY ONLY</span></div>
+          <div class="segments two" id="raster-style-buttons">
+            <button data-raster-style="smooth" class="active">Smooth surface</button>
+            <button data-raster-style="cells">Cell grid</button>
+          </div>
+          <p class="microcopy">Smooth blends cell edges; the values and legend remain unchanged.</p>
+        </div>
+      </section>
+
+      <section class="card compact-grid">
+        <label><span>DETAIL ANALYSIS OPACITY</span><output id="analysis-opacity-value">82% → 100%</output>
+          <input id="analysis-opacity" type="range" min="0" max="1" value="0.82" step="0.01">
+        </label>
+        <label><span>CONTEXT OPACITY</span><output id="context-opacity-value">42%</output>
+          <input id="context-opacity" type="range" min="0" max="1" value="0.42" step="0.01">
+        </label>
+      </section>
+
+      <section class="card">
+        <div class="card-heading"><span>COLOR RAMP</span><span>client-side</span></div>
+        <div class="palette-list">
+          <button class="palette active" data-palette="ember"><i class="swatch ember"></i><span>Ember</span><b>✓</b></button>
+          <button class="palette" data-palette="moss"><i class="swatch moss"></i><span>Moss</span><b></b></button>
+          <button class="palette" data-palette="viridis"><i class="swatch viridis"></i><span>Viridis</span><b></b></button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-heading"><span>CONTEXT</span><span id="context-provenance">—</span></div>
+        <div class="segments two">
+          <button id="context-on" class="active">Map</button>
+          <button id="context-off">None</button>
+        </div>
+        <p class="microcopy" id="context-copy">Loading the terrain and water context for this snapshot.</p>
+        <button id="peek-context" class="secondary full">Hold to peek beneath the analysis</button>
+      </section>
+
+      <section class="card">
+        <div class="card-heading"><span>GESTURE</span><span id="tool-state">PAN</span></div>
+        <div class="segments three" id="tool-buttons">
+          <button data-tool="pan" class="active">Pan</button>
+          <button data-tool="box" title="Drag a gold window, or hold Shift while dragging from any tool">Box zoom</button>
+          <button data-tool="inspect" title="Draw one green inspection area, then return to Pan">Inspect</button>
+        </div>
+        <p class="microcopy"><kbd>Click + drag</kbd> pan · <kbd>Shift</kbd> + drag box zoom · Inspect returns to Pan after selection · <kbd>P</kbd> pan · <kbd>Z</kbd> box · <kbd>I</kbd> inspect</p>
+      </section>
+
+      <section class="card exact-card">
+        <div class="card-heading"><span>SEMANTIC DETAIL</span><span id="exact-state">raster</span></div>
+        <label class="toggle-row"><input id="exact-toggle" type="checkbox" checked><span>Reveal exact objects when close</span></label>
+        <p class="microcopy">Aggregate cells yield to bounded points only after the viewport is small enough to make them useful.</p>
+        <div class="detail-ladder" id="detail-ladder" aria-label="Close detail ladder">
+          <span data-detail="16">16 m world</span>
+          <span data-detail="8">8 m local</span>
+          <span data-detail="4">4 m local</span>
+          <span data-detail="points">objects</span>
+        </div>
+      </section>
+    </aside>
+
+    <section class="map-stage">
+      <div id="map"></div>
+
+      <div class="map-story" id="map-story">
+        <span class="status-dot"></span>
+        <div class="map-story-copy"><strong id="story-title">Opening Comfy Era 17…</strong><p id="story-copy">Finding where the community has built.</p></div>
+        <div class="map-story-actions">
+          <button id="story-action" hidden>Render this lens</button>
+          <button id="story-selection-action" class="selection-action" hidden>Show items</button>
+        </div>
+      </div>
+
+      <div class="map-status" id="map-status">NO RASTER</div>
+
+      <div class="navigator-shell">
+        <div class="navigator-heading"><span>WORLD NAVIGATOR</span><span id="viewport-label">—</span></div>
+        <div id="minimap"></div>
+        <div class="navigator-actions"><button id="go-spawn">Spawn</button><button id="go-world">World</button></div>
+      </div>
+
+      <div class="legend" id="legend" hidden>
+        <div class="legend-heading"><strong id="legend-title">—</strong><span>LOG</span></div>
+        <div class="legend-gradient" id="legend-gradient"></div>
+        <div class="legend-ticks" id="legend-ticks"></div>
+      </div>
+
+      <div class="coords" id="coords">Move for coordinates · Shift+drag to box zoom</div>
+      <div class="transition-toast" id="transition-toast"></div>
+
+    </section>
+
+    <aside class="jobs-panel">
+      <div class="panel-tabs" role="tablist" aria-label="Right panel">
+        <button class="panel-tab active" id="job-bench-tab" role="tab" aria-selected="true" aria-controls="job-bench-pane">
+          <span>JOB BENCH</span><small class="live-indicator" id="job-activity">● IDLE</small>
+        </button>
+        <button class="panel-tab" id="inspect-panel-tab" role="tab" aria-selected="false" aria-controls="inspector">
+          <span>INSPECT</span><small id="inspect-tab-state">NO AREA</small>
+        </button>
+      </div>
+
+      <div class="right-pane scroll-panel" id="job-bench-pane" role="tabpanel" aria-labelledby="job-bench-tab">
+
+      <section class="card">
+        <div class="card-heading"><span>CREATE RASTERS</span><span id="job-target">—</span></div>
+        <div class="field-label">RESOLUTION LADDER</div>
+        <div class="check-grid" id="job-resolutions">
+          <label><input type="checkbox" value="1000">1000 m</label>
+          <label><input type="checkbox" value="320" checked>320 m</label>
+          <label><input type="checkbox" value="160" checked>160 m</label>
+          <label><input type="checkbox" value="80" checked>80 m</label>
+          <label><input type="checkbox" value="64" checked>64 m</label>
+          <label><input type="checkbox" value="16" checked>16 m</label>
+        </div>
+        <div class="test-options">
+          <label class="toggle-row"><input id="job-force" type="checkbox"><span>Force cold render</span></label>
+          <label><span>Phase delay</span><select id="job-delay"><option value="0">none</option><option value="250">250 ms</option><option value="1000">1 s</option><option value="2500">2.5 s</option></select></label>
+          <label><span>Failure injection</span><select id="job-failure"><option value="0">off</option><option value="1">after first layer</option><option value="2">after second layer</option></select></label>
+        </div>
+        <div class="button-row">
+          <button id="render-selected" class="primary">Render active lens</button>
+          <button id="render-all">All lenses</button>
+        </div>
+        <p class="microcopy job-scope" id="job-scope">Creates full-world rasters for the active lens. A zoom window changes your view, not the job scope.</p>
+        <button id="copy-command" class="secondary full">Copy equivalent CLI command</button>
+      </section>
+
+      <section class="card job-current">
+        <div class="card-heading"><span>LATEST JOB</span><span id="job-status">IDLE</span></div>
+        <div class="job-clock"><strong id="job-clock">0.000</strong><span>seconds</span></div>
+        <div class="progress-track"><i id="job-progress"></i></div>
+        <div class="job-summary" id="job-summary">No render job has run in this process.</div>
+        <div id="phase-list" class="phase-list"></div>
+        <div class="button-row"><button id="cancel-job" disabled>Cancel</button><button id="view-job-log">Log</button><button id="reload-manifest">Reload manifest</button></div>
+      </section>
+
+      <section class="card">
+        <div class="card-heading"><span>CLIENT TIMINGS</span><button id="clear-client-cache">Clear decode cache</button></div>
+        <div class="metric-grid">
+          <span>Manifest</span><strong id="metric-manifest">—</strong>
+          <span>Image fetch</span><strong id="metric-fetch">—</strong>
+          <span>Decode + color</span><strong id="metric-decode">—</strong>
+          <span>Overlay swap</span><strong id="metric-swap">—</strong>
+          <span>Artifact</span><strong id="metric-bytes">—</strong>
+          <span>Exact query</span><strong id="metric-exact">—</strong>
+          <span>Local detail</span><strong id="metric-detail">—</strong>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-heading"><span>INTERACTION TUNING</span><span>live</span></div>
+        <label class="number-row"><span>320 → 160 zoom</span><input id="threshold-160" type="number" value="-4.25" step="0.25"></label>
+        <label class="number-row"><span>160 → 80 zoom</span><input id="threshold-80" type="number" value="-3.25" step="0.25"></label>
+        <label class="number-row"><span>80 → 64 zoom</span><input id="threshold-64" type="number" value="-2.25" step="0.25"></label>
+        <label class="number-row"><span>64 → 16 zoom</span><input id="threshold-16" type="number" value="-1.25" step="0.25"></label>
+        <label class="number-row"><span>100% opacity until</span><input id="opacity-detail-zoom" type="number" value="-4.00" step="0.25"></label>
+        <label class="number-row"><span>Exact-points zoom</span><input id="threshold-exact" type="number" value="-0.25" step="0.25"></label>
+        <label class="number-row"><span>8 → 4 local zoom</span><input id="threshold-detail4" type="number" value="1.25" step="0.25"></label>
+        <label class="number-row"><span>Crossfade</span><input id="crossfade-ms" type="number" value="220" min="0" max="2000" step="20"><em>ms</em></label>
+      </section>
+
+      <section class="card logs-card" id="job-log-card">
+        <div class="card-heading"><span>JOB LOG · <b id="log-count">0 lines</b></span><button id="copy-monitor-command">Copy 15s terminal</button></div>
+        <pre id="job-log">Waiting for a job.</pre>
+      </section>
+      </div>
+
+      <section class="right-pane inspector scroll-panel" id="inspector" role="tabpanel" aria-labelledby="inspect-panel-tab" hidden>
+        <div class="inspect-empty" id="inspect-empty">
+          <span class="eyebrow">WHY THIS AREA?</span>
+          <strong>Select an area to explain</strong>
+          <p>Choose Inspect, then drag a green window across a bright cluster. Results stay here while the map remains full height.</p>
+          <button id="inspect-start" class="primary full">Draw inspection area</button>
+        </div>
+
+        <div id="inspect-content" hidden>
+          <header class="inspect-header">
+            <div><span class="eyebrow">WHY THIS AREA?</span><strong id="inspect-title">Region inspection</strong><span id="inspect-bounds" class="mono"></span></div>
+            <button id="inspect-close" class="icon-button" title="Close">×</button>
+          </header>
+          <div class="inspect-actions">
+            <button id="inspect-zoom">Zoom to selection</button>
+            <button id="inspect-copy">Copy bounds</button>
+            <button id="inspect-clear-area" hidden>Clear area filter</button>
+          </div>
+          <div class="inspect-body">
+            <div class="inspect-stats">
+              <div class="inspect-stat"><span>SELECTED</span><strong id="inspect-total">—</strong><small id="inspect-units">objects</small></div>
+              <div class="inspect-stat"><span>WORLD SHARE</span><strong id="inspect-share">—</strong><small>of this lens</small></div>
+              <div class="inspect-stat"><span>DENSITY</span><strong id="inspect-density">—</strong><small>per km²</small></div>
+            </div>
+            <div class="inspect-warning" id="inspect-point-warning" hidden></div>
+            <div class="inspect-ranked">
+              <div class="ranked-heading"><span id="inspect-ranked-label">WHAT MAKES IT BRIGHT · TOP TYPES</span><span id="inspect-query-time">—</span></div>
+              <div id="inspect-top"></div>
+              <button id="inspect-show-all" class="ranked-more" hidden>Show all in selection</button>
+            </div>
+            <div class="inspect-items">
+              <div class="ranked-heading"><span>INDIVIDUAL OBJECTS</span><span id="inspect-items-range">—</span></div>
+              <div id="inspect-items-list" class="inspect-items-list"><div class="inspect-item-empty">Select an area to list its objects.</div></div>
+              <div class="inspect-page-actions">
+                <button type="button" id="inspect-items-prev" disabled>Previous</button>
+                <button type="button" id="inspect-items-next" disabled>Next</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="quick-start-dialog" class="steward-dialog" aria-labelledby="quick-start-title">
+    <div class="dialog-shell quick-start-shell">
+      <header class="dialog-header">
+        <div><span class="eyebrow">QUICK START</span><h2 id="quick-start-title">Start with the world. Add the question you want to ask.</h2></div>
+        <button id="quick-start-close" class="dialog-close" type="button" aria-label="Close quick start guide">×</button>
+      </header>
+      <ol class="guide-steps">
+        <li><span>1</span><div><strong>Read the terrain</strong><p>The world opens clean, with shorelines and elevation contours ready to explore.</p></div></li>
+        <li><span>2</span><div><strong>Move</strong><p>Scroll to zoom. Click and hold to move the map.</p></div></li>
+        <li><span>3</span><div><strong>Reveal activity</strong><p>Turn on <em>Heatmap</em> to see where construction is concentrated. Select it again to return to the terrain.</p></div></li>
+        <li><span>4</span><div><strong>Explore territories</strong><p>Turn on <em>Biomes</em>, then click a territory or combine the choices above. <em>None</em> leaves the map unmarked.</p></div></li>
+        <li><span>5</span><div><strong>Inspect</strong><p>Inspect any view with a green area to see complete totals, a representative map sample, and paged objects.</p></div></li>
+      </ol>
+      <footer class="dialog-footer"><button id="quick-start-done" class="primary" type="button">Explore the terrain</button></footer>
+    </div>
+  </dialog>
+
+  <dialog id="feedback-dialog" class="steward-dialog" aria-labelledby="feedback-title">
+    <form id="feedback-form" class="dialog-shell feedback-shell">
+      <header class="dialog-header">
+        <div><span class="eyebrow">SUBMIT FEEDBACK</span><h2 id="feedback-title">What would make this more useful?</h2></div>
+        <button id="feedback-close" class="dialog-close" type="button" aria-label="Close feedback form">×</button>
+      </header>
+      <div id="feedback-fields">
+        <label class="feedback-message"><span>What did you notice?</span>
+          <textarea id="feedback-message" maxlength="2000" rows="7" required placeholder="An idea, something confusing, or a moment that felt especially useful…"></textarea>
+          <small><span id="feedback-count">0</span>/2,000</small>
+        </label>
+        <label class="feedback-trap" aria-hidden="true">Website<input id="feedback-website" type="text" tabindex="-1" autocomplete="off"></label>
+        <div class="identity-card">
+          <label class="identity-toggle"><input id="feedback-identify" type="checkbox"><span><strong>Identify me with Discord</strong><small>Off by default. Discord only shares your basic profile when you choose this.</small></span></label>
+          <div id="feedback-identity-state" class="identity-state" hidden>
+            <span id="feedback-identity-copy">Not connected</span>
+            <button id="feedback-discord-connect" type="button">Connect Discord</button>
+            <button id="feedback-discord-logout" type="button" hidden>Disconnect</button>
+          </div>
+        </div>
+        <p class="feedback-context">Your current lens, scale, viewport, selection, and app version will be included so the feedback has context. Your world data and IP address will not be included.</p>
+        <div id="feedback-error" class="form-message error" role="alert" hidden></div>
+      </div>
+      <div id="feedback-success" class="feedback-success" hidden>
+        <span>✓</span><strong>Sent. Thank you.</strong><p>Your note reached the private Steward feedback channel.</p>
+      </div>
+      <footer class="dialog-footer">
+        <button id="feedback-cancel" type="button">Cancel</button>
+        <button id="feedback-submit" class="primary" type="submit">Send feedback</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script src="./vendor/leaflet/leaflet.js"></script>
+  <script src="./lab.js"></script>
+</body>
+</html>
