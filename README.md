@@ -2,13 +2,33 @@
 
 Valheim world-file (`.db`) parser, steward API, and browser viewer for high-player-count community servers.
 
-The app runs as a single Java fat JAR. In normal mode it parses the world into an in-memory steward dashboard. In batch analytics mode it also writes a full-fidelity DuckDB cache and pre-rendered map layers for large-world GM investigations.
+## Applications and repository structure
+
+This repository contains two separately built and deployed Java applications:
+
+| Application | Path | Purpose | Live route |
+|---|---|---|---|
+| Steward viewer | [`viewer/`](viewer/) | Production parser, historical read model, GM dashboard, batch analytics, and Quest evidence integration. | [`/steward/`](https://am4.tail8e749c.ts.net/steward/) |
+| Steward Spatial Lab | [`lab/`](lab/) | Interaction laboratory and deliberately constrained public Comfy Era 17 terrain, Heatmap, Biomes, and inspection experience. | [`/world/`](https://am4.tail8e749c.ts.net/world/) |
+
+The root `Dockerfile`, `docker-compose.am4.yml`, `entrypoint.sh`, and Steward deployment tools belong
+to the production viewer. The lab owns its Maven build, container definition, deployment script, test
+harness, and architecture records under `lab/`. The applications exchange versioned snapshot and
+artifact contracts; they do not share a runtime process or deployment container.
+
+The production viewer runs as a single Java fat JAR. In normal mode it parses the world into an in-memory steward dashboard. In batch analytics mode it also writes a full-fidelity DuckDB cache and pre-rendered map layers for large-world GM investigations.
 
 It also acts as the world intelligence and read model for the wider server stack: it retains a history of ingested saves with provenance, computes deltas between them, and serves a unified World / Changes / History / Explore shell. The ingest contract is in [ISLET_INTEGRATION_SPEC.md](docs/comfy-integration/ISLET_INTEGRATION_SPEC.md); prefab naming, which everything downstream depends on, is in [PREFAB_DICTIONARY.md](docs/comfy-integration/PREFAB_DICTIONARY.md).
 
 For the architecture, the findings behind it, and the measurements, read the white paper — served alongside the app at **[/steward/whitepaper.html](https://am4.tail8e749c.ts.net/steward/whitepaper.html)**. Its source is [WHITEPAPER.html](docs/comfy-integration/WHITEPAPER.html), built into the jar by [tools/Build-Whitepaper.ps1](tools/Build-Whitepaper.ps1); the diagrams alone live in [docs/comfy-integration/diagrams/](docs/comfy-integration/diagrams/).
 
-Processing and serving run on different hosts. OMEN parses saves and builds the DuckDB cache and map layers (~53 s and ~1.2 GB per 9M-ZDO world, and it keeps the growing snapshot history); AM4 only serves the published artifacts. [tools/Publish-Steward.ps1](tools/Publish-Steward.ps1) is the data lane — dry-run by default, `-Push` to publish. [tools/Deploy-Steward.ps1](tools/Deploy-Steward.ps1) remains the code lane. Deploy when the jar changes, publish when the world changes.
+Production processing and serving run on different hosts. OMEN parses saves and builds the DuckDB cache and map layers (~53 s and ~1.2 GB per 9M-ZDO world, and it keeps the growing snapshot history); AM4 only serves the published artifacts. [tools/Publish-Steward.ps1](tools/Publish-Steward.ps1) is the production data lane — dry-run by default, `-Push` to publish. [tools/Deploy-Steward.ps1](tools/Deploy-Steward.ps1) remains the production code lane. Deploy when the viewer JAR changes, publish when the world changes.
+
+The lab consumes a snapshot-matched, read-only derivative of those published artifacts and deploys
+independently through [`lab/tools/Deploy-World.ps1`](lab/tools/Deploy-World.ps1). Start with the
+[`lab/README.md`](lab/README.md), then read its [interaction contract](lab/docs/LAB_CONTRACT.md),
+[launch retrospective](lab/docs/RETROSPECTIVE_2026-09-03_PUBLIC_WORLD.md), and
+[architecture decisions](lab/docs/adr/README.md).
 
 The v4 shell and spatial comparison release has been deployed through both lanes and verified at [the AM4 Steward endpoint](https://am4.tail8e749c.ts.net/steward/). This is a release verification record, not a guarantee that the live data will remain on any particular snapshot pair.
 
@@ -23,7 +43,7 @@ Completed-era releases use an explicit immutable artifact instead of rotated-bac
 Activation uploads the boot save through a SHA-256 gate and changes only Steward's
 publish-owned world selection; it never writes to a live game-server save.
 
-## Quick start
+## Steward viewer quick start
 
 Recommended path for Windows users:
 
@@ -68,7 +88,7 @@ If startup fails with `NoClassDefFoundError: kotlin/jvm/internal/Intrinsics`, th
 
 Primary tabs are **World**, **Changes**, **History**, and **Explore**. World retains the existing data-bearing views under grouped secondary navigation (Spatial, Inventories, Forensics, and Population); the three coin-forensics views now share a **Coin trail** surface. The selected snapshot and every comparison pair are shown explicitly in the shell.
 
-## Batch analytics mode
+## Steward viewer batch analytics mode
 
 For million-ZDO investigation work, build a DuckDB cache and rendered overlays instead of sending raw point clouds to the browser:
 
@@ -154,7 +174,7 @@ the local suite does not imply that the currently deployed service contains this
 
 ## Documentation
 
-The project docs are centered in [`docs/comfy-integration/README.md`](docs/comfy-integration/README.md). The unified raster/comparison UI contract and incremental milestone record are in [`docs/design/STEWARD_VIEW_V4_INTEGRATION_PLAN.md`](docs/design/STEWARD_VIEW_V4_INTEGRATION_PLAN.md).
+Production-viewer docs are centered in [`docs/comfy-integration/README.md`](docs/comfy-integration/README.md). The unified raster/comparison UI contract and incremental milestone record are in [`docs/design/STEWARD_VIEW_V4_INTEGRATION_PLAN.md`](docs/design/STEWARD_VIEW_V4_INTEGRATION_PLAN.md). Spatial-lab and public-world docs begin at [`lab/README.md`](lab/README.md).
 
 Useful entry points:
 
@@ -214,6 +234,10 @@ viewer/src/main/resources/static frontend assets
 viewer/classification.json       item taxonomy loaded at startup
 viewer/lib/                      runtime jars, including DuckDB
 viewer/target/                   build outputs, jars, generated cache artifacts
+lab/                             separately deployable spatial lab and public world view
+lab/src/                         lab server and terrain-first browser client
+lab/tools/                       terrain, public-cache, deployment, and browser-test tooling
+lab/docs/                        lab contract, launch retrospective, and ADRs
 docs/comfy-integration/          integration handoff and analytics docs
 manual-zpackage-src/             patched ZPackage source used in earlier parser work
 manual-zpackage-build/           compiled patched ZPackage classes

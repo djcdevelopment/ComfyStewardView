@@ -1,2 +1,3 @@
-# entrypoint.sh runs inside a Linux container; CRLF would break the shebang.
+# Container entrypoints run on Linux; CRLF would break their shebangs.
 entrypoint.sh text eol=lf
+lab/entrypoint-public.sh text eol=lf

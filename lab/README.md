@@ -12,6 +12,8 @@ repository now owns the deliberately constrained public profile at
 caches; world saves, generated artifacts, secrets, and deployment receipts are deliberately excluded
 from Git.
 
+Run commands in this README from the `lab/` directory.
+
 ## Public Comfy Era 17 view
 
 The live public profile is deliberately narrower than the lab.
@@ -61,8 +63,8 @@ java -jar target/steward-spatial-lab-0.1.0-SNAPSHOT.jar serve `
    `https://am4.tail8e749c.ts.net/world/api/auth/discord/callback` as an OAuth2 redirect, and use only
    the `identify` scope.
 3. Enable Discord Developer Mode and copy the user ID that should be pinged.
-4. On OMEN, copy [.env.example](.env.example) to `C:\work\steward-spatial-lab\.env` and fill in the
-   four Discord values. The file is Git-ignored; the deploy script transfers it into AM4's private
+4. On OMEN, copy [.env.example](.env.example) alongside this README as `.env` and fill in the four
+   Discord values. The file is Git-ignored; the deploy script transfers it into AM4's private
    deployment directory and applies mode `600`. No secrets need to be typed into AM4.
 
 No bot token is needed. Deploy with:
