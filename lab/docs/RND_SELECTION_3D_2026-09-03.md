@@ -225,6 +225,13 @@ before declaring success.
 - Object picking, prefab labels in-world, first-person collision, terrain, and native mesh streaming may
   improve exploration. Each should begin as a separate `/rnd` prediction rather than accreting into the
   initial scene contract.
+- The next fidelity sequence should also point back toward CAD intake instead of ending at the viewer:
+  register snapshot-matched terrain in selection-local coordinates so assemblies regain ground and scale;
+  classify recorded fires, hearths, torches, and other light-bearing prefabs as emissive evidence; replace
+  coarse roof envelopes with a small, validated vocabulary of ridge, wedge, and hip primitives; then emit a
+  compact alignment receipt that earlier CAD transforms can use to anchor imported architecture against the
+  continent-scale world. Terrain, illumination, roof reconstruction, and CAD feedback remain four separate
+  `/rnd` predictions with their own provenance and acceptance receipts.
 - A future era needs a new immutable cache export and receipts; a share URL deliberately does not pin or
   smuggle an obsolete binary scene.
 
