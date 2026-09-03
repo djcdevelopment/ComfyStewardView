@@ -9,6 +9,7 @@ const outputDir = path.resolve(process.argv[3] || 'data/scene-browser-smoke');
 const pilotOnly = process.argv.includes('--pilot-only');
 const includeLarge = process.argv.includes('--large');
 const startupLimit = Number(process.env.SCENE_STARTUP_LIMIT_MS || 2000);
+const largeStartupLimit = Number(process.env.SCENE_LARGE_STARTUP_LIMIT_MS || 10000);
 const p95Limit = Number(process.env.SCENE_FRAME_P95_LIMIT_MS || 20);
 const largeP95Limit = Number(process.env.SCENE_LARGE_FRAME_P95_LIMIT_MS || 50);
 const cases = [
@@ -185,7 +186,8 @@ try {
     if (receipt.deviceLost) failures.push('device lost');
     if (receipt.validationErrors?.length) failures.push(`validation errors: ${receipt.validationErrors.join('; ')}`);
     if (receipt.browserErrors?.length) failures.push(`browser errors: ${receipt.browserErrors.join('; ')}`);
-    if (receipt.startupMs > startupLimit) failures.push(`startup ${receipt.startupMs}ms > ${startupLimit}ms`);
+    const caseStartupLimit = sceneCase.name.startsWith('meadows-') ? largeStartupLimit : startupLimit;
+    if (receipt.startupMs > caseStartupLimit) failures.push(`startup ${receipt.startupMs}ms > ${caseStartupLimit}ms`);
     const caseP95Limit = sceneCase.name.startsWith('meadows-') ? largeP95Limit : p95Limit;
     if (receipt.frameP95Ms > caseP95Limit) failures.push(`p95 ${receipt.frameP95Ms}ms > ${caseP95Limit}ms`);
     if (hardware.classification !== 'hardware') failures.push(`GPU classified ${hardware.classification}`);
@@ -207,7 +209,8 @@ try {
 
   const result = {
     schema:'steward-scene-browser-smoke/v1', generatedAt:new Date().toISOString(),
-    baseUrl:base.href, limits:{startupMs:startupLimit,frameP95Ms:p95Limit,largeFrameP95Ms:largeP95Limit}, receipts
+    baseUrl:base.href, limits:{startupMs:startupLimit,largeStartupMs:largeStartupLimit,
+      frameP95Ms:p95Limit,largeFrameP95Ms:largeP95Limit}, receipts
   };
   await writeFile(path.join(outputDir,'receipt.json'),JSON.stringify(result,null,2)+'\n');
   console.log(JSON.stringify(result,null,2));

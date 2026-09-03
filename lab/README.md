@@ -295,8 +295,8 @@ node tools\scene-browser-smoke.mjs http://127.0.0.1:8092/ data\scene-smoke
 The scene browser gate uses hardware WebGPU and checks the exact pilot and stress populations, package
 receipts, shaded/wireframe controls, Home/full-selection framing, camera movement, GPU-authored PNG
 capture, browser/validation errors, device loss, startup under 2 seconds, and p95 frame time at or below
-20 ms. Passing `--large` also exercises the confirmed whole-Meadows scene against its explicit 50 ms
-p95 forced-scene budget. It intentionally has no WebGL fallback: visitors
+20 ms. Passing `--large` also exercises the confirmed whole-Meadows scene against its explicit 10-second
+startup and 50 ms p95 forced-scene budgets. It intentionally has no WebGL fallback: visitors
 without WebGPU receive an explicit unsupported screen and can return to the map.
 
 ## Why this remains a lab

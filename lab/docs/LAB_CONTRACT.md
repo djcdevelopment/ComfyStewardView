@@ -158,7 +158,8 @@ covers the 862-piece pilot and 22,387-piece forced stress selection, package int
 unknown counts, shaded/wireframe switching, family controls, both camera modes, browser and WebGPU
 validation errors, device loss, PNG capture, startup at or below 2,000 ms, and p95 frame time at or below
 20 ms. Its opt-in large case covers the confirmed 193,008-piece whole-Meadows scope, proxy-outlier
-receipt, dense-cluster Home/full-selection framing, and a separate 50 ms p95 forced-scene budget.
+receipt, dense-cluster Home/full-selection framing, and separate 10,000 ms startup / 50 ms p95
+forced-scene budgets.
 
 ## Artifact packages
 

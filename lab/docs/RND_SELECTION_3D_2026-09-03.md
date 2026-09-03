@@ -93,9 +93,9 @@ reported separately as `proxyOutliers`. Flat rugs and hanging cloth remain valid
 Before promotion, the acceptance prediction was that a single compact package plus instanced shared-cube
 geometry could keep a representative village selection and the initial opt-in stress selection inside a
 2,000 ms startup and 20 ms p95 frame budget on hardware WebGPU, with no validation errors or device loss.
-The later 250,000-piece override deliberately introduced a separate 50 ms p95 forced-scene budget. Exact
-population and geometry-coverage counts still had to match the server query; sampling remained a failure,
-regardless of frame rate.
+The later 250,000-piece override deliberately introduced separate 10,000 ms startup and 50 ms p95
+forced-scene budgets. Exact population and geometry-coverage counts still had to match the server query;
+sampling remained a failure, regardless of frame rate.
 
 | Probe | Exact scope | Result |
 |---|---|---|
@@ -108,6 +108,11 @@ shaded and wireframe rendering, family filtering, orbit and free-flight camera e
 capture, deterministic package integrity, zero browser/WebGPU validation errors, and zero device loss.
 The 22,387- and 193,008-piece results proved the confirmation lane. The same scopes without
 `override=true` return 409; a forced result over 250,000 returns 413 before row materialization.
+
+The table records loopback startup so renderer and package cost stay comparable. The same 193,008-piece
+case took 7,053.8 ms through the live Funnel route, including server assembly, compression, and transfer;
+that observation set the separate 10,000 ms public forced-scene startup gate and the UI's explicit
+“several seconds” expectation.
 
 The whole-Meadows envelope spans roughly 10.0 × 5.1 × 9.1 km and has a 5.8 km full radius. Framing all
 of it made local builds nearly invisible. A deterministic 64 m three-dimensional density grid now picks

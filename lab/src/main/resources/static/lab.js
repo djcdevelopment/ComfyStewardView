@@ -343,7 +343,7 @@
     if (overrideRequired && !state.sceneOverrideConfirmed) {
       confirm.hidden = false;
       confirm.textContent = `Allow ${fmt(count)} exact pieces`;
-      copy.textContent = `${fmt(count)} exact pieces. Confirm the larger GPU scene here; nothing will be sampled.`;
+      copy.textContent = `${fmt(count)} exact pieces. Confirm the larger GPU scene here; loading every piece can take several seconds.`;
       return;
     }
     if (overrideRequired) {
@@ -352,7 +352,7 @@
       confirm.disabled = true;
       confirm.setAttribute('aria-pressed', 'true');
       confirm.textContent = `${fmt(count)} pieces confirmed`;
-      copy.textContent = `Override confirmed for ${fmt(count)} exact pieces. Explore interactively or render the current view as a PNG.`;
+      copy.textContent = `Override confirmed for ${fmt(count)} exact pieces. It may take several seconds to open; explore interactively or render a PNG.`;
     } else {
       copy.textContent = `${fmt(count)} exact piece${count === 1 ? '' : 's'}, with saved positions and rotations. Explore it or render a PNG.`;
     }
