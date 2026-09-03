@@ -21,14 +21,17 @@ cache rather than the production cache.
    again closes it and returns to terrain.
 3. **Biomes** replaces Heatmap with territory controls over the enhanced terrain. Biome selections
    are retained when the tool is closed and restored when it reopens. **None** keeps the controls open
-   while leaving the terrain visually unmarked.
+   while leaving the terrain visually unmarked. Ocean remains in the authoritative terrain mask but
+   is not offered as a territory filter: it is map background whose world-scale selection is too easy
+   to trigger accidentally.
 4. Heatmap and Biomes are mutually exclusive. They are questions layered over the world, not peer
    basemaps.
 5. Wheel or trackpad scrolling zooms. Holding and dragging pans. Clicking blank canvas outside the
    circular globe never selects or inspects in any state.
 6. A green area enables inspection. Inspection returns complete aggregates, a deterministic map
    sample when necessary, and cursor-paged objects rather than implying that a database-order prefix
-   is complete.
+   is complete. Closing the inspector clears that transient green area; later biome changes must not
+   resurrect it.
 7. Inspection exposes the same **Explore the build** card in the right column for Heatmap and Biomes.
    It can open an exact selection in a separate 3D tab or render that GPU view to PNG. The links preserve
    the inspected snapshot, lens, bounds, biome scope, and explicit large-selection override; the server

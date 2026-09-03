@@ -35,7 +35,9 @@ Its header offers two optional, mutually exclusive questions over that neutral c
   terrain; switching tools directly keeps them mutually exclusive. Biome choices stay selected while
   the tool is closed. **None** leaves the enhanced terrain unmarked; clicking the map or a header choice adds
   only those highlighted territories, and multiple choices are OR-ed together. A green inspection area
-  intersects that territory scope. Ocean includes water and the world beyond the 10.5 km playable edge. Deep North includes
+  intersects that territory scope; closing the inspector clears it, and hiding its object sample remains
+  respected while biome choices change. Ocean remains map context rather than an interactive filter, avoiding
+  an accidental world-scale selection. Deep North includes
   only the northern polar territory; Black Forest, scattered non-polar Mountain, and unclassified land are grouped as
   Mountains + Forest. Clicking the empty canvas beyond the circular globe is reserved for panning and does not select or inspect.
 

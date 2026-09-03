@@ -247,12 +247,12 @@
     const list = $('biome-chip-list');
     const controls = $('map-view-controls');
     const group = $('biome-filter-group');
-    const available = state.biomeCatalog.length > 0;
+    const available = interactiveBiomeCatalog().length > 0;
     controls.hidden = false;
     group.disabled = !available || state.viewMode !== 'biomes';
     group.setAttribute('aria-disabled', String(group.disabled));
     if (!available) return;
-    const chips = [{ id:'none', label:'None', color:'#738096', itemCount:0 }, ...state.biomeCatalog];
+    const chips = [{ id:'none', label:'None', color:'#738096', itemCount:0 }, ...interactiveBiomeCatalog()];
     list.innerHTML = chips.map(biome => {
       const active = biome.id === 'none' ? state.selectedBiomes.size === 0 : state.selectedBiomes.has(biome.id);
       const title = biome.id === 'none' ? 'Clear all biome highlights' : `${biome.label} · ${fmt(biome.itemCount)} objects`;
@@ -265,8 +265,12 @@
       : 'Select one or more biome territories to inspect';
   }
 
+  function interactiveBiomeCatalog() {
+    return state.biomeCatalog.filter(biome => biome.id !== 'space');
+  }
+
   function selectedBiomeCatalog() {
-    return state.biomeCatalog.filter(biome => state.selectedBiomes.has(biome.id));
+    return interactiveBiomeCatalog().filter(biome => state.selectedBiomes.has(biome.id));
   }
 
   function selectedBiomeSummary() {
@@ -388,7 +392,6 @@
     renderBiomeControls();
     redrawBiomeLayers();
     if (state.viewMode !== 'biomes') return;
-    state.biomeAutoPointsSuppressed = false;
     if (state.exactScope === 'biome-selection' || state.exactScope === 'biome-viewport') removeExactMarkers();
     const bounds = state.currentSelectionBounds || state.worldBounds;
     if (!$('inspect-content').hidden && !state.selectedBiomes.size && !state.currentSelectionBounds) closeInspector();
@@ -453,10 +456,9 @@
   function selectBiomeAt(latlng) {
     if (state.viewMode !== 'biomes') return false;
     const biome = biomeAtLatLng(latlng);
-    if (!biome) return false;
+    if (!biome || biome.id === 'space') return false;
     state.selectedBiomes.clear();
     state.selectedBiomes.add(biome.id);
-    state.biomeAutoPointsSuppressed = false;
     if (state.exactScope === 'biome-selection' || state.exactScope === 'biome-viewport') removeExactMarkers();
     renderBiomeControls();
     redrawBiomeLayers();
@@ -488,7 +490,6 @@
     });
     renderBiomeControls();
     if (mode === 'biomes') {
-      state.biomeAutoPointsSuppressed = false;
       clearExactPoints();
       try {
         await applyContext();
@@ -1556,7 +1557,13 @@
         : `${positionSubject} are inside this area. This summary is complete; exact dots stay hidden above ${fmt(EXACT_POINT_LIMIT)} positions.`;
       renderInspectionRanks(result,false);
       loadItemPage(null, true);
-      if (state.viewMode === 'biomes') loadBiomeSample(bounds);
+      if (state.viewMode === 'biomes') {
+        if (state.biomeAutoPointsSuppressed) {
+          $('exact-state').textContent = 'OUTLINES';
+          showBiomeOutlineStory();
+          syncSelectionAction();
+        } else loadBiomeSample(bounds);
+      }
     } catch (error) {
       if (token !== state.inspectToken) return;
       $('inspect-tab-state').textContent = 'QUERY FAILED';
@@ -2469,7 +2476,7 @@
       copyText(command);
     });
     $('copy-monitor-command').addEventListener('click', () => copyText('.\\lab.ps1 watch-jobs -IntervalSeconds 15'));
-    $('inspect-close').addEventListener('click', () => showRightPanel('jobs'));
+    $('inspect-close').addEventListener('click', closeInspector);
     $('inspect-zoom').addEventListener('click', () => state.currentSelectionBounds && state.map.fitBounds(state.currentSelectionBounds,{padding:[30,30]}));
     $('inspect-copy').addEventListener('click', () => state.currentScopeBounds && copyText(boundsLabel(state.currentScopeBounds)));
     $('inspect-clear-area').addEventListener('click', () => inspectBounds(state.worldBounds, { draw:false }));

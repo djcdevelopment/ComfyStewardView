@@ -555,7 +555,7 @@ if (biomes) {
     exactState:document.querySelector('#exact-state')?.textContent,
     story:document.querySelector('#story-title')?.textContent,
     noneActive:document.querySelector('[data-biome="none"]')?.classList.contains('active'),
-    oceanLabel:document.querySelector('[data-biome="space"] span')?.textContent,
+    oceanPresent:Boolean(document.querySelector('[data-biome="space"]')),
     otherLabel:document.querySelector('[data-biome="other"] span')?.textContent,
     inspectDisabled:document.querySelector('#biome-view-results')?.disabled,
     biomeAlpha:[...document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile')].reduce((sum,canvas) => {
@@ -591,7 +591,7 @@ if (biomes) {
   const mapPoint = mapPointResult.result.value;
   await cdp('Input.dispatchMouseEvent', { type:'mousePressed', x:mapPoint.x, y:mapPoint.y, button:'left', clickCount:1 });
   await cdp('Input.dispatchMouseEvent', { type:'mouseReleased', x:mapPoint.x, y:mapPoint.y, button:'left', clickCount:1 });
-  await waitForExpression(`document.querySelectorAll('#biome-chip-list .biome-chip.active:not([data-biome="none"])').length === 1`, 30000);
+  await waitForExpression(`document.querySelectorAll('#biome-chip-list .biome-chip.active:not([data-biome="none"])').length === 0`, 30000);
   const mapClickResult = await cdp('Runtime.evaluate', { expression: `(() => ({
     active:document.querySelector('#biome-chip-list .biome-chip.active:not([data-biome="none"])')?.dataset.biome,
     story:document.querySelector('#story-title')?.textContent,
@@ -687,7 +687,34 @@ if (biomes) {
   const firstRange = selectedResult.result.value.itemRange;
   await cdp('Runtime.evaluate', { expression: `document.querySelector('#inspect-items-next')?.click()` });
   await waitForExpression(`document.querySelector('#inspect-items-range')?.textContent !== ${JSON.stringify(firstRange)}`, 30000);
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#story-selection-action')?.click()` });
+  await waitForExpression(`/Show items/.test(document.querySelector('#story-selection-action')?.textContent || '') &&
+    [...document.querySelectorAll('.leaflet-exact-pane canvas')].every(canvas => {
+      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      for(let i=3;i<pixels.length;i+=4) if(pixels[i]) return false;
+      return true;
+    })`, 30000);
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-biome="swamps"]')?.click()` });
+  await waitForExpression(`(document.querySelector('#inspect-title')?.textContent || '').includes('Swamps + Meadows') &&
+    /OUTLINES/.test(document.querySelector('#exact-state')?.textContent || '') &&
+    /Show items/.test(document.querySelector('#story-selection-action')?.textContent || '')`, 30000);
+  const hiddenItemsResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    inspectorOpen:document.body.classList.contains('inspection-open'),
+    selectionPresent:Boolean(document.querySelector('.selection-rectangle')),
+    action:document.querySelector('#story-selection-action')?.textContent,
+    exactState:document.querySelector('#exact-state')?.textContent,
+    exactAlpha:[...document.querySelectorAll('.leaflet-exact-pane canvas')].reduce((sum,canvas) => {
+      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      for(let i=3;i<pixels.length;i+=4) if(pixels[i]) sum++;
+      return sum;
+    },0)
+  }))()`, returnByValue:true });
   await cdp('Runtime.evaluate', { expression: `document.querySelector('#inspect-close')?.click()` });
+  await waitForExpression(`!document.body.classList.contains('inspection-open') &&
+    document.querySelector('#inspect-content')?.hidden &&
+    !document.querySelector('.selection-rectangle')`, 30000);
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-biome="ashlands"]')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 500));
   for (let step = 0; step < 3; step++) {
     await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
     await new Promise(resolve => setTimeout(resolve, 450));
@@ -695,6 +722,9 @@ if (biomes) {
   const closeResult = await cdp('Runtime.evaluate', { expression: `(() => ({
     zoom:document.querySelector('#viewport-label')?.textContent,
     tiles:document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile').length,
+    inspectorOpen:document.body.classList.contains('inspection-open'),
+    inspectContentHidden:document.querySelector('#inspect-content')?.hidden,
+    selectionPresent:Boolean(document.querySelector('.selection-rectangle')),
     alphaPixels:[...document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile')].reduce((sum,canvas) => {
       const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
       for(let i=3;i<pixels.length;i+=4) if(pixels[i]) sum++;
@@ -718,6 +748,7 @@ if (biomes) {
     beforeInspect:beforeInspectResult.result.value,
     selected:selectedResult.result.value,
     sceneConfirmed:biomeSceneConfirmed,
+    hiddenItems:hiddenItemsResult.result.value,
     nextRange:(await cdp('Runtime.evaluate', { expression:`document.querySelector('#inspect-items-range')?.textContent`, returnByValue:true })).result.value,
     close:closeResult.result.value,
     restored:restoredResult.result.value
@@ -1292,7 +1323,7 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       !/[?&]override=true/.test(publicSceneConfirmedState?.imageHref || '') ||
       !/[?&]capture=1/.test(publicSceneConfirmedState?.imageHref || '') ||
       publicClosedState?.inspectionOpen || publicClosedState?.jobsPanelDisplay !== 'none' ||
-      !publicClosedState?.selectionPresent || !publicClosedState?.selectionActionVisible ||
+      publicClosedState?.selectionPresent || publicClosedState?.selectionActionVisible ||
       publicClosedState?.mapWidth <= publicInspectState?.mapWidth)) ||
     rasterStyleState?.initial?.mode !== 'smooth' || rasterStyleState?.initial?.world !== 'auto' ||
     rasterStyleState?.initial?.context !== 'auto' || rasterStyleState?.initial?.worldOpacity !== 1 ||
@@ -1322,12 +1353,11 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       terrainState?.detail?.exactState !== 'TERRAIN' || !/terrain/i.test(terrainState?.detail?.story || ''))) ||
     (biomes && (!biomeState?.overview?.mode || biomeState?.overview?.filterDisabled ||
       biomeState?.overview?.tiles < 1 || biomeState?.overview?.heatOpacity !== 0 || biomeState?.overview?.contextOpacity !== 1 ||
-      biomeState?.overview?.oceanLabel !== 'Ocean' || biomeState?.overview?.otherLabel !== 'Mountains + Forest' ||
+      biomeState?.overview?.oceanPresent || biomeState?.overview?.otherLabel !== 'Mountains + Forest' ||
       !/OUTLINES/.test(biomeState?.overview?.exactState || '') || biomeState?.overview?.exactAlpha !== 0 ||
       !biomeState?.overview?.noneActive || !biomeState?.overview?.inspectDisabled || biomeState?.overview?.biomeAlpha !== 0 ||
       !biomeState?.offGlobe?.noneActive || biomeState?.offGlobe?.selectedCount !== 0 || !biomeState?.offGlobe?.inspectDisabled ||
-      !biomeState?.mapClick?.active || !/highlighted/i.test(biomeState?.mapClick?.story || '') ||
-      biomeState?.mapClick?.noneActive || biomeState?.mapClick?.inspectDisabled ||
+      biomeState?.mapClick?.active || !biomeState?.mapClick?.noneActive || !biomeState?.mapClick?.inspectDisabled ||
       biomeState?.lasso?.backingScale < 1.9 || biomeState?.lasso?.alphaPixels < 1 ||
       !/OUTLINES/.test(biomeState?.beforeInspect?.exactState || '') || biomeState?.beforeInspect?.exactAlpha !== 0 ||
       !biomeState?.selected?.meadowsActive || biomeState?.selected?.noneActive ||
@@ -1350,7 +1380,11 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       !/[?&]scope=world-biome/.test(biomeState?.sceneConfirmed?.sceneHref || '') ||
       !/[?&]override=true/.test(biomeState?.sceneConfirmed?.sceneHref || '') ||
       !/[?&]capture=1/.test(biomeState?.sceneConfirmed?.imageHref || '') ||
+      !biomeState?.hiddenItems?.inspectorOpen || biomeState?.hiddenItems?.selectionPresent ||
+      !/Show items/.test(biomeState?.hiddenItems?.action || '') ||
+      !/OUTLINES/.test(biomeState?.hiddenItems?.exactState || '') || biomeState?.hiddenItems?.exactAlpha !== 0 ||
       biomeState?.nextRange === biomeState?.selected?.itemRange || biomeState?.close?.tiles < 1 ||
+      biomeState?.close?.inspectorOpen || !biomeState?.close?.inspectContentHidden || biomeState?.close?.selectionPresent ||
       biomeState?.close?.alphaPixels < 1 || biomeState?.restored?.mode ||
       biomeState?.restored?.heatOpacity <= 0 || !biomeState?.restored?.legendVisible)) ||
     (scalePreviews && (!/320 m cells/.test(scalePreviewState?.scale320?.status || '') ||
