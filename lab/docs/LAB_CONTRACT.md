@@ -84,42 +84,56 @@ cache rather than the production cache.
 2. `/api/scene` accepts only the published snapshot and Build density lens, finite ordered bounds,
    canonical public biome groups, and the override bit. The repository repeats those checks and always
    executes an exact count/query; it never accepts client object IDs or a client-generated package.
-3. A package is deterministic for a fixed cache, release label, and scope: rows are ordered by family
-   then ZDO index, and the header contains `SV3D`, a version, JSON-manifest length, fixed 80-byte
-   instance stride, and an integrity hash for the instance region. One response supplies the whole scene.
-4. Every safe known piece is an oriented prefab envelope. Rotation follows Unity Euler order
-   `Ry × Rx × Rz`; the prefab center offset is rotated before translation. The browser mirrors X into a
-   right-handed, selection-local coordinate frame. Unknown prefabs render as red pivot markers rather
-   than vanishing. Catalog envelopes with a non-finite extent, an axis over 20 m, or volume
-   over 2,000 m³ are also reduced to a 0.35 m pivot marker and counted as `proxyOutliers`; their ZDOs are
-   retained, but unsafe environmental or compound proxy bounds cannot dominate framing.
-5. Public scene data omits creator/owner identity, flags, raw ZDO fields, source paths, absolute Y, and
+3. A schema-v2 package is deterministic for a fixed cache, release label, and scope. The header contains
+   `SV3D`, package version 2, a JSON-manifest length, fixed 80-byte instance stride, and an integrity hash
+   for the instance region. `pieces` is always the exact selected ZDO count; `renderInstances` is the
+   presentation count and may be larger for a compound or smaller than its desired expansion when the
+   500,000-instance presentation cap collapses compounds to one marker. Membership is never sampled or
+   dropped. One response supplies the whole scene.
+4. Every safe known piece is an oriented prefab envelope unless an exact-name representation entry says
+   otherwise. Rotation follows Unity Euler order `Ry × Rx × Rz`; the prefab center offset is rotated
+   before translation. The browser mirrors X into a right-handed, selection-local coordinate frame.
+   Unknown prefabs and unsafe uncataloged envelopes render as red pivot markers rather than vanishing.
+   Thirty-nine explicitly named vegetation/context prefabs render as smaller green pivots, are hidden by
+   default, and do not influence framing. Exact name and hash must agree with the geometry catalog; no
+   substring classifier exists, and fires, furniture, logs, and stumps are not treated as context.
+5. A runtime compound requires a bounds-only renderer receipt plus a metrics-gated promotion receipt.
+   Its 1–32 local box matrices are transformed per ZDO; animated parts receive a deterministic static
+   phase derived from `zdo_index` because saved runtime animation state is unavailable. A known compound
+   that fails promotion is one explicit unresolved marker. The current four-box windmill candidate failed
+   depth and holdout gates and is therefore local `/rnd` evidence, not public presentation geometry.
+6. Public scene data omits creator/owner identity, flags, raw ZDO fields, source paths, absolute Y, and
    absolute world origin. The manifest exposes only relative floor and bounds plus aggregate provenance
-   hashes and known/estimated/unknown coverage counts.
-6. The browser is dependency-free WebGPU with no WebGL fallback. Shaded and wireframe views use shared
+   hashes and explicit measured/estimated/context/unresolved/capped coverage counts.
+7. The browser is dependency-free WebGPU with no WebGL fallback. Shaded and wireframe views use shared
    cube geometry and instancing; family toggles change visibility without refetching. Mouse orbit with
    WASD travel and Q/E elevation, pan, wheel, frame, reset, and pointer-locked WASD/QE/Shift free flight
    are all local presentation controls. PNG
    export captures the current WebGPU canvas, camera, surface, and visible families in the browser.
    Compact scopes frame the full selection; scopes spanning more than 600 m on any axis start at a
    deterministic dense local Home cluster and retain an explicit Frame all action.
-7. Scene generation has its own six-per-minute client rate limit and one-query concurrency gate. The
+8. Scene generation has its own six-per-minute client rate limit and one-query concurrency gate. The
    unsupported, capacity, validation, network, and device-loss states are explicit and recover to the map.
+9. `/rnd/fidelity`, its API, and external gallery-image streaming exist only in non-public mode. The
+   workbench joins external selfie-stick images, exact camera receipts, gallery clusters, scene scopes,
+   and local renderer candidates without copying images into this repository. Public mode does not
+   register any of those routes and never loads a local candidate receipt.
 
 Binary layout is deliberately small and versioned:
 
 | Offset | Size | Value |
 |---:|---:|---|
 | 0 | 4 | ASCII `SV3D` |
-| 4 | 4 | Little-endian package version (`1`) |
+| 4 | 4 | Little-endian package version (`2`) |
 | 8 | 4 | UTF-8 JSON manifest length |
 | 12 | 4 | Four-byte-aligned instance-region offset |
 | 16 | variable | Manifest, followed by zero alignment padding |
 | instance + 0 | 64 | Column-major `mat4x4<f32>` selection-local model transform |
 | instance + 64 | 16 | RGBA family color (`vec4<f32>`) |
 
-The manifest's contiguous family ranges give each otherwise anonymous 80-byte instance its family and
-draw range. The instance-region SHA-256 covers exactly `pieces × 80` bytes.
+The manifest's contiguous draw groups give each otherwise anonymous 80-byte instance its semantic class,
+default visibility, piece membership count, and draw range. The instance-region SHA-256 covers exactly
+`renderInstances × 80` bytes.
 
 ## Independent dimensions
 
@@ -157,12 +171,16 @@ The public map regression additionally covers the clean initial state, every Qui
 path, Discord-return priority, mode activation/deactivation and direct switching, retained biome
 choices, Biomes + None, off-globe clicks, semantic raster scales, bounded inspection, representative
 samples, item pagination, and the inline exact-3D/PNG gate in both Heatmap and Biomes. A separate hardware-WebGPU regression
-covers the 862-piece pilot and 22,387-piece forced stress selection, package integrity, real/estimated/
-unknown counts, shaded/wireframe switching, family controls, orbit-WASD movement, both camera modes, browser and WebGPU
+covers the 862-piece pilot and 22,387-piece forced stress selection, package integrity, exact pieces
+versus render instances, representation quality, shaded/wireframe switching, group controls,
+orbit-WASD movement, both camera modes, browser and WebGPU
 validation errors, device loss, PNG capture, startup at or below 2,000 ms, and p95 frame time at or below
 20 ms. Its opt-in large case covers the confirmed 193,008-piece whole-Meadows scope, proxy-outlier
 receipt, dense-cluster Home/full-selection framing, and separate 10,000 ms startup / 50 ms p95
-forced-scene budgets.
+forced-scene budgets. Fidelity fixtures add 3,937 pieces/914 hidden vines (611), 864 pieces/one
+unresolved windmill (713), and 705 pieces/two unresolved windmills (1364). A private workbench browser
+gate separately proves exact 65° camera matching, candidate/baseline comparison, wipe, overlay, and
+isolation without making the candidate public.
 
 ## Artifact packages
 
@@ -181,12 +199,15 @@ the exact `[-12288, 12288]` world-edge bounds. The display mask may close cartog
 must never determine query membership. Public bootstrap exposes safe presentation metadata, never
 private source paths or provenance details.
 
-`data/era17-public.duckdb` schema v3 is a replaceable, snapshot-only derivative. Its public `zdo`
+`data/era17-public.duckdb` schema v4 is a replaceable, snapshot-only derivative. Its public `zdo`
 table carries BUILDING position, rotation, prefab identity, and biome membership; `prefab_geometry`
-carries the 974-entry envelope lexicon and its source class. `release_metadata` binds the cache to the
-source snapshot, context, building-geometry Parquet, piece-geometry JSON, row counts, and coverage
-counts. Export fails unless the Parquet BUILDING rows join exactly to the source snapshot by ZDO index,
-name/hash, and X/Z. This extension does not change the production `viewer` schema.
+carries the 974-entry envelope lexicon and its source class; `prefab_representation` and
+`prefab_representation_primitive` carry only checked-in, exact-name presentation decisions and promoted
+box matrices. `release_metadata` binds the cache to the source snapshot, context, building-geometry
+Parquet, piece-geometry JSON, representation catalog, promotion receipt, row counts, and coverage counts.
+Export fails unless the Parquet BUILDING rows join exactly to the source snapshot by ZDO index,
+name/hash, and X/Z, and unless representation names and hashes agree with the geometry catalog. This
+extension does not change the production `viewer` schema.
 
 `/api/scene` emits `application/vnd.comfysteward.scene` packages for exact, bounded public selections.
 The URL is a shareable query recipe, not a stored scene: each open rebuilds the package from the active
@@ -198,5 +219,5 @@ context source, the all-ZDO surface is labeled as an inferred land mask, never a
 ## Related decisions
 
 See the [architecture decision record index](adr/README.md) for the public boundary, terrain package,
-terrain-first interaction, isolated deployment, optional Discord identity, and exact WebGPU scene
-decisions.
+terrain-first interaction, isolated deployment, optional Discord identity, exact WebGPU scene, and
+metrics-gated prefab representation decisions.

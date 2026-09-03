@@ -6,7 +6,7 @@ const blockedNode = document.getElementById('scene-blocked');
 const errors = [];
 let deviceLost = false;
 let receipt = {
-  schema:'steward-scene-browser/v1', status:'loading', pieces:0,
+  schema:'steward-scene-browser/v2', status:'loading', pieces:0,
   validationErrors:errors, deviceLost:false
 };
 
@@ -46,6 +46,11 @@ function requiredNumber(name) {
   return value;
 }
 
+function queryVector(name) {
+  const values = (params.get(name) || '').split(',').map(Number);
+  return values.length === 3 && values.every(Number.isFinite) ? values : null;
+}
+
 function sceneRequestUrl() {
   const snapshot = requiredNumber('snapshot');
   const minX = requiredNumber('minX'), maxX = requiredNumber('maxX');
@@ -57,6 +62,10 @@ function sceneRequestUrl() {
   });
   if (params.get('biomes')) query.set('biomes', params.get('biomes'));
   if (params.get('override') === 'true' || params.get('override') === '1') query.set('override', 'true');
+  if (params.get('rnd') === '1') {
+    query.set('rnd', 'true');
+    query.set('presentation', params.get('presentation') === 'baseline' ? 'baseline' : 'candidate');
+  }
   const url = new URL('api/scene', APP_BASE);
   url.search = query.toString();
   return url;
@@ -76,7 +85,7 @@ async function fetchScene() {
   const version = header.getUint32(4, true);
   const manifestLength = header.getUint32(8, true);
   const instanceOffset = header.getUint32(12, true);
-  if (magic !== 'SV3D' || version !== 1) throw new Error('The scene package format is not supported.');
+  if (magic !== 'SV3D' || version !== 2) throw new Error('The scene package format is not supported.');
   if (instanceOffset % 4 || instanceOffset < 16 + manifestLength || instanceOffset > buffer.byteLength) {
     throw new Error('The scene package offsets are invalid.');
   }
@@ -86,17 +95,22 @@ async function fetchScene() {
   } catch (_) {
     throw new Error('The scene manifest could not be decoded.');
   }
-  if (manifest.schema !== 'steward-zdo-scene/v1' || manifest.instanceStride !== 80 ||
+  if (manifest.schema !== 'steward-zdo-scene/v2' || manifest.instanceStride !== 80 ||
       manifest.instanceBytes !== buffer.byteLength - instanceOffset ||
-      manifest.instanceBytes !== manifest.pieces * manifest.instanceStride) {
+      manifest.instanceBytes !== manifest.renderInstances * manifest.instanceStride) {
     throw new Error('The scene manifest does not match its exact instance payload.');
   }
   let expectedStart = 0;
-  for (const family of manifest.families || []) {
-    if (family.start !== expectedStart || family.count < 1) throw new Error('The family draw ranges are invalid.');
-    expectedStart += family.count;
+  let representedPieces = 0;
+  for (const group of manifest.drawGroups || []) {
+    if (group.start !== expectedStart || group.count < 1 || group.pieces < 1 ||
+        typeof group.defaultVisible !== 'boolean') throw new Error('The scene draw ranges are invalid.');
+    expectedStart += group.count;
+    representedPieces += group.pieces;
   }
-  if (expectedStart !== manifest.pieces) throw new Error('The family ranges do not cover every piece.');
+  if (expectedStart !== manifest.renderInstances || representedPieces !== manifest.pieces) {
+    throw new Error('The draw ranges do not preserve exact piece membership.');
+  }
   const bytes = new Uint8Array(buffer, instanceOffset, manifest.instanceBytes);
   const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
     .map(value => value.toString(16).padStart(2, '0')).join('');
@@ -272,25 +286,24 @@ async function main() {
       @location(2) m0:vec4f, @location(3) m1:vec4f,
       @location(4) m2:vec4f, @location(5) m3:vec4f, @location(6) color:vec4f
     }
-    struct SolidOut { @builtin(position) position:vec4f, @location(0) color:vec4f, @location(1) normal:vec3f }
+    struct SolidOut { @builtin(position) position:vec4f, @location(0) color:vec4f }
     @vertex fn solidVS(input:SolidIn)->SolidOut {
-      let model=mat4x4f(input.m0,input.m1,input.m2,input.m3);
-      let basis=mat3x3f(normalize(input.m0.xyz),normalize(input.m1.xyz),normalize(input.m2.xyz));
-      var out:SolidOut; out.position=camera.viewProjection*model*vec4f(input.position,1);
-      out.color=input.color; out.normal=basis*input.normal; return out;
+      let world=input.m0*input.position.x+input.m1*input.position.y+input.m2*input.position.z+input.m3;
+      let direction=input.m0.xyz*input.normal.x+input.m1.xyz*input.normal.y+input.m2.xyz*input.normal.z;
+      let normal=normalize(direction);
+      let diffuse=0.28+0.72*max(dot(normal,vec3f(-.4629,.8230,.3292)),0);
+      let horizon=0.9+0.1*max(normal.y,0);
+      var out:SolidOut; out.position=camera.viewProjection*world;
+      out.color=vec4f(input.color.rgb*diffuse*horizon,1); return out;
     }
-    @fragment fn solidFS(input:SolidOut)->@location(0) vec4f {
-      let diffuse=0.28+0.72*max(dot(normalize(input.normal),normalize(vec3f(-.45,.8,.32))),0);
-      let horizon=0.9+0.1*max(normalize(input.normal).y,0);
-      return vec4f(input.color.rgb*diffuse*horizon,1);
-    }
+    @fragment fn solidFS(input:SolidOut)->@location(0) vec4f { return input.color; }
     struct LineIn { @location(0) position:vec3f,
       @location(2) m0:vec4f, @location(3) m1:vec4f,
       @location(4) m2:vec4f, @location(5) m3:vec4f, @location(6) color:vec4f }
     struct LineOut { @builtin(position) position:vec4f, @location(0) color:vec4f }
     @vertex fn lineVS(input:LineIn)->LineOut {
-      let model=mat4x4f(input.m0,input.m1,input.m2,input.m3);
-      var out:LineOut; out.position=camera.viewProjection*model*vec4f(input.position,1);
+      let world=input.m0*input.position.x+input.m1*input.position.y+input.m2*input.position.z+input.m3;
+      var out:LineOut; out.position=camera.viewProjection*world;
       out.color=vec4f(min(input.color.rgb*1.25,vec3f(1)),1); return out;
     }
     @fragment fn lineFS(input:LineOut)->@location(0) vec4f { return input.color; }
@@ -337,9 +350,22 @@ async function main() {
   let orbitDistance = homeRadius * 2.45, orbitTarget = [...homeTarget];
   let flyPosition = add(homeTarget,[0,0,homeRadius * 2.45]), flyYaw = Math.PI, flyPitch = 0;
   let flySpeed = Math.max(5, homeRadius * .35), cameraScale = homeRadius, cameraFrame = 'home';
-  const visible = new Set(manifest.families.map((_, index) => index));
+  let cameraFov = 42;
+  const visible = new Set(manifest.drawGroups.map((group, index) => group.defaultVisible ? index : -1)
+    .filter(index => index >= 0));
   const keys = new Set();
   let lastViewProjection = new Float32Array(16);
+  let lastDrawCalls = 0;
+
+  function visibleRanges() {
+    const ranges = [];
+    for (let index = 0; index < manifest.drawGroups.length; index++) if (visible.has(index)) {
+      const group = manifest.drawGroups[index], previous = ranges.at(-1);
+      if (previous && previous.start + previous.count === group.start) previous.count += group.count;
+      else ranges.push({start:group.start,count:group.count});
+    }
+    return ranges;
+  }
 
   function forwardVector() {
     return [Math.sin(flyYaw)*Math.cos(flyPitch), Math.sin(flyPitch), Math.cos(flyYaw)*Math.cos(flyPitch)];
@@ -356,7 +382,7 @@ async function main() {
     const target = cameraMode === 'fly' ? add(flyPosition, forwardVector()) : orbitTarget;
     const near = Math.max(.02, cameraScale * .0003);
     const far = Math.max(radius * 20, orbitDistance * 4, 100);
-    return multiply4(perspective(42*Math.PI/180, canvas.width/canvas.height, near, far), lookAt(eye,target,[0,1,0]));
+    return multiply4(perspective(cameraFov*Math.PI/180, canvas.width/canvas.height, near, far), lookAt(eye,target,[0,1,0]));
   }
   function render() {
     resize();
@@ -373,11 +399,10 @@ async function main() {
     pass.setPipeline(wire ? linePipeline : solidPipeline); pass.setBindGroup(0,bindGroup);
     pass.setVertexBuffer(0,wire ? lineVB : solidVB); pass.setVertexBuffer(1,instanceBuffer);
     pass.setIndexBuffer(wire ? lineIB : solidIB,'uint16');
-    for (let index = 0; index < manifest.families.length; index++) if (visible.has(index)) {
-      const family = manifest.families[index];
-      pass.drawIndexed(wire ? 24 : 36, family.count, 0, 0, family.start);
-    }
+    const ranges = visibleRanges();
+    for (const range of ranges) pass.drawIndexed(wire ? 24 : 36, range.count, 0, 0, range.start);
     pass.end(); device.queue.submit([encoder.finish()]);
+    lastDrawCalls = ranges.length + 1;
   }
 
   async function captureImage() {
@@ -416,7 +441,7 @@ async function main() {
     surface = value === 'wire' ? 'wire' : 'shaded';
     document.querySelectorAll('[data-surface]').forEach(button =>
       button.setAttribute('aria-pressed', String(button.dataset.surface === surface)));
-    render(); publish({ surface, drawCalls:visible.size + 1 });
+    render(); publish({ surface, drawCalls:lastDrawCalls, visibleGroups:visible.size });
   }
   function setCameraMode(value, requestLock = false) {
     value = value === 'fly' ? 'fly' : 'orbit';
@@ -448,7 +473,7 @@ async function main() {
     if (document.pointerLockElement === canvas) document.exitPointerLock();
     cameraMode = 'orbit'; orbitYaw = -35*Math.PI/180; orbitPitch = -28*Math.PI/180;
     keys.clear();
-    cameraScale = Math.max(frameRadius, 1); cameraFrame = frameName;
+    cameraScale = Math.max(frameRadius, 1); cameraFrame = frameName; cameraFov = 42;
     orbitDistance = cameraScale * 2.45; orbitTarget = [...target];
     flySpeed = Math.max(5, cameraScale * .35);
     document.querySelectorAll('[data-camera]').forEach(button =>
@@ -457,14 +482,28 @@ async function main() {
   }
   function resetCamera() { frameCamera(homeTarget,homeRadius,'home'); }
   function frameAll() { frameCamera([0,0,0],radius,'all'); }
+  function setExactCamera(lens, aim, fov = 65) {
+    const origin = manifest.rndCameraOrigin;
+    if (!Array.isArray(origin) || origin.length !== 3) return false;
+    const local = value => [-(value[0]-origin[0]),value[1]-origin[1],value[2]-origin[2]];
+    flyPosition = local(lens);
+    const direction = norm(sub(local(aim),flyPosition));
+    flyYaw = Math.atan2(direction[0],direction[2]);
+    flyPitch = Math.asin(Math.max(-1,Math.min(1,direction[1])));
+    cameraMode = 'fly'; cameraFrame = 'gallery-exact'; cameraFov = Math.max(20,Math.min(100,Number(fov) || 65));
+    cameraScale = Math.max(homeRadius,1); flySpeed = Math.max(5,homeRadius*.35); keys.clear();
+    document.querySelectorAll('[data-camera]').forEach(button =>
+      button.setAttribute('aria-pressed', String(button.dataset.camera === 'fly')));
+    updateCameraHelp(); render(); publish({ cameraMode, cameraFrame, cameraFov }); return true;
+  }
   function updateCameraHelp() {
     const locked = document.pointerLockElement === canvas;
     document.getElementById('camera-help').textContent = cameraMode === 'orbit'
-      ? `Drag to orbit · WASD move · Q/E down/up · wheel to zoom${clusteredHome ? ` · Home restores a dense ${fmt(manifest.home.pieces)}-piece cluster` : ''}`
+      ? `Left-drag orbit · right-drag pan · WASD move · Q/E elevation${clusteredHome ? ` · Home restores a dense ${fmt(manifest.home.pieces)}-piece cluster` : ''}`
       : locked ? 'Mouse look · WASD move · Q/E down/up · Shift boost · Escape releases mouse'
       : 'Click the view to capture the mouse · WASD + Q/E · Shift boost';
     document.getElementById('stage-hint').textContent = cameraMode === 'orbit'
-      ? 'Drag to orbit · WASD move · wheel to zoom'
+      ? 'Left-drag orbit · right-drag pan · WASD move · Q/E elevation'
       : locked ? 'WASD + Q/E · Shift boost · Escape releases mouse' : 'Click to enter free-camera fly mode';
   }
 
@@ -479,22 +518,24 @@ async function main() {
     statusNode.textContent = `PNG FAILED | ${error.message}`;
   }));
   document.getElementById('families-all').addEventListener('click', () => {
-    manifest.families.forEach((_,index) => visible.add(index));
+    manifest.drawGroups.forEach((_,index) => visible.add(index));
     document.querySelectorAll('#families input').forEach(input => { input.checked = true; });
-    render(); publish({ drawCalls:visible.size + 1 });
+    render(); publish({ drawCalls:lastDrawCalls, visibleGroups:visible.size });
   });
 
   const familyBox = document.getElementById('families');
-  manifest.families.forEach((family,index) => {
+  manifest.drawGroups.forEach((family,index) => {
     const label = document.createElement('label'), input = document.createElement('input');
-    input.type = 'checkbox'; input.checked = true;
+    input.type = 'checkbox'; input.checked = family.defaultVisible;
     input.addEventListener('change', () => {
       input.checked ? visible.add(index) : visible.delete(index);
-      render(); publish({ drawCalls:visible.size + 1 });
+      render(); publish({ drawCalls:lastDrawCalls, visibleGroups:visible.size });
     });
     const swatch = document.createElement('i'); swatch.style.setProperty('--swatch',family.color);
     const name = document.createElement('span'); name.textContent = titleCase(family.name);
-    const count = document.createElement('small'); count.textContent = fmt(family.count);
+    const count = document.createElement('small');
+    count.textContent = family.count === family.pieces
+      ? fmt(family.pieces) : `${fmt(family.pieces)} / ${fmt(family.count)}`;
     label.append(input,swatch,name,count); familyBox.appendChild(label);
   });
 
@@ -558,7 +599,7 @@ async function main() {
       const forward = cameraMode === 'fly'
         ? forwardVector()
         : norm([-Math.sin(orbitYaw),0,-Math.cos(orbitYaw)]);
-      const right = norm(cross([0,1,0],forward));
+      const right = norm(cross(forward,[0,1,0]));
       let move = [0,0,0];
       if (keys.has('w')) move = add(move,forward); if (keys.has('s')) move = sub(move,forward);
       if (keys.has('d')) move = add(move,right); if (keys.has('a')) move = sub(move,right);
@@ -582,14 +623,18 @@ async function main() {
   document.getElementById('scene-subtitle').textContent =
     `Snapshot #${manifest.snapshotId} · ${worldwideBiome ? 'worldwide biome scope' : 'exact selection'}${biomeCopy} · selection-local coordinates`;
   document.getElementById('metric-pieces').textContent = fmt(manifest.pieces);
+  document.getElementById('metric-instances').textContent = fmt(manifest.renderInstances);
   document.getElementById('metric-dimensions').textContent = manifest.dimensionsM.map(value => `${fmt(value)} m`).join(' × ');
   document.getElementById('metric-bytes').textContent = fmtBytes(manifest.instanceBytes);
   document.getElementById('metric-adapter').textContent = adapterInfo.description || adapterInfo.device || adapterInfo.vendor || adapterClass;
-  const coverage = manifest.geometryCoverage;
+  const coverage = manifest.representationQuality;
   document.getElementById('quality-copy').textContent =
-    `${fmt(coverage.real)} measured | ${fmt(coverage.estimated)} family-estimated | ${fmt(coverage.unknown)} pivot marker${coverage.unknown === 1 ? '' : 's'}` +
-    `${coverage.proxyOutliers ? ` (${fmt(coverage.proxyOutliers)} oversized or compound envelopes reduced)` : ''}.`;
+    `${fmt(coverage.measuredEnvelope)} measured envelope · ${fmt(coverage.runtimeCompoundProxy)} runtime compound proxy · ` +
+    `${fmt(coverage.estimatedEnvelope)} estimated envelope · ${fmt(coverage.pivotMarker)} pivot marker${coverage.pivotMarker === 1 ? '' : 's'}. ` +
+    `${fmt(coverage.hiddenContextPieces)} context piece${coverage.hiddenContextPieces === 1 ? '' : 's'} hidden by default.`;
   updateCameraHelp(); setSurface(params.get('surface') === 'wire' ? 'wire' : 'shaded'); resetCamera();
+  const exactLens = queryVector('cameraLens'), exactAim = queryVector('cameraAim');
+  if (exactLens && exactAim) setExactCamera(exactLens, exactAim, Number(params.get('cameraFov')) || 65);
   await device.queue.onSubmittedWorkDone(); await frame(); await frame();
   const startup = performance.now() - PAGE_STARTED;
   const viewHash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', lastViewProjection.buffer))]
@@ -598,16 +643,20 @@ async function main() {
   document.getElementById('save-image').disabled = false;
   statusNode.textContent = `${adapterClass.toUpperCase()} · ${startup.toFixed(1)} MS START · GRID ${grid.step} M`;
   publish({
-    status:'ready', schema:'steward-scene-browser/v1', pieces:manifest.pieces,
+    status:'ready', schema:'steward-scene-browser/v2', pieces:manifest.pieces,
+    renderInstances:manifest.renderInstances,
     triangles:manifest.triangles, exact:manifest.exact, forced:manifest.forced,
+    presentationVariant:manifest.presentationVariant, rndCandidate:manifest.rndCandidate === true,
     instanceBytes:manifest.instanceBytes, instanceStride:manifest.instanceStride,
     instanceSha256:manifest.instanceSha256, adapter:adapterInfo,
     adapterClassification:adapterClass, features:[...adapter.features].sort(),
     canvas:[canvas.width,canvas.height], startupMs:+startup.toFixed(2),
-    drawCalls:visible.size + 1, surface, cameraMode, pointerLocked:false,
+    drawCalls:lastDrawCalls, visibleGroups:visible.size, surface, cameraMode, pointerLocked:false,
     cameraFrame, fullRadiusM:radius, home:manifest.home,
-    viewMatrixSha256:viewHash, geometryCoverage:coverage,
-    families:manifest.families.map(family => family.name), scopeKind:worldwideBiome ? 'world-biome' : 'area'
+    viewMatrixSha256:viewHash, representationQuality:coverage,
+    drawGroups:manifest.drawGroups.map(group => ({name:group.name, pieces:group.pieces,
+      instances:group.count, defaultVisible:group.defaultVisible})),
+    scopeKind:worldwideBiome ? 'world-biome' : 'area'
   });
 
   async function benchmark(frameCount = manifest.benchmarkFrames || 300) {
@@ -640,7 +689,32 @@ async function main() {
       pitch:cameraMode === 'fly' ? flyPitch : orbitPitch
     };
   }
-  window.__stewardSceneControls = { render, benchmark, setSurface, setCameraMode, resetCamera, frameAll, captureImage, saveImage, cameraState };
+  function setGroupVisible(name, shown) {
+    const index = manifest.drawGroups.findIndex(group => group.name === name);
+    if (index < 0) return false;
+    shown ? visible.add(index) : visible.delete(index);
+    const input = document.querySelectorAll('#families input')[index];
+    if (input) input.checked = shown;
+    render(); publish({ drawCalls:lastDrawCalls, visibleGroups:visible.size }); return true;
+  }
+  function setOnlyGroup(name) {
+    const index = manifest.drawGroups.findIndex(group => group.name === name);
+    if (index < 0) return false;
+    visible.clear(); visible.add(index);
+    document.querySelectorAll('#families input').forEach((input,item) => { input.checked = item === index; });
+    render(); publish({ drawCalls:lastDrawCalls, visibleGroups:visible.size }); return true;
+  }
+  function restoreDefaultGroups() {
+    visible.clear();
+    manifest.drawGroups.forEach((group,index) => { if (group.defaultVisible) visible.add(index); });
+    document.querySelectorAll('#families input').forEach((input,index) => {
+      input.checked = manifest.drawGroups[index].defaultVisible;
+    });
+    render(); publish({ drawCalls:lastDrawCalls, visibleGroups:visible.size });
+  }
+  window.__stewardSceneControls = { render, benchmark, setSurface, setCameraMode, resetCamera,
+    frameAll, captureImage, saveImage, cameraState, setGroupVisible, setOnlyGroup,
+    restoreDefaultGroups, setExactCamera };
   if (params.get('benchmark') === '1') benchmark().catch(fail);
   else if (params.get('capture') === '1') saveImage().catch(error => {
     document.getElementById('image-help').textContent = error.message;

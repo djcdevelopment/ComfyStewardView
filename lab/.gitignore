@@ -1,4 +1,6 @@
 /target/
+/tools/prefab-renderer-probe/bin/
+/tools/prefab-renderer-probe/obj/
 /data/
 /test-results/
 __pycache__/

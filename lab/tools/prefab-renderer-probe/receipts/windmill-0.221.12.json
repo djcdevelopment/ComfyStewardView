@@ -1,0 +1,38 @@
+{
+  "schema": "steward-prefab-renderers/v1",
+  "gameVersion": "0.221.12",
+  "generatedAt": "2026-09-03T17:52:47.1798549+00:00",
+  "contract": "LOD0 renderer bounds and prefab-local transforms only; no meshes, materials, textures, particles, trails, lines, colliders, or lower-LOD duplicates",
+  "prefabs": [
+    {
+      "name": "windmill",
+      "hash": -984198658,
+      "status": "candidate",
+      "boxCount": 4,
+      "animationAxis": "z",
+      "animationPivot": [0.01, 5.708, 0.0],
+      "boxes": [
+        {
+          "path": "New/high",
+          "animated": false,
+          "matrix": [-4.99897851e-7, 0, 4.19344759, 0, 0, 4.667174, 0, 0, -3.93465042, 0, -4.69046824e-7, 0, -0.00365000428, 2.289317, -0.0490704849, 1]
+        },
+        {
+          "path": "grindstone/high",
+          "animated": false,
+          "matrix": [1.292234, 0, 0, 0, 0, 1.07905912, 0, 0, 0, 0, 1.276667, 0, 0.00196400285, 1.661814, 0.00181347132, 1]
+        },
+        {
+          "path": "rotating/high",
+          "animated": false,
+          "matrix": [-6.34526032e-7, 0, 5.32279062, 0, 0, 5.228407, 0, 0, -0.435812056, 0, -5.195284e-8, 0, -0.0018128861, 4.788985, -0.911073148, 1]
+        },
+        {
+          "path": "rotating/propeller/high",
+          "animated": true,
+          "matrix": [6.814551e-8, 2.39544939e-9, 0.571999133, 0, 0.1837692, -5.227848, 0, 0, 5.236656, 0.184078813, -6.246436e-7, 0, 0.001577778, 5.736828, 1.89519811, 1]
+        }
+      ]
+    }
+  ]
+}

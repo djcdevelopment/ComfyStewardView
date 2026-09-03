@@ -115,9 +115,9 @@ interpretation above it, and explicit boundaries around what the public service 
 
 Later on launch day, the inspection boundary became the entry point for a second representation of the
 same evidence. A selected green area can open an exact, selection-local WebGPU scene in a new tab. This
-did not add a general ZDO endpoint or modify the production viewer: public-cache schema v3 carries only
-sanitized BUILDING transforms and prefab envelopes, while the server repeats snapshot, lens, bounds,
-biome, capacity, and override validation.
+did not add a general ZDO endpoint or modify the production viewer: the current public-cache schema v4
+carries only sanitized BUILDING transforms, prefab envelopes, and a checksummed exact-name representation
+catalog, while the server repeats snapshot, lens, bounds, biome, capacity, and override validation.
 
 The follow-on preserves the launch lesson. Terrain remains the stable starting object; Heatmap and
 Biomes remain reversible map questions; 3D is available only after an explicit inspection gives it a
@@ -129,3 +129,10 @@ a deterministic dense **Home** cluster and retain **Frame all** for the full rel
 [ADR 0006](adr/0006-exact-selection-webgpu-scene.md) and the
 [selection-to-3D R&D retrospective](RND_SELECTION_3D_2026-09-03.md) for the implementation boundary,
 source receipts, transform decisions, and hardware measurements.
+
+The subsequent gallery-calibrated fidelity pass preserved that boundary. Private selfie-stick images,
+camera receipts, and bounds-only in-game probes are available only through the local `/rnd/fidelity`
+workbench. Exact-name context markers are hidden by default, scene v2 distinguishes exact ZDO pieces from
+render instances, and runtime compounds require tuning and holdout metrics. The first four-box windmill
+candidate looked substantially better but failed its depth and holdout gates, so the deployed catalog
+uses an explicit unresolved marker. See [ADR 0007](adr/0007-metrics-gated-prefab-representations.md).

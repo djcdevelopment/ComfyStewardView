@@ -1,0 +1,32 @@
+{
+  "schema": "steward-prefab-promotion/v1",
+  "generatedAt": "2026-09-03T17:59:07.622288+00:00",
+  "policy": {
+    "minimumMatchedViewsPerFixture": 3,
+    "silhouetteIouMinimum": 0.5,
+    "depthOrderingMinimum": 0.8,
+    "depthPairMinimum": 500,
+    "medianIouImprovementMinimum": 0.15,
+    "maximumHoldoutRegression": 0.05,
+    "maximumPrimitiveBoxes": 32
+  },
+  "results": [
+    {
+      "prefab": "windmill",
+      "hash": -984198658,
+      "status": "rejected",
+      "reason": "The four-box candidate improved median silhouette IoU by 0.4777, but holdout median IoU was 0.4975 and all 10 depth-qualified views were below 0.80. Public rendering uses an explicit unresolved-compound marker.",
+      "probeSha256": "9e0c4b9eff067b79bb6e904f9eee25b0a36bcfea52cc1e5a0b6619e36347a5e3",
+      "metricsSha256": "8689ec4455622172b7b4a1cf57821d52a346782f58837e65c8faee874745fb88",
+      "metrics": {
+        "usableViews": 10,
+        "tuningViews": 5,
+        "holdoutViews": 5,
+        "depthQualifiedViews": 10,
+        "medianCandidateSilhouetteIou": 0.505,
+        "medianSilhouetteIouImprovement": 0.4777,
+        "minimumQualifiedDepthOrdering": 0.2095
+      }
+    }
+  ]
+}

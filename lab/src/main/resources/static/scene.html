@@ -16,6 +16,7 @@
 
     <dl class="scene-metrics">
       <div><dt>Pieces</dt><dd id="metric-pieces">—</dd></div>
+      <div><dt>Render boxes</dt><dd id="metric-instances">—</dd></div>
       <div><dt>Envelope</dt><dd id="metric-dimensions">—</dd></div>
       <div><dt>GPU buffer</dt><dd id="metric-bytes">—</dd></div>
       <div><dt>Adapter</dt><dd id="metric-adapter">—</dd></div>
@@ -37,7 +38,7 @@
         <button type="button" id="frame-home" title="Return to the densest local build cluster">Home</button>
         <button type="button" id="frame-scene" title="Frame every piece in the exact selection">Frame all</button>
       </div>
-      <p id="camera-help" class="control-help">Drag to orbit · WASD move · Q/E down/up · wheel to zoom</p>
+      <p id="camera-help" class="control-help">Left-drag orbit · right-drag pan · WASD move · Q/E elevation</p>
     </section>
 
     <section class="control-section image-section">
@@ -47,14 +48,14 @@
     </section>
 
     <section class="control-section family-section">
-      <div class="section-heading"><h2>Families</h2><button type="button" id="families-all" class="text-button">Show all</button></div>
+      <div class="section-heading"><h2>Layers</h2><button type="button" id="families-all" class="text-button">Show all</button></div>
       <div id="families" class="families"></div>
     </section>
 
     <section class="quality-card" aria-labelledby="quality-title">
       <h2 id="quality-title">Geometry receipt</h2>
       <p id="quality-copy">Loading coverage…</p>
-      <p>Boxes are oriented prefab envelopes reconstructed from save coordinates—not game meshes, terrain, collision, or interiors. Red cubes mark unknown geometry at its saved pivot.</p>
+      <p>Each piece is labeled honestly as a measured envelope, runtime compound proxy, estimated envelope, or pivot marker. Context is optional. These are bounds—not game meshes, terrain, collision, or interiors.</p>
     </section>
 
     <output id="scene-status" class="scene-status">REQUESTING SCENE…</output>
@@ -62,7 +63,7 @@
 
   <main id="stage" class="scene-stage">
     <canvas id="gpu" aria-label="Interactive 3D view of the selected build"></canvas>
-    <div class="stage-hint" id="stage-hint">Drag to orbit · wheel to zoom</div>
+    <div class="stage-hint" id="stage-hint">Left-drag orbit · right-drag pan · WASD move · Q/E elevation</div>
     <section id="scene-blocked" class="scene-blocked" hidden>
       <p class="eyebrow">3D VIEW UNAVAILABLE</p>
       <h2 id="blocked-title">This browser could not start WebGPU</h2>

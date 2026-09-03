@@ -10,6 +10,7 @@ import io.javalin.http.HttpStatus;
 import io.javalin.http.staticfiles.Location;
 
 import java.io.FileInputStream;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -30,6 +31,7 @@ public final class LabServer {
     private final TerrainContext terrainContext;
     private final DiscordFeedbackService feedback;
     private final ScenePackage scenes;
+    private final FidelityWorkbench fidelity;
     private final SlidingWindowRateLimiter queryRate = new SlidingWindowRateLimiter(30, Duration.ofMinutes(1));
     private final SlidingWindowRateLimiter sceneRate = new SlidingWindowRateLimiter(6, Duration.ofMinutes(1));
     private final SlidingWindowRateLimiter feedbackRate = new SlidingWindowRateLimiter(3, Duration.ofMinutes(10));
@@ -38,7 +40,7 @@ public final class LabServer {
     private final Javalin app;
 
     public LabServer(LabConfig config, SnapshotRepository snapshots, ArtifactStore artifacts,
-            LensRegistry lenses, JobManager jobs, ObjectMapper mapper, TerrainContext terrainContext) {
+            LensRegistry lenses, JobManager jobs, ObjectMapper mapper, TerrainContext terrainContext) throws Exception {
         this.config = config;
         this.snapshots = snapshots;
         this.artifacts = artifacts;
@@ -47,7 +49,9 @@ public final class LabServer {
         this.mapper = mapper;
         this.terrainContext = terrainContext;
         this.feedback = new DiscordFeedbackService(config.feedback(), mapper);
-        this.scenes = new ScenePackage(snapshots, mapper);
+        this.scenes = new ScenePackage(snapshots, mapper,
+            config.publicMode() ? null : config.fidelityCandidates());
+        this.fidelity = config.publicMode() ? null : new FidelityWorkbench(config, mapper);
         this.app = Javalin.create(javalin -> {
             javalin.staticFiles.add("/static");
             javalin.staticFiles.add(files -> {
@@ -95,6 +99,15 @@ public final class LabServer {
             app.post("/api/auth/logout", this::logout);
             app.post("/api/feedback", this::submitFeedback);
         } else {
+            app.get("/rnd/fidelity", ctx -> rndResource(ctx, "/rnd/fidelity.html", "text/html; charset=utf-8"));
+            app.get("/rnd/fidelity.js", ctx -> rndResource(ctx, "/rnd/fidelity.js", "text/javascript; charset=utf-8"));
+            app.get("/rnd/fidelity.css", ctx -> rndResource(ctx, "/rnd/fidelity.css", "text/css; charset=utf-8"));
+            app.get("/api/rnd/fidelity", ctx -> ctx.json(fidelity.view(
+                (int) longQuery(ctx, "cluster", false, 713))));
+            app.get("/api/rnd/fidelity/image/{id}", ctx -> {
+                ctx.contentType("image/webp");
+                ctx.result(fidelity.image(ctx.pathParam("id")));
+            });
             app.get("/api/jobs", ctx -> ctx.json(jobs.jobsJson()));
             app.get("/api/jobs/{id}", ctx -> ctx.json(jobs.require(ctx.pathParam("id")).toJson(mapper)));
             app.post("/api/jobs/render", this::submitRender);
@@ -319,6 +332,16 @@ public final class LabServer {
             (int) longQuery(ctx, "limit", false, 100), ctx.queryParam("cursor"), biomeQuery(ctx)));
     }
 
+    private static void rndResource(Context ctx, String path, String contentType) {
+        InputStream input = LabServer.class.getResourceAsStream(path);
+        if (input == null) {
+            apiError(ctx, HttpStatus.NOT_FOUND, "R&D workbench resource not found");
+            return;
+        }
+        ctx.contentType(contentType);
+        ctx.result(input);
+    }
+
     private void scene(Context ctx) throws Exception {
         long snapshot = longQuery(ctx, "snapshot", true);
         String lens = requiredQuery(ctx, "lens");
@@ -326,10 +349,14 @@ public final class LabServer {
         double minX = doubleQuery(ctx, "minX"), maxX = doubleQuery(ctx, "maxX");
         double minZ = doubleQuery(ctx, "minZ"), maxZ = doubleQuery(ctx, "maxZ");
         requirePublishedBounds(minX, maxX, minZ, maxZ);
+        boolean rnd = !config.publicMode() && booleanQuery(ctx, "rnd");
+        String presentation = rnd && "baseline".equalsIgnoreCase(ctx.queryParam("presentation"))
+            ? "baseline" : "candidate";
         ScenePackage.Result scene = scenes.build(snapshot, lens, minX, maxX, minZ, maxZ,
-            biomeQuery(ctx), booleanQuery(ctx, "override"), config.releaseVersion());
+            biomeQuery(ctx), booleanQuery(ctx, "override"), config.releaseVersion(), presentation, rnd);
         ctx.contentType(ScenePackage.CONTENT_TYPE);
         ctx.header("X-Steward-Scene-Pieces", Integer.toString(scene.pieces()));
+        ctx.header("X-Steward-Scene-Instances", Integer.toString(scene.renderInstances()));
         ctx.result(scene.bytes());
     }
 

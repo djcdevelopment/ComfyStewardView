@@ -49,6 +49,10 @@ Valheim prefab dump and mod/game geometry observations
   → selection-local binary scene package
   → shared-cube WebGPU shaded/wireframe renderer
   → exact public map inspection link
+  → gallery/camera-receipt join at native Valheim pose
+  → bounds-only in-game renderer probe
+  → tuning and holdout metric gate
+  → explicit promotion or honest unresolved marker
 ```
 
 The integrated `lab/` subdirectory owns the final cache exporter, service endpoint, browser client,
@@ -68,8 +72,14 @@ Snapshot 107 is pinned by source world SHA-256
 | Context biome mask | Authoritative territory membership | `e0bad1949deec16b3971c34d8082d5d053d6edd37673e666c3e7789687b41c8d` |
 
 The exporter failed closed unless all 4,359,570 published BUILDING rows joined by ZDO index and matched
-prefab name/hash and X/Z coordinates. Public-cache v3 was 168,308,736 bytes with SHA-256
+prefab name/hash and X/Z coordinates. The original public-cache v3 was 168,308,736 bytes with SHA-256
 `ced2c5b3eeb3b4bde818e1568d2d72046286c37a8e0100542f299efb08af21a8`.
+
+The follow-on fidelity work produced public-cache v4: 169,357,312 bytes, SHA-256
+`bac02f6079c32d6ec3a571d05a994ad1880cb9dd2f0f3b2542402bd8d6bddd81`. It adds checksummed
+exact-name representation and primitive tables, not private gallery data. Its 40-row representation
+catalog SHA-256 is `07e576fa2ee9009e389ec2ef2fa4e636fc158567d81f21f6b0be373a2569ce0f`; the promotion-receipt
+SHA-256 is `4606525175b3081603f28054558f6e4c7ef6013c7bc998fcdd98984303bcfd00`.
 
 | Geometry class | Rows | Share of published BUILDING rows |
 |---|---:|---:|
@@ -126,12 +136,69 @@ The pilot instance SHA-256 was
 `f8e2a884916e7573f5ff040e9f649bcdcda7ff52af519888a1a5072c67d9e77f`; the Meadows instance SHA-256 was
 `6e4edff02cb8691766d6f9c1d69ebf2e10f14f3639c5b356c9c9abd712b19a38`.
 
+## Follow-on fidelity cycle: the windmill that looked convincing but did not pass
+
+The first public scenes made two different representation errors visible. Very large catalog envelopes
+could become blank blocks, and compound objects such as windmills became a single tiered envelope even
+when their saved pivot was correct. The next `/rnd` prediction was deliberately narrow: active LOD0
+renderer bounds might supply a useful compound proxy without copying proprietary mesh or material data,
+and the existing selfie-stick gallery might be enough to disprove bad proxies before promotion.
+
+The private BepInEx probe ran against Valheim 0.221.12 and emitted
+`steward-prefab-renderers/v1`. It recorded only prefab name/hash and up to 32 active box transforms;
+meshes, materials, textures, colliders, particles, trails, and line renderers were excluded. The checked-in
+windmill receipt contains four boxes plus the observed local animation axis/pivot and has SHA-256
+`9e0c4b9eff067b79bb6e904f9eee25b0a36bcfea52cc1e5a0b6619e36347a5e3`.
+
+A local-only workbench then joined the external 3,341-image gallery, its camera/shot receipts, cluster
+bounds, exact ZDOs, and that candidate. It reproduces the recorded camera with a 65° vertical FOV and
+supports baseline/candidate, side-by-side, wipe, overlay, and isolated-prefab comparisons. Images remain
+in the external corpus; no public route or cache contains them. Three exact fixtures separated the risks:
+
+| Fixture | Role | Exact receipt |
+|---:|---|---|
+| 611 | Context false-positive check | 3,937 pieces; 914 exact-name `vines` markers hidden by default |
+| 713 | Windmill tuning | 864 pieces; one windmill; baseline 864 instances, local candidate 867 |
+| 1364 | Windmill holdout | 705 pieces; two windmills, both unresolved in public presentation |
+
+Ten real gallery views—five tuning and five holdout—were measured from retained depth arrays. The
+four-box candidate improved median silhouette IoU by 0.4777 and reached 0.5050 overall, which explains
+why it looked immediately better. Holdout median IoU was only 0.4975, however, and all ten depth-qualified
+views missed the 0.80 depth-ordering requirement; the minimum was 0.2095. The metric receipt SHA-256 is
+`8689ec4455622172b7b4a1cf57821d52a346782f58837e65c8faee874745fb88`. Promotion was therefore
+rejected. Public windmills render as explicit unresolved-compound markers; only local `/rnd` mode may
+load the candidate. This is precisely the kind of visually persuasive near-success the prediction ledger
+exists to stop from becoming an accidental product claim.
+
+The representation pass also replaced broad outlier inference for known context with 39 exact
+name-and-hash entries. Those vegetation markers are green, hidden by default, and excluded from framing.
+There is no substring match: fires, furniture, logs, and stumps retain their ordinary categories. Scene
+schema v2 now distinguishes exact selected `pieces` from `renderInstances`, records semantic/default
+visibility per draw group, and caps presentation at 500,000 instances. A future compound expansion may
+collapse to one marker at that cap, but it may never remove a selected ZDO.
+
+The exact user-reported mixed scope (X `-3128.0714..-1920.0845`, Z
+`1488.4435..2968.2389`) contains 18,843—not 238,181—snapshot-107 BUILDING pieces. Its final hardware
+receipt opened in 289.2 ms with a 27.1 ms frame-time p95, retained all pieces, hid 976 context markers, identified
+seven unresolved compounds, and selected a 3,832-piece dense Home cluster with 124.016 m radius inside
+the 951.698 m full-scene radius. The surprising continent-scale render was real evidence of headroom;
+the count correction and denser starting frame were equally important evidence about usability.
+
+The v4 whole-Meadows lap retained 193,008 pieces and 193,008 render instances, opened locally in
+1,280.0 ms, and finished at 42.4 ms p95 on the Intel Xe-LPG path. It initially missed the unchanged 50 ms
+gate. Coalescing adjacent visible semantic groups into two actual GPU draw calls, eliminating redundant
+normal work, and calculating constant face lighting at vertices instead of every shaded pixel recovered
+the budget without reducing canvas resolution, sampling membership, or changing the shaded representation.
+
 ## Decisions that survived contact with the data
 
 - WebGPU, not OpenGL terminology or a WebGL compatibility layer, is the browser contract. Unsupported
   browsers get a plain explanation and a route back to the map.
 - A package contains matrices and extents, not duplicated cube vertices. Family-contiguous ordering
   keeps draw calls bounded and permits local visibility changes without a refetch.
+- Exact piece membership and presentation geometry are separate quantities. Compounds can expand one
+  ZDO into several renderer boxes, while the presentation cap may collapse boxes; neither operation may
+  change the selected ZDO population.
 - The Unity transform is reconstructed as `Ry × Rx × Rz`, with the local geometry-center offset rotated
   before translation. Mirroring X creates a right-handed browser frame without changing selection shape.
 - The scene origin is the selection center and the floor is relative. This improves floating-point and
@@ -149,6 +216,9 @@ The pilot instance SHA-256 was
   The 3D view may not: it either receives the complete selection or refuses it.
 - The production `viewer` schema stays untouched. Sanitized geometry lives only in the replaceable lab
   derivative, maintaining the repository's two-application and two-deployment-lane structure.
+- A bounds-only probe is candidate generation, not promotion. Exact-name classification, external gallery
+  comparisons, held-out metrics, and an explicit accepted/rejected receipt sit between observation and
+  public representation.
 
 ## What went well
 
@@ -209,10 +279,14 @@ route, and deployment now validates pilot and stress packages with compression n
 python -m unittest discover -s tools\tests -p 'test_*.py'
 node --check src\main\resources\static\lab.js
 node --check src\main\resources\static\scene.js
+node --check src\main\resources\rnd\fidelity.js
 node --check tools\browser-smoke.mjs
 node --check tools\scene-browser-smoke.mjs
+node --check tools\fidelity-browser-smoke.mjs
+python -m py_compile tools\measure-prefab-fidelity.py tools\promote-prefab-representation.py tools\rank-prefab-fidelity.py
 node tools\browser-smoke.mjs http://127.0.0.1:8092/ data\scene-map-regression.png --public-inspect --terrain --biomes --terrain-close
-node tools\scene-browser-smoke.mjs http://127.0.0.1:8092/ data\scene-browser-smoke-rnd --large
+node tools\scene-browser-smoke.mjs http://127.0.0.1:8092/ data\scene-browser-smoke-rnd --fidelity --large
+node tools\fidelity-browser-smoke.mjs http://127.0.0.1:8091/ data\fidelity-browser-smoke-rnd
 ```
 
 Deployment repeats the pilot, direct stress denial, forced stress package, confirmed whole-Meadows
@@ -221,14 +295,19 @@ before declaring success.
 
 ## Remaining limits and next experiments
 
-- Envelopes communicate assembly, orientation, density, and navigation—not exact meshes, materials,
-  terrain, collision, wear state, or interiors. Those are separate evidence and performance questions.
+- Envelopes and admitted bounds compounds communicate assembly, orientation, density, and navigation—not
+  exact meshes, materials, terrain, collision, wear state, or interiors. Those are separate evidence and
+  performance questions. Windmill remains deliberately unresolved until a candidate passes depth and
+  holdout gates.
 - The hardware receipt covers the release workstation's Intel path. Broader device/browser telemetry is
   useful, but should not weaken the explicit unsupported state. The 193,008-piece forced case is a
   roughly 24 fps exploration lane on this adapter, not a claim of 60 fps on every supported device.
 - Object picking, prefab labels in-world, first-person collision, terrain, and native mesh streaming may
   improve exploration. Each should begin as a separate `/rnd` prediction rather than accreting into the
   initial scene contract.
+- Gallery coverage makes roof wedges, production pieces, ships, banners/rugs, and context classification
+  testable next; [`PREFAB_FIDELITY_BACKLOG.md`](PREFAB_FIDELITY_BACKLOG.md) ranks them without changing
+  runtime behavior.
 - The next fidelity sequence should also point back toward CAD intake instead of ending at the viewer:
   register snapshot-matched terrain in selection-local coordinates so assemblies regain ground and scale;
   classify recorded fires, hearths, torches, and other light-bearing prefabs as emissive evidence; replace

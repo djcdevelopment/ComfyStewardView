@@ -107,8 +107,10 @@ public final class SnapshotRepository {
         try (Connection connection = open();
              PreparedStatement statement = connection.prepareStatement(
                  "SELECT schema_version, snapshot_id, snapshot_hash, biome_mask_sha256, " +
-                 "building_geometry_sha256, piece_geometry_sha256, building_geometry_rows, " +
-                 "geometry_catalog_rows, known_geometry_rows, real_geometry_rows, estimated_geometry_rows " +
+                 "building_geometry_sha256, piece_geometry_sha256, representation_catalog_sha256, " +
+                 "promotion_receipt_sha256, building_geometry_rows, geometry_catalog_rows, " +
+                 "known_geometry_rows, real_geometry_rows, estimated_geometry_rows, " +
+                 "representation_rows, representation_primitive_rows " +
                  "FROM release_metadata");
              ResultSet row = statement.executeQuery()) {
             if (!row.next() || row.getInt("schema_version") != PublicCacheExporter.SCHEMA_VERSION ||
@@ -117,20 +119,28 @@ public final class SnapshotRepository {
                     !context.biomeMask().sha256().equalsIgnoreCase(row.getString("biome_mask_sha256")) ||
                     !isSha256(row.getString("building_geometry_sha256")) ||
                     !isSha256(row.getString("piece_geometry_sha256")) ||
+                    !isSha256(row.getString("representation_catalog_sha256")) ||
+                    !isSha256(row.getString("promotion_receipt_sha256")) ||
                     row.getLong("building_geometry_rows") <= 0 ||
                     row.getLong("geometry_catalog_rows") <= 0 ||
                     row.getLong("known_geometry_rows") > row.getLong("building_geometry_rows") ||
                     row.getLong("known_geometry_rows") < row.getLong("real_geometry_rows") ||
                     row.getLong("known_geometry_rows") != row.getLong("real_geometry_rows") +
-                        row.getLong("estimated_geometry_rows")) {
+                        row.getLong("estimated_geometry_rows") ||
+                    row.getLong("representation_rows") <= 0 ||
+                    row.getLong("representation_primitive_rows") < 0) {
                 throw new IllegalArgumentException("Public cache does not match the biome context package");
             }
             try (PreparedStatement counts = connection.prepareStatement(
                     "SELECT (SELECT COUNT(*) FROM zdo) AS zdo_rows, " +
-                    "(SELECT COUNT(*) FROM prefab_geometry) AS catalog_rows");
+                    "(SELECT COUNT(*) FROM prefab_geometry) AS catalog_rows, " +
+                    "(SELECT COUNT(*) FROM prefab_representation) AS representation_rows, " +
+                    "(SELECT COUNT(*) FROM prefab_representation_primitive) AS primitive_rows");
                  ResultSet count = counts.executeQuery()) {
                 if (!count.next() || count.getLong("zdo_rows") != row.getLong("building_geometry_rows") ||
-                        count.getLong("catalog_rows") != row.getLong("geometry_catalog_rows")) {
+                        count.getLong("catalog_rows") != row.getLong("geometry_catalog_rows") ||
+                        count.getLong("representation_rows") != row.getLong("representation_rows") ||
+                        count.getLong("primitive_rows") != row.getLong("representation_primitive_rows")) {
                     throw new IllegalArgumentException("Public cache geometry receipts do not match its tables");
                 }
             }

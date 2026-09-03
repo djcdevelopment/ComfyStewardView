@@ -67,11 +67,15 @@ Build the snapshot-only public cache from the production analytics cache and the
   -PieceGeometry 'C:\work\baseline\tools\selfie-stick\out\era17\arch\piece-geometry.json'
 ```
 
-Public-cache schema v3 remains a derived lab artifact. It contains only the published BUILDING rows,
-sanitized coordinates and rotations, biome membership, and a 974-prefab geometry lexicon with source
-receipts. It does not alter the production `viewer` cache schema and does not expose creator/owner
-identity, flags, raw fields, or source paths. Scene responses additionally withhold absolute Y and the
-exact 3D world origin; only selection-local transforms leave the server.
+The builder also binds the checked-in
+[`prefab-representations.json`](src/main/resources/prefab-representations.json) and
+[`prefab-promotion-receipt.json`](src/main/resources/prefab-promotion-receipt.json) by SHA-256.
+Public-cache schema v4 remains a derived lab artifact. It contains only the published BUILDING rows,
+sanitized coordinates and rotations, biome membership, a 974-prefab geometry lexicon, and the small
+exact-name representation/primitive tables with source and promotion receipts. It does not alter the
+production `viewer` cache schema and does not expose creator/owner identity, flags, raw fields, source
+paths, gallery images, or probe output. Scene responses additionally withhold absolute Y and the exact
+3D world origin; only selection-local transforms leave the server.
 
 Run that same profile locally with the prepared Era 17 cache and artifacts:
 
@@ -117,6 +121,7 @@ not been mounted, it prints the single additive
 - [Spatial lab and public map contract](docs/LAB_CONTRACT.md)
 - [Public world launch retrospective](docs/RETROSPECTIVE_2026-09-03_PUBLIC_WORLD.md)
 - [Selection-to-3D R&D retrospective](docs/RND_SELECTION_3D_2026-09-03.md)
+- [Prefab fidelity backlog](docs/PREFAB_FIDELITY_BACKLOG.md)
 - [Architecture decision records](docs/adr/README.md)
 
 The generated `tools/deploy-world-receipt.json` records the deployed release, snapshot and asset
@@ -277,11 +282,48 @@ points without allocating enormous full-world images.
   no server or client sampling. It counts before materializing so an over-limit scope is rejected
   without allocating a scene package.
 - The scene is a geometry-envelope explorer, not a claim of native mesh, terrain, collision, or material
-  fidelity. Estimated envelopes and unknown markers are labeled in the UI and package manifest.
-  Oversized environmental or compound catalog envelopes are preserved as small red pivot markers;
-  this keeps every ZDO in the exact result without presenting a tree or location proxy as a giant block.
+  fidelity. Exact ZDO membership (`pieces`) is distinct from presentation geometry (`renderInstances`)
+  in scene schema v2. Estimated envelopes, unresolved compounds, context markers, and presentation-cap
+  collapses are labeled in the UI and package manifest.
+- Thirty-nine exact-name vegetation/context prefabs are green pivot markers, hidden by default and
+  excluded from framing. There is no substring classification: fires, furniture, logs, and stumps remain
+  ordinary evidence. Oversized uncataloged environmental envelopes remain small red pivot markers.
+- Runtime compounds are admitted only by a checksummed renderer probe and tuning/holdout metric receipt.
+  The current four-box `windmill` candidate failed the depth-ordering gate, so the public catalog keeps an
+  explicit unresolved-compound marker. Exact coordinates and population still remain present.
+- The presentation buffer is capped at 500,000 instances. If a future compound expansion crosses that
+  limit, compound pieces collapse to one honest marker each; selected ZDO membership is never sampled or
+  dropped.
 - `.db`, `.duckdb`, generated images, and local configuration are ignored by Git.
 - The production repository and production deployment are not modified by this lab.
+
+## Private gallery-calibrated fidelity workbench
+
+Local non-public mode can join the external 3,341-image selfie-stick gallery, camera receipts, cluster
+index, exact snapshot ZDOs, and renderer candidates without copying any source image into this repository.
+Open [`/rnd/fidelity`](http://127.0.0.1:8091/rnd/fidelity) to compare baseline and candidate geometry at
+the recorded 65-degree vertical FOV using side-by-side, wipe, overlay, and isolated-prefab views. The
+workbench routes are not registered in `--public` mode; `/rnd/fidelity`, its API, and gallery image
+streaming therefore return 404 in the deployed service.
+
+The first candidate was acquired with the bounds-only BepInEx probe under
+[`tools/prefab-renderer-probe/`](tools/prefab-renderer-probe/). It records active LOD0 renderer box
+matrices only—never meshes, materials, textures, colliders, particles, trails, or lines—and caps a prefab
+at 32 boxes. The narrow checked-in windmill receipt is useful for local comparison, but promotion is
+performed separately:
+
+```powershell
+python .\tools\measure-prefab-fidelity.py --help
+python .\tools\promote-prefab-representation.py --help
+python .\tools\rank-prefab-fidelity.py --help
+```
+
+The promotion gate requires at least three matched views per fixture, median silhouette IoU at least
+0.50, depth ordering at least 0.80 with 500 paired pixels, median IoU improvement at least 0.15, and no
+holdout regression beyond 0.05. Windmill improved median silhouette IoU by 0.4777 and reached 0.5050,
+but holdout IoU was 0.4975 and every depth-qualified view remained below 0.80, so it was rejected. The
+ranked, evidence-backed next comparisons live in
+[`docs/PREFAB_FIDELITY_BACKLOG.md`](docs/PREFAB_FIDELITY_BACKLOG.md).
 
 ## Verification
 
@@ -290,16 +332,28 @@ points without allocating enormous full-world images.
 python -m unittest discover -s tools\tests -p 'test_*.py'
 node --check src\main\resources\static\lab.js
 node --check src\main\resources\static\scene.js
+node --check src\main\resources\rnd\fidelity.js
+node --check tools\fidelity-browser-smoke.mjs
+python -m py_compile tools\measure-prefab-fidelity.py tools\promote-prefab-representation.py tools\rank-prefab-fidelity.py
 node tools\browser-smoke.mjs http://127.0.0.1:8092/ data\map-smoke.png --public-inspect --terrain --biomes --terrain-close
-node tools\scene-browser-smoke.mjs http://127.0.0.1:8092/ data\scene-smoke
+node tools\scene-browser-smoke.mjs http://127.0.0.1:8092/ data\scene-smoke --fidelity
+node tools\fidelity-browser-smoke.mjs http://127.0.0.1:8091/ data\fidelity-smoke
 ```
 
 The scene browser gate uses hardware WebGPU and checks the exact pilot and stress populations, package
-receipts, shaded/wireframe controls, Home/full-selection framing, orbit-WASD and free-flight camera movement, GPU-authored PNG
+receipts, shaded/wireframe controls, Home/full-selection framing, hidden context, unresolved-compound
+reporting, orbit-WASD and free-flight camera movement, GPU-authored PNG
 capture, browser/validation errors, device loss, startup under 2 seconds, and p95 frame time at or below
 20 ms. Passing `--large` also exercises the confirmed whole-Meadows scene against its explicit 10-second
 startup and 50 ms p95 forced-scene budgets. It intentionally has no WebGL fallback: visitors
 without WebGPU receive an explicit unsupported screen and can return to the map.
+
+`--fidelity` adds exact fixtures 611 (3,937 pieces, including 914 hidden vines), 713 (864 pieces and one
+windmill), and 1364 (705 pieces and two windmills). `--mixed` repeats the reported user scope at
+X `-3128.0714..-1920.0845`, Z `1488.4435..2968.2389`; snapshot 107 contains 18,843 exact BUILDING
+pieces there. The private workbench gate proves the four-box candidate produces 867 render instances
+for fixture 713 while the baseline remains 864, matches the recorded camera, and exercises all comparison
+and isolation controls without changing the rejected public representation.
 
 ## Why this remains a lab
 

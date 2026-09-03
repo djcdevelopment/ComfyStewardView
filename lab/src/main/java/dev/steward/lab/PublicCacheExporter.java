@@ -18,8 +18,11 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -27,26 +30,30 @@ import java.util.UUID;
 
 /** Builds the smallest self-contained DuckDB needed by the public Build density experience. */
 public final class PublicCacheExporter {
-    static final int SCHEMA_VERSION = 3;
+    static final int SCHEMA_VERSION = 4;
 
     private PublicCacheExporter() {}
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 6) {
+        if (args.length != 8) {
             throw new IllegalArgumentException(
                 "Usage: PublicCacheExporter <source.duckdb> <public.duckdb> <snapshot-id> " +
-                "<context-manifest> <building-geometry.parquet> <piece-geometry.json>");
+                "<context-manifest> <building-geometry.parquet> <piece-geometry.json> " +
+                "<prefab-representations.json> <prefab-promotion-receipt.json>");
         }
         export(Path.of(args[0]), Path.of(args[1]), Long.parseLong(args[2]), Path.of(args[3]),
-            Path.of(args[4]), Path.of(args[5]));
+            Path.of(args[4]), Path.of(args[5]), Path.of(args[6]), Path.of(args[7]));
     }
 
     static void export(Path sourcePath, Path outputPath, long snapshotId, Path contextManifest,
-            Path buildingGeometry, Path pieceGeometry) throws Exception {
+            Path buildingGeometry, Path pieceGeometry, Path prefabRepresentations,
+            Path promotionReceipt) throws Exception {
         sourcePath = requireFile(sourcePath, "Source cache");
         contextManifest = requireFile(contextManifest, "Context manifest");
         buildingGeometry = requireFile(buildingGeometry, "Building geometry");
         pieceGeometry = requireFile(pieceGeometry, "Piece geometry");
+        prefabRepresentations = requireFile(prefabRepresentations, "Prefab representations");
+        promotionReceipt = requireFile(promotionReceipt, "Prefab promotion receipt");
         outputPath = outputPath.toAbsolutePath().normalize();
         if (snapshotId <= 0) throw new IllegalArgumentException("Snapshot ID must be positive");
         if (sourcePath.equals(outputPath)) throw new IllegalArgumentException("Public cache must be a separate file");
@@ -54,8 +61,13 @@ public final class PublicCacheExporter {
 
         ObjectMapper mapper = new ObjectMapper();
         GeometryCatalog catalog = readCatalog(pieceGeometry, mapper);
+        RepresentationCatalog representations = readRepresentations(prefabRepresentations, mapper);
+        validateRepresentationCatalog(catalog, representations);
+        validatePromotionReceipt(promotionReceipt, mapper, representations);
         String geometrySha256 = sha256(buildingGeometry);
         String catalogSha256 = sha256(pieceGeometry);
+        String representationSha256 = sha256(prefabRepresentations);
+        String promotionSha256 = sha256(promotionReceipt);
         Path temporary = outputPath.resolveSibling(outputPath.getFileName() + ".tmp-" + UUID.randomUUID());
         Path metadata = outputPath.resolveSibling(outputPath.getFileName() + ".json");
         Path temporaryMetadata = metadata.resolveSibling(metadata.getFileName() + ".tmp-" + UUID.randomUUID());
@@ -122,6 +134,20 @@ public final class PublicCacheExporter {
                 "extent_z DOUBLE NOT NULL, center_x DOUBLE NOT NULL, center_y DOUBLE NOT NULL, " +
                 "center_z DOUBLE NOT NULL)");
             insertCatalog(connection, catalog);
+            statement.execute("CREATE TABLE public_cache.prefab_representation (" +
+                "prefab_hash INTEGER PRIMARY KEY, prefab_name VARCHAR NOT NULL, semantic_class VARCHAR NOT NULL, " +
+                "strategy VARCHAR NOT NULL, authority VARCHAR NOT NULL, default_visible BOOLEAN NOT NULL, " +
+                "marker_axis DOUBLE NOT NULL, primitive_count INTEGER NOT NULL, animation_axis VARCHAR, " +
+                "animation_pivot_x DOUBLE NOT NULL, animation_pivot_y DOUBLE NOT NULL, " +
+                "animation_pivot_z DOUBLE NOT NULL)");
+            statement.execute("CREATE TABLE public_cache.prefab_representation_primitive (" +
+                "prefab_hash INTEGER NOT NULL, ordinal INTEGER NOT NULL, animated BOOLEAN NOT NULL, " +
+                "m00 DOUBLE NOT NULL, m01 DOUBLE NOT NULL, m02 DOUBLE NOT NULL, m03 DOUBLE NOT NULL, " +
+                "m10 DOUBLE NOT NULL, m11 DOUBLE NOT NULL, m12 DOUBLE NOT NULL, m13 DOUBLE NOT NULL, " +
+                "m20 DOUBLE NOT NULL, m21 DOUBLE NOT NULL, m22 DOUBLE NOT NULL, m23 DOUBLE NOT NULL, " +
+                "m30 DOUBLE NOT NULL, m31 DOUBLE NOT NULL, m32 DOUBLE NOT NULL, m33 DOUBLE NOT NULL, " +
+                "PRIMARY KEY (prefab_hash, ordinal))");
+            insertRepresentations(connection, representations);
             statement.execute("CREATE TABLE public_cache.zdo AS SELECT " +
                 "s.snapshot_id, s.zdo_index, s.x, g.y, s.z, s.prefab_name, s.prefab_hash, s.category, " +
                 "steward_biome(s.x, s.z) AS biome, g.has_rot, " +
@@ -135,8 +161,8 @@ public final class PublicCacheExporter {
             try (ResultSet row = statement.executeQuery(
                     "SELECT COUNT(pg.prefab_hash) AS known_count, " +
                     "count_if(pg.geometry_source <> 'family_median') AS real_count, " +
-                    "count_if(pg.geometry_source = 'family_median') AS estimated_count " +
-                    "FROM public_cache.zdo z LEFT JOIN public_cache.prefab_geometry pg USING (prefab_hash)")) {
+                "count_if(pg.geometry_source = 'family_median') AS estimated_count " +
+                "FROM public_cache.zdo z LEFT JOIN public_cache.prefab_geometry pg USING (prefab_hash)")) {
                 if (!row.next()) throw new IllegalStateException("Geometry coverage verification failed");
                 knownGeometryCount = row.getLong("known_count");
                 realGeometryCount = row.getLong("real_count");
@@ -148,13 +174,19 @@ public final class PublicCacheExporter {
                 sqlText(context.biomeMask().sha256()) + "'::VARCHAR AS biome_mask_sha256, '" +
                 geometrySha256 + "'::VARCHAR AS building_geometry_sha256, '" +
                 catalogSha256 + "'::VARCHAR AS piece_geometry_sha256, " +
+                "'" + representationSha256 + "'::VARCHAR AS representation_catalog_sha256, " +
+                "'" + promotionSha256 + "'::VARCHAR AS promotion_receipt_sha256, " +
                 buildingCount + "::BIGINT AS building_geometry_rows, " + catalog.size() +
                 "::BIGINT AS geometry_catalog_rows, " + knownGeometryCount +
                 "::BIGINT AS known_geometry_rows, " + realGeometryCount +
                 "::BIGINT AS real_geometry_rows, " + estimatedGeometryCount +
-                "::BIGINT AS estimated_geometry_rows");
+                "::BIGINT AS estimated_geometry_rows, " + representations.size() +
+                "::BIGINT AS representation_rows, " + representations.primitiveCount() +
+                "::BIGINT AS representation_primitive_rows");
             statement.execute("ANALYZE public_cache.zdo");
             statement.execute("ANALYZE public_cache.prefab_geometry");
+            statement.execute("ANALYZE public_cache.prefab_representation");
+            statement.execute("ANALYZE public_cache.prefab_representation_primitive");
             statement.execute("CHECKPOINT public_cache");
 
             try (ResultSet row = statement.executeQuery("SELECT COUNT(*) FROM public_cache.zdo")) {
@@ -188,7 +220,11 @@ public final class PublicCacheExporter {
         manifest.put("biomeMaskSha256", context.biomeMask().sha256());
         manifest.put("buildingGeometrySha256", geometrySha256);
         manifest.put("pieceGeometrySha256", catalogSha256);
+        manifest.put("representationCatalogSha256", representationSha256);
+        manifest.put("promotionReceiptSha256", promotionSha256);
         manifest.put("geometryCatalogRows", catalog.size());
+        manifest.put("representationRows", representations.size());
+        manifest.put("representationPrimitiveRows", representations.primitiveCount());
         manifest.put("knownGeometryRows", knownGeometryCount);
         manifest.put("realGeometryRows", realGeometryCount);
         manifest.put("estimatedGeometryRows", estimatedGeometryCount);
@@ -287,6 +323,184 @@ public final class PublicCacheExporter {
         }
     }
 
+    private static RepresentationCatalog readRepresentations(Path path, ObjectMapper mapper) throws Exception {
+        JsonNode root = mapper.readTree(path.toFile());
+        if (!"steward-prefab-representations/v1".equals(root.path("schema").asText())) {
+            throw new IllegalArgumentException("Unsupported prefab representation schema");
+        }
+        JsonNode rows = root.path("representations");
+        if (!rows.isArray() || rows.isEmpty()) {
+            throw new IllegalArgumentException("Prefab representation catalog has no rows");
+        }
+        RepresentationCatalog result = new RepresentationCatalog();
+        Set<Integer> hashes = new HashSet<>();
+        Set<String> names = new HashSet<>();
+        for (JsonNode row : rows) {
+            String name = requiredText(row, "name");
+            if (!row.has("hash") || !row.path("hash").canConvertToInt()) {
+                throw new IllegalArgumentException("Invalid representation hash for " + name);
+            }
+            int hash = row.path("hash").intValue();
+            if (!hashes.add(hash) || !names.add(name)) {
+                throw new IllegalArgumentException("Duplicate prefab representation: " + name);
+            }
+            String semanticClass = requiredText(row, "semanticClass");
+            String strategy = requiredText(row, "strategy");
+            String authority = requiredText(row, "authority");
+            if (!Set.of("structure", "context").contains(semanticClass)) {
+                throw new IllegalArgumentException("Invalid semantic class for " + name);
+            }
+            if (!Set.of("runtime-compound", "pivot-marker", "unresolved-compound").contains(strategy)) {
+                throw new IllegalArgumentException("Invalid representation strategy for " + name);
+            }
+            if ("context".equals(semanticClass) && !"pivot-marker".equals(strategy) ||
+                    "structure".equals(semanticClass) && "pivot-marker".equals(strategy)) {
+                throw new IllegalArgumentException("Representation class and strategy disagree for " + name);
+            }
+            boolean defaultVisible = row.path("defaultVisible").asBoolean(true);
+            if ("context".equals(semanticClass) && defaultVisible) {
+                throw new IllegalArgumentException("Context must be hidden by default: " + name);
+            }
+            double markerAxis = row.path("markerAxis").asDouble(0.35);
+            if (!Double.isFinite(markerAxis) || markerAxis < 0.02 || markerAxis > 2) {
+                throw new IllegalArgumentException("Invalid marker axis for " + name);
+            }
+            List<Primitive> primitives = new ArrayList<>();
+            JsonNode primitiveNodes = row.path("primitives");
+            if (!primitiveNodes.isArray()) {
+                throw new IllegalArgumentException("Representation primitives must be an array: " + name);
+            }
+            int ordinal = 0;
+            for (JsonNode primitive : primitiveNodes) {
+                JsonNode values = primitive.path("matrix");
+                if (!values.isArray() || values.size() != 16) {
+                    throw new IllegalArgumentException("Primitive matrix must contain 16 values: " + name);
+                }
+                double[] matrix = new double[16];
+                for (int i = 0; i < matrix.length; i++) {
+                    matrix[i] = values.path(i).asDouble(Double.NaN);
+                    if (!Double.isFinite(matrix[i])) {
+                        throw new IllegalArgumentException("Primitive matrix must be finite: " + name);
+                    }
+                }
+                if (Math.abs(matrix[3]) > 0.0001 || Math.abs(matrix[7]) > 0.0001 ||
+                        Math.abs(matrix[11]) > 0.0001 || Math.abs(matrix[15] - 1) > 0.0001) {
+                    throw new IllegalArgumentException("Primitive matrix is not affine: " + name);
+                }
+                primitives.add(new Primitive(ordinal++, primitive.path("animated").asBoolean(false), matrix));
+            }
+            if (primitives.size() > 32) {
+                throw new IllegalArgumentException("Representation exceeds the 32-box cap: " + name);
+            }
+            if ("runtime-compound".equals(strategy) && primitives.isEmpty()) {
+                throw new IllegalArgumentException("Runtime compound has no boxes: " + name);
+            }
+            if (!"runtime-compound".equals(strategy) && !primitives.isEmpty()) {
+                throw new IllegalArgumentException("Only runtime compounds may contain boxes: " + name);
+            }
+            String animationAxis = row.path("animationAxis").asText("").trim().toLowerCase();
+            if (!animationAxis.isEmpty() && !Set.of("x", "y", "z").contains(animationAxis)) {
+                throw new IllegalArgumentException("Invalid animation axis for " + name);
+            }
+            double[] animationPivot = row.has("animationPivot")
+                ? vector(row, "animationPivot") : new double[3];
+            result.add(new Representation(hash, name, semanticClass, strategy, authority,
+                defaultVisible, markerAxis, animationAxis, animationPivot, List.copyOf(primitives)));
+        }
+        return result;
+    }
+
+    private static void validatePromotionReceipt(Path path, ObjectMapper mapper,
+            RepresentationCatalog representations) throws Exception {
+        JsonNode root = mapper.readTree(path.toFile());
+        if (!"steward-prefab-promotion/v1".equals(root.path("schema").asText())) {
+            throw new IllegalArgumentException("Unsupported prefab promotion receipt schema");
+        }
+        if (!root.path("results").isArray()) {
+            throw new IllegalArgumentException("Prefab promotion receipt has no results array");
+        }
+        Map<Integer, Representation> byHash = new HashMap<>();
+        for (Representation representation : representations.rows) {
+            byHash.put(representation.hash, representation);
+        }
+        Map<Integer, String> statuses = new LinkedHashMap<>();
+        for (JsonNode row : root.path("results")) {
+            if (!row.path("hash").canConvertToInt()) {
+                throw new IllegalArgumentException("Promotion receipt contains an invalid prefab hash");
+            }
+            int hash = row.path("hash").intValue();
+            String status = requiredText(row, "status");
+            if (!Set.of("promoted", "pending", "rejected").contains(status)) {
+                throw new IllegalArgumentException("Invalid promotion status: " + status);
+            }
+            Representation representation = byHash.get(hash);
+            if (representation == null || !representation.name.equals(requiredText(row, "prefab"))) {
+                throw new IllegalArgumentException("Promotion receipt is not an exact prefab name/hash match");
+            }
+            if (statuses.put(hash, status) != null) {
+                throw new IllegalArgumentException("Duplicate prefab promotion result: " + representation.name);
+            }
+            if ("promoted".equals(status) && !"runtime-compound".equals(representation.strategy)) {
+                throw new IllegalArgumentException(
+                    "Promoted receipt does not have runtime compound geometry: " + representation.name);
+            }
+        }
+        for (Representation representation : representations.rows) {
+            if ("runtime-compound".equals(representation.strategy) &&
+                    !"promoted".equals(statuses.get(representation.hash))) {
+                throw new IllegalArgumentException(
+                    "Runtime compound lacks a promoted metrics receipt: " + representation.name);
+            }
+        }
+    }
+
+    private static void validateRepresentationCatalog(GeometryCatalog geometry,
+            RepresentationCatalog representations) {
+        Map<Integer, Geometry> byHash = new HashMap<>();
+        for (Geometry row : geometry.rows) byHash.put(row.hash, row);
+        for (Representation row : representations.rows) {
+            Geometry match = byHash.get(row.hash);
+            if (match == null || !match.name.equals(row.name)) {
+                throw new IllegalArgumentException(
+                    "Representation is not an exact prefab name/hash match: " + row.name);
+            }
+        }
+    }
+
+    private static void insertRepresentations(Connection connection,
+            RepresentationCatalog catalog) throws Exception {
+        try (PreparedStatement insert = connection.prepareStatement(
+                "INSERT INTO public_cache.prefab_representation VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+             PreparedStatement primitiveInsert = connection.prepareStatement(
+                "INSERT INTO public_cache.prefab_representation_primitive VALUES " +
+                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+            for (Representation row : catalog.rows) {
+                insert.setInt(1, row.hash);
+                insert.setString(2, row.name);
+                insert.setString(3, row.semanticClass);
+                insert.setString(4, row.strategy);
+                insert.setString(5, row.authority);
+                insert.setBoolean(6, row.defaultVisible);
+                insert.setDouble(7, row.markerAxis);
+                insert.setInt(8, row.primitives.size());
+                insert.setString(9, row.animationAxis.isEmpty() ? null : row.animationAxis);
+                insert.setDouble(10, row.animationPivot[0]);
+                insert.setDouble(11, row.animationPivot[1]);
+                insert.setDouble(12, row.animationPivot[2]);
+                insert.addBatch();
+                for (Primitive primitive : row.primitives) {
+                    primitiveInsert.setInt(1, row.hash);
+                    primitiveInsert.setInt(2, primitive.ordinal);
+                    primitiveInsert.setBoolean(3, primitive.animated);
+                    for (int i = 0; i < 16; i++) primitiveInsert.setDouble(4 + i, primitive.matrix[i]);
+                    primitiveInsert.addBatch();
+                }
+            }
+            insert.executeBatch();
+            primitiveInsert.executeBatch();
+        }
+    }
+
     private static String requiredText(JsonNode node, String field) {
         String value = node.path(field).asText("").trim();
         if (value.isEmpty()) throw new IllegalArgumentException("Missing geometry field: " + field);
@@ -345,9 +559,25 @@ public final class PublicCacheExporter {
     private record Geometry(int hash, String name, String family, String source,
             double[] extents, double[] center) {}
 
+    private record Primitive(int ordinal, boolean animated, double[] matrix) {}
+    private record Representation(int hash, String name, String semanticClass, String strategy,
+            String authority, boolean defaultVisible, double markerAxis, String animationAxis,
+            double[] animationPivot, List<Primitive> primitives) {}
+
     private static final class GeometryCatalog {
         private final java.util.List<Geometry> rows = new java.util.ArrayList<>();
         void add(Geometry geometry) { rows.add(geometry); }
         int size() { return rows.size(); }
+    }
+
+    private static final class RepresentationCatalog {
+        private final List<Representation> rows = new ArrayList<>();
+        void add(Representation value) { rows.add(value); }
+        int size() { return rows.size(); }
+        int primitiveCount() {
+            int result = 0;
+            for (Representation row : rows) result += row.primitives.size();
+            return result;
+        }
     }
 }

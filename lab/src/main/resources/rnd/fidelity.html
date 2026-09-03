@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Prefab fidelity workbench — Steward R&amp;D</title>
+  <link rel="stylesheet" href="fidelity.css">
+</head>
+<body>
+  <header>
+    <div><p>STEWARD · PRIVATE /RND</p><h1>Gallery-calibrated prefab fidelity</h1></div>
+    <a href="../">Return to lab</a>
+  </header>
+  <aside>
+    <label>Fixture<select id="fixture"><option value="713">713 · windmill tuning</option><option value="1364">1364 · windmill holdout</option><option value="611">611 · context / vines</option></select></label>
+    <label>Matched camera<select id="view"></select></label>
+    <fieldset><legend>Representation</legend><label><input type="radio" name="representation" value="candidate" checked> Candidate</label><label><input type="radio" name="representation" value="baseline"> Baseline</label></fieldset>
+    <fieldset><legend>Compare</legend><label><input type="radio" name="mode" value="side" checked> Side by side</label><label><input type="radio" name="mode" value="wipe"> Wipe</label><label><input type="radio" name="mode" value="overlay"> Overlay</label></fieldset>
+    <label class="check"><input id="isolate" type="checkbox"> Isolate windmill group</label>
+    <label id="blend-label" hidden>Wipe / opacity<input id="blend" type="range" min="0" max="100" value="50"></label>
+    <section class="receipt"><h2>Promotion gate</h2><output id="promotion">Loading…</output></section>
+    <section class="receipt"><h2>Exact camera</h2><output id="camera">Loading…</output></section>
+  </aside>
+  <main id="comparison" data-mode="side">
+    <figure class="source"><figcaption>Valheim gallery source</figcaption><div class="matched-frame"><img id="source" alt="Matched Valheim gallery frame"></div></figure>
+    <figure class="render"><figcaption id="render-label">Candidate WebGPU proxy</figcaption><div class="matched-frame"><iframe id="render" title="Steward candidate rendering"></iframe></div></figure>
+  </main>
+  <script type="module" src="fidelity.js"></script>
+</body>
+</html>

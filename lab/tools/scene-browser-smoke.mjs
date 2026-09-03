@@ -8,19 +8,32 @@ const base = new URL(process.argv[2] || 'http://127.0.0.1:8091/');
 const outputDir = path.resolve(process.argv[3] || 'data/scene-browser-smoke');
 const pilotOnly = process.argv.includes('--pilot-only');
 const includeLarge = process.argv.includes('--large');
+const includeFidelity = process.argv.includes('--fidelity');
+const includeMixed = process.argv.includes('--mixed');
 const startupLimit = Number(process.env.SCENE_STARTUP_LIMIT_MS || 2000);
 const largeStartupLimit = Number(process.env.SCENE_LARGE_STARTUP_LIMIT_MS || 10000);
 const p95Limit = Number(process.env.SCENE_FRAME_P95_LIMIT_MS || 20);
 const largeP95Limit = Number(process.env.SCENE_LARGE_FRAME_P95_LIMIT_MS || 50);
 const cases = [
-  { name:'pilot-862', pieces:862, families:13, coverage:{real:862,estimated:0,unknown:0,proxyOutliers:0},
+  { name:'pilot-862', pieces:862,
     query:{snapshot:107,lens:'build-density',minX:467.8,maxX:511.6,minZ:5501.4,maxZ:5535.9} },
-  ...(!pilotOnly ? [{ name:'stress-22387', pieces:22387, families:13,
-    coverage:{real:22197,estimated:0,unknown:190,proxyOutliers:2},
+  ...(includeFidelity ? [
+    { name:'context-611', pieces:3937, expectedContext:914,
+      query:{snapshot:107,lens:'build-density',minX:-2282.9,maxX:-2185.4,minZ:1612.0,maxZ:1690.7} },
+    { name:'windmill-tuning-713', pieces:864, expectedUnresolvedCompounds:1,
+      query:{snapshot:107,lens:'build-density',minX:-1937.1,maxX:-1849.3,minZ:2950.8,maxZ:3050.9} },
+    { name:'windmill-holdout-1364', pieces:705, expectedUnresolvedCompounds:2,
+      query:{snapshot:107,lens:'build-density',minX:-1679.7,maxX:-1607.9,minZ:-7255.9,maxZ:-7183.6} }
+  ] : []),
+  ...(!pilotOnly ? [{ name:'stress-22387', pieces:22387,
     query:{snapshot:107,lens:'build-density',minX:2021.7,maxX:2101.9,minZ:-4851.3,maxZ:-4751.8,override:true} }] : []),
-  ...(includeLarge ? [{ name:'meadows-193008', pieces:193008, minimumFamilies:10, scopeKind:'world-biome',
+  ...(includeLarge ? [{ name:'meadows-193008', pieces:193008, minimumGroups:10, scopeKind:'world-biome',
+    large:true,
     query:{snapshot:107,lens:'build-density',minX:-26500,maxX:26500,minZ:-20500,maxZ:27500,
-      biomes:'meadows',override:true,scope:'world-biome'} }] : [])
+      biomes:'meadows',override:true,scope:'world-biome'} }] : []),
+  ...(includeMixed ? [{ name:'mixed-user-scope-18843', pieces:18843, minimumGroups:10, large:true,
+    query:{snapshot:107,lens:'build-density',minX:-3128.071439644744,maxX:-1920.0844678891362,
+      minZ:1488.4434962007863,maxZ:2968.2389431801175,override:true,capture:1} }] : [])
 ];
 
 class CdpClient {
@@ -131,18 +144,22 @@ try {
     const controlResult = await page.call('Runtime.evaluate',{
       expression:`(() => {
         const surface=window.__stewardSceneReceipt.surface;
-        const before=window.__stewardSceneReceipt.drawCalls;
+        const before=window.__stewardSceneReceipt.visibleGroups;
         const first=document.querySelector('#families input'); first?.click();
-        const hidden=window.__stewardSceneReceipt.drawCalls;
-        document.querySelector('#families-all')?.click();
-        const restored=window.__stewardSceneReceipt.drawCalls;
+        const hidden=window.__stewardSceneReceipt.visibleGroups;
+        window.__stewardSceneControls.restoreDefaultGroups();
+        const restored=window.__stewardSceneReceipt.visibleGroups;
+        const context=window.__stewardSceneReceipt.drawGroups?.find(value => value.name === 'context');
+        const contextShown=context ? window.__stewardSceneControls.setGroupVisible('context',true) : null;
+        const withContext=window.__stewardSceneReceipt.visibleGroups;
+        window.__stewardSceneControls.restoreDefaultGroups();
         window.__stewardSceneControls.setCameraMode('fly',false);
         window.__stewardSceneControls.render();
         const fly=window.__stewardSceneReceipt.cameraMode;
         window.__stewardSceneControls.frameAll();
         const all=window.__stewardSceneReceipt.cameraFrame;
         window.__stewardSceneControls.resetCamera();
-        return {surface,before,hidden,restored,fly,all,
+        return {surface,before,hidden,restored,context,contextShown,withContext,fly,all,
           reset:window.__stewardSceneReceipt.cameraMode,
           home:window.__stewardSceneReceipt.cameraFrame};
       })()`,
@@ -167,9 +184,25 @@ try {
     const beforePose = moveBefore.result.value;
     const afterPose = moveAfter.result.value.camera;
     const orbitMoveM = Math.hypot(...afterPose.target.map((value,index) => value-beforePose.target[index]));
+    await page.call('Runtime.evaluate',{
+      expression:"document.dispatchEvent(new KeyboardEvent('keydown',{key:'d',bubbles:true,cancelable:true}))"
+    });
+    await delay(250);
+    await page.call('Runtime.evaluate',{
+      expression:"document.dispatchEvent(new KeyboardEvent('keyup',{key:'d',bubbles:true,cancelable:true}))"
+    });
+    const rightMove = await page.call('Runtime.evaluate',{
+      expression:'window.__stewardSceneControls.cameraState()',returnByValue:true
+    });
+    const rightPose = rightMove.result.value;
+    const rightDelta = rightPose.target.map((value,index) => value-afterPose.target[index]);
+    const expectedRight = [Math.cos(afterPose.yaw),0,-Math.sin(afterPose.yaw)];
+    const rightDot = rightDelta.reduce((sum,value,index) => sum + value*expectedRight[index],0);
     receipt.controlExercise = {
       ...controlResult.result.value,
-      orbitMove:{metres:+orbitMoveM.toFixed(3),before:beforePose,after:afterPose,help:moveAfter.result.value.help}
+      orbitMove:{metres:+orbitMoveM.toFixed(3),rightMetres:+Math.hypot(...rightDelta).toFixed(3),
+        rightDot:+rightDot.toFixed(3),before:beforePose,after:afterPose,
+        afterRight:rightPose,help:moveAfter.result.value.help}
     };
     const imageResult = await page.call('Runtime.evaluate',{
       expression:`(async () => {
@@ -191,37 +224,48 @@ try {
     if (receipt.exact !== true) failures.push('scene is not exact');
     if (receipt.scopeKind !== (sceneCase.scopeKind || 'area')) failures.push(`scope kind ${receipt.scopeKind}`);
     if (receipt.forced !== Boolean(sceneCase.query.override)) failures.push(`forced receipt ${receipt.forced}`);
-    if (receipt.instanceBytes !== sceneCase.pieces * 80) failures.push('instance byte count mismatch');
+    if (receipt.schema !== 'steward-scene-browser/v2') failures.push(`browser schema ${receipt.schema}`);
+    if (!(receipt.renderInstances >= receipt.pieces)) failures.push('render instance count is below exact membership');
+    if (receipt.instanceBytes !== receipt.renderInstances * 80) failures.push('instance byte count mismatch');
     if (!/^[0-9a-f]{64}$/.test(receipt.instanceSha256 || '')) failures.push('instance checksum is missing');
-    if (sceneCase.families != null && receipt.families?.length !== sceneCase.families) failures.push(`families ${receipt.families?.length} != ${sceneCase.families}`);
-    if (sceneCase.minimumFamilies != null && receipt.families?.length < sceneCase.minimumFamilies) failures.push(`families ${receipt.families?.length} < ${sceneCase.minimumFamilies}`);
-    for (const [quality,expected] of Object.entries(sceneCase.coverage || {})) {
-      if (receipt.geometryCoverage?.[quality] !== expected) {
-        failures.push(`${quality} geometry ${receipt.geometryCoverage?.[quality]} != ${expected}`);
+    if (sceneCase.minimumGroups != null && receipt.drawGroups?.length < sceneCase.minimumGroups) failures.push(`draw groups ${receipt.drawGroups?.length} < ${sceneCase.minimumGroups}`);
+    if (sceneCase.expectedContext != null) {
+      const context = receipt.drawGroups?.find(group => group.name === 'context');
+      if (receipt.representationQuality?.contextMarkers !== sceneCase.expectedContext ||
+          receipt.representationQuality?.hiddenContextPieces !== sceneCase.expectedContext ||
+          context?.pieces !== sceneCase.expectedContext || context?.defaultVisible !== false) {
+        failures.push(`context fixture did not keep ${sceneCase.expectedContext} hidden exact-name markers`);
       }
     }
-    const coverageTotal = ['real','estimated','unknown']
-      .reduce((sum,key) => sum + Number(receipt.geometryCoverage?.[key] || 0),0);
-    if (coverageTotal !== receipt.pieces) failures.push(`geometry coverage ${coverageTotal} != ${receipt.pieces}`);
-    if (sceneCase.name.startsWith('meadows-') && !(receipt.geometryCoverage?.proxyOutliers > 0)) {
+    if (sceneCase.expectedUnresolvedCompounds != null &&
+        receipt.representationQuality?.unresolvedCompoundMarkers !== sceneCase.expectedUnresolvedCompounds) {
+      failures.push(`unresolved compounds ${receipt.representationQuality?.unresolvedCompoundMarkers} != ${sceneCase.expectedUnresolvedCompounds}`);
+    }
+    const coverageTotal = ['measuredEnvelope','runtimeCompoundProxy','estimatedEnvelope','pivotMarker','contextMarkers']
+      .reduce((sum,key) => sum + Number(receipt.representationQuality?.[key] || 0),0);
+    if (coverageTotal !== receipt.pieces) failures.push(`representation coverage ${coverageTotal} != ${receipt.pieces}`);
+    if (sceneCase.name.startsWith('meadows-') && !(receipt.representationQuality?.outlierMarkers > 0)) {
       failures.push('large scene did not report reduced proxy outliers');
     }
     if (receipt.deviceLost) failures.push('device lost');
     if (receipt.validationErrors?.length) failures.push(`validation errors: ${receipt.validationErrors.join('; ')}`);
     if (receipt.browserErrors?.length) failures.push(`browser errors: ${receipt.browserErrors.join('; ')}`);
-    const caseStartupLimit = sceneCase.name.startsWith('meadows-') ? largeStartupLimit : startupLimit;
+    const caseStartupLimit = sceneCase.large ? largeStartupLimit : startupLimit;
     if (receipt.startupMs > caseStartupLimit) failures.push(`startup ${receipt.startupMs}ms > ${caseStartupLimit}ms`);
-    const caseP95Limit = sceneCase.name.startsWith('meadows-') ? largeP95Limit : p95Limit;
+    const caseP95Limit = sceneCase.large ? largeP95Limit : p95Limit;
     if (receipt.frameP95Ms > caseP95Limit) failures.push(`p95 ${receipt.frameP95Ms}ms > ${caseP95Limit}ms`);
     if (hardware.classification !== 'hardware') failures.push(`GPU classified ${hardware.classification}`);
     const exercise = receipt.controlExercise;
     if (exercise?.surface !== 'wire') failures.push('wireframe switch failed');
     if (!(exercise?.hidden === exercise?.before - 1 && exercise?.restored === exercise?.before)) failures.push('family visibility exercise failed');
+    if (exercise?.context && (exercise.context.defaultVisible !== false || exercise.contextShown !== true ||
+        exercise.withContext !== exercise.before + 1)) failures.push('context default/toggle contract failed');
     if (exercise?.fly !== 'fly' || exercise?.reset !== 'orbit') failures.push('camera exercise failed');
     if (exercise?.all !== 'all' || exercise?.home !== 'home') failures.push('home/frame-all camera exercise failed');
     if (exercise?.orbitMove?.after?.mode !== 'orbit' || !(exercise?.orbitMove?.metres > 0) ||
+        !(exercise?.orbitMove?.rightMetres > 0) || !(exercise?.orbitMove?.rightDot > 0) ||
         !/WASD move/.test(exercise?.orbitMove?.help || '')) failures.push('orbit WASD movement failed');
-    if (sceneCase.name.startsWith('meadows-') &&
+    if (sceneCase.large &&
         (receipt.home?.strategy !== 'densest-cluster' || !(receipt.home?.pieces < receipt.pieces) ||
          !(receipt.home?.radiusM < receipt.fullRadiusM * .5))) {
       failures.push('large scene did not start on a bounded dense home cluster');

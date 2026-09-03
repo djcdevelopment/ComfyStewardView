@@ -30,14 +30,17 @@ class PublicCacheExporterTest {
         Path source = sourceCache();
         Path parquet = buildingGeometry(false);
         Path catalog = pieceGeometry();
+        Path representations = representations();
+        Path promotion = promotionReceipt();
         Path contextManifest = contextManifest();
         Path output = temporary.resolve("public.duckdb");
 
-        PublicCacheExporter.export(source, output, 107, contextManifest, parquet, catalog);
+        PublicCacheExporter.export(source, output, 107, contextManifest, parquet, catalog,
+            representations, promotion);
 
         assertTrue(Files.isRegularFile(output));
         ObjectNode metadata = (ObjectNode) mapper.readTree(output.resolveSibling("public.duckdb.json").toFile());
-        assertEquals(3, metadata.path("schemaVersion").asInt());
+        assertEquals(4, metadata.path("schemaVersion").asInt());
         assertEquals(3, metadata.path("buildingCount").asInt());
         assertEquals(2, metadata.path("geometryCatalogRows").asInt());
         assertEquals(2, metadata.path("knownGeometryRows").asInt());
@@ -46,6 +49,10 @@ class PublicCacheExporterTest {
         assertEquals(1, metadata.path("unknownGeometryRows").asInt());
         assertEquals(sha256(parquet), metadata.path("buildingGeometrySha256").asText());
         assertEquals(sha256(catalog), metadata.path("pieceGeometrySha256").asText());
+        assertEquals(sha256(representations), metadata.path("representationCatalogSha256").asText());
+        assertEquals(sha256(promotion), metadata.path("promotionReceiptSha256").asText());
+        assertEquals(2, metadata.path("representationRows").asInt());
+        assertEquals(2, metadata.path("representationPrimitiveRows").asInt());
 
         SnapshotRepository repository = new SnapshotRepository(output, new LensRegistry(), mapper, true);
         try (var connection = repository.open();
@@ -64,6 +71,12 @@ class PublicCacheExporterTest {
                 assertTrue(row.next());
                 assertEquals(2, row.getInt(1));
             }
+            try (var row = statement.executeQuery("SELECT strategy, default_visible FROM " +
+                    "prefab_representation WHERE prefab_hash=1")) {
+                assertTrue(row.next());
+                assertEquals("runtime-compound", row.getString(1));
+                assertTrue(row.getBoolean(2));
+            }
         }
 
         TerrainContext context = TerrainContext.load(contextManifest, mapper, 107, "a".repeat(64), "ComfyEra17");
@@ -74,9 +87,33 @@ class PublicCacheExporterTest {
         Path output = temporary.resolve("invalid-public.duckdb");
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
             () -> PublicCacheExporter.export(sourceCache(), output, 107, contextManifest(),
-                buildingGeometry(true), pieceGeometry()));
+                buildingGeometry(true), pieceGeometry(), representations(), promotionReceipt()));
         assertTrue(error.getMessage().contains("exact, valid snapshot join"));
         assertTrue(Files.notExists(output));
+    }
+
+    @Test void rejectsRepresentationThatIsNotAnExactPrefabNameHashMatch() throws Exception {
+        Path representations = representations();
+        ObjectNode root = (ObjectNode) mapper.readTree(representations.toFile());
+        ((ObjectNode) root.withArray("representations").get(0)).put("name", "piece_wall_typo");
+        mapper.writeValue(representations.toFile(), root);
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+            () -> PublicCacheExporter.export(sourceCache(), temporary.resolve("mismatch.duckdb"), 107,
+                contextManifest(), buildingGeometry(false), pieceGeometry(), representations,
+                promotionReceipt()));
+        assertTrue(error.getMessage().contains("exact prefab name/hash"));
+    }
+
+    @Test void rejectsPromotionReceiptThatDoesNotMatchItsRepresentation() throws Exception {
+        Path promotion = promotionReceipt();
+        ObjectNode root = (ObjectNode) mapper.readTree(promotion.toFile());
+        ((ObjectNode) root.withArray("results").get(0)).put("prefab", "piece_wall_typo");
+        mapper.writeValue(promotion.toFile(), root);
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+            () -> PublicCacheExporter.export(sourceCache(), temporary.resolve("bad-promotion.duckdb"),
+                107, contextManifest(), buildingGeometry(false), pieceGeometry(), representations(),
+                promotion));
+        assertTrue(error.getMessage().contains("exact prefab name/hash"));
     }
 
     private Path sourceCache() throws Exception {
@@ -129,6 +166,39 @@ class PublicCacheExporterTest {
             .put("source", "family_median");
         roof.putArray("extents").add(4).add(1).add(3);
         roof.putArray("center_offset").add(0).add(.5).add(0);
+        mapper.writeValue(path.toFile(), root);
+        return path;
+    }
+
+    private Path representations() throws Exception {
+        Path path = temporary.resolve("prefab-representations.json");
+        ObjectNode root = mapper.createObjectNode();
+        root.put("schema", "steward-prefab-representations/v1").put("gameVersion", "test");
+        ObjectNode compound = root.withArray("representations").addObject();
+        compound.put("name", "piece_wall").put("hash", 1).put("semanticClass", "structure")
+            .put("strategy", "runtime-compound").put("authority", "test-runtime")
+            .put("defaultVisible", true).put("markerAxis", .35).put("animationAxis", "z");
+        compound.putArray("animationPivot").add(0).add(1).add(0);
+        compound.withArray("primitives").addObject().put("animated", false).putArray("matrix")
+            .add(2).add(0).add(0).add(0).add(0).add(4).add(0).add(0)
+            .add(0).add(0).add(.2).add(0).add(0).add(2).add(0).add(1);
+        compound.withArray("primitives").addObject().put("animated", true).putArray("matrix")
+            .add(.2).add(0).add(0).add(0).add(0).add(.2).add(0).add(0)
+            .add(0).add(0).add(3).add(0).add(0).add(4).add(0).add(1);
+        ObjectNode context = root.withArray("representations").addObject();
+        context.put("name", "piece_roof").put("hash", 2).put("semanticClass", "context")
+            .put("strategy", "pivot-marker").put("authority", "test-exact-name")
+            .put("defaultVisible", false).put("markerAxis", .22).putArray("primitives");
+        mapper.writeValue(path.toFile(), root);
+        return path;
+    }
+
+    private Path promotionReceipt() throws Exception {
+        Path path = temporary.resolve("promotion.json");
+        ObjectNode root = mapper.createObjectNode();
+        root.put("schema", "steward-prefab-promotion/v1");
+        root.withArray("results").addObject().put("prefab", "piece_wall").put("hash", 1)
+            .put("status", "promoted");
         mapper.writeValue(path.toFile(), root);
         return path;
     }

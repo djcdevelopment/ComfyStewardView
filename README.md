@@ -25,9 +25,11 @@ For the architecture, the findings behind it, and the measurements, read the whi
 Production processing and serving run on different hosts. OMEN parses saves and builds the DuckDB cache and map layers (~53 s and ~1.2 GB per 9M-ZDO world, and it keeps the growing snapshot history); AM4 only serves the published artifacts. [tools/Publish-Steward.ps1](tools/Publish-Steward.ps1) is the production data lane — dry-run by default, `-Push` to publish. [tools/Deploy-Steward.ps1](tools/Deploy-Steward.ps1) remains the production code lane. Deploy when the viewer JAR changes, publish when the world changes.
 
 The lab consumes a snapshot-matched, read-only derivative of those published artifacts and deploys
-independently through [`lab/tools/Deploy-World.ps1`](lab/tools/Deploy-World.ps1). Its public-cache v3
-adds only sanitized position, rotation, and prefab-envelope geometry needed for an exact WebGPU scene;
-the production `viewer` schema is unchanged. Start with the
+independently through [`lab/tools/Deploy-World.ps1`](lab/tools/Deploy-World.ps1). Its public-cache v4
+adds only sanitized position, rotation, prefab-envelope geometry, and a checksummed exact-name
+representation catalog needed for an exact WebGPU scene; the production `viewer` schema is unchanged.
+Private gallery comparisons and in-game renderer probes remain local `/rnd` tools and are not public
+routes or deployment artifacts. Start with the
 [`lab/README.md`](lab/README.md), then read its [interaction contract](lab/docs/LAB_CONTRACT.md),
 [launch retrospective](lab/docs/RETROSPECTIVE_2026-09-03_PUBLIC_WORLD.md), and
 [selection-to-3D R&D retrospective](lab/docs/RND_SELECTION_3D_2026-09-03.md), followed by the
@@ -240,7 +242,7 @@ viewer/lib/                      runtime jars, including DuckDB
 viewer/target/                   build outputs, jars, generated cache artifacts
 lab/                             separately deployable spatial lab and public world view
 lab/src/                         lab server, terrain-first map, and WebGPU scene client
-lab/tools/                       terrain/public-cache builders, deployment, and map/scene browser gates
+lab/tools/                       terrain/cache builders, deployment, browser gates, and private fidelity probes
 lab/docs/                        lab contracts, R&D and launch retrospectives, and ADRs
 docs/comfy-integration/          integration handoff and analytics docs
 manual-zpackage-src/             patched ZPackage source used in earlier parser work

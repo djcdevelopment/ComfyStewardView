@@ -23,6 +23,10 @@ public record LabConfig(
         boolean publicMode,
         String publicUrl,
         String releaseVersion,
+        Path fidelityGallery,
+        Path fidelityReceipts,
+        Path fidelityClusters,
+        Path fidelityCandidates,
         FeedbackConfig feedback) {
 
     public static final List<Integer> ALLOWED_RESOLUTIONS = List.of(16, 64, 80, 160, 320, 500, 1000);
@@ -49,6 +53,14 @@ public record LabConfig(
         boolean publicMode = false;
         String publicUrl = environment("STEWARD_PUBLIC_URL", "");
         String releaseVersion = environment("STEWARD_RELEASE_VERSION", "dev");
+        Path fidelityGallery = optionalPath("STEWARD_FIDELITY_GALLERY",
+            Path.of("C:/work/baseline/tools/selfie-stick/out/era17/gallery"), true);
+        Path fidelityReceipts = optionalPath("STEWARD_FIDELITY_RECEIPTS",
+            Path.of("C:/Program Files (x86)/Steam/steamapps/common/Valheim/BepInEx/config/shotplan-receipts.jsonl"), false);
+        Path fidelityClusters = optionalPath("STEWARD_FIDELITY_CLUSTERS",
+            Path.of("C:/work/baseline/tools/selfie-stick/out/era17/clusters.json"), false);
+        Path fidelityCandidates = optionalPath("STEWARD_FIDELITY_CANDIDATES",
+            Path.of("tools/prefab-renderer-probe/receipts/windmill-0.221.12.json"), false);
 
         for (int i = 0; i < args.size(); i++) {
             String arg = args.get(i);
@@ -68,6 +80,10 @@ public record LabConfig(
                 case "--public" -> publicMode = true;
                 case "--public-url" -> publicUrl = requireValue(args, ++i, arg);
                 case "--release-version" -> releaseVersion = requireValue(args, ++i, arg);
+                case "--fidelity-gallery" -> fidelityGallery = Path.of(requireValue(args, ++i, arg));
+                case "--fidelity-receipts" -> fidelityReceipts = Path.of(requireValue(args, ++i, arg));
+                case "--fidelity-clusters" -> fidelityClusters = Path.of(requireValue(args, ++i, arg));
+                case "--fidelity-candidates" -> fidelityCandidates = Path.of(requireValue(args, ++i, arg));
                 default -> throw new IllegalArgumentException("Unknown option: " + arg);
             }
         }
@@ -94,13 +110,29 @@ public record LabConfig(
         }
         if (publicUrl.isBlank()) publicUrl = "http://127.0.0.1:" + port + "/";
         publicUrl = normalizePublicUrl(publicUrl);
+        if (fidelityGallery != null && !Files.isDirectory(fidelityGallery)) {
+            throw new IllegalArgumentException("Fidelity gallery not found: " + fidelityGallery);
+        }
+        if (fidelityReceipts != null && !Files.isRegularFile(fidelityReceipts)) {
+            throw new IllegalArgumentException("Fidelity receipts not found: " + fidelityReceipts);
+        }
+        if (fidelityClusters != null && !Files.isRegularFile(fidelityClusters)) {
+            throw new IllegalArgumentException("Fidelity clusters not found: " + fidelityClusters);
+        }
+        if (fidelityCandidates != null && !Files.isRegularFile(fidelityCandidates)) {
+            throw new IllegalArgumentException("Fidelity candidates not found: " + fidelityCandidates);
+        }
 
         FeedbackConfig feedback = FeedbackConfig.fromEnvironment(publicUrl);
         return new LabConfig(mode, absolute(cache), absolute(artifacts),
             context == null ? null : absolute(context),
             contextManifest == null ? null : absolute(contextManifest), bindAddress, port, noBrowser, snapshot,
             List.copyOf(lenses), List.copyOf(resolutions), force, publicMode, publicUrl,
-            releaseVersion.isBlank() ? "dev" : releaseVersion, feedback);
+            releaseVersion.isBlank() ? "dev" : releaseVersion,
+            fidelityGallery == null ? null : absolute(fidelityGallery),
+            fidelityReceipts == null ? null : absolute(fidelityReceipts),
+            fidelityClusters == null ? null : absolute(fidelityClusters),
+            fidelityCandidates == null ? null : absolute(fidelityCandidates), feedback);
     }
 
     private static Path defaultCache() {
@@ -128,6 +160,13 @@ public record LabConfig(
     private static String environment(String name, String fallback) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? fallback : value.trim();
+    }
+
+    private static Path optionalPath(String environmentName, Path fallback, boolean directory) {
+        String configured = System.getenv(environmentName);
+        Path candidate = configured == null || configured.isBlank() ? fallback : Path.of(configured.trim());
+        if (directory ? Files.isDirectory(candidate) : Files.isRegularFile(candidate)) return candidate;
+        return configured == null || configured.isBlank() ? null : candidate;
     }
 
     private static String normalizePublicUrl(String raw) {

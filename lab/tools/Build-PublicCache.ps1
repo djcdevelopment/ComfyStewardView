@@ -5,6 +5,8 @@ param(
     [string]$ContextManifest = '',
     [string]$BuildingGeometry = '',
     [string]$PieceGeometry = '',
+    [string]$PrefabRepresentations = '',
+    [string]$PromotionReceipt = '',
     [long]$SnapshotId = 107
 )
 
@@ -15,15 +17,21 @@ if (-not $OutputCache) { $OutputCache = Join-Path $repoRoot 'data/era17-public.d
 if (-not $ContextManifest) { $ContextManifest = Join-Path $repoRoot "data/era17-context/$SnapshotId/manifest.json" }
 if (-not $BuildingGeometry) { $BuildingGeometry = 'E:\omen\steward-era17-arch\building-geometry.parquet' }
 if (-not $PieceGeometry) { $PieceGeometry = 'C:\work\baseline\tools\selfie-stick\out\era17\arch\piece-geometry.json' }
+if (-not $PrefabRepresentations) { $PrefabRepresentations = Join-Path $repoRoot 'src/main/resources/prefab-representations.json' }
+if (-not $PromotionReceipt) { $PromotionReceipt = Join-Path $repoRoot 'src/main/resources/prefab-promotion-receipt.json' }
 $SourceCache = [IO.Path]::GetFullPath($SourceCache)
 $OutputCache = [IO.Path]::GetFullPath($OutputCache)
 $ContextManifest = [IO.Path]::GetFullPath($ContextManifest)
 $BuildingGeometry = [IO.Path]::GetFullPath($BuildingGeometry)
 $PieceGeometry = [IO.Path]::GetFullPath($PieceGeometry)
+$PrefabRepresentations = [IO.Path]::GetFullPath($PrefabRepresentations)
+$PromotionReceipt = [IO.Path]::GetFullPath($PromotionReceipt)
 if (-not (Test-Path -LiteralPath $SourceCache -PathType Leaf)) { throw "Source cache not found: $SourceCache" }
 if (-not (Test-Path -LiteralPath $ContextManifest -PathType Leaf)) { throw "Context manifest not found: $ContextManifest" }
 if (-not (Test-Path -LiteralPath $BuildingGeometry -PathType Leaf)) { throw "Building geometry not found: $BuildingGeometry" }
 if (-not (Test-Path -LiteralPath $PieceGeometry -PathType Leaf)) { throw "Piece geometry not found: $PieceGeometry" }
+if (-not (Test-Path -LiteralPath $PrefabRepresentations -PathType Leaf)) { throw "Prefab representations not found: $PrefabRepresentations" }
+if (-not (Test-Path -LiteralPath $PromotionReceipt -PathType Leaf)) { throw "Promotion receipt not found: $PromotionReceipt" }
 if ($SnapshotId -le 0) { throw 'SnapshotId must be positive.' }
 
 & (Join-Path $repoRoot 'mvnw.cmd') -q -DskipTests package
@@ -44,7 +52,7 @@ if (-not $java) {
 if (-not $java) { throw 'Java 17 was not found.' }
 $jar = Join-Path $repoRoot 'target/steward-spatial-lab-0.1.0-SNAPSHOT.jar'
 & $java -cp $jar dev.steward.lab.PublicCacheExporter $SourceCache $OutputCache $SnapshotId `
-    $ContextManifest $BuildingGeometry $PieceGeometry
+    $ContextManifest $BuildingGeometry $PieceGeometry $PrefabRepresentations $PromotionReceipt
 if ($LASTEXITCODE -ne 0) { throw 'Public-cache export failed.' }
 
 Write-Host "Portable cache: $OutputCache"
