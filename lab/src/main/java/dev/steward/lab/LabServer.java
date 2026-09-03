@@ -29,9 +29,12 @@ public final class LabServer {
     private final ObjectMapper mapper;
     private final TerrainContext terrainContext;
     private final DiscordFeedbackService feedback;
+    private final ScenePackage scenes;
     private final SlidingWindowRateLimiter queryRate = new SlidingWindowRateLimiter(30, Duration.ofMinutes(1));
+    private final SlidingWindowRateLimiter sceneRate = new SlidingWindowRateLimiter(6, Duration.ofMinutes(1));
     private final SlidingWindowRateLimiter feedbackRate = new SlidingWindowRateLimiter(3, Duration.ofMinutes(10));
     private final Semaphore querySlots = new Semaphore(2);
+    private final Semaphore sceneSlots = new Semaphore(1);
     private final Javalin app;
 
     public LabServer(LabConfig config, SnapshotRepository snapshots, ArtifactStore artifacts,
@@ -44,6 +47,7 @@ public final class LabServer {
         this.mapper = mapper;
         this.terrainContext = terrainContext;
         this.feedback = new DiscordFeedbackService(config.feedback(), mapper);
+        this.scenes = new ScenePackage(snapshots, mapper);
         this.app = Javalin.create(javalin -> {
             javalin.staticFiles.add("/static");
             javalin.staticFiles.add(files -> {
@@ -83,6 +87,7 @@ public final class LabServer {
         app.get("/api/selection", ctx -> boundedQuery(ctx, this::selection));
         app.get("/api/points", ctx -> boundedQuery(ctx, this::points));
         app.get("/api/items", ctx -> boundedQuery(ctx, this::items));
+        app.get("/api/scene", ctx -> sceneQuery(ctx, this::scene));
         if (config.publicMode()) {
             app.get("/api/auth/discord/start", this::startDiscordAuthorization);
             app.get("/api/auth/discord/callback", this::finishDiscordAuthorization);
@@ -102,6 +107,12 @@ public final class LabServer {
 
         app.exception(DiscordFeedbackService.IdentityRequiredException.class, (error, ctx) ->
             apiError(ctx, HttpStatus.UNAUTHORIZED, error.getMessage()));
+        app.exception(ScenePackage.CapacityException.class, (error, ctx) -> {
+            ObjectNode body = mapper.createObjectNode();
+            body.put("error", error.getMessage());
+            body.put("overrideAvailable", error.overrideAvailable());
+            ctx.status(error.overrideAvailable() ? HttpStatus.CONFLICT : HttpStatus.CONTENT_TOO_LARGE).json(body);
+        });
         app.exception(IllegalArgumentException.class, (error, ctx) ->
             apiError(ctx, HttpStatus.BAD_REQUEST, error.getMessage()));
         app.exception(IllegalStateException.class, (error, ctx) ->
@@ -125,6 +136,7 @@ public final class LabServer {
         result.put("releaseVersion", config.releaseVersion());
         result.put("feedbackEnabled", config.publicMode() && config.feedback().feedbackEnabled());
         result.put("discordIdentityEnabled", config.publicMode() && config.feedback().identityEnabled());
+        result.put("sceneAvailable", config.publicMode());
         boolean suppliedContext = terrainContext != null || config.contextImage() != null;
         result.put("contextAvailable", suppliedContext);
         result.put("contextLabel", terrainContext != null
@@ -307,6 +319,21 @@ public final class LabServer {
             (int) longQuery(ctx, "limit", false, 100), ctx.queryParam("cursor"), biomeQuery(ctx)));
     }
 
+    private void scene(Context ctx) throws Exception {
+        long snapshot = longQuery(ctx, "snapshot", true);
+        String lens = requiredQuery(ctx, "lens");
+        enforcePublicScope(snapshot, lens);
+        double minX = doubleQuery(ctx, "minX"), maxX = doubleQuery(ctx, "maxX");
+        double minZ = doubleQuery(ctx, "minZ"), maxZ = doubleQuery(ctx, "maxZ");
+        requirePublishedBounds(minX, maxX, minZ, maxZ);
+        ScenePackage.Result scene = scenes.build(snapshot, lens, minX, maxX, minZ, maxZ,
+            biomeQuery(ctx), booleanQuery(ctx, "override"), config.releaseVersion());
+        ctx.contentType(ScenePackage.CONTENT_TYPE);
+        ctx.header("Content-Length", Integer.toString(scene.bytes().length));
+        ctx.header("X-Steward-Scene-Pieces", Integer.toString(scene.pieces()));
+        ctx.result(scene.bytes());
+    }
+
     private void startDiscordAuthorization(Context ctx) {
         DiscordFeedbackService.Authorization authorization = feedback.beginAuthorization();
         addCookie(ctx, "steward_oauth_nonce", authorization.browserNonce(), 600, true);
@@ -407,6 +434,26 @@ public final class LabServer {
             handler.handle(ctx);
         } finally {
             if (config.publicMode()) querySlots.release();
+        }
+    }
+
+    private void sceneQuery(Context ctx, QueryHandler handler) throws Exception {
+        if (config.publicMode()) {
+            SlidingWindowRateLimiter.Result allowance = sceneRate.acquire(clientKey(ctx));
+            if (!allowance.allowed()) {
+                rateLimited(ctx, allowance.retryAfterSeconds(),
+                    "The 3D explorer has reached its request limit; try again shortly");
+                return;
+            }
+            if (!sceneSlots.tryAcquire()) {
+                rateLimited(ctx, 2, "Another 3D scene is being assembled; try again in a moment");
+                return;
+            }
+        }
+        try {
+            handler.handle(ctx);
+        } finally {
+            if (config.publicMode()) sceneSlots.release();
         }
     }
 

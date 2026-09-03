@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en" data-scene-ready="loading">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Build in 3D — Steward</title>
+  <link rel="stylesheet" href="scene.css">
+</head>
+<body>
+  <aside class="scene-rail" aria-label="3D scene controls">
+    <a class="back-link" href="./">← Return to the terrain</a>
+    <p class="eyebrow">STEWARD · EXACT BUILD VIEW</p>
+    <h1 id="scene-title">Assembling the selection</h1>
+    <p id="scene-subtitle" class="subtitle">Reading sanitized Era 17 transforms…</p>
+
+    <dl class="scene-metrics">
+      <div><dt>Pieces</dt><dd id="metric-pieces">—</dd></div>
+      <div><dt>Envelope</dt><dd id="metric-dimensions">—</dd></div>
+      <div><dt>GPU buffer</dt><dd id="metric-bytes">—</dd></div>
+      <div><dt>Adapter</dt><dd id="metric-adapter">—</dd></div>
+    </dl>
+
+    <section class="control-section">
+      <h2>Surface</h2>
+      <div class="button-row" id="surface-controls">
+        <button type="button" data-surface="shaded" aria-pressed="true">Shaded</button>
+        <button type="button" data-surface="wire" aria-pressed="false">Wireframe</button>
+      </div>
+    </section>
+
+    <section class="control-section">
+      <h2>Camera</h2>
+      <div class="button-row" id="camera-controls">
+        <button type="button" data-camera="orbit" aria-pressed="true">Orbit</button>
+        <button type="button" data-camera="fly" aria-pressed="false">Fly</button>
+        <button type="button" id="frame-scene">Reset</button>
+      </div>
+      <p id="camera-help" class="control-help">Drag to orbit · Shift-drag to pan · wheel to zoom</p>
+    </section>
+
+    <section class="control-section family-section">
+      <div class="section-heading"><h2>Families</h2><button type="button" id="families-all" class="text-button">Show all</button></div>
+      <div id="families" class="families"></div>
+    </section>
+
+    <section class="quality-card" aria-labelledby="quality-title">
+      <h2 id="quality-title">Geometry receipt</h2>
+      <p id="quality-copy">Loading coverage…</p>
+      <p>Boxes are oriented prefab envelopes reconstructed from save coordinates—not game meshes, terrain, collision, or interiors. Red cubes mark unknown geometry at its saved pivot.</p>
+    </section>
+
+    <output id="scene-status" class="scene-status">REQUESTING SCENE…</output>
+  </aside>
+
+  <main id="stage" class="scene-stage">
+    <canvas id="gpu" aria-label="Interactive 3D view of the selected build"></canvas>
+    <div class="stage-hint" id="stage-hint">Drag to orbit · wheel to zoom</div>
+    <section id="scene-blocked" class="scene-blocked" hidden>
+      <p class="eyebrow">3D VIEW UNAVAILABLE</p>
+      <h2 id="blocked-title">This browser could not start WebGPU</h2>
+      <p id="blocked-copy">Use a current hardware-accelerated browser, or return to the terrain map.</p>
+      <a href="./">Return to the terrain</a>
+    </section>
+  </main>
+
+  <script type="module" src="scene.js"></script>
+</body>
+</html>

@@ -29,3 +29,7 @@ The public route has a small, auditable answer surface and cannot become the ful
 bug. Publishing another snapshot or lens requires an explicit release change and cache export. Some
 logic is intentionally checked at both routing and repository layers because defense in depth is more
 valuable here than eliminating every duplicate condition.
+
+ADR 0006 extends this profile with one bounded scene-package route. It preserves the same server-side
+snapshot/lens enforcement and derived-cache boundary rather than turning public mode into general ZDO
+access.

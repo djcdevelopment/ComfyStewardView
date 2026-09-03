@@ -3,7 +3,7 @@
 An interaction lab—and the focused public world view promoted from it—for Steward's spatial
 analysis loop:
 
-> choose a lens → see the large-scale signal → scroll closer → inspect an area → reveal exact objects
+> choose a lens → see the large-scale signal → inspect an area → reveal exact objects → step inside the exact selection
 
 The experimental lab remains separate so scale, menus, gestures, image generation, and
 instrumentation can change aggressively without destabilizing the deployed Steward UI. The same
@@ -18,7 +18,8 @@ Run commands in this README from the `lab/` directory.
 
 The live public profile is deliberately narrower than the lab.
 It exposes one polished tool: Comfy Era 17 build density over snapshot-matched terrain and water,
-from the world overview through bounded inspection and exact objects. The server, not a query string
+from the world overview through bounded inspection, exact objects, and a free-camera 3D view of an
+exact bounded selection. The server, not a query string
 or hidden CSS, enforces that boundary:
 the public bootstrap contains only snapshot 107 and the Build density lens, render-job routes do not
 exist, and artifact/query routes reject anything outside that scope. A muted topographic context is
@@ -41,10 +42,30 @@ Its header offers two optional, mutually exclusive questions over that neutral c
 - **Quick start guide** opens automatically once per browser after the map is ready, unless the visitor
   is returning from Discord authentication. Every dismissal is remembered under a versioned key; the
   `?` action always opens the guide again.
+- **Open exact selection in 3D** appears after inspection. Up to 5,000 pieces open directly; 5,001–25,000
+  require an explicit confirmation; larger selections must be tightened. The new tab rebuilds the
+  authoritative selection server-side, then renders oriented prefab envelopes with shaded or wireframe
+  geometry and orbit or pointer-locked free-flight controls. It never substitutes a sample.
 - **Submit feedback** is anonymous by default. A visitor can optionally use Discord OAuth's
   `identify` scope to attach a verified display name. The access token is discarded immediately;
   the feedback is delivered by webhook to the private Steward feedback channel and explicitly pings
   the configured owner.
+
+Build the snapshot-only public cache from the production analytics cache and the two geometry receipts:
+
+```powershell
+.\tools\Build-PublicCache.ps1 `
+  -SourceCache 'E:\omen\steward-era17\out\world-cache.duckdb' `
+  -ContextManifest '.\data\era17-context\107\manifest.json' `
+  -BuildingGeometry 'E:\omen\steward-era17-arch\building-geometry.parquet' `
+  -PieceGeometry 'C:\work\baseline\tools\selfie-stick\out\era17\arch\piece-geometry.json'
+```
+
+Public-cache schema v3 remains a derived lab artifact. It contains only the published BUILDING rows,
+sanitized coordinates and rotations, biome membership, and a 974-prefab geometry lexicon with source
+receipts. It does not alter the production `viewer` cache schema and does not expose creator/owner
+identity, flags, raw fields, or source paths. Scene responses additionally withhold absolute Y and the
+exact 3D world origin; only selection-local transforms leave the server.
 
 Run that same profile locally with the prepared Era 17 cache and artifacts:
 
@@ -74,11 +95,12 @@ No bot token is needed. Deploy with:
 ```
 
 The deploy builds a separate 3 GB-capped `steward-world` container on loopback port 7081. On first
-use it derives a compact, snapshot-107-only Build density query cache and the terrain/biome context
+use it derives a compact, snapshot-107-only Build density and geometry query cache and the terrain/biome context
 on OMEN, then stages those immutable assets with the prebuilt Era 17 image ladder. The public
 process never opens or mounts the production DuckDB file. Before starting anything, deployment verifies
 snapshot 107's file hash against the running production cache and verifies every context image checksum.
-It then checks the narrow API contract and confirms `/steward` stayed healthy. If the public route has
+It then checks the narrow API contract, exact 862-piece pilot package, 22,387-piece confirmed stress
+package, both capacity denials, and confirms `/steward` stayed healthy. If the public route has
 not been mounted, it prints the single additive
 `tailscale funnel --set-path` command; it never resets existing Funnel routes.
 
@@ -86,6 +108,7 @@ not been mounted, it prints the single additive
 
 - [Spatial lab and public map contract](docs/LAB_CONTRACT.md)
 - [Public world launch retrospective](docs/RETROSPECTIVE_2026-09-03_PUBLIC_WORLD.md)
+- [Selection-to-3D R&D retrospective](docs/RND_SELECTION_3D_2026-09-03.md)
 - [Architecture decision records](docs/adr/README.md)
 
 The generated `tools/deploy-world-receipt.json` records the deployed release, snapshot and asset
@@ -156,6 +179,15 @@ when exact dots remain hidden. Once the count is known, **Show items** draws eve
 the green area contains at most 5,000 positions. A larger selection stays as a complete raster-backed
 summary and asks for a tighter green area instead of showing a biased prefix. In Pan mode, hold and
 drag the map; the grab cursor changes to a closed hand for the duration of the gesture.
+
+Inspection also freezes the authoritative snapshot, lens, bounds, and biome scope used by the 3D link.
+The scene URL carries that declarative scope, not object data; opening or sharing it causes the server to
+re-run and revalidate the exact selection. For a fixed release and scope, the binary package is
+family-sorted and deterministic. It contains a compact transform and envelope per piece plus an
+integrity-bound manifest, so one fetch can
+drive both shared-cube shaded and wireframe pipelines. Unknown prefabs remain visible as red pivot
+markers instead of being discarded. The browser converts Unity coordinates to a right-handed,
+selection-local frame and deliberately withholds absolute Y and origin values from the public UI.
 
 Biome mode is outline-first at world and regional scales. A presentation-only lasso mask closes 36 m
 hairline fractures and rounds isolated pixel tendrils without changing the authoritative biome mask used
@@ -232,5 +264,36 @@ points without allocating enormous full-world images.
   interfaces, but Docker publishes it only on AM4 loopback (`127.0.0.1:7081`).
 - SQL is assembled only from built-in lens definitions; browser input cannot supply SQL.
 - Cache access is read-only.
+- The public 3D endpoint has a dedicated one-at-a-time concurrency gate and six-requests-per-minute
+  client limit. It serves only exact selections: 5,000 direct, 25,000 after an explicit override, and
+  no server or client sampling.
+- The scene is a geometry-envelope explorer, not a claim of native mesh, terrain, collision, or material
+  fidelity. Estimated envelopes and unknown markers are labeled in the UI and package manifest.
 - `.db`, `.duckdb`, generated images, and local configuration are ignored by Git.
 - The production repository and production deployment are not modified by this lab.
+
+## Verification
+
+```powershell
+.\mvnw.cmd test
+python -m unittest discover -s tools\tests -p 'test_*.py'
+node --check src\main\resources\static\lab.js
+node --check src\main\resources\static\scene.js
+node tools\browser-smoke.mjs http://127.0.0.1:8092/ data\map-smoke.png --public-inspect --terrain --biomes --terrain-close
+node tools\scene-browser-smoke.mjs http://127.0.0.1:8092/ data\scene-smoke
+```
+
+The scene browser gate uses hardware WebGPU and checks the exact pilot and stress populations, package
+receipts, shaded/wireframe controls, camera movement, browser/validation errors, device loss, startup
+under 2 seconds, and p95 frame time at or below 20 ms. It intentionally has no WebGL fallback: visitors
+without WebGPU receive an explicit unsupported screen and can return to the map.
+
+## Why this remains a lab
+
+The 3D release is the latest result of the lab's `/rnd` mode: isolate one uncertain edge, write down a
+falsifiable prediction, test the smallest real-data fixture that can disprove it, retain raw receipts,
+and only then turn the stable behavior into tests and a public contract. That method took the project
+from CAD import experiments and geometry lexicons through clustered architecture reconstruction to an
+exact browser scene without pretending early prototypes were product promises. The full lineage,
+measurements, reversals, and remaining unknowns are in the
+[R&D retrospective](docs/RND_SELECTION_3D_2026-09-03.md).

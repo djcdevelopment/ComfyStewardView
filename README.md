@@ -9,7 +9,7 @@ This repository contains two separately built and deployed Java applications:
 | Application | Path | Purpose | Live route |
 |---|---|---|---|
 | Steward viewer | [`viewer/`](viewer/) | Production parser, historical read model, GM dashboard, batch analytics, and Quest evidence integration. | [`/steward/`](https://am4.tail8e749c.ts.net/steward/) |
-| Steward Spatial Lab | [`lab/`](lab/) | Interaction laboratory and deliberately constrained public Comfy Era 17 terrain, Heatmap, Biomes, and inspection experience. | [`/world/`](https://am4.tail8e749c.ts.net/world/) |
+| Steward Spatial Lab | [`lab/`](lab/) | Interaction laboratory and deliberately constrained public Comfy Era 17 terrain, Heatmap, Biomes, inspection, and exact selection-to-3D experience. | [`/world/`](https://am4.tail8e749c.ts.net/world/) |
 
 The root `Dockerfile`, `docker-compose.am4.yml`, `entrypoint.sh`, and Steward deployment tools belong
 to the production viewer. The lab owns its Maven build, container definition, deployment script, test
@@ -25,9 +25,12 @@ For the architecture, the findings behind it, and the measurements, read the whi
 Production processing and serving run on different hosts. OMEN parses saves and builds the DuckDB cache and map layers (~53 s and ~1.2 GB per 9M-ZDO world, and it keeps the growing snapshot history); AM4 only serves the published artifacts. [tools/Publish-Steward.ps1](tools/Publish-Steward.ps1) is the production data lane — dry-run by default, `-Push` to publish. [tools/Deploy-Steward.ps1](tools/Deploy-Steward.ps1) remains the production code lane. Deploy when the viewer JAR changes, publish when the world changes.
 
 The lab consumes a snapshot-matched, read-only derivative of those published artifacts and deploys
-independently through [`lab/tools/Deploy-World.ps1`](lab/tools/Deploy-World.ps1). Start with the
+independently through [`lab/tools/Deploy-World.ps1`](lab/tools/Deploy-World.ps1). Its public-cache v3
+adds only sanitized position, rotation, and prefab-envelope geometry needed for an exact WebGPU scene;
+the production `viewer` schema is unchanged. Start with the
 [`lab/README.md`](lab/README.md), then read its [interaction contract](lab/docs/LAB_CONTRACT.md),
 [launch retrospective](lab/docs/RETROSPECTIVE_2026-09-03_PUBLIC_WORLD.md), and
+[selection-to-3D R&D retrospective](lab/docs/RND_SELECTION_3D_2026-09-03.md), followed by the
 [architecture decisions](lab/docs/adr/README.md).
 
 The v4 shell and spatial comparison release has been deployed through both lanes and verified at [the AM4 Steward endpoint](https://am4.tail8e749c.ts.net/steward/). This is a release verification record, not a guarantee that the live data will remain on any particular snapshot pair.
@@ -194,6 +197,7 @@ Useful entry points:
 - Optional DuckDB analytics cache with `world_snapshot`, `zdo`, `zdo_field`, `container_item`, and `render_cell`.
 - Unified World / Changes / History / Explore shell with grouped World navigation, explicit time-scope badges, legacy deep-link redirects, and a segmented Coin trail view.
 - Snapshot-aware Map, Explore, and selection workflows; boot-snapshot views are labeled rather than silently following the snapshot selector.
+- The isolated `/world/` lab can open a bounded public inspection as an exact, selection-local WebGPU scene with shaded/wireframe rendering and orbit or free-flight camera controls.
 - Snapshot-backed Quest sphere export and a hash-verified Runtime evidence overlay backed by a dedicated DuckDB store.
 - Snapshot Map rasters for Build density, Dropped, All ZDOs, and Coins at every cell size advertised by the manifest, with client-side ramp and opacity controls.
 - Changes Map rasters for Build activity and All ZDO change, composited from aligned added/removed gray8 channels with a dual logarithmic legend. Changes and Map share the same ordered comparison pair.
@@ -219,7 +223,7 @@ This is the consolidated backlog pulled from the handoff docs and batch analytic
 - Creator-ID inference across beds, tombstones, portals, signs, wards, and build clusters.
 - Portal hub analysis with outgoing destination mapping.
 - Targeted custom-field watchlists backed by `--cache-fields`.
-- Local bounded 3D prefab viewer.
+- Replace public prefab envelopes with vetted native mesh, terrain, collision, and object-picking layers where their provenance and disclosure boundaries are understood.
 - Per-container inventory drill-down in the live UI.
 - Alert noise reduction for orphaned portals.
 - The remaining v4 operational-polish work: consistent stale/retry states across every leaf view, spawn-time aggregate/histogram, accessibility and reduced-motion checks, responsive regression coverage, and publish telemetry.
@@ -235,9 +239,9 @@ viewer/classification.json       item taxonomy loaded at startup
 viewer/lib/                      runtime jars, including DuckDB
 viewer/target/                   build outputs, jars, generated cache artifacts
 lab/                             separately deployable spatial lab and public world view
-lab/src/                         lab server and terrain-first browser client
-lab/tools/                       terrain, public-cache, deployment, and browser-test tooling
-lab/docs/                        lab contract, launch retrospective, and ADRs
+lab/src/                         lab server, terrain-first map, and WebGPU scene client
+lab/tools/                       terrain/public-cache builders, deployment, and map/scene browser gates
+lab/docs/                        lab contracts, R&D and launch retrospectives, and ADRs
 docs/comfy-integration/          integration handoff and analytics docs
 manual-zpackage-src/             patched ZPackage source used in earlier parser work
 manual-zpackage-build/           compiled patched ZPackage classes

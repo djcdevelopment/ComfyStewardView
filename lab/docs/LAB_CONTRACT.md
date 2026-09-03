@@ -5,7 +5,7 @@
 | Profile | Purpose | Enforced scope |
 |---|---|---|
 | Lab | Explore lenses, rendering, scale transitions, gestures, and failure behavior. | All built-in lenses, available snapshots, job controls, and test instrumentation. |
-| Public world | Let the community read Comfy Era 17 without exposing the experimental workbench or private cache. | Snapshot 107, Build density evidence, snapshot-matched terrain and biomes, bounded read-only queries, and feedback. |
+| Public world | Let the community read and step inside bounded parts of Comfy Era 17 without exposing the experimental workbench or private cache. | Snapshot 107, Build density evidence, snapshot-matched terrain and biomes, bounded read-only queries, exact selection-local 3D, and feedback. |
 
 Public scope is a server contract, not a hidden-client convention. Public bootstrap and manifests
 contain only the published snapshot and lens. Requests for other snapshots, lenses, or artifacts are
@@ -29,7 +29,10 @@ cache rather than the production cache.
 6. A green area enables inspection. Inspection returns complete aggregates, a deterministic map
    sample when necessary, and cursor-paged objects rather than implying that a database-order prefix
    is complete.
-7. Quick Start opens after the public map becomes ready once per browser-versioned dismissal key.
+7. Inspection can open an exact selection in a separate 3D tab. The map link preserves the inspected
+   snapshot, lens, bounds, biome scope, and explicit large-selection override; the server revalidates
+   and rebuilds that scope instead of trusting client-supplied objects.
+8. Quick Start opens after the public map becomes ready once per browser-versioned dismissal key.
    CTA, close button, Escape, and backdrop all record dismissal; `?` always reopens it. A Discord OAuth
    return suppresses automatic opening so feedback retains dialog priority.
 
@@ -49,7 +52,8 @@ cache rather than the production cache.
 5. If a viewport exceeds the 5,000-point display budget, no spatially biased prefix is shown. A green
    selection still reports its complete aggregate count. Exact selected positions are drawn at or
    below the budget; larger results use a deterministic representative sample where the public
-   experience calls for map context and otherwise ask for a tighter area.
+   experience calls for map context and otherwise ask for a tighter area. That representative sample
+   is a 2D map aid only and is never passed to the 3D scene.
 6. Pan mode uses a grab cursor and visibly closes the hand only while a held drag moves the map.
 7. A local surface replaces the 16 m analysis raster instead of blending two analytical grids. With
    snapshot-matched context, terrain remains readable at the requested opacity; press-and-hold peek
@@ -68,6 +72,44 @@ cache rather than the production cache.
     adjustable detail-opacity target, normally 82%. Terrain is shown at the manifest's restrained
     opacity under Heatmap and at full opacity in terrain or Biomes.
 
+## Exact selection-to-3D contract
+
+1. The selection summary is the authority for the link. At most 5,000 pieces open directly. A result
+   from 5,001 through 25,000 requires an explicit confirmation that writes `override=true` into the
+   new-tab URL. More than 25,000 pieces cannot be opened and asks the visitor to tighten the area.
+2. `/api/scene` accepts only the published snapshot and Build density lens, finite ordered bounds,
+   canonical public biome groups, and the override bit. The repository repeats those checks and always
+   executes an exact count/query; it never accepts client object IDs or a client-generated package.
+3. A package is deterministic for a fixed cache, release label, and scope: rows are ordered by family
+   then ZDO index, and the header contains `SV3D`, a version, JSON-manifest length, fixed 80-byte
+   instance stride, and an integrity hash for the instance region. One response supplies the whole scene.
+4. Every known piece is an oriented prefab envelope. Rotation follows Unity Euler order `Ry × Rx × Rz`;
+   the prefab center offset is rotated before translation. The browser mirrors X into a right-handed,
+   selection-local coordinate frame. Unknown prefabs render as red pivot markers rather than vanishing.
+5. Public scene data omits creator/owner identity, flags, raw ZDO fields, source paths, absolute Y, and
+   absolute world origin. The manifest exposes only relative floor and bounds plus aggregate provenance
+   hashes and known/estimated/unknown coverage counts.
+6. The browser is dependency-free WebGPU with no WebGL fallback. Shaded and wireframe views use shared
+   cube geometry and instancing; family toggles change visibility without refetching. Orbit, pan, wheel,
+   frame, reset, and pointer-locked WASD/QE/Shift free flight are all local presentation controls.
+7. Scene generation has its own six-per-minute client rate limit and one-query concurrency gate. The
+   unsupported, capacity, validation, network, and device-loss states are explicit and recover to the map.
+
+Binary layout is deliberately small and versioned:
+
+| Offset | Size | Value |
+|---:|---:|---|
+| 0 | 4 | ASCII `SV3D` |
+| 4 | 4 | Little-endian package version (`1`) |
+| 8 | 4 | UTF-8 JSON manifest length |
+| 12 | 4 | Four-byte-aligned instance-region offset |
+| 16 | variable | Manifest, followed by zero alignment padding |
+| instance + 0 | 64 | Column-major `mat4x4<f32>` selection-local model transform |
+| instance + 64 | 16 | RGBA family color (`vec4<f32>`) |
+
+The manifest's contiguous family ranges give each otherwise anonymous 80-byte instance its family and
+draw range. The instance-region SHA-256 covers exactly `pieces × 80` bytes.
+
 ## Independent dimensions
 
 | Dimension | User question | Lab control | Public control |
@@ -79,6 +121,7 @@ cache rather than the production cache.
 | Context | Where is it? | Inferred land mask, supplied image, or terrain package | Snapshot-matched overview/detail terrain package |
 | Territory | Which world regions matter? | Context-dependent | Zero or more biome groups, OR-ed together |
 | Selection | Why is this place notable? | Cell click or box inspect | Green area intersected with the active biome scope |
+| Representation | How should this bounded evidence be read? | 2D raster/points and experimental renderings | 2D map or exact shaded/wireframe envelope scene |
 
 ## Test controls
 
@@ -99,10 +142,13 @@ cache rather than the production cache.
 `Shift` + drag is the lab's universal transient box-zoom gesture. Its white-edged gold dashed marquee
 must be visible before mouse-up. The persistent Box zoom tool uses the same visual language.
 
-The public browser regression additionally covers the clean initial state, every Quick Start dismissal
+The public map regression additionally covers the clean initial state, every Quick Start dismissal
 path, Discord-return priority, mode activation/deactivation and direct switching, retained biome
 choices, Biomes + None, off-globe clicks, semantic raster scales, bounded inspection, representative
-samples, and item pagination.
+samples, item pagination, and the state of the exact-3D action. A separate hardware-WebGPU regression
+covers the 862-piece pilot and 22,387-piece forced stress selection, package integrity, real/estimated/
+unknown counts, shaded/wireframe switching, family controls, both camera modes, browser and WebGPU
+validation errors, device loss, startup at or below 2,000 ms, and p95 frame time at or below 20 ms.
 
 ## Artifact packages
 
@@ -121,10 +167,22 @@ the exact `[-12288, 12288]` world-edge bounds. The display mask may close cartog
 must never determine query membership. Public bootstrap exposes safe presentation metadata, never
 private source paths or provenance details.
 
+`data/era17-public.duckdb` schema v3 is a replaceable, snapshot-only derivative. Its public `zdo`
+table carries BUILDING position, rotation, prefab identity, and biome membership; `prefab_geometry`
+carries the 974-entry envelope lexicon and its source class. `release_metadata` binds the cache to the
+source snapshot, context, building-geometry Parquet, piece-geometry JSON, row counts, and coverage
+counts. Export fails unless the Parquet BUILDING rows join exactly to the source snapshot by ZDO index,
+name/hash, and X/Z. This extension does not change the production `viewer` schema.
+
+`/api/scene` emits `application/vnd.comfysteward.scene` packages for exact, bounded public selections.
+The URL is a shareable query recipe, not a stored scene: each open rebuilds the package from the active
+immutable public cache and therefore remains subject to current server validation and limits.
+
 A standalone authoritative context image remains available for local experiments. Without either
 context source, the all-ZDO surface is labeled as an inferred land mask, never a terrain heightmap.
 
 ## Related decisions
 
 See the [architecture decision record index](adr/README.md) for the public boundary, terrain package,
-terrain-first interaction, isolated deployment, and optional Discord identity decisions.
+terrain-first interaction, isolated deployment, optional Discord identity, and exact WebGPU scene
+decisions.

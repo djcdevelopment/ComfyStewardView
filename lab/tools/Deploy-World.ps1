@@ -22,6 +22,9 @@ param(
     [string]$ArtifactRoot = '',
     [string]$PublicCachePath = '',
     [string]$ContextRoot = '',
+    [string]$SourceCachePath = 'E:\omen\steward-era17\out\world-cache.duckdb',
+    [string]$BuildingGeometryPath = 'E:\omen\steward-era17-arch\building-geometry.parquet',
+    [string]$PieceGeometryPath = 'C:\work\baseline\tools\selfie-stick\out\era17\arch\piece-geometry.json',
     [string]$LocalEnvPath = '',
     [int]$TimeoutMinutes = 5
 )
@@ -34,6 +37,9 @@ if (-not $PublicCachePath) { $PublicCachePath = Join-Path $repoRoot 'data/era17-
 $PublicCachePath = [IO.Path]::GetFullPath($PublicCachePath)
 if (-not $ContextRoot) { $ContextRoot = Join-Path $repoRoot 'data/era17-context' }
 $ContextRoot = [IO.Path]::GetFullPath($ContextRoot)
+$SourceCachePath = [IO.Path]::GetFullPath($SourceCachePath)
+$BuildingGeometryPath = [IO.Path]::GetFullPath($BuildingGeometryPath)
+$PieceGeometryPath = [IO.Path]::GetFullPath($PieceGeometryPath)
 if (-not $LocalEnvPath) { $LocalEnvPath = Join-Path $repoRoot '.env' }
 $LocalEnvPath = [IO.Path]::GetFullPath($LocalEnvPath)
 $startedAt = (Get-Date).ToUniversalTime().ToString('o')
@@ -83,6 +89,19 @@ if (-not [Uri]::TryCreate($PublicBaseUrl, [UriKind]::Absolute, [ref]$baseUri) -o
     throw 'PublicBaseUrl must be an absolute HTTPS URL.'
 }
 $publicUrl = "$($PublicBaseUrl.TrimEnd('/'))$PublicPath/"
+foreach ($inputPath in @($SourceCachePath,$BuildingGeometryPath,$PieceGeometryPath)) {
+    if (-not (Test-Path -LiteralPath $inputPath -PathType Leaf)) {
+        throw "Required Era 17 source input not found: $inputPath"
+    }
+}
+$buildingGeometrySha = (Get-FileHash -LiteralPath $BuildingGeometryPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$pieceGeometrySha = (Get-FileHash -LiteralPath $PieceGeometryPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$expectedBuildingGeometrySha = '45d8642551ca904fbba0ddfe51f15294977ad3087fc530d5a41c86d99558691b'
+$expectedPieceGeometrySha = '74ecc5e164766defa5553251aaa8bb8115d2e8f7d1d7cebb5826917b350bd86c'
+if ($buildingGeometrySha -ne $expectedBuildingGeometrySha -or
+    $pieceGeometrySha -ne $expectedPieceGeometrySha) {
+    throw 'The geometry inputs do not match the reviewed Comfy Era 17 release receipts.'
+}
 
 Write-Host '[1/7] Validating the focused Era 17 release...'
 $manifestPath = Join-Path $ArtifactRoot "$SnapshotId/manifest.json"
@@ -167,16 +186,20 @@ $cacheNeedsBuild = -not (Test-Path -LiteralPath $PublicCachePath -PathType Leaf)
 if (-not $cacheNeedsBuild) {
     try {
         $candidateMetadata = Get-Content -LiteralPath $cacheMetadataPath -Raw | ConvertFrom-Json
-        $cacheNeedsBuild = [int]$candidateMetadata.schemaVersion -ne 2 -or
+        $cacheNeedsBuild = [int]$candidateMetadata.schemaVersion -ne 3 -or
             [long]$candidateMetadata.snapshotId -ne $SnapshotId -or
             $candidateMetadata.snapshotHash -ne $manifest.snapshot.fileHash -or
-            $candidateMetadata.biomeMaskSha256 -ne (@($contextManifest.variants) | Where-Object id -eq 'biome-mask' | Select-Object -First 1).sha256
+            $candidateMetadata.biomeMaskSha256 -ne (@($contextManifest.variants) | Where-Object id -eq 'biome-mask' | Select-Object -First 1).sha256 -or
+            $candidateMetadata.buildingGeometrySha256 -ne $buildingGeometrySha -or
+            $candidateMetadata.pieceGeometrySha256 -ne $pieceGeometrySha
     } catch { $cacheNeedsBuild = $true }
 }
 if ($cacheNeedsBuild) {
     Write-Host 'Building the isolated public query cache on OMEN...'
     & (Join-Path $PSScriptRoot 'Build-PublicCache.ps1') -OutputCache $PublicCachePath `
-        -SnapshotId $SnapshotId -ContextManifest $contextManifestPath
+        -SnapshotId $SnapshotId -ContextManifest $contextManifestPath `
+        -SourceCache $SourceCachePath -BuildingGeometry $BuildingGeometryPath `
+        -PieceGeometry $PieceGeometryPath
     if ($LASTEXITCODE -ne 0) { throw 'Could not build the public query cache.' }
 }
 if (-not (Test-Path -LiteralPath $PublicCachePath -PathType Leaf) -or
@@ -184,10 +207,15 @@ if (-not (Test-Path -LiteralPath $PublicCachePath -PathType Leaf) -or
     throw 'The public query cache or its metadata is missing.'
 }
 $cacheMetadata = Get-Content -LiteralPath $cacheMetadataPath -Raw | ConvertFrom-Json
-if ([int]$cacheMetadata.schemaVersion -ne 2 -or
+if ([int]$cacheMetadata.schemaVersion -ne 3 -or
     [long]$cacheMetadata.snapshotId -ne $SnapshotId -or
     $cacheMetadata.snapshotHash -ne $manifest.snapshot.fileHash -or
     $cacheMetadata.biomeMaskSha256 -ne (@($contextManifest.variants) | Where-Object id -eq 'biome-mask' | Select-Object -First 1).sha256 -or
+    $cacheMetadata.buildingGeometrySha256 -ne $buildingGeometrySha -or
+    $cacheMetadata.pieceGeometrySha256 -ne $pieceGeometrySha -or
+    [long]$cacheMetadata.geometryCatalogRows -ne 974 -or
+    [long]$cacheMetadata.knownGeometryRows -ne ([long]$cacheMetadata.realGeometryRows + [long]$cacheMetadata.estimatedGeometryRows) -or
+    [long]$cacheMetadata.unknownGeometryRows -ne ([long]$cacheMetadata.buildingCount - [long]$cacheMetadata.knownGeometryRows) -or
     [long]$cacheMetadata.zdoCount -ne [long]$manifest.snapshot.zdoCount -or
     [long]$cacheMetadata.buildingCount -lt [long]$referenceLayer.totalValue -or
     [long]$cacheMetadata.buildingCount -gt [long]$cacheMetadata.zdoCount) {
@@ -322,7 +350,9 @@ try {
         throw 'Public health/context contract failed.'
     }
     if ($bootstrap.publicMode -ne $true -or $bootstrap.feedbackEnabled -ne $true -or
-        $bootstrap.discordIdentityEnabled -ne $true) { throw 'Public feedback/OAuth bootstrap contract failed.' }
+        $bootstrap.discordIdentityEnabled -ne $true -or $bootstrap.sceneAvailable -ne $true) {
+        throw 'Public feedback/OAuth/scene bootstrap contract failed.'
+    }
     if (@($bootstrap.snapshots).Count -ne 1 -or [long]$bootstrap.snapshots[0].snapshotId -ne $SnapshotId) {
         throw 'Public bootstrap exposed the wrong snapshots.'
     }
@@ -364,6 +394,23 @@ try {
     $biomeItems = Read-RemoteJson "http://127.0.0.1:$Port/api/items?snapshot=$SnapshotId&lens=build-density&minX=-26500&maxX=26500&minZ=-20500&maxZ=27500&limit=3&biomes=meadows"
     if (@($biomeItems.items).Count -ne 3 -or $biomeItems.hasMore -ne $true -or
         [string]::IsNullOrWhiteSpace($biomeItems.nextCursor)) { throw 'Biome item pagination query failed.' }
+    $pilotSceneQuery = "snapshot=$SnapshotId&lens=build-density&minX=467.8&maxX=511.6&minZ=5501.4&maxZ=5535.9"
+    $pilotSceneHeaders = Invoke-Ssh "curl -sS -m 30 -D - -o /dev/null 'http://127.0.0.1:$Port/api/scene?$pilotSceneQuery'"
+    if ($pilotSceneHeaders -notmatch 'HTTP/\S+ 200' -or
+        $pilotSceneHeaders -notmatch '(?im)^content-type:\s*application/vnd\.comfysteward\.scene' -or
+        $pilotSceneHeaders -notmatch '(?im)^x-steward-scene-pieces:\s*862\s*$') {
+        throw 'The exact 862-piece pilot scene contract failed.'
+    }
+    $stressSceneQuery = "snapshot=$SnapshotId&lens=build-density&minX=2021.7&maxX=2101.9&minZ=-4851.3&maxZ=-4751.8"
+    $stressDirectCode = (Invoke-Ssh "curl -sS -m 30 -o /dev/null -w '%{http_code}' 'http://127.0.0.1:$Port/api/scene?$stressSceneQuery'").Trim()
+    if ($stressDirectCode -ne '409') { throw "The scene override gate returned $stressDirectCode instead of 409." }
+    $stressSceneHeaders = Invoke-Ssh "curl -sS -m 30 -D - -o /dev/null 'http://127.0.0.1:$Port/api/scene?$stressSceneQuery&override=true'"
+    if ($stressSceneHeaders -notmatch 'HTTP/\S+ 200' -or
+        $stressSceneHeaders -notmatch '(?im)^x-steward-scene-pieces:\s*22387\s*$') {
+        throw 'The exact 22,387-piece forced scene contract failed.'
+    }
+    $overLimitCode = (Invoke-Ssh "curl -sS -m 30 -o /dev/null -w '%{http_code}' 'http://127.0.0.1:$Port/api/scene?snapshot=$SnapshotId&lens=build-density&minX=-12288&maxX=12288&minZ=-12288&maxZ=12288&override=true'").Trim()
+    if ($overLimitCode -ne '413') { throw "The 25,000-piece scene ceiling returned $overLimitCode instead of 413." }
     $jobsCode = (Invoke-Ssh "curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:$Port/api/jobs").Trim()
     $scopeCode = (Invoke-Ssh "curl -sS -o /dev/null -w '%{http_code}' 'http://127.0.0.1:$Port/api/manifest?snapshot=$($SnapshotId - 1)'").Trim()
     $hiddenArtifactCode = (Invoke-Ssh "curl -sS -o /dev/null -w '%{http_code}' 'http://127.0.0.1:$Port/api/artifacts/$SnapshotId/dropped-items-320.png'").Trim()
@@ -422,6 +469,15 @@ $receipt = [ordered]@{
     snapshot_hash = $manifest.snapshot.fileHash
     public_cache_sha256 = $cacheSha
     public_cache_bytes = [long]$cacheMetadata.bytes
+    building_geometry_sha256 = $cacheMetadata.buildingGeometrySha256
+    piece_geometry_sha256 = $cacheMetadata.pieceGeometrySha256
+    geometry_catalog_rows = [long]$cacheMetadata.geometryCatalogRows
+    known_geometry_rows = [long]$cacheMetadata.knownGeometryRows
+    real_geometry_rows = [long]$cacheMetadata.realGeometryRows
+    estimated_geometry_rows = [long]$cacheMetadata.estimatedGeometryRows
+    unknown_geometry_rows = [long]$cacheMetadata.unknownGeometryRows
+    scene_pilot_pieces = 862
+    scene_stress_pieces = 22387
     terrain_context_style = $contextManifest.style
     terrain_context_overview_sha256 = (@($contextManifest.variants) | Where-Object id -eq 'overview').sha256
     terrain_context_detail_sha256 = (@($contextManifest.variants) | Where-Object id -eq 'detail').sha256

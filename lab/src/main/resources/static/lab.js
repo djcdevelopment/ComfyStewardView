@@ -23,7 +23,7 @@
   const BIOME_HIGHLIGHT_FILL_ALPHA = 72;
   const WORLD_GLOBE_RADIUS_METERS = 10_500;
   const EXACT_POINT_LIMIT = 5_000;
-  const QUICK_START_DISMISSAL_KEY = 'steward-world-quick-start-terrain-v1';
+  const QUICK_START_DISMISSAL_KEY = 'steward-world-quick-start-scene-v1';
   const palettes = {
     ember: [[0,[10,20,36]],[.36,[40,76,124]],[.67,[172,178,142]],[.88,[249,125,91]],[1,[255,224,166]]],
     moss: [[0,[10,30,23]],[.36,[31,92,62]],[.72,[103,176,116]],[1,[238,245,203]]],
@@ -88,6 +88,7 @@
     currentToneExponent: ANALYSIS_TONE_EXPONENT,
     currentSelectionBounds: null,
     currentScopeBounds: null,
+    inspectionScope: null,
     currentSelectionPositionCount: null,
     selectionItemsLoading: false,
     itemPageCursors: [null],
@@ -286,6 +287,57 @@
     const biomes = biomeQueryValue();
     if (biomes) query.set('biomes', biomes);
     return query.toString();
+  }
+
+  function inspectionScopedQuery(extras = {}) {
+    const scope = state.inspectionScope;
+    if (!scope) return '';
+    const query = new URLSearchParams({
+      minX:scope.bounds.minX, maxX:scope.bounds.maxX,
+      minZ:scope.bounds.minZ, maxZ:scope.bounds.maxZ, ...extras
+    });
+    if (scope.biomes.length) query.set('biomes', scope.biomes.join(','));
+    return query.toString();
+  }
+
+  function syncSceneAction() {
+    const card = $('inspect-scene'), link = $('inspect-3d'), copy = $('inspect-scene-copy');
+    const available = PUBLIC_MODE && state.bootstrap?.sceneAvailable === true;
+    card.hidden = !available;
+    if (!available) return;
+    const count = state.currentSelectionPositionCount;
+    link.removeAttribute('href');
+    link.removeAttribute('data-confirm-count');
+    link.setAttribute('aria-disabled', 'true');
+    if (count == null || !state.inspectionScope) {
+      copy.textContent = 'Waiting for the exact selection count.';
+      return;
+    }
+    if (count <= 0) {
+      copy.textContent = 'There are no building pieces in this selection.';
+      return;
+    }
+    if (count > 25_000) {
+      copy.textContent = `${fmt(count)} pieces exceed the 25,000-piece safety limit. Tighten the green area.`;
+      return;
+    }
+    const scope = state.inspectionScope;
+    const url = new URL('scene.html', APP_BASE);
+    url.search = new URLSearchParams({
+      snapshot:String(scope.snapshotId), lens:scope.lensId,
+      minX:String(scope.bounds.minX), maxX:String(scope.bounds.maxX),
+      minZ:String(scope.bounds.minZ), maxZ:String(scope.bounds.maxZ)
+    }).toString();
+    if (scope.biomes.length) url.searchParams.set('biomes', scope.biomes.join(','));
+    if (count > EXACT_POINT_LIMIT) {
+      url.searchParams.set('override', 'true');
+      link.dataset.confirmCount = String(count);
+      copy.textContent = `${fmt(count)} exact pieces. Opening requires one confirmation; nothing is sampled.`;
+    } else {
+      copy.textContent = `${fmt(count)} exact piece${count === 1 ? '' : 's'}, with saved positions and rotations.`;
+    }
+    link.href = url.href;
+    link.setAttribute('aria-disabled', 'false');
   }
 
   function setBiomeFilter(id) {
@@ -1388,6 +1440,7 @@
     if (state.exactScope === 'selection' || state.exactScope === 'biome-selection' || state.exactScope === 'biome-viewport') removeExactMarkers();
     state.currentSelectionBounds = drawArea ? bounds : null;
     state.currentScopeBounds = bounds;
+    state.inspectionScope = null;
     state.currentSelectionPositionCount = null;
     state.selectionItemsLoading = false;
     state.itemPageCursors = [null];
@@ -1395,6 +1448,7 @@
     state.itemNextCursor = null;
     ++state.itemToken;
     syncSelectionAction();
+    syncSceneAction();
     if (state.selectionRect) state.map.removeLayer(state.selectionRect);
     state.selectionRect = drawArea
       ? L.rectangle(bounds, { pane:'selectionPane', renderer:state.selectionRenderer, className:'selection-rectangle', color:'#70d29a', weight:2, fillOpacity:.1 }).addTo(state.map)
@@ -1439,7 +1493,17 @@
       $('inspect-density').textContent = fmt(result.densityPerSquareKm);
       $('inspect-tab-state').textContent = `${fmt(result.total)} ${result.units}`.toUpperCase();
       state.currentSelectionPositionCount = Number(result.positionCount ?? result.total);
+      state.inspectionScope = {
+        snapshotId:Number(result.snapshotId),
+        lensId:String(result.lensId),
+        bounds:{
+          minX:Number(result.bounds.minX), maxX:Number(result.bounds.maxX),
+          minZ:Number(result.bounds.minZ), maxZ:Number(result.bounds.maxZ)
+        },
+        biomes:Array.isArray(result.biomes) ? [...result.biomes] : []
+      };
       syncSelectionAction();
+      syncSceneAction();
       const pointWarning = $('inspect-point-warning');
       pointWarning.hidden = state.currentSelectionPositionCount <= EXACT_POINT_LIMIT;
       const positionSubject = state.currentSelectionPositionCount === Number(result.total)
@@ -1495,7 +1559,9 @@
     try {
       const extras = { limit:String(pageSize) };
       if (cursor) extras.cursor = cursor;
-      const result = await fetchJson(`${API}/items?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&${scopedQuery(bounds, extras)}`);
+      const scope = state.inspectionScope;
+      if (!scope) return;
+      const result = await fetchJson(`${API}/items?snapshot=${scope.snapshotId}&lens=${encodeURIComponent(scope.lensId)}&${inspectionScopedQuery(extras)}`);
       if (token !== state.itemToken) return;
       const items = result.items || [];
       state.itemNextCursor = result.nextCursor || null;
@@ -1550,7 +1616,9 @@
     button.textContent = 'Loading every type…';
     const started = performance.now();
     try {
-      const result = await fetchJson(`${API}/selection?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&topN=0&${scopedQuery(bounds)}`);
+      const scope = state.inspectionScope;
+      if (!scope) return;
+      const result = await fetchJson(`${API}/selection?snapshot=${scope.snapshotId}&lens=${encodeURIComponent(scope.lensId)}&topN=0&${inspectionScopedQuery()}`);
       if (token !== state.inspectToken) return;
       $('inspect-query-time').textContent = `${(performance.now()-started).toFixed(0)} ms`;
       renderInspectionRanks(result,true);
@@ -1606,7 +1674,9 @@
     syncSelectionAction();
     const started = performance.now();
     try {
-      const result = await fetchJson(`${API}/points?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&limit=${EXACT_POINT_LIMIT}&${boundsQuery(bounds)}`);
+      const scope = state.inspectionScope;
+      if (!scope) return;
+      const result = await fetchJson(`${API}/points?snapshot=${scope.snapshotId}&lens=${encodeURIComponent(scope.lensId)}&limit=${EXACT_POINT_LIMIT}&${inspectionScopedQuery()}`);
       if (token !== state.exactToken) return;
       state.metrics.exact = performance.now()-started;
       const lens = state.lensById.get(state.lensId);
@@ -2370,6 +2440,18 @@
       const item = event.target.closest('[data-item-x]');
       if (item) focusItem(Number(item.dataset.itemX), Number(item.dataset.itemZ));
     });
+    $('inspect-3d').addEventListener('click', event => {
+      const link = event.currentTarget;
+      if (link.getAttribute('aria-disabled') === 'true' || !link.href) {
+        event.preventDefault();
+        return;
+      }
+      const count = Number(link.dataset.confirmCount || 0);
+      if (count && !window.confirm(
+          `Open all ${fmt(count)} selected pieces in 3D? This exact scene is larger and may take a moment to prepare.`)) {
+        event.preventDefault();
+      }
+    });
     ['threshold-160','threshold-80','threshold-64','threshold-16','threshold-exact','threshold-detail4'].forEach(id => $(id).addEventListener('change', () => { applyRaster(); scheduleExactPoints(); }));
     $('opacity-detail-zoom').addEventListener('change', syncCompositeOpacity);
     $('quick-start-open').addEventListener('click', () => openDialog($('quick-start-dialog')));
@@ -2429,6 +2511,7 @@
     if (hadSelectionItems) removeExactMarkers();
     state.currentSelectionBounds = null;
     state.currentScopeBounds = null;
+    state.inspectionScope = null;
     state.currentSelectionPositionCount = null;
     state.selectionItemsLoading = false;
     if (state.selectionRect && state.map) state.map.removeLayer(state.selectionRect);
@@ -2445,6 +2528,7 @@
     $('inspect-ranked-label').textContent = 'WHAT MAKES IT BRIGHT \u00b7 TOP TYPES';
     $('inspect-tab-state').textContent = 'NO AREA';
     syncSelectionAction();
+    syncSceneAction();
     showRightPanel('jobs');
     if (state.viewMode === 'biomes') {
       state.biomeAutoPointsSuppressed = false;

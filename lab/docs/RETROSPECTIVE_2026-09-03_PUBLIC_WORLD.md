@@ -110,3 +110,19 @@ release gate instead of being an opportunistic check.
 The map works best when terrain is treated as the stable object and analysis as a reversible question.
 The architecture should preserve the same distinction: immutable evidence underneath, optional
 interpretation above it, and explicit boundaries around what the public service is allowed to answer.
+
+## Follow-on: exact selection-to-3D
+
+Later on launch day, the inspection boundary became the entry point for a second representation of the
+same evidence. A selected green area can open an exact, selection-local WebGPU scene in a new tab. This
+did not add a general ZDO endpoint or modify the production viewer: public-cache schema v3 carries only
+sanitized BUILDING transforms and prefab envelopes, while the server repeats snapshot, lens, bounds,
+biome, capacity, and override validation.
+
+The follow-on preserves the launch lesson. Terrain remains the stable starting object; Heatmap and
+Biomes remain reversible map questions; 3D is available only after an explicit inspection gives it a
+bounded question to answer. The initial 5,000-piece lane opens directly, 5,001–25,000 requires consent,
+and anything larger returns to selection rather than sampling. See
+[ADR 0006](adr/0006-exact-selection-webgpu-scene.md) and the
+[selection-to-3D R&D retrospective](RND_SELECTION_3D_2026-09-03.md) for the implementation boundary,
+source receipts, transform decisions, and hardware measurements.

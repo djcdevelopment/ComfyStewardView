@@ -181,7 +181,7 @@ if (publicExperience) {
   const quickStartShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
   await writeFile(quickStartOutput, Buffer.from(quickStartShot.data, 'base64'));
 
-  const dismissalKey = 'steward-world-quick-start-terrain-v1';
+  const dismissalKey = 'steward-world-quick-start-scene-v1';
   const dismissWithClick = async selector => {
     const result = await cdp('Runtime.evaluate', { expression: `(() => {
       localStorage.removeItem(${JSON.stringify(dismissalKey)});
@@ -453,6 +453,10 @@ if (publicInspect) {
     selectionActionVisible:!document.querySelector('#story-selection-action')?.hidden,
     inspectTitle:document.querySelector('#inspect-title')?.textContent,
     inspectTotal:document.querySelector('#inspect-total')?.textContent,
+    sceneVisible:!document.querySelector('#inspect-scene')?.hidden,
+    sceneDisabled:document.querySelector('#inspect-3d')?.getAttribute('aria-disabled'),
+    sceneHref:document.querySelector('#inspect-3d')?.getAttribute('href'),
+    sceneCopy:document.querySelector('#inspect-scene-copy')?.textContent,
     rankRows:document.querySelectorAll('#inspect-top .rank-row').length,
     mapWidth:document.querySelector('#map').getBoundingClientRect().width
   }))()`, returnByValue:true });
@@ -1187,10 +1191,11 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       !publicShellState?.guideButtonVisible || !publicShellState?.feedbackButtonVisible ||
       !publicShellState?.feedbackEnabled || !publicShellState?.guide?.open ||
       publicShellState?.guide?.title !== 'Start with the world. Add the question you want to ask.' ||
-      publicShellState?.guide?.cta !== 'Explore the terrain' ||
+      publicShellState?.guide?.cta !== 'Explore the terrain.' ||
       publicShellState?.guide?.steps?.length !== 5 ||
-      publicShellState?.guide?.steps?.join('|') !== 'Read the terrain|Move|Reveal activity|Explore territories|Inspect' ||
+      publicShellState?.guide?.steps?.join('|') !== 'Read the terrain|Move|Reveal activity|Explore territories|Inspect, then step inside' ||
       !publicShellState?.guide?.copy?.[3]?.includes('None leaves the map unmarked') ||
+      !publicShellState?.guide?.copy?.[4]?.includes('free-camera 3D view') ||
       !publicShellState?.dismissals?.closeButton?.closed || !publicShellState?.dismissals?.closeButton?.stored ||
       !publicShellState?.dismissals?.cta?.closed || !publicShellState?.dismissals?.cta?.stored ||
       !publicShellState?.dismissals?.escape || !publicShellState?.dismissals?.backdrop?.closed ||
@@ -1231,6 +1236,9 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       publicInspectState?.jobBenchDisplay !== 'none' || !publicInspectState?.selectionPresent ||
       !publicInspectState?.selectionActionVisible || publicInspectState?.selectionAction !== 'Show items' ||
       publicInspectState?.inspectTitle !== 'What was built here?' || publicInspectState?.rankRows < 1 ||
+      !publicInspectState?.sceneVisible || /Waiting/.test(publicInspectState?.sceneCopy || '') ||
+      !['true','false'].includes(publicInspectState?.sceneDisabled) ||
+      (publicInspectState?.sceneDisabled === 'false' && !/scene\.html\?snapshot=107&lens=build-density/.test(publicInspectState?.sceneHref || '')) ||
       publicClosedState?.inspectionOpen || publicClosedState?.jobsPanelDisplay !== 'none' ||
       !publicClosedState?.selectionPresent || !publicClosedState?.selectionActionVisible ||
       publicClosedState?.mapWidth <= publicInspectState?.mapWidth)) ||
