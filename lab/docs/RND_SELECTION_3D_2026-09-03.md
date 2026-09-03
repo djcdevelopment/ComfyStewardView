@@ -114,7 +114,9 @@ case took 7,053.8 ms through the live Funnel route, including server assembly, c
 that observation set the separate 10,000 ms public forced-scene startup gate and the UI's explicit
 “several seconds” expectation.
 
-The whole-Meadows envelope spans roughly 10.0 × 5.1 × 9.1 km and has a 5.8 km full radius. Framing all
+The whole-Meadows envelope spans roughly 10.0 × 5.1 × 9.1 km and has a 5.8 km full radius. This is a
+worldwide biome query—every Meadows territory in the published bounds—not one contiguous territory;
+the map confirmation and scene now say so explicitly. Framing all
 of it made local builds nearly invisible. A deterministic 64 m three-dimensional density grid now picks
 a 4,330-piece cluster with a 130 m home radius. **Home** restores that useful view after orbit or flight;
 **Frame all** remains available when the visitor wants the complete spatial relationship.
@@ -137,6 +139,8 @@ The pilot instance SHA-256 was
 - The initial camera is a presentation frame, not a change to scene membership. Compact scenes frame the
   whole selection; kilometre-scale or vertically separated scenes open on their densest local cluster
   and retain a separate full-selection frame.
+- The default orbit camera combines mouse-drag look with WASD ground-plane travel and Q/E elevation.
+  Pointer-locked Fly remains the continuous mouse-look option. Both operate only on local presentation.
 - Image export reuses the current WebGPU canvas, including camera, shaded/wireframe surface, and visible
   family choices. No second server raster pipeline or sampled representation is introduced.
 - A shareable URL is a query recipe. The server rebuilds the package against the currently active,

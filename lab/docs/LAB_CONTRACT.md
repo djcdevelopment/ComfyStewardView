@@ -78,7 +78,9 @@ cache rather than the production cache.
 1. The selection summary is the authority for the link. At most 5,000 pieces open directly. A result
    from 5,001 through 250,000 requires an explicit inline confirmation in the inspector's right column
    that writes `override=true` into the new-tab URL. More than 250,000 pieces cannot be opened and asks
-   the visitor to tighten the area. Heatmap and Biomes use the same placement and gate.
+   the visitor to tighten the area. Heatmap and Biomes use the same placement and gate. A Biomes-wide
+   result spans every matching territory inside the published world bounds; the inspector, confirmation,
+   links, and scene label it as worldwide rather than presenting it as a local green-area selection.
 2. `/api/scene` accepts only the published snapshot and Build density lens, finite ordered bounds,
    canonical public biome groups, and the override bit. The repository repeats those checks and always
    executes an exact count/query; it never accepts client object IDs or a client-generated package.
@@ -95,8 +97,9 @@ cache rather than the production cache.
    absolute world origin. The manifest exposes only relative floor and bounds plus aggregate provenance
    hashes and known/estimated/unknown coverage counts.
 6. The browser is dependency-free WebGPU with no WebGL fallback. Shaded and wireframe views use shared
-   cube geometry and instancing; family toggles change visibility without refetching. Orbit, pan, wheel,
-   frame, reset, and pointer-locked WASD/QE/Shift free flight are all local presentation controls. PNG
+   cube geometry and instancing; family toggles change visibility without refetching. Mouse orbit with
+   WASD travel and Q/E elevation, pan, wheel, frame, reset, and pointer-locked WASD/QE/Shift free flight
+   are all local presentation controls. PNG
    export captures the current WebGPU canvas, camera, surface, and visible families in the browser.
    Compact scopes frame the full selection; scopes spanning more than 600 m on any axis start at a
    deterministic dense local Home cluster and retain an explicit Frame all action.
@@ -155,7 +158,7 @@ path, Discord-return priority, mode activation/deactivation and direct switching
 choices, Biomes + None, off-globe clicks, semantic raster scales, bounded inspection, representative
 samples, item pagination, and the inline exact-3D/PNG gate in both Heatmap and Biomes. A separate hardware-WebGPU regression
 covers the 862-piece pilot and 22,387-piece forced stress selection, package integrity, real/estimated/
-unknown counts, shaded/wireframe switching, family controls, both camera modes, browser and WebGPU
+unknown counts, shaded/wireframe switching, family controls, orbit-WASD movement, both camera modes, browser and WebGPU
 validation errors, device loss, PNG capture, startup at or below 2,000 ms, and p95 frame time at or below
 20 ms. Its opt-in large case covers the confirmed 193,008-piece whole-Meadows scope, proxy-outlier
 receipt, dense-cluster Home/full-selection framing, and separate 10,000 ms startup / 50 ms p95

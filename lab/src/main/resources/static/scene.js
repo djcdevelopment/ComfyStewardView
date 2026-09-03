@@ -32,6 +32,7 @@ const fmt = value => Number(value || 0).toLocaleString();
 const fmtBytes = value => value < 1024 * 1024
   ? `${(value / 1024).toFixed(1)} KiB` : `${(value / 1024 / 1024).toFixed(2)} MiB`;
 const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
+const MOVEMENT_KEYS = new Set(['w','a','s','d','q','e','shift']);
 const percentile = (values, p) => {
   const sorted = [...values].sort((a,b) => a-b);
   return sorted[Math.max(0, Math.ceil(sorted.length * p) - 1)];
@@ -437,6 +438,7 @@ async function main() {
       if (document.pointerLockElement === canvas) document.exitPointerLock();
     }
     cameraMode = value;
+    keys.clear();
     document.querySelectorAll('[data-camera]').forEach(button =>
       button.setAttribute('aria-pressed', String(button.dataset.camera === cameraMode)));
     updateCameraHelp(); render(); publish({ cameraMode });
@@ -445,6 +447,7 @@ async function main() {
   function frameCamera(target, frameRadius, frameName) {
     if (document.pointerLockElement === canvas) document.exitPointerLock();
     cameraMode = 'orbit'; orbitYaw = -35*Math.PI/180; orbitPitch = -28*Math.PI/180;
+    keys.clear();
     cameraScale = Math.max(frameRadius, 1); cameraFrame = frameName;
     orbitDistance = cameraScale * 2.45; orbitTarget = [...target];
     flySpeed = Math.max(5, cameraScale * .35);
@@ -457,11 +460,11 @@ async function main() {
   function updateCameraHelp() {
     const locked = document.pointerLockElement === canvas;
     document.getElementById('camera-help').textContent = cameraMode === 'orbit'
-      ? `Drag to orbit · Shift-drag to pan · wheel to zoom${clusteredHome ? ` · Home restores a dense ${fmt(manifest.home.pieces)}-piece cluster` : ''}`
+      ? `Drag to orbit · WASD move · Q/E down/up · wheel to zoom${clusteredHome ? ` · Home restores a dense ${fmt(manifest.home.pieces)}-piece cluster` : ''}`
       : locked ? 'Mouse look · WASD move · Q/E down/up · Shift boost · Escape releases mouse'
       : 'Click the view to capture the mouse · WASD + Q/E · Shift boost';
     document.getElementById('stage-hint').textContent = cameraMode === 'orbit'
-      ? 'Drag to orbit · wheel to zoom'
+      ? 'Drag to orbit · WASD move · wheel to zoom'
       : locked ? 'WASD + Q/E · Shift boost · Escape releases mouse' : 'Click to enter free-camera fly mode';
   }
 
@@ -539,10 +542,10 @@ async function main() {
   });
   document.addEventListener('pointerlockchange', () => { updateCameraHelp(); publish({ pointerLocked:document.pointerLockElement === canvas }); });
   document.addEventListener('keydown', event => {
-    if (cameraMode !== 'fly' || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
-    if ('wasdqeshift'.includes(event.key.toLowerCase()) || event.key === 'Shift') {
-      keys.add(event.key.toLowerCase()); event.preventDefault();
-    }
+    if (/INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+    const key = event.key.toLowerCase();
+    if (!MOVEMENT_KEYS.has(key)) return;
+    keys.add(key); event.preventDefault();
   });
   document.addEventListener('keyup', event => keys.delete(event.key.toLowerCase()));
   window.addEventListener('blur', () => keys.clear());
@@ -551,25 +554,33 @@ async function main() {
   let previousFrame = performance.now();
   function animate(now) {
     const delta = Math.min(.05,(now - previousFrame) / 1000); previousFrame = now;
-    if (cameraMode === 'fly' && keys.size) {
-      const forward = forwardVector(), right = norm(cross([0,1,0],forward));
+    if (keys.size) {
+      const forward = cameraMode === 'fly'
+        ? forwardVector()
+        : norm([-Math.sin(orbitYaw),0,-Math.cos(orbitYaw)]);
+      const right = norm(cross([0,1,0],forward));
       let move = [0,0,0];
       if (keys.has('w')) move = add(move,forward); if (keys.has('s')) move = sub(move,forward);
       if (keys.has('d')) move = add(move,right); if (keys.has('a')) move = sub(move,right);
       if (keys.has('e')) move[1] += 1; if (keys.has('q')) move[1] -= 1;
       if (Math.hypot(...move)) {
         const boost = keys.has('shift') ? 4 : 1;
-        flyPosition = add(flyPosition,scale(norm(move),flySpeed*boost*delta)); render();
+        const speed = cameraMode === 'fly' ? flySpeed : Math.max(2,cameraScale*.25);
+        const offset = scale(norm(move),speed*boost*delta);
+        if (cameraMode === 'fly') flyPosition = add(flyPosition,offset);
+        else orbitTarget = add(orbitTarget,offset);
+        render();
       }
     }
     requestAnimationFrame(animate);
   }
   requestAnimationFrame(animate);
 
-  document.getElementById('scene-title').textContent = 'Build density in 3D';
+  const worldwideBiome = params.get('scope') === 'world-biome' && manifest.scope.biomes.length > 0;
+  document.getElementById('scene-title').textContent = worldwideBiome ? 'Worldwide biome build in 3D' : 'Build density in 3D';
   const biomeCopy = manifest.scope.biomes.length ? ` · ${manifest.scope.biomes.map(titleCase).join(' + ')}` : '';
   document.getElementById('scene-subtitle').textContent =
-    `Snapshot #${manifest.snapshotId} · exact selection${biomeCopy} · selection-local coordinates`;
+    `Snapshot #${manifest.snapshotId} · ${worldwideBiome ? 'worldwide biome scope' : 'exact selection'}${biomeCopy} · selection-local coordinates`;
   document.getElementById('metric-pieces').textContent = fmt(manifest.pieces);
   document.getElementById('metric-dimensions').textContent = manifest.dimensionsM.map(value => `${fmt(value)} m`).join(' × ');
   document.getElementById('metric-bytes').textContent = fmtBytes(manifest.instanceBytes);
@@ -596,7 +607,7 @@ async function main() {
     drawCalls:visible.size + 1, surface, cameraMode, pointerLocked:false,
     cameraFrame, fullRadiusM:radius, home:manifest.home,
     viewMatrixSha256:viewHash, geometryCoverage:coverage,
-    families:manifest.families.map(family => family.name)
+    families:manifest.families.map(family => family.name), scopeKind:worldwideBiome ? 'world-biome' : 'area'
   });
 
   async function benchmark(frameCount = manifest.benchmarkFrames || 300) {
@@ -622,7 +633,14 @@ async function main() {
     statusNode.textContent = `${adapterClass.toUpperCase()} · ${metrics.frameP95Ms.toFixed(2)} MS P95 · ${fmt(manifest.pieces)} PIECES`;
     publish(metrics); return window.__stewardSceneReceipt;
   }
-  window.__stewardSceneControls = { render, benchmark, setSurface, setCameraMode, resetCamera, frameAll, captureImage, saveImage };
+  function cameraState() {
+    return {
+      mode:cameraMode, frame:cameraFrame, target:[...orbitTarget], eye:[...orbitEye()],
+      flyPosition:[...flyPosition], yaw:cameraMode === 'fly' ? flyYaw : orbitYaw,
+      pitch:cameraMode === 'fly' ? flyPitch : orbitPitch
+    };
+  }
+  window.__stewardSceneControls = { render, benchmark, setSurface, setCameraMode, resetCamera, frameAll, captureImage, saveImage, cameraState };
   if (params.get('benchmark') === '1') benchmark().catch(fail);
   else if (params.get('capture') === '1') saveImage().catch(error => {
     document.getElementById('image-help').textContent = error.message;

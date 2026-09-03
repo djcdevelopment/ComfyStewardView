@@ -197,7 +197,7 @@ Useful entry points:
 - Optional DuckDB analytics cache with `world_snapshot`, `zdo`, `zdo_field`, `container_item`, and `render_cell`.
 - Unified World / Changes / History / Explore shell with grouped World navigation, explicit time-scope badges, legacy deep-link redirects, and a segmented Coin trail view.
 - Snapshot-aware Map, Explore, and selection workflows; boot-snapshot views are labeled rather than silently following the snapshot selector.
-- The isolated `/world/` lab can open a bounded public inspection as an exact, selection-local WebGPU scene with shaded/wireframe rendering, dense-cluster Home/full-selection camera framing, orbit or free-flight controls, and browser-side PNG capture. Its shared right-column gate permits 5,000 pieces directly or 250,000 after confirmation without sampling.
+- The isolated `/world/` lab can open a bounded public inspection as an exact, selection-local WebGPU scene with shaded/wireframe rendering, dense-cluster Home/full-selection camera framing, mouse-orbit plus WASD travel or pointer-locked free flight, and browser-side PNG capture. Its shared right-column gate permits 5,000 pieces directly or 250,000 after confirmation without sampling; world-spanning biome actions are labeled explicitly as worldwide scope.
 - Snapshot-backed Quest sphere export and a hash-verified Runtime evidence overlay backed by a dedicated DuckDB store.
 - Snapshot Map rasters for Build density, Dropped, All ZDOs, and Coins at every cell size advertised by the manifest, with client-side ramp and opacity controls.
 - Changes Map rasters for Build activity and All ZDO change, composited from aligned added/removed gray8 channels with a dual logarithmic legend. Changes and Map share the same ordered comparison pair.

@@ -261,7 +261,7 @@
     const selected = selectedBiomeCatalog();
     $('biome-view-results').disabled = selected.length === 0;
     $('biome-view-results').title = selected.length
-      ? `Inspect every object in ${selectedBiomeSummary()}`
+      ? `Inspect every object in ${selectedBiomeSummary()} across the published world`
       : 'Select one or more biome territories to inspect';
   }
 
@@ -308,6 +308,10 @@
     const available = PUBLIC_MODE && state.bootstrap?.sceneAvailable === true;
     card.hidden = !available;
     if (!available) return;
+    const scope = state.inspectionScope;
+    const worldwideBiome = scope?.kind === 'world-biome';
+    link.innerHTML = `${worldwideBiome ? 'Explore worldwide biome in 3D' : 'Explore in 3D'} <span aria-hidden="true">↗</span>`;
+    imageLink.innerHTML = `${worldwideBiome ? 'Render worldwide biome' : 'Render image'} <span aria-hidden="true">↗</span>`;
     const count = state.currentSelectionPositionCount;
     for (const action of [link,imageLink]) {
       action.removeAttribute('href');
@@ -325,13 +329,14 @@
       return;
     }
     if (count > SCENE_OVERRIDE_LIMIT) {
-      copy.textContent = `${fmt(count)} pieces exceed the ${fmt(SCENE_OVERRIDE_LIMIT)}-piece safety limit. Tighten the green area.`;
+      copy.textContent = worldwideBiome
+        ? `${fmt(count)} pieces across the selected biome worldwide exceed the ${fmt(SCENE_OVERRIDE_LIMIT)}-piece safety limit. Draw a green area to narrow it.`
+        : `${fmt(count)} pieces exceed the ${fmt(SCENE_OVERRIDE_LIMIT)}-piece safety limit. Tighten the green area.`;
       confirm.hidden = false;
       confirm.disabled = true;
       confirm.textContent = `${fmt(SCENE_OVERRIDE_LIMIT)} piece maximum`;
       return;
     }
-    const scope = state.inspectionScope;
     const url = new URL('scene.html', APP_BASE);
     url.search = new URLSearchParams({
       snapshot:String(scope.snapshotId), lens:scope.lensId,
@@ -339,11 +344,16 @@
       minZ:String(scope.bounds.minZ), maxZ:String(scope.bounds.maxZ)
     }).toString();
     if (scope.biomes.length) url.searchParams.set('biomes', scope.biomes.join(','));
+    if (worldwideBiome) url.searchParams.set('scope', 'world-biome');
     const overrideRequired = count > EXACT_POINT_LIMIT;
     if (overrideRequired && !state.sceneOverrideConfirmed) {
       confirm.hidden = false;
-      confirm.textContent = `Allow ${fmt(count)} exact pieces`;
-      copy.textContent = `${fmt(count)} exact pieces. Confirm the larger GPU scene here; loading every piece can take several seconds.`;
+      confirm.textContent = worldwideBiome
+        ? `Allow ${fmt(count)} pieces worldwide`
+        : `Allow ${fmt(count)} exact pieces`;
+      copy.textContent = worldwideBiome
+        ? `${fmt(count)} exact pieces span every selected biome territory across the published world. Confirm this worldwide GPU scene; loading every piece can take several seconds.`
+        : `${fmt(count)} exact pieces. Confirm the larger GPU scene here; loading every piece can take several seconds.`;
       return;
     }
     if (overrideRequired) {
@@ -351,10 +361,14 @@
       confirm.hidden = false;
       confirm.disabled = true;
       confirm.setAttribute('aria-pressed', 'true');
-      confirm.textContent = `${fmt(count)} pieces confirmed`;
-      copy.textContent = `Override confirmed for ${fmt(count)} exact pieces. It may take several seconds to open; explore interactively or render a PNG.`;
+      confirm.textContent = worldwideBiome ? `${fmt(count)} worldwide pieces confirmed` : `${fmt(count)} pieces confirmed`;
+      copy.textContent = worldwideBiome
+        ? `Worldwide biome override confirmed for ${fmt(count)} exact pieces. Explore the full distribution or render it as a PNG.`
+        : `Override confirmed for ${fmt(count)} exact pieces. It may take several seconds to open; explore interactively or render a PNG.`;
     } else {
-      copy.textContent = `${fmt(count)} exact piece${count === 1 ? '' : 's'}, with saved positions and rotations. Explore it or render a PNG.`;
+      copy.textContent = worldwideBiome
+        ? `${fmt(count)} exact piece${count === 1 ? '' : 's'} span every selected biome territory across the published world.`
+        : `${fmt(count)} exact piece${count === 1 ? '' : 's'}, with saved positions and rotations. Explore it or render a PNG.`;
     }
     link.href = url.href;
     link.setAttribute('aria-disabled', 'false');
@@ -1492,9 +1506,9 @@
       toast('Inspection pinned · drag to pan');
     }
     const query = scopedQuery(bounds);
-    $('inspect-bounds').textContent = drawArea ? boundsLabel(bounds) : `Territories · ${selectedBiomeSummary()}`;
+    $('inspect-bounds').textContent = drawArea ? boundsLabel(bounds) : `WORLDWIDE TERRITORIES · ${selectedBiomeSummary()}`;
     $('inspect-title').textContent = PUBLIC_MODE
-      ? drawArea ? 'What was built here?' : `What was built in ${selectedBiomeSummary()}?`
+      ? drawArea ? 'What was built here?' : `What was built across all ${selectedBiomeSummary()} territories?`
       : `Explaining ${state.lensById.get(state.lensId)?.label || state.lensId}`;
     $('inspect-zoom').hidden = !drawArea;
     $('inspect-clear-area').hidden = !drawArea || state.viewMode !== 'biomes';
@@ -1521,6 +1535,7 @@
       state.inspectionScope = {
         snapshotId:Number(result.snapshotId),
         lensId:String(result.lensId),
+        kind:!drawArea && Array.isArray(result.biomes) && result.biomes.length ? 'world-biome' : 'area',
         bounds:{
           minX:Number(result.bounds.minX), maxX:Number(result.bounds.maxX),
           minZ:Number(result.bounds.minZ), maxZ:Number(result.bounds.maxZ)

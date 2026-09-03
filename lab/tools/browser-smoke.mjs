@@ -651,6 +651,7 @@ if (biomes) {
       meadowsActive:document.querySelector('[data-biome="meadows"]')?.classList.contains('active'),
       noneActive:document.querySelector('[data-biome="none"]')?.classList.contains('active'),
       inspectTitle:document.querySelector('#inspect-title')?.textContent,
+      boundsLabel:document.querySelector('#inspect-bounds')?.textContent,
       inspectTotal:document.querySelector('#inspect-total')?.textContent,
       itemRows:document.querySelectorAll('#inspect-items-list .inspect-item').length,
       itemRange:document.querySelector('#inspect-items-range')?.textContent,
@@ -662,7 +663,8 @@ if (biomes) {
       imageDisabled:document.querySelector('#inspect-render-image')?.getAttribute('aria-disabled'),
       confirmVisible:!document.querySelector('#inspect-scene-confirm')?.hidden,
       confirmDisabled:document.querySelector('#inspect-scene-confirm')?.disabled,
-      confirmText:document.querySelector('#inspect-scene-confirm')?.textContent
+      confirmText:document.querySelector('#inspect-scene-confirm')?.textContent,
+      sceneCopy:document.querySelector('#inspect-scene-copy')?.textContent
     };
   })()`, returnByValue:true });
   let biomeSceneConfirmed = null;
@@ -673,8 +675,12 @@ if (biomes) {
       pressed:document.querySelector('#inspect-scene-confirm')?.getAttribute('aria-pressed'),
       sceneDisabled:document.querySelector('#inspect-3d')?.getAttribute('aria-disabled'),
       sceneHref:document.querySelector('#inspect-3d')?.getAttribute('href'),
+      sceneText:document.querySelector('#inspect-3d')?.textContent,
       imageDisabled:document.querySelector('#inspect-render-image')?.getAttribute('aria-disabled'),
-      imageHref:document.querySelector('#inspect-render-image')?.getAttribute('href')
+      imageHref:document.querySelector('#inspect-render-image')?.getAttribute('href'),
+      imageText:document.querySelector('#inspect-render-image')?.textContent,
+      confirmText:document.querySelector('#inspect-scene-confirm')?.textContent,
+      sceneCopy:document.querySelector('#inspect-scene-copy')?.textContent
     }))()`, returnByValue:true });
     biomeSceneConfirmed = confirmedResult.result.value;
   }
@@ -1325,15 +1331,23 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       biomeState?.lasso?.backingScale < 1.9 || biomeState?.lasso?.alphaPixels < 1 ||
       !/OUTLINES/.test(biomeState?.beforeInspect?.exactState || '') || biomeState?.beforeInspect?.exactAlpha !== 0 ||
       !biomeState?.selected?.meadowsActive || biomeState?.selected?.noneActive ||
-      !/Meadows/.test(biomeState?.selected?.inspectTitle || '') ||
+      !/across all Meadows territories/.test(biomeState?.selected?.inspectTitle || '') ||
+      !/WORLDWIDE TERRITORIES/.test(biomeState?.selected?.boundsLabel || '') ||
       biomeState?.selected?.itemRows !== 100 || !biomeState?.selected?.nextEnabled ||
       biomeState?.selected?.selectionPresent || biomeState?.selected?.alphaPixels < 1 ||
       !biomeState?.selected?.sceneVisible || !biomeState?.selected?.confirmVisible ||
       biomeState?.selected?.confirmDisabled || biomeState?.selected?.sceneDisabled !== 'true' ||
       biomeState?.selected?.imageDisabled !== 'true' || biomeState?.sceneConfirmed?.mode !== 'biomes' ||
+      !/pieces worldwide/.test(biomeState?.selected?.confirmText || '') ||
+      !/across the published world/.test(biomeState?.selected?.sceneCopy || '') ||
       biomeState?.sceneConfirmed?.pressed !== 'true' || biomeState?.sceneConfirmed?.sceneDisabled !== 'false' ||
       biomeState?.sceneConfirmed?.imageDisabled !== 'false' ||
+      !/Explore worldwide biome in 3D/.test(biomeState?.sceneConfirmed?.sceneText || '') ||
+      !/Render worldwide biome/.test(biomeState?.sceneConfirmed?.imageText || '') ||
+      !/worldwide pieces confirmed/.test(biomeState?.sceneConfirmed?.confirmText || '') ||
+      !/Worldwide biome override confirmed/.test(biomeState?.sceneConfirmed?.sceneCopy || '') ||
       !/[?&]biomes=meadows/.test(biomeState?.sceneConfirmed?.sceneHref || '') ||
+      !/[?&]scope=world-biome/.test(biomeState?.sceneConfirmed?.sceneHref || '') ||
       !/[?&]override=true/.test(biomeState?.sceneConfirmed?.sceneHref || '') ||
       !/[?&]capture=1/.test(biomeState?.sceneConfirmed?.imageHref || '') ||
       biomeState?.nextRange === biomeState?.selected?.itemRange || biomeState?.close?.tiles < 1 ||

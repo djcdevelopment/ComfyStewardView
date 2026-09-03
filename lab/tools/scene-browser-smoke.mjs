@@ -18,9 +18,9 @@ const cases = [
   ...(!pilotOnly ? [{ name:'stress-22387', pieces:22387, families:13,
     coverage:{real:22197,estimated:0,unknown:190,proxyOutliers:2},
     query:{snapshot:107,lens:'build-density',minX:2021.7,maxX:2101.9,minZ:-4851.3,maxZ:-4751.8,override:true} }] : []),
-  ...(includeLarge ? [{ name:'meadows-193008', pieces:193008, minimumFamilies:10,
+  ...(includeLarge ? [{ name:'meadows-193008', pieces:193008, minimumFamilies:10, scopeKind:'world-biome',
     query:{snapshot:107,lens:'build-density',minX:-26500,maxX:26500,minZ:-20500,maxZ:27500,
-      biomes:'meadows',override:true} }] : [])
+      biomes:'meadows',override:true,scope:'world-biome'} }] : [])
 ];
 
 class CdpClient {
@@ -148,7 +148,29 @@ try {
       })()`,
       returnByValue:true
     });
-    receipt.controlExercise = controlResult.result.value;
+    const moveBefore = await page.call('Runtime.evaluate',{
+      expression:'window.__stewardSceneControls.cameraState()',returnByValue:true
+    });
+    await page.call('Runtime.evaluate',{
+      expression:"document.dispatchEvent(new KeyboardEvent('keydown',{key:'w',bubbles:true,cancelable:true}))"
+    });
+    await delay(250);
+    await page.call('Runtime.evaluate',{
+      expression:"document.dispatchEvent(new KeyboardEvent('keyup',{key:'w',bubbles:true,cancelable:true}))"
+    });
+    const moveAfter = await page.call('Runtime.evaluate',{
+      expression:`(() => ({
+        camera:window.__stewardSceneControls.cameraState(),
+        help:document.querySelector('#camera-help')?.textContent
+      }))()`,returnByValue:true
+    });
+    const beforePose = moveBefore.result.value;
+    const afterPose = moveAfter.result.value.camera;
+    const orbitMoveM = Math.hypot(...afterPose.target.map((value,index) => value-beforePose.target[index]));
+    receipt.controlExercise = {
+      ...controlResult.result.value,
+      orbitMove:{metres:+orbitMoveM.toFixed(3),before:beforePose,after:afterPose,help:moveAfter.result.value.help}
+    };
     const imageResult = await page.call('Runtime.evaluate',{
       expression:`(async () => {
         const blob = await window.__stewardSceneControls.captureImage();
@@ -167,6 +189,7 @@ try {
     if (receipt.status !== 'ok') failures.push(`status ${receipt.status}`);
     if (receipt.pieces !== sceneCase.pieces) failures.push(`pieces ${receipt.pieces} != ${sceneCase.pieces}`);
     if (receipt.exact !== true) failures.push('scene is not exact');
+    if (receipt.scopeKind !== (sceneCase.scopeKind || 'area')) failures.push(`scope kind ${receipt.scopeKind}`);
     if (receipt.forced !== Boolean(sceneCase.query.override)) failures.push(`forced receipt ${receipt.forced}`);
     if (receipt.instanceBytes !== sceneCase.pieces * 80) failures.push('instance byte count mismatch');
     if (!/^[0-9a-f]{64}$/.test(receipt.instanceSha256 || '')) failures.push('instance checksum is missing');
@@ -196,6 +219,8 @@ try {
     if (!(exercise?.hidden === exercise?.before - 1 && exercise?.restored === exercise?.before)) failures.push('family visibility exercise failed');
     if (exercise?.fly !== 'fly' || exercise?.reset !== 'orbit') failures.push('camera exercise failed');
     if (exercise?.all !== 'all' || exercise?.home !== 'home') failures.push('home/frame-all camera exercise failed');
+    if (exercise?.orbitMove?.after?.mode !== 'orbit' || !(exercise?.orbitMove?.metres > 0) ||
+        !/WASD move/.test(exercise?.orbitMove?.help || '')) failures.push('orbit WASD movement failed');
     if (sceneCase.name.startsWith('meadows-') &&
         (receipt.home?.strategy !== 'densest-cluster' || !(receipt.home?.pieces < receipt.pieces) ||
          !(receipt.home?.radiusM < receipt.fullRadiusM * .5))) {

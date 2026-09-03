@@ -21,7 +21,8 @@ Extend only the lab's derived public cache and public profile:
 - `/api/scene` rebuilds a declarative snapshot/lens/bounds/biome scope server-side. It serves at most
   5,000 pieces directly, requires an explicit inline override through 250,000, and rejects larger
   selections before materializing their rows. It never returns a sample. Heatmap and Biomes expose the
-  gate in the same right-column inspection card.
+  gate in the same right-column inspection card. Whole-biome queries intentionally span every matching
+  territory in the published bounds and must be labeled as worldwide in the map handoff and scene.
 - For a fixed release and scope, the response is one deterministic binary package with a JSON manifest,
   integrity-bound fixed-stride instances, family-contiguous ordering, coverage receipts, and
   selection-local coordinates.
@@ -32,7 +33,7 @@ Extend only the lab's derived public cache and public profile:
 - The public representation omits creator/owner identity, flags, raw fields, source paths, absolute Y,
   and absolute origin. Known versus estimated versus unknown geometry remains explicit.
 - The dependency-free browser renderer requires WebGPU. It uses shared-cube instancing for shaded and
-  wireframe modes, family visibility controls, framed orbit navigation, and pointer-locked free flight.
+  wireframe modes, family visibility controls, mouse-orbit navigation with WASD/QE travel, and pointer-locked free flight.
   The current camera, surface, and visible families can be captured directly from its canvas as a PNG.
   There is no WebGL fallback; unsupported hardware receives a clear return path.
 - Compact scenes frame every piece. When a selection spans more than 600 m on any axis, a deterministic

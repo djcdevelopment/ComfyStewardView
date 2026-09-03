@@ -45,8 +45,10 @@ Its header offers two optional, mutually exclusive questions over that neutral c
 - **Explore the build** appears in the inspector's right column in both Heatmap and Biomes. Up to 5,000
   pieces open directly; 5,001–250,000 require an inline confirmation in that same location; larger
   selections must be tightened. The new tab rebuilds the authoritative selection server-side, then
-  renders oriented prefab envelopes with shaded or wireframe geometry and orbit or pointer-locked
-  free-flight controls. It never substitutes a sample. The same confirmed action can render the
+  renders oriented prefab envelopes with shaded or wireframe geometry. The default orbit camera uses
+  mouse drag to look, WASD to travel, and Q/E for elevation; pointer-locked free flight remains available.
+  It never substitutes a sample. A Biomes **Inspect** action means every matching territory across the
+  published world and is labeled as worldwide through confirmation and in the scene. The same confirmed action can render the
   current GPU-authored view to PNG without asking the server for a second raster representation.
   Kilometre-scale and vertically separated selections start on a useful dense **Home** cluster;
   **Frame all** remains available for the complete scene.
@@ -293,7 +295,7 @@ node tools\scene-browser-smoke.mjs http://127.0.0.1:8092/ data\scene-smoke
 ```
 
 The scene browser gate uses hardware WebGPU and checks the exact pilot and stress populations, package
-receipts, shaded/wireframe controls, Home/full-selection framing, camera movement, GPU-authored PNG
+receipts, shaded/wireframe controls, Home/full-selection framing, orbit-WASD and free-flight camera movement, GPU-authored PNG
 capture, browser/validation errors, device loss, startup under 2 seconds, and p95 frame time at or below
 20 ms. Passing `--large` also exercises the confirmed whole-Meadows scene against its explicit 10-second
 startup and 50 ms p95 forced-scene budgets. It intentionally has no WebGL fallback: visitors
