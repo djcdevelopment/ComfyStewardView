@@ -9,6 +9,7 @@ param(
     [string]$Resolutions = '320,160,80,64,16',
     [string]$WorldPath = '',
     [string]$ContextImage = '',
+    [string]$ContextManifest = '',
     [int]$Port = 8091,
     [string]$LabUrl = 'http://127.0.0.1:8091',
     [ValidateRange(1, 300)]
@@ -127,6 +128,7 @@ $arguments = @('-Xmx2g', '-jar', $jar, $Command, '--cache', $CachePath, '--artif
 if ($Command -eq 'serve') {
     $arguments += @('--port', [string]$Port)
     if ($ContextImage) { $arguments += @('--context-image', $ContextImage) }
+    if ($ContextManifest) { $arguments += @('--context-manifest', $ContextManifest) }
     if ($NoBrowser) { $arguments += '--no-browser' }
 } else {
     if ($Snapshot -gt 0) { $arguments += @('--snapshot', [string]$Snapshot) }

@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Steward — World View</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-  <link rel="stylesheet" href="/lab.css">
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="./lab.css">
 </head>
-<body class="public-experience">
+<body class="public-experience terrain-mode">
   <header class="app-header">
     <div class="brand">
       <strong>Steward</strong>
@@ -16,9 +16,27 @@
       <span class="brand-lab">SPATIAL LAB</span>
     </div>
     <div class="public-world"><span>WORLD</span><strong id="public-world-name">Opening world…</strong></div>
+    <div class="map-view-controls" id="map-view-controls" aria-label="Map view">
+      <fieldset class="header-control-group view-layer-group">
+        <legend>EXPLORE WITH</legend>
+        <div class="view-mode-switch" role="group" aria-label="Map view mode">
+          <button type="button" data-view-mode="heatmap" aria-pressed="false">Heatmap</button>
+          <button type="button" data-view-mode="biomes" aria-pressed="false">Biomes</button>
+        </div>
+      </fieldset>
+      <fieldset id="biome-filter-group" class="header-control-group biome-filter-group" disabled aria-disabled="true">
+        <legend>BIOME TERRITORIES</legend>
+        <div id="biome-chip-list" class="biome-chip-list" role="group" aria-label="Biome territories"></div>
+        <button type="button" id="biome-view-results" class="biome-inline-inspect" title="Inspect every object in the selected biome territories">Inspect</button>
+      </fieldset>
+    </div>
     <label class="header-field"><span>SNAPSHOT</span><select id="snapshot-select"></select></label>
     <div class="header-chip" id="cache-chip">CACHE · CHECKING</div>
     <div class="header-spacer"></div>
+    <div class="public-actions" aria-label="Help and feedback">
+      <button id="quick-start-open" class="header-action compact-help" aria-label="Quick start guide" title="Quick start guide">?</button>
+      <button id="feedback-open" class="header-action feedback-action">Submit feedback</button>
+    </div>
     <div class="header-metric"><span>ZDOs</span><strong id="zdo-count">—</strong></div>
     <div class="header-metric"><span>ACTIVE LENS</span><strong id="header-lens">—</strong></div>
   </header>
@@ -90,7 +108,7 @@
           <button id="context-on" class="active">Map</button>
           <button id="context-off">None</button>
         </div>
-        <p class="microcopy" id="context-copy">The surface ZDO field is an inferred coastline, not a terrain heightmap.</p>
+        <p class="microcopy" id="context-copy">Loading the terrain and water context for this snapshot.</p>
         <button id="peek-context" class="secondary full">Hold to peek beneath the analysis</button>
       </section>
 
@@ -240,6 +258,7 @@
           <div class="inspect-actions">
             <button id="inspect-zoom">Zoom to selection</button>
             <button id="inspect-copy">Copy bounds</button>
+            <button id="inspect-clear-area" hidden>Clear area filter</button>
           </div>
           <div class="inspect-body">
             <div class="inspect-stats">
@@ -253,14 +272,71 @@
               <div id="inspect-top"></div>
               <button id="inspect-show-all" class="ranked-more" hidden>Show all in selection</button>
             </div>
+            <div class="inspect-items">
+              <div class="ranked-heading"><span>INDIVIDUAL OBJECTS</span><span id="inspect-items-range">—</span></div>
+              <div id="inspect-items-list" class="inspect-items-list"><div class="inspect-item-empty">Select an area to list its objects.</div></div>
+              <div class="inspect-page-actions">
+                <button type="button" id="inspect-items-prev" disabled>Previous</button>
+                <button type="button" id="inspect-items-next" disabled>Next</button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
     </aside>
   </main>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="/lab.js"></script>
+  <dialog id="quick-start-dialog" class="steward-dialog" aria-labelledby="quick-start-title">
+    <div class="dialog-shell quick-start-shell">
+      <header class="dialog-header">
+        <div><span class="eyebrow">QUICK START</span><h2 id="quick-start-title">Start with the world. Add the question you want to ask.</h2></div>
+        <button id="quick-start-close" class="dialog-close" type="button" aria-label="Close quick start guide">×</button>
+      </header>
+      <ol class="guide-steps">
+        <li><span>1</span><div><strong>Read the terrain</strong><p>The world opens clean, with shorelines and elevation contours ready to explore.</p></div></li>
+        <li><span>2</span><div><strong>Move</strong><p>Scroll to zoom. Click and hold to move the map.</p></div></li>
+        <li><span>3</span><div><strong>Reveal activity</strong><p>Turn on <em>Heatmap</em> to see where construction is concentrated. Select it again to return to the terrain.</p></div></li>
+        <li><span>4</span><div><strong>Explore territories</strong><p>Turn on <em>Biomes</em>, then click a territory or combine the choices above. <em>None</em> leaves the map unmarked.</p></div></li>
+        <li><span>5</span><div><strong>Inspect</strong><p>Inspect any view with a green area to see complete totals, a representative map sample, and paged objects.</p></div></li>
+      </ol>
+      <footer class="dialog-footer"><button id="quick-start-done" class="primary" type="button">Explore the terrain</button></footer>
+    </div>
+  </dialog>
+
+  <dialog id="feedback-dialog" class="steward-dialog" aria-labelledby="feedback-title">
+    <form id="feedback-form" class="dialog-shell feedback-shell">
+      <header class="dialog-header">
+        <div><span class="eyebrow">SUBMIT FEEDBACK</span><h2 id="feedback-title">What would make this more useful?</h2></div>
+        <button id="feedback-close" class="dialog-close" type="button" aria-label="Close feedback form">×</button>
+      </header>
+      <div id="feedback-fields">
+        <label class="feedback-message"><span>What did you notice?</span>
+          <textarea id="feedback-message" maxlength="2000" rows="7" required placeholder="An idea, something confusing, or a moment that felt especially useful…"></textarea>
+          <small><span id="feedback-count">0</span>/2,000</small>
+        </label>
+        <label class="feedback-trap" aria-hidden="true">Website<input id="feedback-website" type="text" tabindex="-1" autocomplete="off"></label>
+        <div class="identity-card">
+          <label class="identity-toggle"><input id="feedback-identify" type="checkbox"><span><strong>Identify me with Discord</strong><small>Off by default. Discord only shares your basic profile when you choose this.</small></span></label>
+          <div id="feedback-identity-state" class="identity-state" hidden>
+            <span id="feedback-identity-copy">Not connected</span>
+            <button id="feedback-discord-connect" type="button">Connect Discord</button>
+            <button id="feedback-discord-logout" type="button" hidden>Disconnect</button>
+          </div>
+        </div>
+        <p class="feedback-context">Your current lens, scale, viewport, selection, and app version will be included so the feedback has context. Your world data and IP address will not be included.</p>
+        <div id="feedback-error" class="form-message error" role="alert" hidden></div>
+      </div>
+      <div id="feedback-success" class="feedback-success" hidden>
+        <span>✓</span><strong>Sent. Thank you.</strong><p>Your note reached the private Steward feedback channel.</p>
+      </div>
+      <footer class="dialog-footer">
+        <button id="feedback-cancel" type="button">Cancel</button>
+        <button id="feedback-submit" class="primary" type="submit">Send feedback</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <script src="./vendor/leaflet/leaflet.js"></script>
+  <script src="./lab.js"></script>
 </body>
 </html>

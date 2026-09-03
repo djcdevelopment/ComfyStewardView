@@ -15,13 +15,24 @@ const scale160Output = path.join(parsedOutput.dir, `${parsedOutput.name}-160m${p
 const scale80Output = path.join(parsedOutput.dir, `${parsedOutput.name}-80m${parsedOutput.ext || '.png'}`);
 const scale64Output = path.join(parsedOutput.dir, `${parsedOutput.name}-64m${parsedOutput.ext || '.png'}`);
 const publicInspectOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-inspect${parsedOutput.ext || '.png'}`);
+const quickStartOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-quick-start${parsedOutput.ext || '.png'}`);
+const feedbackOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-feedback${parsedOutput.ext || '.png'}`);
+const terrainCloseOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-terrain-close${parsedOutput.ext || '.png'}`);
+const biomeOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-biomes${parsedOutput.ext || '.png'}`);
+const biomeOverviewOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-biomes-overview${parsedOutput.ext || '.png'}`);
+const biomeLassoOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-biomes-lasso${parsedOutput.ext || '.png'}`);
+const topographicOverviewOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-topographic-overview${parsedOutput.ext || '.png'}`);
+const topographicDetailOutput = path.join(parsedOutput.dir, `${parsedOutput.name}-topographic-detail${parsedOutput.ext || '.png'}`);
 const exercise = process.argv.includes('--exercise');
 const scalePreviews = process.argv.includes('--scale-previews');
 const marqueeOnly = process.argv.includes('--marquee-only');
 const useStoryAction = process.argv.includes('--story-action');
 const submitJob = process.argv.includes('--submit-job');
 const publicInspect = process.argv.includes('--public-inspect');
-const publicExperience = new URL(targetUrl).searchParams.get('lab') !== '1';
+const terrainClose = process.argv.includes('--terrain-close');
+const biomes = process.argv.includes('--biomes');
+const terrain = process.argv.includes('--terrain') || process.argv.includes('--topographic');
+let publicExperience = new URL(targetUrl).searchParams.get('lab') !== '1';
 let marqueeState = null;
 let inspectorTabState = null;
 let panGestureState = null;
@@ -40,7 +51,13 @@ let rasterStyleState = null;
 let scalePreviewState = null;
 let publicInspectState = null;
 let publicClosedState = null;
-const profile = path.resolve('data/browser-smoke-profile');
+let publicShellState = null;
+let terrainCloseState = null;
+let biomeState = null;
+let terrainState = null;
+let initialTerrainState = null;
+let modeTransitionState = null;
+const profile = path.resolve(`data/browser-smoke-profile-${process.pid}`);
 await mkdir(profile, { recursive: true });
 
 const browser = spawn(chrome, [
@@ -89,10 +106,254 @@ function cdp(method, params = {}) {
   return new Promise((resolve, reject) => waiting.set(id, { resolve, reject }));
 }
 
+async function waitForExpression(expression, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const result = await cdp('Runtime.evaluate', { expression, returnByValue:true });
+    if (result.result.value === true) return;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  throw new Error(`Browser condition did not become ready: ${expression}\n${errors.join('\n')}`);
+}
+
 await cdp('Page.enable');
 await cdp('Runtime.enable');
 await cdp('Page.navigate', { url: targetUrl });
-await new Promise(resolve => setTimeout(resolve, 6000));
+await waitForExpression(`(() => {
+  const analysis=document.querySelector('.analysis-raster');
+  const context=document.querySelector('.leaflet-context-pane .context-raster');
+  const publicExperience=document.body.classList.contains('public-experience');
+  const publicReady=!publicExperience || Boolean(document.querySelector('#feedback-open')?.title);
+  const analysisReady=publicExperience || (analysis?.complete === true && analysis.naturalWidth > 0);
+  return publicReady && analysisReady &&
+    context?.complete === true && context.naturalWidth > 0 &&
+    !/Preparing|Loading/.test(document.querySelector('#map-status')?.textContent || '');
+})()`, 45000);
+await new Promise(resolve => setTimeout(resolve, 250));
+
+const renderedMode = await cdp('Runtime.evaluate', {
+  expression: `document.body.classList.contains('public-experience')`, returnByValue:true
+});
+publicExperience = renderedMode.result.value === true;
+
+if (publicExperience) {
+  const initialResult = await cdp('Runtime.evaluate', { expression: `(() => {
+    const context=document.querySelector('.leaflet-context-pane .context-raster');
+    const analysis=document.querySelector('.analysis-raster');
+    return {
+      terrainMode:document.body.classList.contains('terrain-mode'),
+      activeButtons:[...document.querySelectorAll('[data-view-mode].active')].map(button => button.dataset.viewMode),
+      pressedButtons:[...document.querySelectorAll('[data-view-mode][aria-pressed="true"]')].map(button => button.dataset.viewMode),
+      buttonLabels:[...document.querySelectorAll('[data-view-mode]')].map(button => button.textContent.trim()),
+      topographicButtonPresent:Boolean(document.querySelector('[data-view-mode="topographic"]')),
+      contextSrc:context?.getAttribute('src'),
+      contextOpacity:Number(getComputedStyle(context).opacity),
+      analysisCount:document.querySelectorAll('.analysis-raster,.local-detail-raster').length,
+      analysisOpacity:analysis ? Number(getComputedStyle(analysis).opacity) : 0,
+      biomeTiles:document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile').length,
+      legendVisible:!document.querySelector('#legend')?.hidden,
+      exactState:document.querySelector('#exact-state')?.textContent,
+      exactAlpha:[...document.querySelectorAll('.leaflet-exact-pane canvas')].reduce((sum,canvas) => {
+        const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+        for(let i=3;i<pixels.length;i+=4) if(pixels[i]) sum++;
+        return sum;
+      },0),
+      story:document.querySelector('#story-title')?.textContent
+    };
+  })()`, returnByValue:true });
+  initialTerrainState = initialResult.result.value;
+
+  const guideResult = await cdp('Runtime.evaluate', { expression: `(() => {
+    const guideButton = document.querySelector('#quick-start-open');
+    const feedbackButton = document.querySelector('#feedback-open');
+    const guide = document.querySelector('#quick-start-dialog');
+    return {
+      guideButtonVisible:getComputedStyle(guideButton).display !== 'none',
+      feedbackButtonVisible:getComputedStyle(feedbackButton).display !== 'none',
+      feedbackEnabled:feedbackButton?.disabled === false,
+      open:guide?.open === true,
+      title:document.querySelector('#quick-start-title')?.textContent,
+      cta:document.querySelector('#quick-start-done')?.textContent,
+      steps:[...document.querySelectorAll('.guide-steps strong')].map(node => node.textContent.trim()),
+      copy:[...document.querySelectorAll('.guide-steps p')].map(node => node.textContent.trim())
+    };
+  })()`, returnByValue:true });
+  const quickStartShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(quickStartOutput, Buffer.from(quickStartShot.data, 'base64'));
+
+  const dismissalKey = 'steward-world-quick-start-terrain-v1';
+  const dismissWithClick = async selector => {
+    const result = await cdp('Runtime.evaluate', { expression: `(() => {
+      localStorage.removeItem(${JSON.stringify(dismissalKey)});
+      if (!document.querySelector('#quick-start-dialog')?.open) document.querySelector('#quick-start-open')?.click();
+      document.querySelector(${JSON.stringify(selector)})?.click();
+      return {
+        closed:document.querySelector('#quick-start-dialog')?.open === false,
+        stored:localStorage.getItem(${JSON.stringify(dismissalKey)}) === 'dismissed'
+      };
+    })()`, returnByValue:true });
+    return result.result.value;
+  };
+  const closeButtonDismissal = await dismissWithClick('#quick-start-close');
+  const ctaDismissal = await dismissWithClick('#quick-start-done');
+  await cdp('Runtime.evaluate', { expression: `(() => {
+    localStorage.removeItem(${JSON.stringify(dismissalKey)});
+    document.querySelector('#quick-start-open')?.click();
+  })()` });
+  await cdp('Input.dispatchKeyEvent', { type:'rawKeyDown', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
+  await cdp('Input.dispatchKeyEvent', { type:'keyUp', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
+  await waitForExpression(`document.querySelector('#quick-start-dialog')?.open === false`);
+  const escapeDismissal = (await cdp('Runtime.evaluate', { expression: `localStorage.getItem(${JSON.stringify(dismissalKey)}) === 'dismissed'`, returnByValue:true })).result.value;
+  const backdropDismissalResult = await cdp('Runtime.evaluate', { expression: `(() => {
+    localStorage.removeItem(${JSON.stringify(dismissalKey)});
+    document.querySelector('#quick-start-open')?.click();
+    document.querySelector('#quick-start-dialog')?.click();
+    return {
+      closed:document.querySelector('#quick-start-dialog')?.open === false,
+      stored:localStorage.getItem(${JSON.stringify(dismissalKey)}) === 'dismissed'
+    };
+  })()`, returnByValue:true });
+  const backdropDismissal = backdropDismissalResult.result.value;
+
+  await cdp('Page.reload', { ignoreCache:true });
+  await new Promise(resolve => setTimeout(resolve, 500));
+  await waitForExpression(`(() => {
+    const context=document.querySelector('.leaflet-context-pane .context-raster');
+    return Boolean(document.querySelector('#feedback-open')?.title) && context?.complete === true &&
+      context.naturalWidth > 0 && document.querySelector('#quick-start-dialog')?.open === false;
+  })()`, 45000);
+  const persistenceResult = await cdp('Runtime.evaluate', { expression: `(() => {
+    const before=document.querySelector('#quick-start-dialog')?.open === false;
+    document.querySelector('#quick-start-open')?.click();
+    const manual=document.querySelector('#quick-start-dialog')?.open === true;
+    document.querySelector('#quick-start-done')?.click();
+    return { before, manual };
+  })()`, returnByValue:true });
+
+  await cdp('Runtime.evaluate', { expression: `localStorage.removeItem(${JSON.stringify(dismissalKey)})` });
+  const discordReturnUrl = new URL(targetUrl);
+  discordReturnUrl.searchParams.set('discord', 'error');
+  await cdp('Page.navigate', { url:discordReturnUrl.href });
+  await new Promise(resolve => setTimeout(resolve, 500));
+  await waitForExpression(`(() => {
+    const context=document.querySelector('.leaflet-context-pane .context-raster');
+    return context?.complete === true && context.naturalWidth > 0 && document.querySelector('#feedback-dialog')?.open === true;
+  })()`, 45000);
+  const feedbackResult = await cdp('Runtime.evaluate', { expression: `(() => {
+    const feedback = document.querySelector('#feedback-dialog');
+    return {
+      open:feedback?.open === true,
+      quickStartSuppressed:document.querySelector('#quick-start-dialog')?.open === false,
+      title:document.querySelector('#feedback-title')?.textContent,
+      anonymousDefault:document.querySelector('#feedback-identify')?.checked === false,
+      identityAvailable:document.querySelector('#feedback-identify')?.disabled === false,
+      contextCopy:document.querySelector('.feedback-context')?.textContent,
+      submitText:document.querySelector('#feedback-submit')?.textContent
+    };
+  })()`, returnByValue:true });
+  const feedbackShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(feedbackOutput, Buffer.from(feedbackShot.data, 'base64'));
+  const closedResult = await cdp('Runtime.evaluate', { expression: `(() => {
+    document.querySelector('#feedback-cancel')?.click();
+    document.querySelector('#quick-start-open')?.click();
+    const manualAfterDiscord=document.querySelector('#quick-start-dialog')?.open === true;
+    document.querySelector('#quick-start-done')?.click();
+    return {
+      manualAfterDiscord,
+      dialogsClosed:document.querySelector('#quick-start-dialog')?.open === false &&
+        document.querySelector('#feedback-dialog')?.open === false
+    };
+  })()`, returnByValue:true });
+  publicShellState = {
+    guideButtonVisible:guideResult.result.value.guideButtonVisible,
+    feedbackButtonVisible:guideResult.result.value.feedbackButtonVisible,
+    feedbackEnabled:guideResult.result.value.feedbackEnabled,
+    guide:{
+      open:guideResult.result.value.open,
+      title:guideResult.result.value.title,
+      cta:guideResult.result.value.cta,
+      steps:guideResult.result.value.steps,
+      copy:guideResult.result.value.copy
+    },
+    dismissals:{
+      closeButton:closeButtonDismissal,
+      cta:ctaDismissal,
+      escape:escapeDismissal,
+      backdrop:backdropDismissal
+    },
+    persistence:persistenceResult.result.value,
+    feedback:feedbackResult.result.value,
+    manualAfterDiscord:closedResult.result.value.manualAfterDiscord,
+    dialogsClosed:closedResult.result.value.dialogsClosed
+  };
+
+  const clickMode = async (mode, readyExpression) => {
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-view-mode=${JSON.stringify(mode)}]')?.click()` });
+    await waitForExpression(readyExpression, 45000);
+  };
+  const captureMode = async () => (await cdp('Runtime.evaluate', { expression: `(() => ({
+    terrainMode:document.body.classList.contains('terrain-mode'),
+    biomeMode:document.body.classList.contains('biome-mode'),
+    active:[...document.querySelectorAll('[data-view-mode].active')].map(button => button.dataset.viewMode),
+    pressed:[...document.querySelectorAll('[data-view-mode][aria-pressed="true"]')].map(button => button.dataset.viewMode),
+    contextSrc:document.querySelector('.leaflet-context-pane .context-raster')?.getAttribute('src'),
+    contextOpacity:Number(getComputedStyle(document.querySelector('.leaflet-context-pane .context-raster')).opacity),
+    heatOpacity:document.querySelector('.analysis-raster') ? Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity) : 0,
+    legendVisible:!document.querySelector('#legend')?.hidden,
+    biomeTiles:document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile').length,
+    biomeAlpha:[...document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile')].reduce((sum,canvas) => {
+      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      for(let i=3;i<pixels.length;i+=4) if(pixels[i]) sum++;
+      return sum;
+    },0),
+    meadowsActive:document.querySelector('[data-biome="meadows"]')?.classList.contains('active'),
+    noneActive:document.querySelector('[data-biome="none"]')?.classList.contains('active'),
+    biomeControlsDisabled:document.querySelector('#biome-filter-group')?.disabled
+  }))()`, returnByValue:true })).result.value;
+
+  await clickMode('heatmap', `Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity) > 0 && !document.querySelector('#legend')?.hidden`);
+  const heatActivated = await captureMode();
+  const offGlobePoint = (await cdp('Runtime.evaluate', { expression: `(() => {
+    const bounds=document.querySelector('#map').getBoundingClientRect();
+    return { x:bounds.left + bounds.width*.03, y:bounds.top + bounds.height*.75 };
+  })()`, returnByValue:true })).result.value;
+  const clickOffGlobe = async () => {
+    await cdp('Input.dispatchMouseEvent', { type:'mousePressed', x:offGlobePoint.x, y:offGlobePoint.y, button:'left', clickCount:1 });
+    await cdp('Input.dispatchMouseEvent', { type:'mouseReleased', x:offGlobePoint.x, y:offGlobePoint.y, button:'left', clickCount:1 });
+    await new Promise(resolve => setTimeout(resolve, 250));
+    return (await cdp('Runtime.evaluate', { expression: `(() => ({
+      inspectionOpen:document.body.classList.contains('inspection-open'),
+      selectionPresent:Boolean(document.querySelector('.selection-rectangle'))
+    }))()`, returnByValue:true })).result.value;
+  };
+  const offGlobeHeat = await clickOffGlobe();
+  await clickMode('heatmap', `document.body.classList.contains('terrain-mode') && document.querySelectorAll('[data-view-mode].active').length === 0 && (document.querySelector('.leaflet-context-pane .context-raster')?.getAttribute('src') || '').includes('/api/context/topographic-overview')`);
+  const heatDeactivated = await captureMode();
+  const offGlobeTerrain = await clickOffGlobe();
+  await clickMode('biomes', `document.body.classList.contains('biome-mode') && document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile').length > 0`);
+  await clickMode('heatmap', `document.querySelector('[data-view-mode="heatmap"]')?.classList.contains('active') && document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile').length === 0 && Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity) > 0 && !document.querySelector('#legend')?.hidden`);
+  const directToHeat = await captureMode();
+  await clickMode('biomes', `document.querySelector('[data-view-mode="biomes"]')?.classList.contains('active') && document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile').length > 0 && document.querySelector('#legend')?.hidden`);
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-biome="meadows"]')?.click()` });
+  await waitForExpression(`document.querySelector('[data-biome="meadows"]')?.classList.contains('active') === true`);
+  const directToBiomes = await captureMode();
+  await clickMode('biomes', `document.body.classList.contains('terrain-mode') && document.querySelectorAll('[data-view-mode].active').length === 0 && document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile').length === 0`);
+  const biomesDeactivated = await captureMode();
+  await clickMode('biomes', `document.body.classList.contains('biome-mode') && document.querySelector('[data-biome="meadows"]')?.classList.contains('active') === true && document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile').length > 0`);
+  const biomesRestored = await captureMode();
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-biome="none"]')?.click()` });
+  await waitForExpression(`[...document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile')].every(canvas => {
+    const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+    for(let i=3;i<pixels.length;i+=4) if(pixels[i]) return false;
+    return true;
+  })`);
+  const biomesNone = await captureMode();
+  await clickMode('biomes', `document.body.classList.contains('terrain-mode') && document.querySelectorAll('[data-view-mode].active').length === 0`);
+  const biomesSecondClick = await captureMode();
+  modeTransitionState = { heatActivated, heatDeactivated, offGlobeHeat, offGlobeTerrain,
+    directToHeat, directToBiomes, biomesDeactivated, biomesRestored, biomesNone, biomesSecondClick };
+  await clickMode('heatmap', `Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity) > 0 && !document.querySelector('#legend')?.hidden`);
+}
 
 const rasterStyleResult = await cdp('Runtime.evaluate', { expression: `(() => {
   const capture = () => ({
@@ -101,6 +362,9 @@ const rasterStyleResult = await cdp('Runtime.evaluate', { expression: `(() => {
     context: getComputedStyle(document.querySelector('.context-raster')).imageRendering,
     worldOpacity: Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
     contextOpacity: Number(getComputedStyle(document.querySelector('.context-raster')).opacity),
+    requestedContextOpacity: Number(document.querySelector('#context-opacity')?.value),
+    contextSrc: document.querySelector('.leaflet-context-pane .context-raster')?.getAttribute('src'),
+    contextNaturalWidth: document.querySelector('.leaflet-context-pane .context-raster')?.naturalWidth,
     opacityLabel: document.querySelector('#analysis-opacity-value')?.textContent,
     toneCap: Number(document.querySelector('#legend')?.dataset.toneCap),
     toneExponent: Number(document.querySelector('#legend')?.dataset.toneExponent),
@@ -116,6 +380,39 @@ const rasterStyleResult = await cdp('Runtime.evaluate', { expression: `(() => {
   return { initial, cells, restored:capture() };
 })()`, returnByValue:true });
 rasterStyleState = rasterStyleResult.result.value;
+
+if (terrainClose) {
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#go-spawn')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 900));
+  for (let step = 0; step < 3; step++) {
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  await waitForExpression(`(() => {
+    const context=document.querySelector('.leaflet-context-pane .context-raster');
+    const local=document.querySelector('.local-detail-raster');
+    return context?.naturalWidth === 4096 && local?.complete === true && local.naturalWidth > 0 &&
+      !/Loading|Preparing/.test(document.querySelector('#map-status')?.textContent || '');
+  })()`, 45000);
+  const closeResult = await cdp('Runtime.evaluate', { expression: `(() => {
+    const context=document.querySelector('.leaflet-context-pane .context-raster');
+    return {
+      viewport:document.querySelector('#viewport-label')?.textContent,
+      contextSrc:context?.getAttribute('src'),
+      contextNaturalWidth:context?.naturalWidth,
+      contextOpacity:Number(getComputedStyle(context).opacity),
+      requestedContextOpacity:Number(document.querySelector('#context-opacity')?.value),
+      contextOpacityLabel:document.querySelector('#context-opacity-value')?.textContent,
+      localDetailCount:document.querySelectorAll('.local-detail-raster').length,
+      exactState:document.querySelector('#exact-state')?.textContent
+    };
+  })()`, returnByValue:true });
+  terrainCloseState = closeResult.result.value;
+  const closeShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(terrainCloseOutput, Buffer.from(closeShot.data, 'base64'));
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#go-world')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 1400));
+}
 
 if (publicInspect) {
   const mapRectResult = await cdp('Runtime.evaluate', {
@@ -174,10 +471,222 @@ if (publicInspect) {
   publicClosedState = publicClosedResult.result.value;
 }
 
+if (terrain) {
+  await cdp('Input.dispatchKeyEvent', { type:'rawKeyDown', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
+  await cdp('Input.dispatchKeyEvent', { type:'keyUp', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
+  await new Promise(resolve => setTimeout(resolve, 250));
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-view-mode="heatmap"]')?.click()` });
+  await waitForExpression(`(document.querySelector('.leaflet-context-pane .context-raster')?.getAttribute('src') || '').includes('/api/context/topographic-overview') && Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity) === 0`, 45000);
+  const overviewResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    mode:document.body.classList.contains('terrain-mode'),
+    noButtonActive:document.querySelectorAll('[data-view-mode].active').length === 0,
+    topographicButtonAbsent:!document.querySelector('[data-view-mode="topographic"]'),
+    contextSrc:document.querySelector('.leaflet-context-pane .context-raster')?.getAttribute('src'),
+    contextOpacity:Number(getComputedStyle(document.querySelector('.leaflet-context-pane .context-raster')).opacity),
+    heatOpacity:Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
+    legendVisible:!document.querySelector('#legend')?.hidden,
+    exactState:document.querySelector('#exact-state')?.textContent,
+    exactAlpha:[...document.querySelectorAll('.leaflet-exact-pane canvas')].reduce((sum,canvas) => {
+      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      for(let i=3;i<pixels.length;i+=4) if(pixels[i]) sum++;
+      return sum;
+    },0)
+  }))()`, returnByValue:true });
+  const overviewShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(topographicOverviewOutput, Buffer.from(overviewShot.data, 'base64'));
+  for (let step = 0; step < 8; step++) {
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
+    await new Promise(resolve => setTimeout(resolve, 550));
+  }
+  await waitForExpression(`(document.querySelector('.leaflet-context-pane .context-raster')?.getAttribute('src') || '').includes('/api/context/topographic-detail')`, 45000);
+  const detailResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    contextSrc:document.querySelector('.leaflet-context-pane .context-raster')?.getAttribute('src'),
+    naturalWidth:document.querySelector('.leaflet-context-pane .context-raster')?.naturalWidth,
+    heatOpacity:Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
+    story:document.querySelector('#story-title')?.textContent,
+    exactState:document.querySelector('#exact-state')?.textContent
+  }))()`, returnByValue:true });
+  const detailShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(topographicDetailOutput, Buffer.from(detailShot.data, 'base64'));
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#go-world')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 1200));
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-view-mode="heatmap"]')?.click()` });
+  await waitForExpression(`Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity) > 0 && !document.body.classList.contains('terrain-mode') && !document.querySelector('#legend')?.hidden`, 30000);
+  terrainState = { overview:overviewResult.result.value, detail:detailResult.result.value };
+}
+
+if (biomes) {
+  await cdp('Input.dispatchKeyEvent', { type:'rawKeyDown', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
+  await cdp('Input.dispatchKeyEvent', { type:'keyUp', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
+  await new Promise(resolve => setTimeout(resolve, 250));
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-view-mode="biomes"]')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 1200));
+  await waitForExpression(`document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile').length > 0 && /OUTLINES/.test(document.querySelector('#exact-state')?.textContent || '')`, 45000);
+  const overviewResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    mode:document.body.classList.contains('biome-mode'),
+    filterDisabled:document.querySelector('#biome-filter-group')?.disabled,
+    tiles:document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile').length,
+    heatOpacity:Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
+    contextOpacity:Number(getComputedStyle(document.querySelector('.leaflet-context-pane .context-raster')).opacity),
+    exactState:document.querySelector('#exact-state')?.textContent,
+    story:document.querySelector('#story-title')?.textContent,
+    noneActive:document.querySelector('[data-biome="none"]')?.classList.contains('active'),
+    oceanLabel:document.querySelector('[data-biome="space"] span')?.textContent,
+    otherLabel:document.querySelector('[data-biome="other"] span')?.textContent,
+    inspectDisabled:document.querySelector('#biome-view-results')?.disabled,
+    biomeAlpha:[...document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile')].reduce((sum,canvas) => {
+      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      for(let i=3;i<pixels.length;i+=4) if(pixels[i]) sum++;
+      return sum;
+    },0),
+    exactAlpha:[...document.querySelectorAll('.leaflet-exact-pane canvas')].reduce((sum,canvas) => {
+      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      for(let i=3;i<pixels.length;i+=4) if(pixels[i]) sum++;
+      return sum;
+    },0)
+  }))()`, returnByValue:true });
+  const biomeOverviewShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(biomeOverviewOutput, Buffer.from(biomeOverviewShot.data, 'base64'));
+  const offGlobePointResult = await cdp('Runtime.evaluate', { expression: `(() => {
+    const bounds=document.querySelector('#map').getBoundingClientRect();
+    return { x:bounds.left + bounds.width*.03, y:bounds.top + bounds.height*.75 };
+  })()`, returnByValue:true });
+  const offGlobePoint = offGlobePointResult.result.value;
+  await cdp('Input.dispatchMouseEvent', { type:'mousePressed', x:offGlobePoint.x, y:offGlobePoint.y, button:'left', clickCount:1 });
+  await cdp('Input.dispatchMouseEvent', { type:'mouseReleased', x:offGlobePoint.x, y:offGlobePoint.y, button:'left', clickCount:1 });
+  await new Promise(resolve => setTimeout(resolve, 250));
+  const offGlobeResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    noneActive:document.querySelector('[data-biome="none"]')?.classList.contains('active'),
+    selectedCount:document.querySelectorAll('#biome-chip-list .biome-chip.active:not([data-biome="none"])').length,
+    inspectDisabled:document.querySelector('#biome-view-results')?.disabled
+  }))()`, returnByValue:true });
+  const mapPointResult = await cdp('Runtime.evaluate', { expression: `(() => {
+    const bounds=document.querySelector('#map').getBoundingClientRect();
+    return { x:bounds.left + bounds.width*.50, y:bounds.top + bounds.height*.52 };
+  })()`, returnByValue:true });
+  const mapPoint = mapPointResult.result.value;
+  await cdp('Input.dispatchMouseEvent', { type:'mousePressed', x:mapPoint.x, y:mapPoint.y, button:'left', clickCount:1 });
+  await cdp('Input.dispatchMouseEvent', { type:'mouseReleased', x:mapPoint.x, y:mapPoint.y, button:'left', clickCount:1 });
+  await waitForExpression(`document.querySelectorAll('#biome-chip-list .biome-chip.active:not([data-biome="none"])').length === 1`, 30000);
+  const mapClickResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    active:document.querySelector('#biome-chip-list .biome-chip.active:not([data-biome="none"])')?.dataset.biome,
+    story:document.querySelector('#story-title')?.textContent,
+    noneActive:document.querySelector('[data-biome="none"]')?.classList.contains('active'),
+    inspectDisabled:document.querySelector('#biome-view-results')?.disabled
+  }))()`, returnByValue:true });
+  await cdp('Runtime.evaluate', { expression: `(() => {
+    document.querySelector('[data-biome="none"]')?.click();
+    document.querySelector('[data-biome="meadows"]')?.click();
+  })()` });
+  await waitForExpression(`/Meadows/.test(document.querySelector('#story-title')?.textContent || '') &&
+    [...document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile')].some(canvas => {
+      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      for(let i=3;i<pixels.length;i+=4) if(pixels[i]) return true;
+      return false;
+    })`, 45000);
+  for (let step = 0; step < 5; step++) {
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  await new Promise(resolve => setTimeout(resolve, 500));
+  const lassoResult = await cdp('Runtime.evaluate', { expression: `(() => {
+    const tiles=[...document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile')];
+    return {
+      zoom:document.querySelector('#viewport-label')?.textContent,
+      backingScale:tiles[0] ? tiles[0].width / tiles[0].getBoundingClientRect().width : 0,
+      alphaPixels:tiles.reduce((sum,canvas) => {
+        const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+        for(let i=3;i<pixels.length;i+=4) if(pixels[i]) sum++;
+        return sum;
+      },0)
+    };
+  })()`, returnByValue:true });
+  const biomeLassoShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(biomeLassoOutput, Buffer.from(biomeLassoShot.data, 'base64'));
+  for (let step = 0; step < 5; step++) {
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-out')?.click()` });
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  const beforeInspectResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    exactState:document.querySelector('#exact-state')?.textContent,
+    exactAlpha:[...document.querySelectorAll('.leaflet-exact-pane canvas')].reduce((sum,canvas) => {
+      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      for(let i=3;i<pixels.length;i+=4) if(pixels[i]) sum++;
+      return sum;
+    },0)
+  }))()`, returnByValue:true });
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#biome-view-results')?.click()` });
+  await waitForExpression(`document.body.classList.contains('inspection-open') && document.querySelectorAll('#inspect-items-list .inspect-item').length > 0 && /SAMPLE|BIOME POINTS/.test(document.querySelector('#exact-state')?.textContent || '')`, 45000);
+  const selectedResult = await cdp('Runtime.evaluate', { expression: `(() => {
+    const alphaPixels = [...document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile')].reduce((sum,canvas) => {
+      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      for(let i=3;i<pixels.length;i+=4) if(pixels[i]) sum++;
+      return sum;
+    },0);
+    return {
+      meadowsActive:document.querySelector('[data-biome="meadows"]')?.classList.contains('active'),
+      noneActive:document.querySelector('[data-biome="none"]')?.classList.contains('active'),
+      inspectTitle:document.querySelector('#inspect-title')?.textContent,
+      inspectTotal:document.querySelector('#inspect-total')?.textContent,
+      itemRows:document.querySelectorAll('#inspect-items-list .inspect-item').length,
+      itemRange:document.querySelector('#inspect-items-range')?.textContent,
+      nextEnabled:document.querySelector('#inspect-items-next')?.disabled === false,
+      selectionPresent:Boolean(document.querySelector('.selection-rectangle')),
+      alphaPixels
+    };
+  })()`, returnByValue:true });
+  const firstRange = selectedResult.result.value.itemRange;
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#inspect-items-next')?.click()` });
+  await waitForExpression(`document.querySelector('#inspect-items-range')?.textContent !== ${JSON.stringify(firstRange)}`, 30000);
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#inspect-close')?.click()` });
+  for (let step = 0; step < 3; step++) {
+    await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
+    await new Promise(resolve => setTimeout(resolve, 450));
+  }
+  const closeResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    zoom:document.querySelector('#viewport-label')?.textContent,
+    tiles:document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile').length,
+    alphaPixels:[...document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile')].reduce((sum,canvas) => {
+      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      for(let i=3;i<pixels.length;i+=4) if(pixels[i]) sum++;
+      return sum;
+    },0)
+  }))()`, returnByValue:true });
+  const biomeShot = await cdp('Page.captureScreenshot', { format:'png', captureBeyondViewport:false });
+  await writeFile(biomeOutput, Buffer.from(biomeShot.data, 'base64'));
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('[data-view-mode="heatmap"]')?.click()` });
+  await waitForExpression(`Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity) > 0 && document.querySelectorAll('.leaflet-biome-pane canvas.biome-tile').length === 0 && !document.querySelector('#legend')?.hidden && !/Opening|Loading/.test(document.querySelector('#story-title')?.textContent || '')`, 30000);
+  const restoredResult = await cdp('Runtime.evaluate', { expression: `(() => ({
+    mode:document.body.classList.contains('biome-mode'),
+    heatOpacity:Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
+    legendVisible:!document.querySelector('#legend')?.hidden
+  }))()`, returnByValue:true });
+  biomeState = {
+    overview:overviewResult.result.value,
+    offGlobe:offGlobeResult.result.value,
+    mapClick:mapClickResult.result.value,
+    lasso:lassoResult.result.value,
+    beforeInspect:beforeInspectResult.result.value,
+    selected:selectedResult.result.value,
+    nextRange:(await cdp('Runtime.evaluate', { expression:`document.querySelector('#inspect-items-range')?.textContent`, returnByValue:true })).result.value,
+    close:closeResult.result.value,
+    restored:restoredResult.result.value
+  };
+  await cdp('Input.dispatchKeyEvent', { type:'rawKeyDown', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
+  await cdp('Input.dispatchKeyEvent', { type:'keyUp', key:'Escape', code:'Escape', windowsVirtualKeyCode:27 });
+  await new Promise(resolve => setTimeout(resolve, 250));
+}
+
 if (scalePreviews) {
-  const captureScale = async outputPath => {
+  await cdp('Runtime.evaluate', { expression: `document.querySelector('#go-world')?.click()` });
+  await new Promise(resolve => setTimeout(resolve, 1200));
+  const terrainContext = /\/api\/context\/overview/.test(rasterStyleState?.initial?.contextSrc || '');
+  const captureScale = async (outputPath, expectedContextWidth) => {
     await cdp('Runtime.evaluate', { expression: `document.querySelector('.leaflet-control-zoom-in')?.click()` });
     await new Promise(resolve => setTimeout(resolve, 1400));
+    if (expectedContextWidth) {
+      await waitForExpression(`document.querySelector('.leaflet-context-pane .context-raster')?.naturalWidth === ${expectedContextWidth}`, 30000);
+    }
     const result = await cdp('Runtime.evaluate', { expression: `(() => ({
       status:document.querySelector('#map-status')?.textContent,
       toneCap:Number(document.querySelector('#legend')?.dataset.toneCap),
@@ -189,6 +698,8 @@ if (scalePreviews) {
       naturalHeight:document.querySelector('.analysis-raster')?.naturalHeight,
       opacity:Number(getComputedStyle(document.querySelector('.analysis-raster')).opacity),
       opacityLabel:document.querySelector('#analysis-opacity-value')?.textContent,
+      contextSrc:document.querySelector('.leaflet-context-pane .context-raster')?.getAttribute('src'),
+      contextNaturalWidth:document.querySelector('.leaflet-context-pane .context-raster')?.naturalWidth,
       storyAction:document.querySelector('#story-action')?.textContent,
       viewport:document.querySelector('#viewport-label')?.textContent
     }))()`, returnByValue:true });
@@ -196,10 +707,10 @@ if (scalePreviews) {
     await writeFile(outputPath, Buffer.from(shot.data, 'base64'));
     return result.result.value;
   };
-  const scale320 = await captureScale(scale320Output);
-  const scale160 = await captureScale(scale160Output);
-  const scale80 = await captureScale(scale80Output);
-  const scale64 = await captureScale(scale64Output);
+  const scale320 = await captureScale(scale320Output, terrainContext ? 2048 : null);
+  const scale160 = await captureScale(scale160Output, terrainContext ? 2048 : null);
+  const scale80 = await captureScale(scale80Output, terrainContext ? 2048 : null);
+  const scale64 = await captureScale(scale64Output, terrainContext ? 4096 : null);
   scalePreviewState = { scale320, scale160, scale80, scale64 };
   await cdp('Runtime.evaluate', { expression: `document.querySelector('#go-world')?.click()` });
   await new Promise(resolve => setTimeout(resolve, 1200));
@@ -516,6 +1027,9 @@ if (exercise) {
           localNaturalSize:local ? { width:local.naturalWidth, height:local.naturalHeight } : null,
           worldOpacity:world ? Number(getComputedStyle(world).opacity) : null,
           contextOpacity:context ? Number(getComputedStyle(context).opacity) : null,
+          requestedContextOpacity:Number(document.querySelector('#context-opacity')?.value),
+          contextSrc:context?.getAttribute('src'),
+          contextNaturalWidth:context?.naturalWidth,
           contextOpacityLabel:document.querySelector('#context-opacity-value')?.textContent,
           activeSteps:[...document.querySelectorAll('#detail-ladder .active')].map(step => step.dataset.detail),
           exactPointCanvases:document.querySelectorAll('.leaflet-exact-pane canvas').length
@@ -631,6 +1145,15 @@ const evaluated = await cdp('Runtime.evaluate', {
   returnByValue: true
 });
 const state = JSON.parse(evaluated.result.value);
+const contextPresentationValid = detail => {
+  const terrain = /\/api\/context\/detail/.test(detail?.contextSrc || '');
+  if (terrain) {
+    return detail.contextNaturalWidth === 4096 &&
+      Math.abs(detail.contextOpacity - detail.requestedContextOpacity) < .01 &&
+      !/→/.test(detail.contextOpacityLabel || '');
+  }
+  return detail?.contextOpacity < .2 && /→/.test(detail?.contextOpacityLabel || '');
+};
 const shot = await cdp('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
 await mkdir(path.dirname(output), { recursive: true });
 await writeFile(output, Buffer.from(shot.data, 'base64'));
@@ -641,17 +1164,66 @@ console.log(JSON.stringify({ targetUrl, output, marqueeOutput:exercise ? marquee
   scale320Output:scalePreviews ? scale320Output : null, scale160Output:scalePreviews ? scale160Output : null,
   scale80Output:scalePreviews ? scale80Output : null, scale64Output:scalePreviews ? scale64Output : null,
   publicInspectOutput:publicInspect ? publicInspectOutput : null,
+  quickStartOutput:publicExperience ? quickStartOutput : null,
+  feedbackOutput:publicExperience ? feedbackOutput : null,
+  terrainCloseOutput:terrainClose ? terrainCloseOutput : null,
+  biomeOutput:biomes ? biomeOutput : null,
+  biomeOverviewOutput:biomes ? biomeOverviewOutput : null,
+  biomeLassoOutput:biomes ? biomeLassoOutput : null,
+  topographicOverviewOutput:terrain ? topographicOverviewOutput : null,
+  topographicDetailOutput:terrain ? topographicDetailOutput : null,
   state, marqueeState, inspectorTabState, panGestureState, densePointState, denseUiState, earlyInspectState,
   earlySelectionItemsState, expandedInspectState, selectedItemsState, postInspectPanState, storyActionState,
   localDetail8State, localDetail4State, bufferedHandoffState,
-  rasterStyleState, scalePreviewState, publicInspectState, publicClosedState, errors }, null, 2));
+  rasterStyleState, scalePreviewState, publicInspectState, publicClosedState, publicShellState,
+  terrainCloseState, biomeState, terrainState, initialTerrainState, modeTransitionState, errors }, null, 2));
 await cdp('Browser.close').catch(() => {});
 socket.close();
 setTimeout(() => browser.kill(), 1000).unref();
 if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state.status} ${state.title}`) ||
     (publicExperience && (!state.publicExperience || !/Comfy Era 17/.test(state.publicWorld || '') ||
       state.primaryNavDisplay !== 'none' || state.controlsDisplay !== 'none' ||
-      (!publicInspect && state.jobsPanelDisplay !== 'none'))) ||
+      (!publicInspect && state.jobsPanelDisplay !== 'none') ||
+      !publicShellState?.guideButtonVisible || !publicShellState?.feedbackButtonVisible ||
+      !publicShellState?.feedbackEnabled || !publicShellState?.guide?.open ||
+      publicShellState?.guide?.title !== 'Start with the world. Add the question you want to ask.' ||
+      publicShellState?.guide?.cta !== 'Explore the terrain' ||
+      publicShellState?.guide?.steps?.length !== 5 ||
+      publicShellState?.guide?.steps?.join('|') !== 'Read the terrain|Move|Reveal activity|Explore territories|Inspect' ||
+      !publicShellState?.guide?.copy?.[3]?.includes('None leaves the map unmarked') ||
+      !publicShellState?.dismissals?.closeButton?.closed || !publicShellState?.dismissals?.closeButton?.stored ||
+      !publicShellState?.dismissals?.cta?.closed || !publicShellState?.dismissals?.cta?.stored ||
+      !publicShellState?.dismissals?.escape || !publicShellState?.dismissals?.backdrop?.closed ||
+      !publicShellState?.dismissals?.backdrop?.stored || !publicShellState?.persistence?.before ||
+      !publicShellState?.persistence?.manual || !publicShellState?.feedback?.quickStartSuppressed ||
+      !publicShellState?.feedback?.open || !publicShellState?.feedback?.anonymousDefault ||
+      !publicShellState?.feedback?.identityAvailable ||
+      !/world data and IP address will not be included/i.test(publicShellState?.feedback?.contextCopy || '') ||
+      publicShellState?.feedback?.submitText !== 'Send feedback' || !publicShellState?.manualAfterDiscord ||
+      !publicShellState?.dialogsClosed || !initialTerrainState?.terrainMode ||
+      initialTerrainState?.activeButtons?.length !== 0 || initialTerrainState?.pressedButtons?.length !== 0 ||
+      initialTerrainState?.buttonLabels?.join('|') !== 'Heatmap|Biomes' || initialTerrainState?.topographicButtonPresent ||
+      !/\/api\/context\/topographic-overview/.test(initialTerrainState?.contextSrc || '') ||
+      initialTerrainState?.contextOpacity !== 1 || initialTerrainState?.analysisCount !== 0 ||
+      initialTerrainState?.analysisOpacity !== 0 || initialTerrainState?.biomeTiles !== 0 ||
+      initialTerrainState?.legendVisible || initialTerrainState?.exactAlpha !== 0 ||
+      initialTerrainState?.exactState !== 'TERRAIN' || initialTerrainState?.story !== 'Follow the shape of the world' ||
+      modeTransitionState?.heatActivated?.active?.join('|') !== 'heatmap' ||
+      modeTransitionState?.heatActivated?.heatOpacity <= 0 || !modeTransitionState?.heatActivated?.legendVisible ||
+      !modeTransitionState?.heatDeactivated?.terrainMode || modeTransitionState?.heatDeactivated?.active?.length !== 0 ||
+      modeTransitionState?.heatDeactivated?.heatOpacity !== 0 || modeTransitionState?.heatDeactivated?.legendVisible ||
+      modeTransitionState?.offGlobeHeat?.inspectionOpen || modeTransitionState?.offGlobeHeat?.selectionPresent ||
+      modeTransitionState?.offGlobeTerrain?.inspectionOpen || modeTransitionState?.offGlobeTerrain?.selectionPresent ||
+      modeTransitionState?.directToHeat?.active?.join('|') !== 'heatmap' || modeTransitionState?.directToHeat?.biomeTiles !== 0 ||
+      modeTransitionState?.directToBiomes?.active?.join('|') !== 'biomes' || !modeTransitionState?.directToBiomes?.meadowsActive ||
+      !modeTransitionState?.biomesDeactivated?.terrainMode || !modeTransitionState?.biomesDeactivated?.meadowsActive ||
+      !modeTransitionState?.biomesDeactivated?.biomeControlsDisabled || modeTransitionState?.biomesDeactivated?.biomeTiles !== 0 ||
+      !modeTransitionState?.biomesRestored?.biomeMode || !modeTransitionState?.biomesRestored?.meadowsActive ||
+      !modeTransitionState?.biomesNone?.biomeMode || !modeTransitionState?.biomesNone?.noneActive ||
+      modeTransitionState?.biomesNone?.biomeAlpha !== 0 || modeTransitionState?.biomesNone?.heatOpacity !== 0 ||
+      modeTransitionState?.biomesNone?.legendVisible || modeTransitionState?.biomesNone?.contextSrc !== initialTerrainState?.contextSrc ||
+      modeTransitionState?.biomesNone?.contextOpacity !== initialTerrainState?.contextOpacity ||
+      !modeTransitionState?.biomesSecondClick?.terrainMode || modeTransitionState?.biomesSecondClick?.active?.length !== 0)) ||
     (!publicExperience && (state.publicExperience || state.primaryNavDisplay === 'none' ||
       state.controlsDisplay === 'none' || state.jobsPanelDisplay === 'none')) ||
     (publicInspect && (!publicExperience || !publicInspectState?.inspectionOpen ||
@@ -664,7 +1236,9 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       publicClosedState?.mapWidth <= publicInspectState?.mapWidth)) ||
     rasterStyleState?.initial?.mode !== 'smooth' || rasterStyleState?.initial?.world !== 'auto' ||
     rasterStyleState?.initial?.context !== 'auto' || rasterStyleState?.initial?.worldOpacity !== 1 ||
-    rasterStyleState?.initial?.contextOpacity !== .42 || !rasterStyleState?.initial?.smoothActive ||
+    rasterStyleState?.initial?.contextOpacity !== rasterStyleState?.initial?.requestedContextOpacity ||
+    !rasterStyleState?.initial?.contextSrc || rasterStyleState?.initial?.contextNaturalWidth < 1 ||
+    !rasterStyleState?.initial?.smoothActive ||
     !/82%.*100%/.test(rasterStyleState?.initial?.opacityLabel || '') ||
     rasterStyleState?.initial?.toneCap !== 1 || rasterStyleState?.initial?.toneExponent !== 1.75 ||
     rasterStyleState?.initial?.legendMode !== 'OVERVIEW LOG' ||
@@ -673,6 +1247,36 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
     !['pixelated','crisp-edges'].includes(rasterStyleState?.cells?.context) || !rasterStyleState?.cells?.cellsActive ||
     rasterStyleState?.restored?.mode !== 'smooth' || rasterStyleState?.restored?.world !== 'auto' ||
     rasterStyleState?.restored?.context !== 'auto' || !rasterStyleState?.restored?.smoothActive ||
+    (terrainClose && (!/\/api\/context\/detail/.test(terrainCloseState?.contextSrc || '') ||
+      terrainCloseState?.contextNaturalWidth !== 4096 || terrainCloseState?.localDetailCount !== 1 ||
+      Math.abs(terrainCloseState?.contextOpacity - terrainCloseState?.requestedContextOpacity) >= .01 ||
+      /→/.test(terrainCloseState?.contextOpacityLabel || ''))) ||
+    (terrain && (!terrainState?.overview?.mode || !terrainState?.overview?.noButtonActive ||
+      !terrainState?.overview?.topographicButtonAbsent ||
+      !/\/api\/context\/topographic-overview/.test(terrainState?.overview?.contextSrc || '') ||
+      terrainState?.overview?.contextOpacity !== 1 || terrainState?.overview?.heatOpacity !== 0 ||
+      terrainState?.overview?.legendVisible || terrainState?.overview?.exactState !== 'TERRAIN' ||
+      terrainState?.overview?.exactAlpha !== 0 ||
+      !/\/api\/context\/topographic-detail/.test(terrainState?.detail?.contextSrc || '') ||
+      terrainState?.detail?.naturalWidth !== 4096 || terrainState?.detail?.heatOpacity !== 0 ||
+      terrainState?.detail?.exactState !== 'TERRAIN' || !/terrain/i.test(terrainState?.detail?.story || ''))) ||
+    (biomes && (!biomeState?.overview?.mode || biomeState?.overview?.filterDisabled ||
+      biomeState?.overview?.tiles < 1 || biomeState?.overview?.heatOpacity !== 0 || biomeState?.overview?.contextOpacity !== 1 ||
+      biomeState?.overview?.oceanLabel !== 'Ocean' || biomeState?.overview?.otherLabel !== 'Mountains + Forest' ||
+      !/OUTLINES/.test(biomeState?.overview?.exactState || '') || biomeState?.overview?.exactAlpha !== 0 ||
+      !biomeState?.overview?.noneActive || !biomeState?.overview?.inspectDisabled || biomeState?.overview?.biomeAlpha !== 0 ||
+      !biomeState?.offGlobe?.noneActive || biomeState?.offGlobe?.selectedCount !== 0 || !biomeState?.offGlobe?.inspectDisabled ||
+      !biomeState?.mapClick?.active || !/highlighted/i.test(biomeState?.mapClick?.story || '') ||
+      biomeState?.mapClick?.noneActive || biomeState?.mapClick?.inspectDisabled ||
+      biomeState?.lasso?.backingScale < 1.9 || biomeState?.lasso?.alphaPixels < 1 ||
+      !/OUTLINES/.test(biomeState?.beforeInspect?.exactState || '') || biomeState?.beforeInspect?.exactAlpha !== 0 ||
+      !biomeState?.selected?.meadowsActive || biomeState?.selected?.noneActive ||
+      !/Meadows/.test(biomeState?.selected?.inspectTitle || '') ||
+      biomeState?.selected?.itemRows !== 100 || !biomeState?.selected?.nextEnabled ||
+      biomeState?.selected?.selectionPresent || biomeState?.selected?.alphaPixels < 1 ||
+      biomeState?.nextRange === biomeState?.selected?.itemRange || biomeState?.close?.tiles < 1 ||
+      biomeState?.close?.alphaPixels < 1 || biomeState?.restored?.mode ||
+      biomeState?.restored?.heatOpacity <= 0 || !biomeState?.restored?.legendVisible)) ||
     (scalePreviews && (!/320 m cells/.test(scalePreviewState?.scale320?.status || '') ||
       !/160 m cells/.test(scalePreviewState?.scale160?.status || '') ||
       !/80 m cells/.test(scalePreviewState?.scale80?.status || '') ||
@@ -684,11 +1288,16 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
         scalePreviewState?.scale80?.toneCap > scalePreviewState?.scale64?.toneCap) ||
       scalePreviewState?.scale320?.legendMode !== 'MAX LOG' || scalePreviewState?.scale160?.legendMode !== 'SCALE LOG' ||
       scalePreviewState?.scale80?.legendMode !== 'SCALE LOG' || scalePreviewState?.scale64?.legendMode !== 'P99.5 LOG' ||
-      scalePreviewState?.scale320?.displayScale !== 2 || scalePreviewState?.scale160?.displayScale !== 2 ||
+      scalePreviewState?.scale320?.displayScale !== 3 || scalePreviewState?.scale160?.displayScale !== 2 ||
       scalePreviewState?.scale80?.displayScale !== 2 || scalePreviewState?.scale64?.displayScale !== 2 ||
-      scalePreviewState?.scale320?.naturalWidth !== 332 || scalePreviewState?.scale160?.naturalWidth !== 664 ||
+      scalePreviewState?.scale320?.naturalWidth !== 498 || scalePreviewState?.scale160?.naturalWidth !== 664 ||
       scalePreviewState?.scale80?.naturalWidth !== 1326 || scalePreviewState?.scale64?.naturalWidth !== 1658 ||
-      scalePreviewState?.scale320?.opacity !== 1 || !/z-5\.00/.test(scalePreviewState?.scale320?.viewport || '') ||
+      (/\/api\/context\/overview/.test(rasterStyleState?.initial?.contextSrc || '') &&
+        (!/\/api\/context\/overview/.test(scalePreviewState?.scale80?.contextSrc || '') ||
+          scalePreviewState?.scale80?.contextNaturalWidth !== 2048 ||
+          !/\/api\/context\/detail/.test(scalePreviewState?.scale64?.contextSrc || '') ||
+          scalePreviewState?.scale64?.contextNaturalWidth !== 4096)) ||
+      scalePreviewState?.scale320?.opacity !== .92 || !/z-5\.00/.test(scalePreviewState?.scale320?.viewport || '') ||
       scalePreviewState?.scale160?.opacity !== .82 || !/z-4\.00/.test(scalePreviewState?.scale160?.viewport || '') ||
       scalePreviewState?.scale80?.opacity !== .82 || !/z-3\.00/.test(scalePreviewState?.scale80?.viewport || '') ||
       scalePreviewState?.scale64?.opacity !== .82 || !/z-2\.00/.test(scalePreviewState?.scale64?.viewport || '') ||
@@ -696,8 +1305,11 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
       !/Inspect an area/.test(scalePreviewState?.scale160?.storyAction || '') ||
       !/Inspect an area/.test(scalePreviewState?.scale80?.storyAction || '') ||
       !/Inspect an area/.test(scalePreviewState?.scale64?.storyAction || '') ||
-      /\+$/.test(scalePreviewState?.scale320?.legendLastTick || '') || !/\+$/.test(scalePreviewState?.scale160?.legendLastTick || '') ||
-      !/\+$/.test(scalePreviewState?.scale80?.legendLastTick || '') || !/\+$/.test(scalePreviewState?.scale64?.legendLastTick || ''))) ||
+      (publicExperience
+        ? [scalePreviewState?.scale320, scalePreviewState?.scale160, scalePreviewState?.scale80, scalePreviewState?.scale64]
+          .some(scale => /\+$/.test(scale?.legendLastTick || ''))
+        : /\+$/.test(scalePreviewState?.scale320?.legendLastTick || '') || !/\+$/.test(scalePreviewState?.scale160?.legendLastTick || '') ||
+          !/\+$/.test(scalePreviewState?.scale80?.legendLastTick || '') || !/\+$/.test(scalePreviewState?.scale64?.legendLastTick || '')))) ||
     (submitJob && !/RUNNING|QUEUED/.test(state.jobActivity || '')) ||
     (exercise && (!marqueeState?.present || marqueeState.borderStyle !== 'dashed' || !marqueeState.active ||
       marqueeState.left < marqueeState.mapRect.left || marqueeState.top < marqueeState.mapRect.top ||
@@ -740,9 +1352,8 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
         localDetail4State?.localCount !== 1 || localDetail4State?.localCellSize !== 4 ||
         localDetail4State?.localImageRendering !== 'auto' || !localDetail4State?.activeSteps?.includes('4') ||
         !localDetail4State?.activeSteps?.includes('points') || localDetail4State?.exactPointCanvases < 1 ||
-        localDetail8State?.worldOpacity !== 0 || localDetail8State?.contextOpacity >= .2 ||
+        localDetail8State?.worldOpacity !== 0 || !contextPresentationValid(localDetail8State) ||
         localDetail8State?.contextOpacity >= localDetail8State?.localOpacity ||
-        !/→/.test(localDetail8State?.contextOpacityLabel || '') ||
         localDetail8State?.peekContextOpacity < .4 || localDetail8State?.peekLocalOpacity !== .03 ||
         localDetail8State?.restoredContextOpacity !== localDetail8State?.contextOpacity ||
         bufferedHandoffState?.held?.src !== bufferedHandoffState?.before?.src ||
@@ -752,8 +1363,7 @@ if (errors.length || !state.legendVisible || /NO RASTER|Preparing/.test(`${state
         bufferedHandoffState?.after?.src === bufferedHandoffState?.before?.src ||
         bufferedHandoffState?.after?.localCount !== 1 || !/4 M LOCAL/.test(bufferedHandoffState?.after?.scale || '') ||
         !/4 M/.test(bufferedHandoffState?.after?.exactState || '') ||
-        localDetail4State?.worldOpacity !== 0 || localDetail4State?.contextOpacity >= .2 ||
+        localDetail4State?.worldOpacity !== 0 || !contextPresentationValid(localDetail4State) ||
         localDetail4State?.contextOpacity >= localDetail4State?.localOpacity ||
-        !/→/.test(localDetail4State?.contextOpacityLabel || '') ||
         localDetail4State?.peekContextOpacity < .4 || localDetail4State?.peekLocalOpacity !== .03 ||
         localDetail4State?.restoredContextOpacity !== localDetail4State?.contextOpacity))))) process.exitCode = 1;

@@ -1,5 +1,10 @@
 /target/
 /data/
+/test-results/
+__pycache__/
+*.pyc
+.env
+tools/deploy-world-receipt.json
 *.db
 *.duckdb
 *.duckdb.wal

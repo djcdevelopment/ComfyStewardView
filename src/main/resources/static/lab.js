@@ -2,8 +2,10 @@
   'use strict';
 
   const $ = id => document.getElementById(id);
-  const API = '/api';
-  const PUBLIC_MODE = new URLSearchParams(location.search).get('lab') !== '1';
+  const APP_BASE = new URL('.', location.href);
+  const API = new URL('api', APP_BASE).pathname.replace(/\/$/, '');
+  const REQUESTED_LAB_MODE = new URLSearchParams(location.search).get('lab') === '1';
+  let PUBLIC_MODE = true;
   document.body.classList.toggle('public-experience', PUBLIC_MODE);
   document.body.classList.toggle('lab-experience', !PUBLIC_MODE);
   document.title = PUBLIC_MODE ? 'Steward — World View' : 'Steward Spatial Lab';
@@ -12,8 +14,16 @@
   const ANALYSIS_TONE_PERCENTILE = .995;
   const ANALYSIS_TONE_LABEL = 'P99.5';
   const ANALYSIS_DISPLAY_SCALE = 2;
+  const ANALYSIS_SETTLEMENT_DISPLAY_SCALE = 3;
   const ANALYSIS_DISPLAY_SCALE_MAX_PIXELS = 1_000_000;
+  const ANALYSIS_SETTLEMENT_OPACITY_CAP = .92;
+  const BIOME_CONTEXT_OPACITY = 1;
+  const BIOME_HIGHLIGHT_EDGE_START = .18;
+  const BIOME_HIGHLIGHT_EDGE_END = .84;
+  const BIOME_HIGHLIGHT_FILL_ALPHA = 72;
+  const WORLD_GLOBE_RADIUS_METERS = 10_500;
   const EXACT_POINT_LIMIT = 5_000;
+  const QUICK_START_DISMISSAL_KEY = 'steward-world-quick-start-terrain-v1';
   const palettes = {
     ember: [[0,[10,20,36]],[.36,[40,76,124]],[.67,[172,178,142]],[.88,[249,125,91]],[1,[255,224,166]]],
     moss: [[0,[10,30,23]],[.36,[31,92,62]],[.72,[103,176,116]],[1,[238,245,203]]],
@@ -36,6 +46,14 @@
     contextOpacity: .42,
     contextEnabled: true,
     exactEnabled: true,
+    biomeAutoPointsSuppressed: false,
+    viewMode: 'terrain',
+    biomeCatalog: [],
+    selectedBiomes: new Set(),
+    biomeMask: null,
+    biomeLoadPromise: null,
+    biomeLayer: null,
+    miniBiomeLayer: null,
     tool: 'pan',
     rightPanel: 'jobs',
     map: null,
@@ -47,6 +65,8 @@
     detailResolution: null,
     contextOverlay: null,
     miniContextOverlay: null,
+    contextVariantId: null,
+    miniContextVariantId: null,
     exactLayer: null,
     exactScope: null,
     exactRenderer: null,
@@ -67,8 +87,15 @@
     currentToneFocus: 0,
     currentToneExponent: ANALYSIS_TONE_EXPONENT,
     currentSelectionBounds: null,
+    currentScopeBounds: null,
     currentSelectionPositionCount: null,
     selectionItemsLoading: false,
+    itemPageCursors: [null],
+    itemPageIndex: 0,
+    itemNextCursor: null,
+    itemToken: 0,
+    discordIdentity: null,
+    feedbackSubmitting: false,
     rawImages: new Map(),
     coloredImages: new Map(),
     rasterToken: 0,
@@ -105,15 +132,43 @@
     return body;
   }
 
+  async function preloadImage(url) {
+    const image = new Image();
+    image.src = url;
+    if (image.decode) await image.decode();
+    else await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error(`Could not decode ${url}`));
+    });
+  }
+
   async function bootstrap() {
     try {
       state.bootstrap = await fetchJson(`${API}/bootstrap`);
+      PUBLIC_MODE = state.bootstrap.publicMode === true || !REQUESTED_LAB_MODE;
+      document.body.classList.toggle('public-experience', PUBLIC_MODE);
+      document.body.classList.toggle('lab-experience', !PUBLIC_MODE);
+      state.viewMode = PUBLIC_MODE ? 'terrain' : 'heatmap';
+      document.body.classList.toggle('terrain-mode', state.viewMode === 'terrain');
       state.lenses = state.bootstrap.lenses || [];
       state.lensById = new Map(state.lenses.map(lens => [lens.id, lens]));
+      state.biomeCatalog = (state.bootstrap.context?.biomes?.catalog || []).map(biome => {
+        if (biome.id === 'space') return { ...biome, label:'Ocean' };
+        if (biome.id === 'other') return { ...biome, label:'Mountains + Forest' };
+        return biome;
+      });
+      const biomeButton = document.querySelector('[data-view-mode="biomes"]');
+      if (biomeButton) {
+        biomeButton.disabled = state.biomeCatalog.length === 0;
+        biomeButton.title = biomeButton.disabled
+          ? 'Biome territories are not available for this world'
+          : 'Explore and combine biome territories';
+      }
       renderBootstrap();
       initMap();
       await loadManifest();
       bindEvents();
+      if (PUBLIC_MODE) await initializePublicExperience();
       if (!PUBLIC_MODE) {
         state.pollTimer = setInterval(pollJobs, 500);
         pollJobs();
@@ -126,6 +181,12 @@
   }
 
   function renderBootstrap() {
+    const terrainContext = state.bootstrap.context;
+    if (terrainContext?.available) {
+      state.contextOpacity = Number(terrainContext.defaultOpacity ?? .62);
+      $('context-opacity').value = String(state.contextOpacity);
+      $('context-opacity-value').textContent = `${Math.round(state.contextOpacity*100)}%`;
+    }
     const cacheChip = $('cache-chip');
     if (state.bootstrap.cacheAvailable) {
       const cacheWorlds = [...new Set((state.bootstrap.snapshots || [])
@@ -168,11 +229,440 @@
       list.appendChild(button);
     }
     updateLensCopy();
-    $('context-provenance').textContent = state.bootstrap.contextAuthoritative ? 'AUTHORITATIVE' : 'INFERRED';
-    $('context-copy').textContent = state.bootstrap.contextAuthoritative
+    $('context-provenance').textContent = terrainContext?.provenance ||
+      (state.bootstrap.contextAuthoritative ? 'AUTHORITATIVE' : 'INFERRED');
+    $('context-copy').textContent = terrainContext?.available
+      ? `${terrainContext.label} combines Valheim terrain, water, and save-matched player ground edits.`
+      : state.bootstrap.contextAuthoritative
       ? `${state.bootstrap.contextLabel} is supplied as the cartographic underlay.`
       : 'The surface ZDO field is an inferred coastline, not a terrain heightmap.';
+    renderBiomeControls();
     setRasterStyle(state.rasterStyle);
+  }
+
+  function renderBiomeControls() {
+    const list = $('biome-chip-list');
+    const controls = $('map-view-controls');
+    const group = $('biome-filter-group');
+    const available = state.biomeCatalog.length > 0;
+    controls.hidden = false;
+    group.disabled = !available || state.viewMode !== 'biomes';
+    group.setAttribute('aria-disabled', String(group.disabled));
+    if (!available) return;
+    const chips = [{ id:'none', label:'None', color:'#738096', itemCount:0 }, ...state.biomeCatalog];
+    list.innerHTML = chips.map(biome => {
+      const active = biome.id === 'none' ? state.selectedBiomes.size === 0 : state.selectedBiomes.has(biome.id);
+      const title = biome.id === 'none' ? 'Clear all biome highlights' : `${biome.label} · ${fmt(biome.itemCount)} objects`;
+      return `<button type="button" class="biome-chip${active ? ' active' : ''}" data-biome="${escapeHtml(biome.id)}" style="--biome-color:${escapeHtml(biome.color)}" aria-pressed="${active}" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}"><i></i><span>${escapeHtml(biome.label)}</span></button>`;
+    }).join('');
+    const selected = selectedBiomeCatalog();
+    $('biome-view-results').disabled = selected.length === 0;
+    $('biome-view-results').title = selected.length
+      ? `Inspect every object in ${selectedBiomeSummary()}`
+      : 'Select one or more biome territories to inspect';
+  }
+
+  function selectedBiomeCatalog() {
+    return state.biomeCatalog.filter(biome => state.selectedBiomes.has(biome.id));
+  }
+
+  function selectedBiomeSummary() {
+    const selected = selectedBiomeCatalog();
+    if (!selected.length) return 'all biomes';
+    if (selected.length === 1) return selected[0].label;
+    if (selected.length === 2) return `${selected[0].label} + ${selected[1].label}`;
+    return `${selected.length} selected biomes`;
+  }
+
+  function biomeQueryValue() {
+    return state.viewMode === 'biomes' && state.selectedBiomes.size
+      ? selectedBiomeCatalog().map(biome => biome.id).join(',') : '';
+  }
+
+  function scopedQuery(bounds, extras = {}) {
+    const query = new URLSearchParams({
+      minX:bounds.getWest(), maxX:bounds.getEast(), minZ:bounds.getSouth(), maxZ:bounds.getNorth(), ...extras
+    });
+    const biomes = biomeQueryValue();
+    if (biomes) query.set('biomes', biomes);
+    return query.toString();
+  }
+
+  function setBiomeFilter(id) {
+    if (id === 'none') state.selectedBiomes.clear();
+    else if (state.selectedBiomes.has(id)) state.selectedBiomes.delete(id);
+    else {
+      if (state.selectedBiomes.size === 0) state.selectedBiomes.add(id);
+      else state.selectedBiomes.add(id);
+    }
+    renderBiomeControls();
+    redrawBiomeLayers();
+    if (state.viewMode !== 'biomes') return;
+    state.biomeAutoPointsSuppressed = false;
+    if (state.exactScope === 'biome-selection' || state.exactScope === 'biome-viewport') removeExactMarkers();
+    const bounds = state.currentSelectionBounds || state.worldBounds;
+    if (!$('inspect-content').hidden && !state.selectedBiomes.size && !state.currentSelectionBounds) closeInspector();
+    else if (!$('inspect-content').hidden) inspectBounds(bounds, { draw:Boolean(state.currentSelectionBounds), preserveView:true });
+    else {
+      showBiomeOutlineStory();
+      scheduleExactPoints();
+    }
+  }
+
+  function showBiomeOutlineStory(prefix = '') {
+    const selected = selectedBiomeCatalog();
+    const title = prefix || (selected.length ? `${selectedBiomeSummary()} highlighted` : 'Biome territories');
+    const copy = selected.length
+      ? `${selectedBiomeSummary()} is highlighted. Click another territory to switch, combine filters above, or inspect an area for its objects.`
+      : 'The terrain stays clear until you click a territory or choose a biome above. Smaller islands resolve as you zoom closer.';
+    $('exact-state').textContent = 'OUTLINES';
+    setStory('ready', title, copy, { type:'inspect', label:'Inspect an area' });
+  }
+
+  function showTerrainStory() {
+    const close = state.map && state.map.getZoom() >= Number(state.bootstrap?.context?.detailZoom ?? -2.25);
+    $('exact-state').textContent = 'TERRAIN';
+    $('map-status').textContent = close
+      ? `Terrain · detailed contours · snapshot #${state.snapshotId}`
+      : `Terrain · world contours · snapshot #${state.snapshotId}`;
+    setStory('ready', close ? 'Read the terrain in detail' : 'Follow the shape of the world',
+      close
+        ? 'Enhanced contour lines reveal slopes, ridges, shorelines, and player-shaped ground. Inspect an area to see what was built there.'
+        : 'Construction is hidden so the terrain can lead. Zoom closer for stronger elevation detail, or inspect an area for its objects.',
+      { type:'inspect', label:'Inspect an area' });
+  }
+
+  function hasEnhancedTerrain() {
+    const variants = state.bootstrap?.context?.variants || [];
+    return ['topographic-overview','topographic-detail']
+      .every(id => variants.some(variant => variant.id === id));
+  }
+
+  function isInsideGlobe(latlng) {
+    return Boolean(latlng) && Math.hypot(latlng.lng, latlng.lat) <= WORLD_GLOBE_RADIUS_METERS;
+  }
+
+  function biomeAtLatLng(latlng) {
+    const mask = state.biomeMask;
+    if (!mask || !latlng) return null;
+    if (!isInsideGlobe(latlng)) return null;
+    const bounds = mask.bounds;
+    const raw = (worldX, worldZ, source = mask.indices) => {
+      if (worldX < bounds.minX || worldX >= bounds.maxX || worldZ < bounds.minZ || worldZ >= bounds.maxZ) return mask.spaceIndex;
+      const x = Math.max(0, Math.min(mask.width - 1,
+        Math.floor((worldX - bounds.minX) / (bounds.maxX - bounds.minX) * mask.width)));
+      const z = Math.max(0, Math.min(mask.height - 1,
+        Math.floor((bounds.maxZ - worldZ) / (bounds.maxZ - bounds.minZ) * mask.height)));
+      return source[z * mask.width + x];
+    };
+    const source = mask.displayIndices;
+    const index = raw(latlng.lng, latlng.lat, source);
+    return mask.byIndex.get(index) || null;
+  }
+
+  function selectBiomeAt(latlng) {
+    if (state.viewMode !== 'biomes') return false;
+    const biome = biomeAtLatLng(latlng);
+    if (!biome) return false;
+    state.selectedBiomes.clear();
+    state.selectedBiomes.add(biome.id);
+    state.biomeAutoPointsSuppressed = false;
+    if (state.exactScope === 'biome-selection' || state.exactScope === 'biome-viewport') removeExactMarkers();
+    renderBiomeControls();
+    redrawBiomeLayers();
+    if (!$('inspect-content').hidden) {
+      inspectBounds(state.currentSelectionBounds || state.worldBounds,
+        { draw:Boolean(state.currentSelectionBounds), preserveView:true });
+    } else {
+      showBiomeOutlineStory(`${biome.label} highlighted`);
+      scheduleExactPoints();
+    }
+    toast(`${biome.label} territory highlighted`);
+    return true;
+  }
+
+  async function setViewMode(mode) {
+    mode = mode === 'biomes' && state.biomeCatalog.length ? 'biomes'
+      : mode === 'heatmap' ? 'heatmap' : 'terrain';
+    if (state.viewMode === mode) {
+      if (mode === 'terrain') return;
+      mode = 'terrain';
+    }
+    state.viewMode = mode;
+    document.body.classList.toggle('biome-mode', mode === 'biomes');
+    document.body.classList.toggle('terrain-mode', mode === 'terrain');
+    document.querySelectorAll('[data-view-mode]').forEach(button => {
+      const active = button.dataset.viewMode === mode;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    renderBiomeControls();
+    if (mode === 'biomes') {
+      state.biomeAutoPointsSuppressed = false;
+      clearExactPoints();
+      try {
+        await applyContext();
+        await ensureBiomeLayers();
+        syncCompositeOpacity();
+        $('legend').hidden = true;
+        showBiomeOutlineStory();
+        scheduleExactPoints();
+      } catch (error) {
+        state.viewMode = 'terrain';
+        document.body.classList.remove('biome-mode');
+        document.body.classList.add('terrain-mode');
+        document.querySelectorAll('[data-view-mode]').forEach(button => {
+          button.classList.remove('active');
+          button.setAttribute('aria-pressed', 'false');
+        });
+        renderBiomeControls();
+        setStory('error', 'Biome view could not load', error.message);
+        await applyRaster();
+      }
+    } else {
+      removeBiomeLayers();
+      if (state.exactScope === 'biome-selection' || state.exactScope === 'biome-viewport') {
+        removeExactMarkers();
+        $('exact-state').textContent = mode === 'terrain' ? 'TERRAIN' : 'RASTER';
+      }
+      if (mode === 'terrain') removeExactMarkers();
+      renderBiomeControls();
+      await applyContext();
+      await applyRaster();
+      if (mode === 'terrain') showTerrainStory();
+      else scheduleExactPoints();
+    }
+  }
+
+  async function ensureBiomeLayers() {
+    await ensureBiomeMask();
+    if (!state.biomeLayer) state.biomeLayer = createBiomeLayer(false).addTo(state.map);
+    if (!state.miniBiomeLayer) state.miniBiomeLayer = createBiomeLayer(true).addTo(state.minimap);
+  }
+
+  async function ensureBiomeMask() {
+    if (state.biomeMask) return state.biomeMask;
+    if (state.biomeLoadPromise) return state.biomeLoadPromise;
+    state.biomeLoadPromise = (async () => {
+      const terrain = state.bootstrap.context;
+      const colorIndices = new Map(state.biomeCatalog.map(biome => {
+        const color = biome.color.slice(1);
+        return [parseInt(color, 16), Number(biome.index)];
+      }));
+      const decode = async variant => {
+        const response = await fetch(`${API}/context/${encodeURIComponent(variant.id)}?v=${encodeURIComponent(variant.version)}`);
+        if (!response.ok) throw new Error(`Biome mask request failed (${response.status})`);
+        const bitmap = await createImageBitmap(await response.blob());
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width; canvas.height = bitmap.height;
+        const context = canvas.getContext('2d', { willReadFrequently:true });
+        context.drawImage(bitmap, 0, 0);
+        const rgba = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+        const indices = new Uint8Array(bitmap.width * bitmap.height);
+        for (let offset = 0, pixel = 0; pixel < indices.length; offset += 4, pixel++) {
+          const key = (rgba[offset] << 16) | (rgba[offset + 1] << 8) | rgba[offset + 2];
+          const index = colorIndices.get(key);
+          if (index == null) throw new Error('Biome mask contains an unknown territory color.');
+          indices[pixel] = index;
+        }
+        const decoded = { width:bitmap.width, height:bitmap.height, indices };
+        bitmap.close?.();
+        return decoded;
+      };
+      const maskId = terrain?.biomes?.maskVariant;
+      const displayMaskId = terrain?.biomes?.displayMaskVariant || maskId;
+      const variant = terrain?.variants?.find(item => item.id === maskId);
+      const displayVariant = terrain?.variants?.find(item => item.id === displayMaskId);
+      if (!terrain?.available || !variant || !displayVariant) throw new Error('The biome masks are not part of this release.');
+      const [exactMask, displayMask] = await Promise.all([decode(variant), decode(displayVariant)]);
+      if (exactMask.width !== displayMask.width || exactMask.height !== displayMask.height) {
+        throw new Error('The biome display mask does not match the authoritative mask.');
+      }
+      state.biomeMask = {
+        width:exactMask.width, height:exactMask.height, indices:exactMask.indices,
+        displayIndices:displayMask.indices, bounds:terrain.bounds,
+        spaceIndex:Number(state.biomeCatalog.find(item => item.id === 'space')?.index || 1),
+        byIndex:new Map(state.biomeCatalog.map(item => [Number(item.index), item]))
+      };
+      return state.biomeMask;
+    })();
+    try { return await state.biomeLoadPromise; }
+    finally { state.biomeLoadPromise = null; }
+  }
+
+  function createBiomeLayer(mini) {
+    const BiomeGrid = L.GridLayer.extend({
+      createTile(coords) {
+        const canvas = document.createElement('canvas');
+        const size = this.getTileSize();
+        const renderScale = mini ? 1 : 2;
+        const width = size.x * renderScale;
+        const height = size.y * renderScale;
+        canvas.width = width; canvas.height = height;
+        canvas.style.width = `${size.x}px`; canvas.style.height = `${size.y}px`;
+        canvas.className = 'biome-tile';
+        canvas.setAttribute('aria-hidden', 'true');
+        const context = canvas.getContext('2d');
+        const image = context.createImageData(width, height);
+        const edgeImage = mini ? null : context.createImageData(width, height);
+        const map = this._map;
+        const northWest = map.unproject(L.point(coords.x * size.x, coords.y * size.y), coords.z);
+        const southEast = map.unproject(L.point((coords.x + 1) * size.x, (coords.y + 1) * size.y), coords.z);
+        const dx = (southEast.lng - northWest.lng) / width;
+        const dz = (northWest.lat - southEast.lat) / height;
+        const mask = state.biomeMask;
+        const source = mask.displayIndices;
+        const selected = new Set([...state.selectedBiomes].map(id => Number(state.biomeCatalog.find(item => item.id === id)?.index)));
+        const showNone = selected.size === 0;
+        if (showNone) return canvas;
+        const sampleRaw = (worldX, worldZ) => {
+          const b = mask.bounds;
+          if (worldX < b.minX || worldX >= b.maxX || worldZ < b.minZ || worldZ >= b.maxZ) return mask.spaceIndex;
+          const x = Math.max(0, Math.min(mask.width - 1, Math.floor((worldX - b.minX) / (b.maxX - b.minX) * mask.width)));
+          const z = Math.max(0, Math.min(mask.height - 1, Math.floor((b.maxZ - worldZ) / (b.maxZ - b.minZ) * mask.height)));
+          return source[z * mask.width + x];
+        };
+        const selectedAt = (x, y) => {
+          if (x < 0 || x >= mask.width || y < 0 || y >= mask.height) return selected.has(mask.spaceIndex) ? 1 : 0;
+          return selected.has(source[y * mask.width + x]) ? 1 : 0;
+        };
+        const sampleSelectedCoverage = (worldX, worldZ) => {
+          const b = mask.bounds;
+          const column = (worldX - b.minX) / (b.maxX - b.minX) * mask.width - .5;
+          const row = (b.maxZ - worldZ) / (b.maxZ - b.minZ) * mask.height - .5;
+          const x0 = Math.floor(column), y0 = Math.floor(row);
+          const tx = column - x0, ty = row - y0;
+          const top = selectedAt(x0, y0) * (1 - tx) + selectedAt(x0 + 1, y0) * tx;
+          const bottom = selectedAt(x0, y0 + 1) * (1 - tx) + selectedAt(x0 + 1, y0 + 1) * tx;
+          return top * (1 - ty) + bottom * ty;
+        };
+        const fallbackIndex = selected.values().next().value;
+        for (let y = 0; y < height; y++) {
+          const worldZ = northWest.lat - (y + .5) * dz;
+          for (let x = 0; x < width; x++) {
+            const worldX = northWest.lng + (x + .5) * dx;
+            const coverage = sampleSelectedCoverage(worldX, worldZ);
+            if (coverage < BIOME_HIGHLIGHT_EDGE_START) continue;
+            let biomeIndex = sampleRaw(worldX, worldZ);
+            if (!selected.has(biomeIndex)) biomeIndex = fallbackIndex;
+            const biome = mask.byIndex.get(biomeIndex);
+            if (!biome) continue;
+            const color = parseInt(biome.color.slice(1), 16);
+            const offset = (y * width + x) * 4;
+            const edge = coverage < BIOME_HIGHLIGHT_EDGE_END;
+            const edgeStrength = edge
+              ? Math.min(1, (coverage - BIOME_HIGHLIGHT_EDGE_START) /
+                (BIOME_HIGHLIGHT_EDGE_END - BIOME_HIGHLIGHT_EDGE_START))
+              : 0;
+            const lift = edge ? .24 : 0;
+            image.data[offset] = Math.round((color >> 16) * (1 - lift) + 255 * lift);
+            image.data[offset + 1] = Math.round(((color >> 8) & 255) * (1 - lift) + 255 * lift);
+            image.data[offset + 2] = Math.round((color & 255) * (1 - lift) + 255 * lift);
+            image.data[offset + 3] = edge
+              ? Math.round(132 + edgeStrength * 123)
+              : BIOME_HIGHLIGHT_FILL_ALPHA;
+            if (edgeImage && edge) {
+              edgeImage.data[offset] = image.data[offset];
+              edgeImage.data[offset + 1] = image.data[offset + 1];
+              edgeImage.data[offset + 2] = image.data[offset + 2];
+              edgeImage.data[offset + 3] = image.data[offset + 3];
+            }
+          }
+        }
+        context.putImageData(image, 0, 0);
+        if (edgeImage) {
+          const edgeCanvas = document.createElement('canvas');
+          edgeCanvas.width = width; edgeCanvas.height = height;
+          edgeCanvas.getContext('2d').putImageData(edgeImage, 0, 0);
+          context.save();
+          context.globalCompositeOperation = 'destination-over';
+          context.globalAlpha = .45;
+          for (const [offsetX, offsetY] of [[-3,0],[3,0],[0,-3],[0,3],[-2,-2],[2,-2],[-2,2],[2,2]]) {
+            context.drawImage(edgeCanvas, offsetX, offsetY);
+          }
+          context.restore();
+        }
+        return canvas;
+      }
+    });
+    return new BiomeGrid({
+      pane:mini ? 'overlayPane' : 'biomePane', tileSize:256, opacity:mini ? .82 : 1,
+      minZoom:-10, maxZoom:4, updateWhenZooming:false, keepBuffer:mini ? 0 : 2
+    });
+  }
+
+  function redrawBiomeLayers() {
+    state.biomeLayer?.redraw();
+    state.miniBiomeLayer?.redraw();
+  }
+
+  function removeBiomeLayers() {
+    if (state.biomeLayer && state.map) state.map.removeLayer(state.biomeLayer);
+    if (state.miniBiomeLayer && state.minimap) state.minimap.removeLayer(state.miniBiomeLayer);
+    state.biomeLayer = state.miniBiomeLayer = null;
+  }
+
+  async function loadBiomeSample(bounds) {
+    if (state.viewMode !== 'biomes' || !bounds) return;
+    clearTimeout(state.exactTimer);
+    state.biomeAutoPointsSuppressed = false;
+    const token = ++state.exactToken;
+    state.selectionItemsLoading = true;
+    syncSelectionAction();
+    try {
+      const query = scopedQuery(bounds, { sample:'true' });
+      const result = await fetchJson(`${API}/points?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&limit=${EXACT_POINT_LIMIT}&${query}`);
+      if (token !== state.exactToken || state.viewMode !== 'biomes') return;
+      installPointMarkers(result.points, state.lensById.get(state.lensId), 'biome-selection');
+      $('exact-state').textContent = result.truncated
+        ? `${fmt(result.points.length)} OF ${fmt(result.total)} SAMPLE`
+        : `${fmt(result.points.length)} BIOME POINTS`;
+      setStory('ready', `${fmt(result.total)} objects · ${selectedBiomeSummary()}`,
+        result.truncated
+          ? `A stable ${fmt(result.points.length)}-object sample is shown. The inspector pages through the complete list.`
+          : 'Every object in this biome scope is shown. Draw a green area to narrow it further.',
+        { type:'inspect', label:'Inspect an area' });
+    } catch (error) {
+      if (token === state.exactToken) toast(`Could not load biome sample · ${error.message}`);
+    } finally {
+      if (token === state.exactToken) {
+        state.selectionItemsLoading = false;
+        syncSelectionAction();
+      }
+    }
+  }
+
+  async function loadBiomeViewportPoints() {
+    if (state.viewMode !== 'biomes' || !state.map || state.exactScope === 'biome-selection') return;
+    const threshold = Number($('threshold-exact').value);
+    if (!state.exactEnabled || !state.selectedBiomes.size || state.biomeAutoPointsSuppressed || state.map.getZoom() < threshold) {
+      if (state.exactScope === 'biome-viewport') removeExactMarkers();
+      showBiomeOutlineStory();
+      return;
+    }
+    const bounds = clampToWorld(state.map.getBounds());
+    if (!bounds) return;
+    const token = ++state.exactToken;
+    try {
+      const result = await fetchJson(`${API}/points?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&limit=${EXACT_POINT_LIMIT}&${scopedQuery(bounds)}`);
+      if (token !== state.exactToken || state.viewMode !== 'biomes') return;
+      if (result.truncated) {
+        removeExactMarkers();
+        $('exact-state').textContent = `> ${fmt(result.limit)} · OUTLINES`;
+        setStory('warn', `Too many objects to reveal · ${selectedBiomeSummary()}`,
+          'The territory map stays clear here. Scroll closer or inspect a green area for its complete object list.',
+          { type:'inspect', label:'Inspect an area' });
+        return;
+      }
+      installPointMarkers(result.points, state.lensById.get(state.lensId), 'biome-viewport');
+      $('exact-state').textContent = `${fmt(result.points.length)} BIOME POINTS`;
+      setStory(result.points.length ? 'ready' : '',
+        result.points.length ? `${fmt(result.points.length)} objects in view · ${selectedBiomeSummary()}` : `No objects in view · ${selectedBiomeSummary()}`,
+        'Close detail is active. Pan onward, click a territory to switch the highlight, or inspect an area for the complete list.',
+        { type:'inspect', label:'Inspect an area' });
+    } catch (error) {
+      if (token === state.exactToken) $('exact-state').textContent = 'QUERY FAILED';
+    }
   }
 
   function setRasterStyle(style) {
@@ -222,6 +712,7 @@
     state.map.createPane('gridPane').style.zIndex = 220;
     state.map.createPane('analysisPane').style.zIndex = 280;
     state.map.createPane('detailPane').style.zIndex = 320;
+    state.map.createPane('biomePane').style.zIndex = 340;
     state.map.createPane('exactPane').style.zIndex = 360;
     state.map.createPane('selectionPane').style.zIndex = 430;
     state.exactRenderer = L.canvas({ pane:'exactPane', padding:.25 });
@@ -263,6 +754,11 @@
     state.map.on('mouseup', finishDrawing);
     state.map.on('click', event => {
       if (state.tool !== 'pan' || state.drawing || performance.now() < state.ignoreClickUntil) return;
+      if (!isInsideGlobe(event.latlng)) return;
+      if (state.viewMode === 'biomes') {
+        selectBiomeAt(event.latlng);
+        return;
+      }
       inspectCell(event.latlng);
     });
     state.map.on('movestart zoomstart', pauseExactPoints);
@@ -372,9 +868,10 @@
       +(ANALYSIS_OVERVIEW_TONE_EXPONENT-ANALYSIS_TONE_EXPONENT)*overviewProgress;
   }
 
-  function effectiveAnalysisOpacity() {
+  function effectiveAnalysisOpacity(entry = state.currentEntry) {
     const detailZoom = Number($('opacity-detail-zoom')?.value ?? -4);
-    return state.map && state.map.getZoom() < detailZoom ? 1 : state.analysisOpacity;
+    const base = state.map && state.map.getZoom() < detailZoom ? 1 : state.analysisOpacity;
+    return Number(entry?.cellSize) === 320 ? Math.min(base, ANALYSIS_SETTLEMENT_OPACITY_CAP) : base;
   }
 
   function layerFor(lensId, resolution, allowFallback = true) {
@@ -386,6 +883,13 @@
 
   async function applyRaster() {
     if (!state.map || !state.manifest) return;
+    if (state.viewMode !== 'heatmap') {
+      ++state.rasterToken;
+      syncCompositeOpacity();
+      $('legend').hidden = true;
+      if (state.viewMode === 'terrain') showTerrainStory();
+      return;
+    }
     const requested = desiredResolution();
     const entry = layerFor(state.lensId, requested);
     const holdingLocalDetail = Boolean(state.detailOverlay);
@@ -417,7 +921,7 @@
       }).addTo(state.map);
       overlay.getElement().dataset.displayScale = String(image.displayScale);
       const previousOverlay = state.overlay;
-      if (!holdingLocalDetail) await crossfade(previousOverlay, overlay, effectiveAnalysisOpacity());
+      if (!holdingLocalDetail) await crossfade(previousOverlay, overlay, effectiveAnalysisOpacity(entry));
       if (token !== state.rasterToken) { state.map.removeLayer(overlay); return; }
       if (holdingLocalDetail && previousOverlay) state.map.removeLayer(previousOverlay);
       state.overlay = overlay;
@@ -449,7 +953,7 @@
   }
 
   async function applyContext() {
-    if (!state.map || !state.contextEnabled) {
+    if (!state.map || (!state.contextEnabled && state.viewMode === 'heatmap')) {
       removeContext();
       return;
     }
@@ -457,9 +961,33 @@
     try {
       let imageUrl;
       let miniImageUrl;
+      let variantId = 'inferred';
+      let miniVariantId = 'inferred-navigator';
       let bounds = state.bootstrap.worldBounds;
       let miniBounds = bounds;
-      if (state.bootstrap.contextAuthoritative) {
+      const terrain = state.bootstrap.context;
+      if (terrain?.available && Array.isArray(terrain.variants)) {
+        const enhanced = state.viewMode !== 'heatmap' && hasEnhancedTerrain();
+        const overviewId = enhanced ? 'topographic-overview' : 'overview';
+        const detailId = enhanced ? 'topographic-detail' : 'detail';
+        const overview = terrain.variants.find(variant => variant.id === overviewId);
+        const detail = terrain.variants.find(variant => variant.id === detailId);
+        if (!overview || !detail) throw new Error('Terrain context variants are incomplete');
+        const selected = state.map.getZoom() >= Number(terrain.detailZoom ?? -2.25) ? detail : overview;
+        variantId = selected.id;
+        miniVariantId = overview.id;
+        imageUrl = `${API}/context/${encodeURIComponent(selected.id)}?v=${encodeURIComponent(selected.version)}`;
+        miniImageUrl = `${API}/context/${encodeURIComponent(overview.id)}?v=${encodeURIComponent(overview.version)}`;
+        bounds = miniBounds = terrain.bounds;
+        if (state.contextOverlay && state.contextVariantId === variantId &&
+            state.miniContextOverlay && state.miniContextVariantId === miniVariantId) {
+          syncCompositeOpacity();
+          return;
+        }
+        await Promise.all([preloadImage(imageUrl), imageUrl === miniImageUrl ? Promise.resolve() : preloadImage(miniImageUrl)]);
+        if (token !== state.contextToken) return;
+      } else if (state.bootstrap.contextAuthoritative) {
+        variantId = miniVariantId = 'supplied';
         imageUrl = miniImageUrl = `${API}/context`;
       } else {
         const contextEntry = layerFor('all-zdos', desiredResolution());
@@ -476,10 +1004,12 @@
       const overlay = L.imageOverlay(imageUrl, leafletBounds(bounds), { pane:'contextPane', opacity:state.contextOpacity, interactive:false, className:'context-raster' }).addTo(state.map);
       if (state.contextOverlay) state.map.removeLayer(state.contextOverlay);
       state.contextOverlay = overlay;
+      state.contextVariantId = variantId;
       syncCompositeOpacity();
       const mini = L.imageOverlay(miniImageUrl, leafletBounds(miniBounds), { opacity:1, interactive:false, className:'context-raster' }).addTo(state.minimap);
       if (state.miniContextOverlay) state.minimap.removeLayer(state.miniContextOverlay);
       state.miniContextOverlay = mini;
+      state.miniContextVariantId = miniVariantId;
       updateMiniViewport();
     } catch (error) {
       console.warn('Context load failed', error);
@@ -492,6 +1022,7 @@
     if (state.contextOverlay) state.map.removeLayer(state.contextOverlay);
     if (state.miniContextOverlay) state.minimap.removeLayer(state.miniContextOverlay);
     state.contextOverlay = state.miniContextOverlay = null;
+    state.contextVariantId = state.miniContextVariantId = null;
   }
 
   function artifactUrl(entry) {
@@ -538,7 +1069,8 @@
     }
     context.putImageData(pixels, 0, 0);
     const displayScale = focused && canvas.width*canvas.height <= ANALYSIS_DISPLAY_SCALE_MAX_PIXELS
-      ? ANALYSIS_DISPLAY_SCALE : 1;
+      ? (Number(layer?.cellSize) === 320 ? ANALYSIS_SETTLEMENT_DISPLAY_SCALE : ANALYSIS_DISPLAY_SCALE)
+      : 1;
     let outputCanvas = canvas;
     if (displayScale > 1) {
       outputCanvas = document.createElement('canvas');
@@ -726,10 +1258,10 @@
 
   function syncSelectionAction() {
     const button = $('story-selection-action');
-    const hasSelection = Boolean(state.currentSelectionBounds);
+    const hasSelection = Boolean(state.currentScopeBounds) && !$('inspect-content').hidden;
     button.hidden = !hasSelection;
     if (!hasSelection) return;
-    const showing = state.exactScope === 'selection';
+    const showing = state.exactScope === 'selection' || state.exactScope === 'biome-selection';
     button.disabled = state.selectionItemsLoading || state.currentSelectionPositionCount == null;
     button.classList.toggle('active',showing);
     button.setAttribute('aria-pressed', String(showing));
@@ -737,7 +1269,9 @@
     button.title = state.currentSelectionPositionCount == null
       ? 'Waiting for the selection count.'
       : state.currentSelectionPositionCount > EXACT_POINT_LIMIT
-      ? `${fmt(state.currentSelectionPositionCount)} item positions are selected; tighten the green area below ${fmt(EXACT_POINT_LIMIT)} to draw them.`
+      ? state.viewMode === 'biomes'
+        ? `${fmt(state.currentSelectionPositionCount)} item positions match; show a representative ${fmt(EXACT_POINT_LIMIT)} on the map.`
+        : `${fmt(state.currentSelectionPositionCount)} item positions are selected; tighten the green area below ${fmt(EXACT_POINT_LIMIT)} to draw them.`
       : `Draw the ${fmt(state.currentSelectionPositionCount)} selected item position${state.currentSelectionPositionCount === 1 ? '' : 's'} on the map.`;
   }
 
@@ -833,7 +1367,7 @@
   }
 
   function inspectCell(latlng) {
-    if (!state.currentEntry) return;
+    if (!state.currentEntry || !isInsideGlobe(latlng)) return;
     const b = state.bootstrap.worldBounds;
     const size = Number(state.currentEntry.cellSize);
     const cx = Math.floor((latlng.lng-b.minX)/size);
@@ -842,18 +1376,33 @@
     inspectBounds(L.latLngBounds([minZ,minX],[Math.min(b.maxZ,minZ+size),Math.min(b.maxX,minX+size)]));
   }
 
-  async function inspectBounds(bounds) {
+  async function inspectBounds(bounds, options = {}) {
+    bounds = clampToWorld(bounds);
+    if (!bounds) {
+      toast('Choose an area inside the published world');
+      return;
+    }
     const token = ++state.inspectToken;
+    const drawArea = options.draw !== false;
     const returnToPan = state.tool === 'inspect';
-    if (state.exactScope === 'selection') removeExactMarkers();
-    state.currentSelectionBounds = bounds;
+    if (state.exactScope === 'selection' || state.exactScope === 'biome-selection' || state.exactScope === 'biome-viewport') removeExactMarkers();
+    state.currentSelectionBounds = drawArea ? bounds : null;
+    state.currentScopeBounds = bounds;
     state.currentSelectionPositionCount = null;
     state.selectionItemsLoading = false;
+    state.itemPageCursors = [null];
+    state.itemPageIndex = 0;
+    state.itemNextCursor = null;
+    ++state.itemToken;
     syncSelectionAction();
     if (state.selectionRect) state.map.removeLayer(state.selectionRect);
-    state.selectionRect = L.rectangle(bounds, { pane:'selectionPane', renderer:state.selectionRenderer, className:'selection-rectangle', color:'#70d29a', weight:2, fillOpacity:.1 }).addTo(state.map);
+    state.selectionRect = drawArea
+      ? L.rectangle(bounds, { pane:'selectionPane', renderer:state.selectionRenderer, className:'selection-rectangle', color:'#70d29a', weight:2, fillOpacity:.1 }).addTo(state.map)
+      : null;
     if (state.miniSelectionRect) state.minimap.removeLayer(state.miniSelectionRect);
-    state.miniSelectionRect = L.rectangle(bounds, { color:'#70d29a', weight:1, fillOpacity:.08, interactive:false }).addTo(state.minimap);
+    state.miniSelectionRect = drawArea
+      ? L.rectangle(bounds, { color:'#70d29a', weight:1, fillOpacity:.08, interactive:false }).addTo(state.minimap)
+      : null;
     $('inspect-empty').hidden = true;
     $('inspect-content').hidden = false;
     $('inspect-tab-state').textContent = 'QUERYING';
@@ -863,16 +1412,21 @@
       setTool('pan');
       toast('Inspection pinned · drag to pan');
     }
-    const query = boundsQuery(bounds);
-    $('inspect-bounds').textContent = boundsLabel(bounds);
+    const query = scopedQuery(bounds);
+    $('inspect-bounds').textContent = drawArea ? boundsLabel(bounds) : `Territories · ${selectedBiomeSummary()}`;
     $('inspect-title').textContent = PUBLIC_MODE
-      ? 'What was built here?'
+      ? drawArea ? 'What was built here?' : `What was built in ${selectedBiomeSummary()}?`
       : `Explaining ${state.lensById.get(state.lensId)?.label || state.lensId}`;
+    $('inspect-zoom').hidden = !drawArea;
+    $('inspect-clear-area').hidden = !drawArea || state.viewMode !== 'biomes';
     $('inspect-total').textContent = $('inspect-share').textContent = $('inspect-density').textContent = '…';
     $('inspect-point-warning').hidden = true;
     $('inspect-ranked-label').textContent = 'WHAT MAKES IT BRIGHT · TOP TYPES';
     $('inspect-show-all').hidden = true;
     $('inspect-top').innerHTML = '<div class="rank-row"><span>Scanning selected bounds…</span></div>';
+    $('inspect-items-range').textContent = 'LOADING';
+    $('inspect-items-list').innerHTML = '<div class="inspect-item-empty">Loading individual objects…</div>';
+    $('inspect-items-prev').disabled = $('inspect-items-next').disabled = true;
     const started = performance.now();
     try {
       const result = await fetchJson(`${API}/selection?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&topN=10&${query}`);
@@ -892,14 +1446,20 @@
         ? `${fmt(result.total)} ${result.units}`
         : `${fmt(state.currentSelectionPositionCount)} item positions representing ${fmt(result.total)} ${result.units}`;
       pointWarning.textContent = pointWarning.hidden ? '' : PUBLIC_MODE
-        ? `${positionSubject} are inside this area. Zoom closer or inspect a smaller area to show every item.`
+        ? state.viewMode === 'biomes'
+          ? `${positionSubject} match this biome scope. The map shows a representative ${fmt(EXACT_POINT_LIMIT)}; page through every object below.`
+          : `${positionSubject} are inside this area. Page through every object below, or inspect a smaller area to draw every item on the map.`
         : `${positionSubject} are inside this area. This summary is complete; exact dots stay hidden above ${fmt(EXACT_POINT_LIMIT)} positions.`;
       renderInspectionRanks(result,false);
+      loadItemPage(null, true);
+      if (state.viewMode === 'biomes') loadBiomeSample(bounds);
     } catch (error) {
       if (token !== state.inspectToken) return;
       $('inspect-tab-state').textContent = 'QUERY FAILED';
       $('inspect-point-warning').hidden = true;
       $('inspect-top').innerHTML = `<div class="rank-row"><span>${escapeHtml(error.message)}</span></div>`;
+      $('inspect-items-range').textContent = 'UNAVAILABLE';
+      $('inspect-items-list').innerHTML = '<div class="inspect-item-empty">The object list could not be loaded.</div>';
     }
   }
 
@@ -919,8 +1479,70 @@
     showAll.textContent = `Show all ${fmt(categoryCount)} types in selection`;
   }
 
+  async function loadItemPage(cursor, reset = false) {
+    const bounds = state.currentScopeBounds;
+    if (!bounds) return;
+    if (reset) {
+      state.itemPageCursors = [null];
+      state.itemPageIndex = 0;
+      state.itemNextCursor = null;
+    }
+    const token = ++state.itemToken;
+    const pageSize = 100;
+    $('inspect-items-range').textContent = 'LOADING';
+    $('inspect-items-list').innerHTML = '<div class="inspect-item-empty">Loading individual objects…</div>';
+    $('inspect-items-prev').disabled = $('inspect-items-next').disabled = true;
+    try {
+      const extras = { limit:String(pageSize) };
+      if (cursor) extras.cursor = cursor;
+      const result = await fetchJson(`${API}/items?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&${scopedQuery(bounds, extras)}`);
+      if (token !== state.itemToken) return;
+      const items = result.items || [];
+      state.itemNextCursor = result.nextCursor || null;
+      const start = items.length ? state.itemPageIndex * pageSize + 1 : 0;
+      const end = items.length ? start + items.length - 1 : 0;
+      $('inspect-items-range').textContent = items.length
+        ? `${fmt(start)}–${fmt(end)} OF ${fmt(result.total)}` : `0 OF ${fmt(result.total)}`;
+      $('inspect-items-list').innerHTML = items.length ? items.map(item => {
+        const biome = state.biomeCatalog.find(candidate => candidate.id === item.biome);
+        return `<button type="button" class="inspect-item" data-item-x="${Number(item.x)}" data-item-z="${Number(item.z)}" style="--biome-color:${escapeHtml(biome?.color || '#b3bac5')}"><strong>${escapeHtml(item.label)}</strong><span class="inspect-item-biome">${escapeHtml(biome?.label || item.biome || 'Mountains + Forest')}</span><span class="inspect-item-coords">X ${Math.round(item.x).toLocaleString()} · Z ${Math.round(item.z).toLocaleString()}</span></button>`;
+      }).join('') : '<div class="inspect-item-empty">No objects match this biome and area scope.</div>';
+      $('inspect-items-prev').disabled = state.itemPageIndex === 0;
+      $('inspect-items-next').disabled = !result.hasMore;
+    } catch (error) {
+      if (token !== state.itemToken) return;
+      $('inspect-items-range').textContent = 'UNAVAILABLE';
+      $('inspect-items-list').innerHTML = `<div class="inspect-item-empty">${escapeHtml(error.message)}</div>`;
+      $('inspect-items-prev').disabled = state.itemPageIndex === 0;
+    }
+  }
+
+  function nextItemPage() {
+    if (!state.itemNextCursor) return;
+    state.itemPageIndex += 1;
+    state.itemPageCursors[state.itemPageIndex] = state.itemNextCursor;
+    loadItemPage(state.itemNextCursor);
+  }
+
+  function previousItemPage() {
+    if (state.itemPageIndex === 0) return;
+    state.itemPageIndex -= 1;
+    loadItemPage(state.itemPageCursors[state.itemPageIndex] || null);
+  }
+
+  function focusItem(x, z) {
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+    const destination = worldToLatLng(x, z);
+    state.map.setView(destination, Math.max(state.map.getZoom(), -.25), { animate:true });
+    const marker = L.circleMarker(destination, {
+      pane:'selectionPane', renderer:state.selectionRenderer, radius:9, color:'#ffe08a', weight:3,
+      fillColor:'#ffe08a', fillOpacity:.16, interactive:false
+    }).addTo(state.map);
+    setTimeout(() => state.map?.removeLayer(marker), 2400);
+  }
+
   async function loadAllSelectionCategories() {
-    const bounds = state.currentSelectionBounds;
+    const bounds = state.currentScopeBounds;
     if (!bounds) return;
     const token = ++state.inspectToken;
     const button = $('inspect-show-all');
@@ -928,7 +1550,7 @@
     button.textContent = 'Loading every type…';
     const started = performance.now();
     try {
-      const result = await fetchJson(`${API}/selection?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&topN=0&${boundsQuery(bounds)}`);
+      const result = await fetchJson(`${API}/selection?snapshot=${state.snapshotId}&lens=${encodeURIComponent(state.lensId)}&topN=0&${scopedQuery(bounds)}`);
       if (token !== state.inspectToken) return;
       $('inspect-query-time').textContent = `${(performance.now()-started).toFixed(0)} ms`;
       renderInspectionRanks(result,true);
@@ -942,7 +1564,15 @@
   }
 
   function boundsQuery(bounds) {
-    return new URLSearchParams({ minX:bounds.getWest(), maxX:bounds.getEast(), minZ:bounds.getSouth(), maxZ:bounds.getNorth() }).toString();
+    return scopedQuery(bounds);
+  }
+
+  function clampToWorld(bounds) {
+    const west = Math.max(bounds.getWest(), state.worldBounds.getWest());
+    const east = Math.min(bounds.getEast(), state.worldBounds.getEast());
+    const south = Math.max(bounds.getSouth(), state.worldBounds.getSouth());
+    const north = Math.min(bounds.getNorth(), state.worldBounds.getNorth());
+    return west < east && south < north ? L.latLngBounds([south, west], [north, east]) : null;
   }
 
   function boundsLabel(bounds) {
@@ -950,15 +1580,22 @@
   }
 
   async function toggleSelectionItems() {
-    const bounds = state.currentSelectionBounds;
+    const bounds = state.currentScopeBounds;
     if (!bounds) return;
-    if (state.exactScope === 'selection') {
+    if (state.exactScope === 'selection' || state.exactScope === 'biome-selection') {
       removeExactMarkers();
-      $('exact-state').textContent = 'RASTER';
+      if (state.viewMode === 'biomes') {
+        state.biomeAutoPointsSuppressed = true;
+        $('exact-state').textContent = 'OUTLINES';
+      } else $('exact-state').textContent = 'RASTER';
       syncCompositeOpacity();
       updateDetailLadder();
-      scheduleExactPoints();
+      if (state.viewMode !== 'biomes') scheduleExactPoints();
       toast('Selected items hidden');
+      return;
+    }
+    if (state.viewMode === 'biomes') {
+      await loadBiomeSample(bounds);
       return;
     }
     clearTimeout(state.exactTimer);
@@ -1004,11 +1641,22 @@
 
   function scheduleExactPoints() {
     clearTimeout(state.exactTimer);
-    state.exactTimer = setTimeout(loadExactPoints, 220);
+    if (state.viewMode === 'terrain') return;
+    if (state.viewMode === 'biomes' && state.exactScope === 'biome-selection') return;
+    state.exactTimer = setTimeout(state.viewMode === 'biomes' ? loadBiomeViewportPoints : loadExactPoints, 220);
   }
 
   function pauseExactPoints() {
     clearTimeout(state.exactTimer);
+    if (state.viewMode === 'biomes') {
+      if (state.exactScope === 'biome-viewport') {
+        ++state.exactToken;
+        removeExactMarkers();
+        $('exact-state').textContent = 'OUTLINES';
+      }
+      document.body.classList.add('map-view-moving');
+      return;
+    }
     const hadCloseDetail = Boolean(state.exactLayer || state.detailOverlay);
     ++state.exactToken;
     removeExactMarkers();
@@ -1126,28 +1774,33 @@
   function syncCompositeOpacity() {
     const hasLocalDetail = Boolean(state.detailOverlay);
     const effectiveAnalysis = effectiveAnalysisOpacity();
-    if (state.overlay) state.overlay.setOpacity(hasLocalDetail
+    const showingHeatmap = state.viewMode === 'heatmap';
+    const closeContextFactor = Number(state.bootstrap?.context?.closeDetailFactor ??
+      (state.bootstrap?.contextAuthoritative ? .55 : .18));
+    if (state.overlay) state.overlay.setOpacity(!showingHeatmap ? 0 : hasLocalDetail
       ? 0 : state.exactLayer ? effectiveAnalysis*.38 : effectiveAnalysis);
-    if (state.detailOverlay) state.detailOverlay.setOpacity(state.analysisOpacity);
-    if (state.contextOverlay) {
-      const closeContextFactor = state.bootstrap?.contextAuthoritative ? .55 : .18;
-      state.contextOverlay.setOpacity(hasLocalDetail
-        ? state.contextOpacity*closeContextFactor : state.contextOpacity);
-    }
+    if (state.detailOverlay) state.detailOverlay.setOpacity(showingHeatmap ? state.analysisOpacity : 0);
+    const shownContextOpacity = !showingHeatmap ? BIOME_CONTEXT_OPACITY
+      : hasLocalDetail ? state.contextOpacity*closeContextFactor : state.contextOpacity;
+    if (state.contextOverlay) state.contextOverlay.setOpacity(shownContextOpacity);
     const requestedContext = Math.round(state.contextOpacity*100);
-    const effectiveContext = Math.round(state.contextOpacity*
-      (hasLocalDetail ? (state.bootstrap?.contextAuthoritative ? .55 : .18) : 1)*100);
-    $('context-opacity-value').textContent = hasLocalDetail
+    const effectiveContext = Math.round(shownContextOpacity*100);
+    const contextReceded = hasLocalDetail && effectiveContext < requestedContext;
+    const contextPromoted = !showingHeatmap && effectiveContext > requestedContext;
+    $('context-opacity-value').textContent = contextReceded || contextPromoted
       ? `${requestedContext}% → ${effectiveContext}%` : `${requestedContext}%`;
-    $('context-opacity-value').title = hasLocalDetail
-      ? 'Close detail is active; context has receded automatically. Hold peek to restore it.' : '';
+    $('context-opacity-value').title = contextPromoted
+      ? 'Terrain and Biomes bring the map fully forward while the Heatmap is hidden.'
+      : contextReceded
+      ? 'Close detail is active; context has receded automatically. Hold peek to restore it.'
+      : hasLocalDetail ? 'Terrain remains at the chosen opacity through close detail.' : '';
     const requestedAnalysis = Math.round(state.analysisOpacity*100);
     const shownAnalysis = Math.round((hasLocalDetail ? state.analysisOpacity : effectiveAnalysis)*100);
     $('analysis-opacity-value').textContent = requestedAnalysis === shownAnalysis
       ? `${shownAnalysis}%` : `${requestedAnalysis}% → ${shownAnalysis}%`;
     $('analysis-opacity-value').title = requestedAnalysis === shownAnalysis
       ? 'Analysis opacity at this zoom.'
-      : `World overview is pinned to 100% below zoom ${Number($('opacity-detail-zoom')?.value ?? -4).toFixed(2)}; the slider sets closer-detail opacity.`;
+      : `Overview presentation is ${shownAnalysis}% at this scale; the slider sets closer-detail opacity.`;
   }
 
   function restoreWorldRasterPresentation() {
@@ -1160,6 +1813,7 @@
   }
 
   async function loadExactPoints() {
+    if (state.viewMode !== 'heatmap') return;
     const threshold = Number($('threshold-exact').value);
     if (!state.exactEnabled || !state.map || state.map.getZoom() < threshold || !state.currentEntry) {
       clearExactPoints(); return;
@@ -1438,7 +2092,190 @@
     catch (_) { toast('Clipboard permission was denied'); }
   }
 
+  async function initializePublicExperience() {
+    const feedbackButton = $('feedback-open');
+    const enabled = state.bootstrap.feedbackEnabled === true;
+    feedbackButton.disabled = !enabled;
+    feedbackButton.title = enabled ? 'Send an anonymous or Discord-identified note' : 'Feedback is being connected';
+    if (enabled) {
+      try { state.discordIdentity = await fetchJson(`${API}/auth/session`); }
+      catch (_) { state.discordIdentity = { connected:false }; }
+    }
+    renderIdentityState();
+
+    const params = new URLSearchParams(location.search);
+    const discordResult = params.get('discord');
+    if (discordResult) {
+      const draft = sessionStorage.getItem('steward-feedback-draft');
+      if (draft) {
+        try {
+          const saved = JSON.parse(draft);
+          $('feedback-message').value = saved.message || '';
+          $('feedback-identify').checked = true;
+        } catch (_) {}
+      }
+      if (discordResult === 'connected') {
+        try { state.discordIdentity = await fetchJson(`${API}/auth/session`); } catch (_) {}
+      } else {
+        showFeedbackError('Discord did not connect. You can try again or send anonymously.');
+      }
+      renderIdentityState();
+      updateFeedbackCount();
+      openFeedbackDialog(discordResult !== 'error');
+      history.replaceState({}, '', APP_BASE.pathname);
+    }
+    if (!discordResult && !quickStartDismissed()) openDialog($('quick-start-dialog'));
+  }
+
+  function quickStartDismissed() {
+    try { return localStorage.getItem(QUICK_START_DISMISSAL_KEY) === 'dismissed'; }
+    catch (_) { return false; }
+  }
+
+  function dismissQuickStart() {
+    try { localStorage.setItem(QUICK_START_DISMISSAL_KEY, 'dismissed'); }
+    catch (_) {}
+  }
+
+  function openDialog(dialog) {
+    if (!dialog.open) dialog.showModal();
+  }
+
+  function closeDialog(dialog) {
+    if (dialog.open) {
+      if (dialog.id === 'quick-start-dialog') dismissQuickStart();
+      dialog.close();
+    }
+  }
+
+  function openFeedbackDialog(clearError = true) {
+    $('feedback-success').hidden = true;
+    $('feedback-fields').hidden = false;
+    $('feedback-submit').hidden = false;
+    $('feedback-cancel').textContent = 'Cancel';
+    if (clearError) hideFeedbackError();
+    renderIdentityState();
+    updateFeedbackCount();
+    openDialog($('feedback-dialog'));
+    setTimeout(() => $('feedback-message').focus(), 0);
+  }
+
+  function updateFeedbackCount() {
+    $('feedback-count').textContent = String($('feedback-message').value.length);
+  }
+
+  function renderIdentityState() {
+    if (!$('feedback-identify')) return;
+    const available = state.bootstrap?.discordIdentityEnabled === true;
+    const identify = $('feedback-identify');
+    identify.disabled = !available;
+    if (!available) identify.checked = false;
+    const row = $('feedback-identity-state');
+    row.hidden = !identify.checked;
+    const connected = state.discordIdentity?.connected === true;
+    row.classList.toggle('connected', connected);
+    $('feedback-identity-copy').textContent = connected
+      ? `Connected as ${state.discordIdentity.displayName}` : 'Connect to include your verified Discord name';
+    $('feedback-discord-connect').hidden = connected;
+    $('feedback-discord-logout').hidden = !connected;
+    $('feedback-submit').disabled = state.feedbackSubmitting || (identify.checked && !connected);
+  }
+
+  function showFeedbackError(message) {
+    const error = $('feedback-error');
+    error.textContent = message;
+    error.hidden = false;
+  }
+
+  function hideFeedbackError() {
+    $('feedback-error').hidden = true;
+    $('feedback-error').textContent = '';
+  }
+
+  function saveFeedbackDraft() {
+    sessionStorage.setItem('steward-feedback-draft', JSON.stringify({
+      message: $('feedback-message').value,
+      identify: $('feedback-identify').checked
+    }));
+  }
+
+  function feedbackContext() {
+    const snapshot = state.bootstrap?.snapshots?.find(item => Number(item.snapshotId) === Number(state.snapshotId));
+    const lens = state.lensById.get(state.lensId);
+    const entry = state.currentEntry;
+    const zoom = state.map ? state.map.getZoom() : null;
+    const bounds = state.map?.getBounds();
+    const viewport = bounds ? boundsLabel(bounds) : 'Whole world';
+    const scale = entry?.cellSize ? `${entry.cellSize} m cells` : 'world overview';
+    const viewLabel = state.viewMode === 'biomes' ? `Biomes · ${selectedBiomeSummary()}`
+      : state.viewMode === 'terrain' ? 'Terrain'
+      : lens?.label || 'Build density';
+    return {
+      world: `${snapshot?.worldName || 'Comfy Era 17'} · snapshot #${state.snapshotId}`,
+      view: `${viewLabel} · ${scale} · zoom ${zoom == null ? '—' : Number(zoom).toFixed(2)} · ${viewport}`,
+      selection: state.currentSelectionBounds ? boundsLabel(state.currentSelectionBounds)
+        : state.currentScopeBounds ? `Whole biome scope · ${selectedBiomeSummary()}` : 'No inspection area selected',
+      release: state.bootstrap?.releaseVersion || 'dev'
+    };
+  }
+
+  async function submitFeedback(event) {
+    event.preventDefault();
+    if (state.feedbackSubmitting) return;
+    hideFeedbackError();
+    const message = $('feedback-message').value.trim();
+    if (!message) {
+      showFeedbackError('Tell us what you noticed first.');
+      $('feedback-message').focus();
+      return;
+    }
+    const identify = $('feedback-identify').checked;
+    if (identify && !state.discordIdentity?.connected) {
+      showFeedbackError('Connect Discord first, or turn identification off to send anonymously.');
+      return;
+    }
+    state.feedbackSubmitting = true;
+    $('feedback-submit').textContent = 'Sending…';
+    renderIdentityState();
+    try {
+      await fetchJson(`${API}/feedback`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          message,
+          identify,
+          website:$('feedback-website').value,
+          context:feedbackContext()
+        })
+      });
+      sessionStorage.removeItem('steward-feedback-draft');
+      $('feedback-fields').hidden = true;
+      $('feedback-success').hidden = false;
+      $('feedback-submit').hidden = true;
+      $('feedback-cancel').textContent = 'Close';
+      $('feedback-message').value = '';
+      updateFeedbackCount();
+    } catch (error) {
+      showFeedbackError(`${error.message}. Your note is still here—please try again.`);
+    } finally {
+      state.feedbackSubmitting = false;
+      $('feedback-submit').textContent = 'Send feedback';
+      renderIdentityState();
+    }
+  }
+
   function bindEvents() {
+    $('map-view-controls').addEventListener('click', event => {
+      const mode = event.target.closest('[data-view-mode]');
+      if (mode) setViewMode(mode.dataset.viewMode);
+    });
+    $('biome-chip-list').addEventListener('click', event => {
+      const button = event.target.closest('[data-biome]');
+      if (button) setBiomeFilter(button.dataset.biome);
+    });
+    $('biome-view-results').addEventListener('click', () => {
+      inspectBounds(state.worldBounds, { draw:false });
+    });
     $('snapshot-select').addEventListener('change', async event => {
       state.snapshotId = Number(event.target.value);
       updateSnapshotHeader();
@@ -1524,11 +2361,46 @@
     $('copy-monitor-command').addEventListener('click', () => copyText('.\\lab.ps1 watch-jobs -IntervalSeconds 15'));
     $('inspect-close').addEventListener('click', () => showRightPanel('jobs'));
     $('inspect-zoom').addEventListener('click', () => state.currentSelectionBounds && state.map.fitBounds(state.currentSelectionBounds,{padding:[30,30]}));
-    $('inspect-copy').addEventListener('click', () => state.currentSelectionBounds && copyText(boundsLabel(state.currentSelectionBounds)));
+    $('inspect-copy').addEventListener('click', () => state.currentScopeBounds && copyText(boundsLabel(state.currentScopeBounds)));
+    $('inspect-clear-area').addEventListener('click', () => inspectBounds(state.worldBounds, { draw:false }));
     $('inspect-show-all').addEventListener('click', loadAllSelectionCategories);
+    $('inspect-items-prev').addEventListener('click', previousItemPage);
+    $('inspect-items-next').addEventListener('click', nextItemPage);
+    $('inspect-items-list').addEventListener('click', event => {
+      const item = event.target.closest('[data-item-x]');
+      if (item) focusItem(Number(item.dataset.itemX), Number(item.dataset.itemZ));
+    });
     ['threshold-160','threshold-80','threshold-64','threshold-16','threshold-exact','threshold-detail4'].forEach(id => $(id).addEventListener('change', () => { applyRaster(); scheduleExactPoints(); }));
     $('opacity-detail-zoom').addEventListener('change', syncCompositeOpacity);
+    $('quick-start-open').addEventListener('click', () => openDialog($('quick-start-dialog')));
+    $('quick-start-close').addEventListener('click', () => closeDialog($('quick-start-dialog')));
+    $('quick-start-done').addEventListener('click', () => closeDialog($('quick-start-dialog')));
+    $('quick-start-dialog').addEventListener('cancel', dismissQuickStart);
+    $('quick-start-dialog').addEventListener('close', dismissQuickStart);
+    $('feedback-open').addEventListener('click', () => openFeedbackDialog());
+    $('feedback-close').addEventListener('click', () => closeDialog($('feedback-dialog')));
+    $('feedback-cancel').addEventListener('click', () => closeDialog($('feedback-dialog')));
+    $('feedback-message').addEventListener('input', updateFeedbackCount);
+    $('feedback-identify').addEventListener('change', () => { hideFeedbackError(); renderIdentityState(); });
+    $('feedback-form').addEventListener('submit', submitFeedback);
+    $('feedback-discord-connect').addEventListener('click', () => {
+      saveFeedbackDraft();
+      location.assign(`${API}/auth/discord/start`);
+    });
+    $('feedback-discord-logout').addEventListener('click', async () => {
+      try {
+        await fetchJson(`${API}/auth/logout`, { method:'POST' });
+        state.discordIdentity = { connected:false };
+        renderIdentityState();
+      } catch (error) {
+        showFeedbackError(error.message);
+      }
+    });
+    [$('quick-start-dialog'), $('feedback-dialog')].forEach(dialog => dialog.addEventListener('click', event => {
+      if (event.target === dialog) closeDialog(dialog);
+    }));
     document.addEventListener('keydown', event => {
+      if ($('quick-start-dialog').open || $('feedback-dialog').open) return;
       if (/INPUT|SELECT|TEXTAREA/.test(event.target.tagName)) return;
       if (event.key === 'Shift' && state.tool === 'pan' && !state.drawing) state.map.dragging.disable();
       if (event.key.toLowerCase()==='p') setTool('pan');
@@ -1552,9 +2424,11 @@
 
   function closeInspector() {
     ++state.inspectToken;
-    const hadSelectionItems = state.exactScope === 'selection';
+    ++state.itemToken;
+    const hadSelectionItems = state.exactScope === 'selection' || state.exactScope === 'biome-selection';
     if (hadSelectionItems) removeExactMarkers();
     state.currentSelectionBounds = null;
+    state.currentScopeBounds = null;
     state.currentSelectionPositionCount = null;
     state.selectionItemsLoading = false;
     if (state.selectionRect && state.map) state.map.removeLayer(state.selectionRect);
@@ -1564,11 +2438,21 @@
     $('inspect-empty').hidden = false;
     $('inspect-point-warning').hidden = true;
     $('inspect-show-all').hidden = true;
+    $('inspect-clear-area').hidden = true;
+    $('inspect-items-range').textContent = '—';
+    $('inspect-items-list').innerHTML = '<div class="inspect-item-empty">Select an area to list its objects.</div>';
+    $('inspect-items-prev').disabled = $('inspect-items-next').disabled = true;
     $('inspect-ranked-label').textContent = 'WHAT MAKES IT BRIGHT \u00b7 TOP TYPES';
     $('inspect-tab-state').textContent = 'NO AREA';
     syncSelectionAction();
     showRightPanel('jobs');
-    if (hadSelectionItems) scheduleExactPoints();
+    if (state.viewMode === 'biomes') {
+      state.biomeAutoPointsSuppressed = false;
+      showBiomeOutlineStory();
+      scheduleExactPoints();
+    }
+    else if (state.viewMode === 'terrain') showTerrainStory();
+    else if (hadSelectionItems) scheduleExactPoints();
   }
 
   bootstrap();

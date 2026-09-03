@@ -91,6 +91,29 @@ class LensRendererTest {
         assertEquals(3, dense.path("minimumCount").asInt());
         assertEquals(0, dense.withArray("points").size(),
             "A database-order prefix would imply false spatial coverage");
+
+        ObjectNode meadows = repository.selection(
+            7, "birch-trees", -200, 500, -200, 500, 10, List.of("meadows"));
+        assertEquals(2, meadows.path("total").asInt());
+        assertEquals("meadows", meadows.withArray("biomes").get(0).asText());
+
+        ObjectNode sampled = repository.samplePoints(
+            7, "birch-trees", -200, 500, -200, 500, 2, List.of());
+        assertTrue(sampled.path("sampled").asBoolean());
+        assertEquals(3, sampled.path("total").asInt());
+        assertEquals(2, sampled.withArray("points").size());
+
+        ObjectNode firstPage = repository.items(
+            7, "birch-trees", -200, 500, -200, 500, 2, null, List.of());
+        assertEquals(3, firstPage.path("total").asInt());
+        assertEquals(2, firstPage.withArray("items").size());
+        assertTrue(firstPage.path("hasMore").asBoolean());
+        ObjectNode secondPage = repository.items(7, "birch-trees", -200, 500, -200, 500,
+            2, firstPage.path("nextCursor").asText(), List.of());
+        assertEquals(1, secondPage.withArray("items").size());
+        assertFalse(secondPage.path("hasMore").asBoolean());
+        assertNotEquals(firstPage.withArray("items").get(0).path("x").asDouble(),
+            secondPage.withArray("items").get(0).path("x").asDouble());
     }
 
     @Test void failureInjectionLeavesAnObservableFailedJob() throws Exception {
@@ -123,18 +146,18 @@ class LensRendererTest {
             statement.executeUpdate("CREATE TABLE world_snapshot (" +
                 "snapshot_id BIGINT, world_id VARCHAR, world_name VARCHAR, source VARCHAR, " +
                 "backup_id VARCHAR, parsed_at VARCHAR, file_hash VARCHAR, prefab_dictionary_version VARCHAR)");
-            statement.executeUpdate("CREATE TABLE zdo (snapshot_id BIGINT, prefab_hash INTEGER, " +
-                "prefab_name VARCHAR, category VARCHAR, x DOUBLE, z DOUBLE)");
+            statement.executeUpdate("CREATE TABLE zdo (snapshot_id BIGINT, zdo_index BIGINT, prefab_hash INTEGER, " +
+                "prefab_name VARCHAR, category VARCHAR, x DOUBLE, z DOUBLE, biome VARCHAR)");
             statement.executeUpdate("CREATE TABLE container_item (snapshot_id BIGINT, item_name VARCHAR, " +
                 "stack INTEGER, container_x DOUBLE, container_z DOUBLE)");
             statement.executeUpdate("INSERT INTO world_snapshot VALUES " +
                 "(7,'fixture','Fixture world','test','fixture-7','2026-08-23T00:00:00Z','abc','test')");
             statement.executeUpdate("INSERT INTO zdo VALUES " +
-                "(7,1,'Birch1',NULL,0,0)," +
-                "(7,1,'Birch1',NULL,10,10)," +
-                "(7,2,'Birch2_aut',NULL,400,400)," +
-                "(7,3,'Beech1',NULL,20,20)," +
-                "(7,4,'piece_wood','BUILDING',25,25)");
+                "(7,0,1,'Birch1',NULL,0,0,'meadows')," +
+                "(7,1,1,'Birch1',NULL,10,10,'meadows')," +
+                "(7,2,2,'Birch2_aut',NULL,400,400,'other')," +
+                "(7,3,3,'Beech1',NULL,20,20,'meadows')," +
+                "(7,4,4,'piece_wood','BUILDING',25,25,'meadows')");
             statement.executeUpdate("INSERT INTO container_item VALUES (7,'Coins',25,30,30)");
         }
     }

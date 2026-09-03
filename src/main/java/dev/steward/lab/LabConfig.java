@@ -12,12 +12,18 @@ public record LabConfig(
         Path cachePath,
         Path artifactsPath,
         Path contextImage,
+        Path contextManifest,
+        String bindAddress,
         int port,
         boolean noBrowser,
         long snapshotId,
         List<String> lensIds,
         List<Integer> resolutions,
-        boolean force) {
+        boolean force,
+        boolean publicMode,
+        String publicUrl,
+        String releaseVersion,
+        FeedbackConfig feedback) {
 
     public static final List<Integer> ALLOWED_RESOLUTIONS = List.of(16, 64, 80, 160, 320, 500, 1000);
 
@@ -32,12 +38,17 @@ public record LabConfig(
         Path cache = defaultCache();
         Path artifacts = Path.of("data", "artifacts");
         Path context = null;
+        Path contextManifest = null;
+        String bindAddress = "127.0.0.1";
         int port = 8091;
         boolean noBrowser = false;
         long snapshot = 0;
         List<String> lenses = List.of("build-density", "birch-trees", "all-zdos");
         List<Integer> resolutions = List.of(320, 160, 80, 64, 16);
         boolean force = false;
+        boolean publicMode = false;
+        String publicUrl = environment("STEWARD_PUBLIC_URL", "");
+        String releaseVersion = environment("STEWARD_RELEASE_VERSION", "dev");
 
         for (int i = 0; i < args.size(); i++) {
             String arg = args.get(i);
@@ -45,6 +56,8 @@ public record LabConfig(
                 case "--cache" -> cache = Path.of(requireValue(args, ++i, arg));
                 case "--artifacts" -> artifacts = Path.of(requireValue(args, ++i, arg));
                 case "--context-image" -> context = Path.of(requireValue(args, ++i, arg));
+                case "--context-manifest" -> contextManifest = Path.of(requireValue(args, ++i, arg));
+                case "--bind" -> bindAddress = requireValue(args, ++i, arg);
                 case "--port" -> port = Integer.parseInt(requireValue(args, ++i, arg));
                 case "--snapshot" -> snapshot = Long.parseLong(requireValue(args, ++i, arg));
                 case "--lenses" -> lenses = split(requireValue(args, ++i, arg));
@@ -52,6 +65,9 @@ public record LabConfig(
                     .map(Integer::parseInt).toList();
                 case "--no-browser" -> noBrowser = true;
                 case "--force" -> force = true;
+                case "--public" -> publicMode = true;
+                case "--public-url" -> publicUrl = requireValue(args, ++i, arg);
+                case "--release-version" -> releaseVersion = requireValue(args, ++i, arg);
                 default -> throw new IllegalArgumentException("Unknown option: " + arg);
             }
         }
@@ -66,10 +82,25 @@ public record LabConfig(
         if (context != null && !Files.isRegularFile(context)) {
             throw new IllegalArgumentException("Context image not found: " + context);
         }
+        if (contextManifest != null && !Files.isRegularFile(contextManifest)) {
+            throw new IllegalArgumentException("Context manifest not found: " + contextManifest);
+        }
+        if (context != null && contextManifest != null) {
+            throw new IllegalArgumentException("Choose --context-manifest or --context-image, not both");
+        }
+        if (bindAddress.isBlank()) throw new IllegalArgumentException("Bind address cannot be blank");
+        if (publicMode && snapshot <= 0) {
+            throw new IllegalArgumentException("Public mode requires an explicit --snapshot");
+        }
+        if (publicUrl.isBlank()) publicUrl = "http://127.0.0.1:" + port + "/";
+        publicUrl = normalizePublicUrl(publicUrl);
 
+        FeedbackConfig feedback = FeedbackConfig.fromEnvironment(publicUrl);
         return new LabConfig(mode, absolute(cache), absolute(artifacts),
-            context == null ? null : absolute(context), port, noBrowser, snapshot,
-            List.copyOf(lenses), List.copyOf(resolutions), force);
+            context == null ? null : absolute(context),
+            contextManifest == null ? null : absolute(contextManifest), bindAddress, port, noBrowser, snapshot,
+            List.copyOf(lenses), List.copyOf(resolutions), force, publicMode, publicUrl,
+            releaseVersion.isBlank() ? "dev" : releaseVersion, feedback);
     }
 
     private static Path defaultCache() {
@@ -92,5 +123,18 @@ public record LabConfig(
 
     private static Path absolute(Path path) {
         return path.toAbsolutePath().normalize();
+    }
+
+    private static String environment(String name, String fallback) {
+        String value = System.getenv(name);
+        return value == null || value.isBlank() ? fallback : value.trim();
+    }
+
+    private static String normalizePublicUrl(String raw) {
+        String value = raw.trim();
+        if (!value.matches("https?://.+")) {
+            throw new IllegalArgumentException("Public URL must be absolute: " + raw);
+        }
+        return value.endsWith("/") ? value : value + "/";
     }
 }
