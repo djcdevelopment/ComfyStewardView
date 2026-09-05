@@ -13,6 +13,8 @@ import java.io.FileInputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -92,6 +94,7 @@ public final class LabServer {
         app.get("/api/points", ctx -> boundedQuery(ctx, this::points));
         app.get("/api/items", ctx -> boundedQuery(ctx, this::items));
         app.get("/api/scene", ctx -> sceneQuery(ctx, this::scene));
+        app.get("/api/creator/scene", ctx -> sceneQuery(ctx, this::authoringScene));
         if (config.publicMode()) {
             app.get("/api/auth/discord/start", this::startDiscordAuthorization);
             app.get("/api/auth/discord/callback", this::finishDiscordAuthorization);
@@ -358,6 +361,35 @@ public final class LabServer {
         ctx.header("X-Steward-Scene-Pieces", Integer.toString(scene.pieces()));
         ctx.header("X-Steward-Scene-Instances", Integer.toString(scene.renderInstances()));
         ctx.result(scene.bytes());
+    }
+
+    private void authoringScene(Context ctx) throws Exception {
+        requireQuestOperator(ctx);
+        long snapshot = longQuery(ctx, "snapshot", true);
+        String lens = requiredQuery(ctx, "lens");
+        enforcePublicScope(snapshot, lens);
+        double minX = doubleQuery(ctx, "minX"), maxX = doubleQuery(ctx, "maxX");
+        double minZ = doubleQuery(ctx, "minZ"), maxZ = doubleQuery(ctx, "maxZ");
+        requirePublishedBounds(minX, maxX, minZ, maxZ);
+        ScenePackage.Result scene = scenes.buildAuthoring(snapshot, lens, minX, maxX, minZ, maxZ,
+            biomeQuery(ctx), config.releaseVersion(), config.sourceRevision());
+        ctx.contentType(ScenePackage.AUTHORING_CONTENT_TYPE);
+        ctx.header("X-Content-Type-Options", "nosniff");
+        ctx.header("X-Steward-Scene-Pieces", Integer.toString(scene.pieces()));
+        ctx.header("X-Steward-Scene-Instances", Integer.toString(scene.renderInstances()));
+        ctx.result(scene.bytes());
+    }
+
+    private void requireQuestOperator(Context ctx) {
+        String expected = config.questOperatorToken();
+        if (expected == null || expected.isBlank()) {
+            throw new io.javalin.http.ServiceUnavailableResponse("Creator scene access is disabled");
+        }
+        String supplied = ctx.header("X-Steward-Quest-Token");
+        if (supplied == null || !MessageDigest.isEqual(
+                expected.getBytes(StandardCharsets.UTF_8), supplied.getBytes(StandardCharsets.UTF_8))) {
+            throw new io.javalin.http.ForbiddenResponse("Creator scene access is forbidden");
+        }
     }
 
     private void startDiscordAuthorization(Context ctx) {

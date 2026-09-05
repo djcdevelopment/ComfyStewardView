@@ -18,6 +18,9 @@ services:
       SNAPSHOT_ID: "${STEWARD_SNAPSHOT_ID:-107}"
       PUBLIC_URL: "${STEWARD_PUBLIC_URL:-https://am4.tail8e749c.ts.net/world/}"
       STEWARD_RELEASE_VERSION: "${STEWARD_RELEASE_VERSION:-dev}"
+      STEWARD_SOURCE_REVISION: "${STEWARD_SOURCE_REVISION:-}"
+      # Server-to-server only. Quest Studio never returns this value to its browser.
+      STEWARD_QUEST_IMPORT_TOKEN: "${STEWARD_QUEST_IMPORT_TOKEN:-}"
       JAVA_OPTS: "-Xms256m -Xmx1g -Djava.awt.headless=true"
       DISCORD_CLIENT_ID: "${DISCORD_CLIENT_ID:-}"
       DISCORD_CLIENT_SECRET: "${DISCORD_CLIENT_SECRET:-}"

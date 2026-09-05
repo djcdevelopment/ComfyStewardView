@@ -138,6 +138,39 @@ The manifest's contiguous draw groups give each otherwise anonymous 80-byte inst
 default visibility, piece membership count, and draw range. The instance-region SHA-256 covers exactly
 `renderInstances × 80` bytes.
 
+## Private Creator/DM scene contract
+
+`GET /api/creator/scene` is the private, server-to-server companion to `/api/scene`. It is disabled
+unless `STEWARD_QUEST_IMPORT_TOKEN` is configured and requires that exact value in
+`X-Steward-Quest-Token`. Quest Studio holds the credential in its server process; browser code never
+receives it. The endpoint repeats snapshot, lens, bounds, biome, and public-scope enforcement and has
+an unconditional 5,000-piece ceiling with no override.
+
+The response content type is `application/vnd.comfysteward.authoring-scene`. It preserves the public
+80-byte instance region but adds exact snapshot provenance, absolute selection origin, and one unsigned
+`zdo_index` for every render instance. Compound render instances repeat their owning ZDO identity.
+The package is deterministic for fixed cache, scope, release, and source revision.
+
+| Offset | Size | Value |
+|---:|---:|---|
+| 0 | 4 | ASCII `SVCA` |
+| 4 | 4 | Little-endian package version (`1`) |
+| 8 | 4 | UTF-8 JSON manifest length |
+| 12 | 4 | Four-byte-aligned instance-region offset |
+| 16 | 4 | Identity-region offset |
+| 20 | variable | Manifest, followed by zero alignment padding |
+| instance | `renderInstances x 80` | Existing model/color instance records |
+| identity | `renderInstances x 4` | Little-endian unsigned `zdo_index` records |
+
+The manifest schema is `steward-zdo-authoring-scene/v1`. `worldId`, `fileSha256`,
+`producerRevision`, and `absoluteOrigin` provide the private provenance link;
+`identityStride`, `identityCount`, `identityBytes`, and `identitySha256` define the identity region.
+This data must not be copied into the public `SV3D` response.
+
+The published renderer artifact is `src/main/resources/static/creator-scene.js`, schema
+`comfy-steward-creator-renderer/v1`. Consumers pin its SHA-256 and serve those exact bytes rather than
+reimplementing identity parsing or GPU picking.
+
 ## Independent dimensions
 
 | Dimension | User question | Lab control | Public control |

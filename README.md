@@ -143,6 +143,12 @@ runs. `Deploy-Steward.ps1` provisions the environment variable in the remote dep
 
 ## Quest spatial round trip
 
+Quest Studio's Creator/DM workspace pulls measured scene bytes server-to-server from the Lab's
+`/api/creator/scene` route. Configure the Lab with `STEWARD_QUEST_IMPORT_TOKEN` and a full
+`STEWARD_SOURCE_REVISION`; configure Studio with the corresponding scene origin, Viewer origin, and
+token. The private `SVCA` package carries exact ZDO membership and absolute origin for picking while
+the public `SV3D` package remains anonymous. See `lab/docs/LAB_CONTRACT.md` for the binary contract.
+
 The Map and Explore views can select one real ZDO from the active snapshot and download a
 `comfy-quest-spatial-anchor/v1` file. The server re-reads the ZDO and snapshot provenance from
 DuckDB; coordinates supplied by the browser are never trusted. Both world-fixed and

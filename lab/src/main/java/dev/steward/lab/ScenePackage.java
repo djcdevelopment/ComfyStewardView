@@ -31,7 +31,9 @@ public final class ScenePackage {
     public static final int OVERRIDE_LIMIT = 250_000;
     public static final int PRESENTATION_INSTANCE_LIMIT = 500_000;
     public static final int INSTANCE_STRIDE = 80;
+    public static final int IDENTITY_STRIDE = 4;
     public static final String CONTENT_TYPE = "application/vnd.comfysteward.scene";
+    public static final String AUTHORING_CONTENT_TYPE = "application/vnd.comfysteward.authoring-scene";
     private static final double MIN_VISIBLE_AXIS = 0.01;
     private static final double UNKNOWN_MARKER_AXIS = 0.35;
     private static final double MAX_PROXY_AXIS = 20.0;
@@ -69,13 +71,30 @@ public final class ScenePackage {
             double minX, double maxX, double minZ, double maxZ,
             List<String> biomes, boolean forced, String release) throws Exception {
         return build(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes, forced,
-            release, "candidate", false);
+            release, "candidate", false, false, null);
+    }
+
+    /** Private Creator/DM package. Public scene v2 remains anonymous and origin-free. */
+    public Result buildAuthoring(long snapshotId, String lensId,
+            double minX, double maxX, double minZ, double maxZ,
+            List<String> biomes, String release, String producerRevision) throws Exception {
+        return build(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes, false,
+            release, "candidate", false, true, producerRevision);
     }
 
     Result build(long snapshotId, String lensId,
             double minX, double maxX, double minZ, double maxZ,
             List<String> biomes, boolean forced, String release,
             String presentationVariant, boolean exposeRndCameraOrigin) throws Exception {
+        return build(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes, forced,
+            release, presentationVariant, exposeRndCameraOrigin, false, null);
+    }
+
+    private Result build(long snapshotId, String lensId,
+            double minX, double maxX, double minZ, double maxZ,
+            List<String> biomes, boolean forced, String release,
+            String presentationVariant, boolean exposeRndCameraOrigin,
+            boolean authoring, String producerRevision) throws Exception {
         boolean baseline = "baseline".equals(presentationVariant);
         if (!baseline && !"candidate".equals(presentationVariant)) {
             throw new IllegalArgumentException("presentation must be candidate or baseline");
@@ -85,6 +104,10 @@ public final class ScenePackage {
         }
         validateBounds(minX, maxX, minZ, maxZ);
         long pieceCount = count(snapshotId, minX, maxX, minZ, maxZ, biomes);
+        if (authoring && pieceCount > DIRECT_LIMIT) {
+            throw new CapacityException(false,
+                "Creator scenes are limited to 5,000 exact pieces. Tighten the selected area.");
+        }
         if (pieceCount > OVERRIDE_LIMIT) {
             throw new CapacityException(false,
                 "This selection exceeds the 250,000-piece 3D safety limit. Tighten the green area.");
@@ -133,6 +156,9 @@ public final class ScenePackage {
         List<GroupBuilder> groups = groupVisuals(visuals);
         ByteBuffer instanceBuffer = ByteBuffer.allocate(visuals.size() * INSTANCE_STRIDE)
             .order(ByteOrder.LITTLE_ENDIAN);
+        ByteBuffer identityBuffer = authoring
+            ? ByteBuffer.allocate(visuals.size() * IDENTITY_STRIDE).order(ByteOrder.LITTLE_ENDIAN)
+            : null;
         double radius = 0;
         int start = 0;
         for (GroupBuilder group : groups) {
@@ -141,17 +167,33 @@ public final class ScenePackage {
                 double[] localCenter = localCenter(visual.center, origin);
                 putModel(instanceBuffer, mirrorX(visual.linear), localCenter);
                 for (float channel : hexColor(visual.color)) instanceBuffer.putFloat(channel);
+                if (identityBuffer != null) {
+                    if (visual.zdoIndex < 0 || visual.zdoIndex > 0xffff_ffffL) {
+                        throw new IllegalStateException("Creator scene ZDO index exceeds uint32");
+                    }
+                    identityBuffer.putInt((int) visual.zdoIndex);
+                }
                 radius = Math.max(radius, length(localCenter) + visualRadius(visual.linear));
                 start++;
             }
         }
         byte[] instanceBytes = instanceBuffer.array();
+        byte[] identityBytes = identityBuffer == null ? new byte[0] : identityBuffer.array();
         String instanceSha = sha256(instanceBytes);
+        String identitySha = authoring ? sha256(identityBytes) : null;
         ReleaseReceipt receipt = releaseReceipt();
+        SnapshotRepository.Snapshot snapshot = authoring ? snapshots.requireSnapshot(snapshotId) : null;
+        if (authoring && (snapshot.worldId() == null || snapshot.worldId().isBlank()
+                || snapshot.worldId().length() > 128 || snapshot.worldId().chars().anyMatch(Character::isISOControl)
+                || snapshot.fileHash() == null || !snapshot.fileHash().matches("(?i)^[0-9a-f]{64}$")
+                || !snapshot.fileHash().equalsIgnoreCase(receipt.snapshotHash)
+                || producerRevision == null || !producerRevision.matches("(?i)^[0-9a-f]{40}$"))) {
+            throw new IllegalStateException("Creator scene provenance is unavailable or inconsistent");
+        }
         HomeFrame home = homeFrame(framingVisuals, bounds, origin, framingRadius);
 
         ObjectNode manifest = mapper.createObjectNode();
-        manifest.put("schema", "steward-zdo-scene/v2");
+        manifest.put("schema", authoring ? "steward-zdo-authoring-scene/v1" : "steward-zdo-scene/v2");
         manifest.put("snapshotId", snapshotId);
         manifest.put("snapshotHash", receipt.snapshotHash);
         manifest.put("release", release == null ? "" : release);
@@ -174,7 +216,20 @@ public final class ScenePackage {
         manifest.put("pieceGeometrySha256", receipt.pieceGeometrySha256);
         manifest.put("representationCatalogSha256", receipt.representationCatalogSha256);
         manifest.put("promotionReceiptSha256", receipt.promotionReceiptSha256);
-        manifest.put("coordinateContract", "selection-local right-handed; absolute origin withheld");
+        manifest.put("coordinateContract", authoring
+            ? "selection-local right-handed; absolute origin and instance identity included for private authoring"
+            : "selection-local right-handed; absolute origin withheld");
+        if (authoring) {
+            manifest.put("worldId", snapshot.worldId());
+            manifest.put("fileSha256", snapshot.fileHash().toLowerCase());
+            manifest.put("producerRevision", producerRevision == null ? "" : producerRevision);
+            ArrayNode absoluteOrigin = manifest.putArray("absoluteOrigin");
+            absoluteOrigin.add(origin[0]).add(origin[1]).add(origin[2]);
+            manifest.put("identityStride", IDENTITY_STRIDE);
+            manifest.put("identityCount", visuals.size());
+            manifest.put("identityBytes", identityBytes.length);
+            manifest.put("identitySha256", identitySha);
+        }
         if (exposeRndCameraOrigin) {
             ArrayNode cameraOrigin = manifest.putArray("rndCameraOrigin");
             cameraOrigin.add(origin[0]).add(origin[1]).add(origin[2]);
@@ -234,16 +289,20 @@ public final class ScenePackage {
         manifest.put("benchmarkFrames", 300);
 
         byte[] manifestBytes = mapper.writeValueAsBytes(manifest);
-        int instanceOffset = align4(16 + manifestBytes.length);
-        ByteBuffer result = ByteBuffer.allocate(instanceOffset + instanceBytes.length)
+        int headerBytes = authoring ? 20 : 16;
+        int instanceOffset = align4(headerBytes + manifestBytes.length);
+        int identityOffset = authoring ? instanceOffset + instanceBytes.length : 0;
+        ByteBuffer result = ByteBuffer.allocate(instanceOffset + instanceBytes.length + identityBytes.length)
             .order(ByteOrder.LITTLE_ENDIAN);
-        result.put("SV3D".getBytes(StandardCharsets.US_ASCII));
-        result.putInt(2);
+        result.put((authoring ? "SVCA" : "SV3D").getBytes(StandardCharsets.US_ASCII));
+        result.putInt(authoring ? 1 : 2);
         result.putInt(manifestBytes.length);
         result.putInt(instanceOffset);
+        if (authoring) result.putInt(identityOffset);
         result.put(manifestBytes);
         while (result.position() < instanceOffset) result.put((byte) 0);
         result.put(instanceBytes);
+        if (authoring) result.put(identityBytes);
         return new Result(result.array(), manifest, pieces.size(), visuals.size());
     }
 

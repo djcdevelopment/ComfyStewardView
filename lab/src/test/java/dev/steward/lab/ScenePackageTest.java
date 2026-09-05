@@ -92,6 +92,49 @@ class ScenePackageTest {
         assertEquals("meadows", meadows.manifest().path("scope").withArray("biomes").get(0).asText());
     }
 
+    @Test void privateAuthoringPackageCarriesExactProvenanceOriginAndInstanceIdentity() throws Exception {
+        Path cache = temporary.resolve("authoring-scene.duckdb");
+        createFixture(cache, 0);
+        ObjectMapper mapper = new ObjectMapper();
+        ScenePackage scenes = new ScenePackage(
+            new SnapshotRepository(cache, new LensRegistry(), mapper, true), mapper);
+
+        ScenePackage.Result first = scenes.buildAuthoring(
+            7, "build-density", -10, 10, -10, 10, List.of(), "test-release", "f".repeat(40));
+        ScenePackage.Result second = scenes.buildAuthoring(
+            7, "build-density", -10, 10, -10, 10, List.of(), "test-release", "f".repeat(40));
+
+        assertArrayEquals(first.bytes(), second.bytes());
+        ByteBuffer header = ByteBuffer.wrap(first.bytes()).order(ByteOrder.LITTLE_ENDIAN);
+        byte[] magic = new byte[4]; header.get(magic);
+        assertEquals("SVCA", new String(magic, StandardCharsets.US_ASCII));
+        assertEquals(1, header.getInt());
+        int manifestLength = header.getInt();
+        int instanceOffset = header.getInt();
+        int identityOffset = header.getInt();
+        assertTrue(manifestLength > 0);
+        assertEquals(instanceOffset + first.renderInstances() * ScenePackage.INSTANCE_STRIDE, identityOffset);
+        assertEquals(identityOffset + first.renderInstances() * ScenePackage.IDENTITY_STRIDE, first.bytes().length);
+
+        ObjectNode manifest = first.manifest();
+        assertEquals("steward-zdo-authoring-scene/v1", manifest.path("schema").asText());
+        assertEquals("world-7", manifest.path("worldId").asText());
+        assertEquals("a".repeat(64), manifest.path("fileSha256").asText());
+        assertEquals("f".repeat(40), manifest.path("producerRevision").asText());
+        assertEquals(3, manifest.withArray("absoluteOrigin").size());
+        assertEquals(first.renderInstances(), manifest.path("identityCount").asInt());
+        assertEquals(64, manifest.path("identitySha256").asText().length());
+
+        ByteBuffer identities = ByteBuffer.wrap(first.bytes(), identityOffset,
+            first.renderInstances() * ScenePackage.IDENTITY_STRIDE).order(ByteOrder.LITTLE_ENDIAN);
+        java.util.Map<Long, Integer> counts = new java.util.HashMap<>();
+        while (identities.hasRemaining()) counts.merge(Integer.toUnsignedLong(identities.getInt()), 1, Integer::sum);
+        assertEquals(2, counts.get(10L));
+        assertEquals(1, counts.get(11L));
+        assertEquals(1, counts.get(12L));
+        assertEquals(1, counts.get(13L));
+    }
+
     @Test void appliesVerifiedUnityEulerOrder() {
         double[][] rotation = ScenePackage.rotation(0, 90, 0);
         assertEquals(0, rotation[0][0], 1e-9);
@@ -191,6 +234,11 @@ class ScenePackageTest {
         ScenePackage.CapacityException direct = assertThrows(ScenePackage.CapacityException.class,
             () -> scenes.build(7, "build-density", -1, 300, -1, 1, List.of(), false, "test"));
         assertTrue(direct.overrideAvailable());
+        ScenePackage.CapacityException authoring = assertThrows(ScenePackage.CapacityException.class,
+            () -> scenes.buildAuthoring(7, "build-density", -1, 300, -1, 1,
+                List.of(), "test", "f".repeat(40)));
+        assertFalse(authoring.overrideAvailable(),
+            "private Creator packages never override the 5,000-piece identity boundary");
         ScenePackage.Result confirmed = scenes.build(
             7, "build-density", -1, 300, -1, 1, List.of(), true, "test");
         assertEquals(ScenePackage.DIRECT_LIMIT + 1, confirmed.pieces());
@@ -256,6 +304,11 @@ class ScenePackageTest {
             statement.executeUpdate("INSERT INTO release_metadata VALUES ('" + "a".repeat(64) +
                 "','" + "b".repeat(64) + "','" + "c".repeat(64) + "','" +
                 "d".repeat(64) + "','" + "e".repeat(64) + "')");
+            statement.executeUpdate("CREATE TABLE world_snapshot (snapshot_id BIGINT, world_id VARCHAR, " +
+                "world_name VARCHAR, source VARCHAR, backup_id VARCHAR, parsed_at VARCHAR, " +
+                "file_hash VARCHAR, prefab_dictionary_version VARCHAR)");
+            statement.executeUpdate("INSERT INTO world_snapshot VALUES (7,'world-7','Fixture','fixture.db'," +
+                "'backup-7','2026-09-04T00:00:00Z','" + "a".repeat(64) + "','fixture-v1')");
             statement.executeUpdate("INSERT INTO prefab_geometry VALUES " +
                 "(1,'piece_wall','wall','mesh',2,4,.2,.5,2,0)," +
                 "(2,'piece_roof','roof','family_median',4,1,3,0,.5,0)," +

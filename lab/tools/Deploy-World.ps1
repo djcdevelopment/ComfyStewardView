@@ -122,9 +122,12 @@ if ($buildingGeometrySha -ne $expectedBuildingGeometrySha -or
 $gitTop = ((git -C $repoRoot rev-parse --show-toplevel 2>$null) -join '').Trim()
 $gitPrefix = ((git -C $repoRoot rev-parse --show-prefix 2>$null) -join '').Trim()
 $gitSha = ((git -C $repoRoot rev-parse --short HEAD 2>$null) -join '').Trim()
+$gitFullSha = ((git -C $repoRoot rev-parse HEAD 2>$null) -join '').Trim()
 if (-not $gitTop -or -not $gitPrefix -or $gitPrefix -notmatch '^[A-Za-z0-9._/-]+/$' -or
     $gitPrefix.Contains('..')) { throw 'Could not resolve the committed lab subtree.' }
-if (-not $gitSha) { throw 'Could not resolve the committed release ID.' }
+if (-not $gitSha -or $gitFullSha -notmatch '^[0-9a-fA-F]{40}$') {
+    throw 'Could not resolve the committed release identity.'
+}
 $dirty = [bool]((git -C $repoRoot status --porcelain 2>$null) -join '')
 if ($dirty) { throw 'Deploy-World requires a clean Git worktree so the staged source matches its release ID.' }
 
@@ -294,6 +297,7 @@ if ((Invoke-Ssh "test -f '$RemoteRoot/.env' && echo yes || true").Trim() -ne 'ye
 Invoke-Ssh "chmod 600 '$RemoteRoot/.env'" | Out-Null
 @('DISCORD_CLIENT_ID','DISCORD_CLIENT_SECRET','DISCORD_FEEDBACK_WEBHOOK_URL','DISCORD_OWNER_USER_ID') |
     ForEach-Object { Require-RemoteEnvValue $_ }
+Require-RemoteEnvValue 'STEWARD_QUEST_IMPORT_TOKEN'
 $existingContainer = (Invoke-Ssh "docker ps -a --filter name=^/steward-world`$ --format '{{.Names}}'" -AllowFailure).Trim()
 if (-not $existingContainer) {
     $listener = Invoke-Ssh "ss -ltn 'sport = :$Port' | tail -n +2" -AllowFailure
@@ -349,7 +353,7 @@ try {
     if ($entrypointHex -match '(^|\s)0d(\s|$)') {
         throw 'The staged Linux entrypoint contains a carriage return.'
     }
-    Invoke-Ssh "printf '%s\n' 'STEWARD_WORLD_CACHE_PATH=$releaseDir/cache/$cacheFile' 'STEWARD_WORLD_ARTIFACTS_PATH=$releaseDir/artifacts' 'STEWARD_WORLD_CONTEXT_PATH=$releaseDir/context/$SnapshotId' 'STEWARD_PUBLIC_URL=$publicUrl' 'STEWARD_RELEASE_VERSION=$releaseVersion' 'STEWARD_SNAPSHOT_ID=$SnapshotId' > '$releaseDir/runtime.env'" | Out-Null
+    Invoke-Ssh "printf '%s\n' 'STEWARD_WORLD_CACHE_PATH=$releaseDir/cache/$cacheFile' 'STEWARD_WORLD_ARTIFACTS_PATH=$releaseDir/artifacts' 'STEWARD_WORLD_CONTEXT_PATH=$releaseDir/context/$SnapshotId' 'STEWARD_PUBLIC_URL=$publicUrl' 'STEWARD_RELEASE_VERSION=$releaseVersion' 'STEWARD_SOURCE_REVISION=$gitFullSha' 'STEWARD_SNAPSHOT_ID=$SnapshotId' > '$releaseDir/runtime.env'" | Out-Null
 } finally {
     if (Test-Path -LiteralPath $sourceArchive) { Remove-Item -LiteralPath $sourceArchive -Force }
     if (Test-Path -LiteralPath $artifactArchive) { Remove-Item -LiteralPath $artifactArchive -Force }

@@ -23,6 +23,8 @@ public record LabConfig(
         boolean publicMode,
         String publicUrl,
         String releaseVersion,
+        String sourceRevision,
+        String questOperatorToken,
         Path fidelityGallery,
         Path fidelityReceipts,
         Path fidelityClusters,
@@ -53,6 +55,8 @@ public record LabConfig(
         boolean publicMode = false;
         String publicUrl = environment("STEWARD_PUBLIC_URL", "");
         String releaseVersion = environment("STEWARD_RELEASE_VERSION", "dev");
+        String sourceRevision = environment("STEWARD_SOURCE_REVISION", releaseVersion);
+        String questOperatorToken = environment("STEWARD_QUEST_IMPORT_TOKEN", "");
         Path fidelityGallery = optionalPath("STEWARD_FIDELITY_GALLERY",
             Path.of("C:/work/baseline/tools/selfie-stick/out/era17/gallery"), true);
         Path fidelityReceipts = optionalPath("STEWARD_FIDELITY_RECEIPTS",
@@ -129,6 +133,8 @@ public record LabConfig(
             contextManifest == null ? null : absolute(contextManifest), bindAddress, port, noBrowser, snapshot,
             List.copyOf(lenses), List.copyOf(resolutions), force, publicMode, publicUrl,
             releaseVersion.isBlank() ? "dev" : releaseVersion,
+            sourceRevision.isBlank() ? "dev" : sourceRevision,
+            questOperatorToken,
             fidelityGallery == null ? null : absolute(fidelityGallery),
             fidelityReceipts == null ? null : absolute(fidelityReceipts),
             fidelityClusters == null ? null : absolute(fidelityClusters),
