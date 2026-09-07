@@ -1752,7 +1752,12 @@ public class ApiServer {
             return;
         }
         try {
-            QuestEvidenceStore.ImportReceipt receipt = evidence.importJson(ctx.body());
+            AnalyticsCacheReader reader = analyticsCacheReader;
+            if (reader == null) {
+                apiErrorCode(ctx, 503, "analytics_cache_unavailable");
+                return;
+            }
+            QuestEvidenceStore.ImportReceipt receipt = evidence.importJson(ctx.body(), reader);
             ObjectNode response = mapper.createObjectNode();
             response.put("schema", "comfy-steward-quest-evidence-import/v1");
             response.put("contentSha256", receipt.contentSha256());
@@ -1760,7 +1765,7 @@ public class ApiServer {
             response.put("alreadyPresent", receipt.alreadyPresent());
             ctx.status(receipt.alreadyPresent() ? 200 : 201).json(response);
         } catch (com.valheim.viewer.contract.SpatialEvidenceContract.ContractException e) {
-            apiErrorCode(ctx, 400, e.code());
+            apiErrorCode(ctx, "evidence_snapshot_mismatch".equals(e.code()) ? 409 : 400, e.code());
         } catch (Exception e) {
             log.error("Quest evidence import failed", e);
             apiErrorCode(ctx, 500, "quest_evidence_import_failed");

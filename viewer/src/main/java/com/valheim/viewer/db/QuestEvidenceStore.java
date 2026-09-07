@@ -51,6 +51,28 @@ public final class QuestEvidenceStore implements AutoCloseable {
 
     public synchronized ImportReceipt importJson(String json) throws Exception {
         SpatialEvidenceContract.Bundle bundle = SpatialEvidenceContract.parse(json);
+        return importBundle(bundle, json);
+    }
+
+    public synchronized ImportReceipt importJson(
+            String json, AnalyticsCacheReader snapshots) throws Exception {
+        SpatialEvidenceContract.Bundle bundle = SpatialEvidenceContract.parse(json);
+        if (snapshots == null) {
+            throw new SpatialEvidenceContract.ContractException("evidence_snapshot_mismatch");
+        }
+        for (SpatialEvidenceContract.Record item : bundle.records) {
+            AnalyticsCacheReader.SnapshotInfo actual =
+                snapshots.snapshotInfo(item.snapshot.snapshotId);
+            if (actual == null || !item.snapshot.worldId.equals(actual.worldId()) ||
+                    !item.snapshot.fileSha256.equalsIgnoreCase(actual.fileHash())) {
+                throw new SpatialEvidenceContract.ContractException("evidence_snapshot_mismatch");
+            }
+        }
+        return importBundle(bundle, json);
+    }
+
+    private ImportReceipt importBundle(
+            SpatialEvidenceContract.Bundle bundle, String json) throws Exception {
         String hash = bundle.contentSha256.toLowerCase(Locale.ROOT);
         int existing = existingRecordCount(hash);
         if (existing >= 0) return new ImportReceipt(hash, existing, true);
@@ -192,6 +214,9 @@ public final class QuestEvidenceStore implements AutoCloseable {
                 "PRIMARY KEY (bundle_sha256, record_index))");
             // Migrate the unpublished local v1 rehearsal schema in place. Count observations do
             // not have one honest point, so their observed coordinates must remain nullable.
+            // DuckDB refuses ALTER COLUMN while this store's snapshot index depends on the table;
+            // remove only that owned index and recreate it after the idempotent migration.
+            st.executeUpdate("DROP INDEX IF EXISTS quest_spatial_evidence_snapshot");
             st.executeUpdate("ALTER TABLE quest_spatial_evidence " +
                 "ADD COLUMN IF NOT EXISTS current_count INTEGER DEFAULT 0");
             st.executeUpdate("ALTER TABLE quest_spatial_evidence " +

@@ -91,16 +91,36 @@ class SpatialExchangeContractTest {
         assertEquals("evidence_record_invalid", badDistance.code());
 
         Path evidencePath = tempDir.resolve("quest-evidence.duckdb");
-        try (QuestEvidenceStore store = new QuestEvidenceStore(evidencePath.toFile())) {
-            QuestEvidenceStore.ImportReceipt first = store.importJson(json);
-            QuestEvidenceStore.ImportReceipt second = store.importJson(json);
+        Path cachePath = tempDir.resolve("world-cache.duckdb");
+        try (Connection conn = DriverManager.getConnection(
+                "jdbc:duckdb:" + cachePath.toAbsolutePath());
+             Statement st = conn.createStatement()) {
+            st.executeUpdate("CREATE TABLE world_snapshot (snapshot_id BIGINT, " +
+                "world_id VARCHAR, prefab_dictionary_version VARCHAR, file_hash VARCHAR)");
+            st.executeUpdate("INSERT INTO world_snapshot VALUES " +
+                "(42, 'ComfyEra16', 'dictionary', '" + "a".repeat(64) + "')");
+        }
+        try (AnalyticsCacheReader reader = new AnalyticsCacheReader(
+                cachePath.toFile(), tempDir.resolve("rendered").toFile());
+             QuestEvidenceStore store = new QuestEvidenceStore(evidencePath.toFile())) {
+            QuestEvidenceStore.ImportReceipt first = store.importJson(json, reader);
+            QuestEvidenceStore.ImportReceipt second = store.importJson(json, reader);
             assertFalse(first.alreadyPresent());
             assertTrue(second.alreadyPresent());
             assertEquals(1, first.recordCount());
 
+            ObjectMapper mapper = new ObjectMapper();
+            SpatialEvidenceContract.Bundle wrongSnapshot = mapper.readValue(
+                json, SpatialEvidenceContract.Bundle.class);
+            wrongSnapshot.records.get(0).snapshot.fileSha256 = "e".repeat(64);
+            wrongSnapshot.contentSha256 = SpatialEvidenceContract.computeHash(wrongSnapshot);
+            SpatialEvidenceContract.ContractException mismatch = assertThrows(
+                SpatialEvidenceContract.ContractException.class,
+                () -> store.importJson(mapper.writeValueAsString(wrongSnapshot), reader));
+            assertEquals("evidence_snapshot_mismatch", mismatch.code());
+
             AnalyticsCacheReader.SnapshotInfo snapshot = new AnalyticsCacheReader.SnapshotInfo(
                 42, "ComfyEra16", "dictionary", "a".repeat(64));
-            ObjectMapper mapper = new ObjectMapper();
             JsonNode overlays = store.overlays(mapper, snapshot);
             assertEquals(1, overlays.path("total").asInt());
             assertEquals(42, overlays.path("snapshotId").asLong());
@@ -137,6 +157,9 @@ class SpatialExchangeContractTest {
             assertTrue(countRow.path("distanceMeters").isNull());
         }
         assertTrue(evidencePath.toFile().isFile());
+        try (QuestEvidenceStore reopened = new QuestEvidenceStore(evidencePath.toFile())) {
+            assertEquals(evidencePath.toFile().getCanonicalFile(), reopened.dbFile());
+        }
     }
 
     @Test
