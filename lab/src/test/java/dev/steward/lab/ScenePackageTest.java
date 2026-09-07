@@ -135,6 +135,61 @@ class ScenePackageTest {
         assertEquals(1, counts.get(13L));
     }
 
+    @Test void privateSceneIncludesRealSignCategoryWithoutChangingPublicMembership() throws Exception {
+        Path cache = temporary.resolve("sign-authoring.duckdb");
+        createFixture(cache, 0);
+        try (var connection = DriverManager.getConnection("jdbc:duckdb:" + cache);
+             var statement = connection.createStatement()) {
+            statement.executeUpdate("INSERT INTO zdo VALUES " +
+                "(7, 21, 1, 2, 3, 'sign', 99991, 'SIGN', 'meadows', false, 0, 0, 0)");
+        }
+        ObjectMapper mapper = new ObjectMapper();
+        ScenePackage scenes = new ScenePackage(
+            new SnapshotRepository(cache, new LensRegistry(), mapper), mapper);
+        ScenePackage.Result authoring = scenes.buildAuthoring(
+            7, "build-density", -10, 10, -10, 10, List.of(), "test", "f".repeat(40));
+        ScenePackage.Result publicScene = scenes.build(
+            7, "build-density", -10, 10, -10, 10, List.of(), false, "test");
+        assertEquals(publicScene.pieces() + 1, authoring.pieces());
+        int offset = ByteBuffer.wrap(authoring.bytes()).order(ByteOrder.LITTLE_ENDIAN).getInt(16);
+        ByteBuffer identities = ByteBuffer.wrap(authoring.bytes()).order(ByteOrder.LITTLE_ENDIAN);
+        identities.position(offset);
+        int signInstances = 0;
+        while (identities.hasRemaining()) if (identities.getInt() == 21) signInstances++;
+        assertEquals(1, signInstances);
+    }
+
+    @Test void creatorCacheRejectsMissingGeometryThenExportsSelectableSign() throws Exception {
+        Path source = temporary.resolve("creator-source.duckdb");
+        Path catalog = temporary.resolve("catalog.duckdb");
+        Path geometry = temporary.resolve("creator-geometry.parquet");
+        Path output = temporary.resolve("creator.duckdb");
+        createFixture(source, 0);
+        try (var connection = DriverManager.getConnection("jdbc:duckdb:" + source);
+             var statement = connection.createStatement()) {
+            statement.executeUpdate("INSERT INTO zdo VALUES " +
+                "(7, 21, 1, 2, 3, 'sign', 99991, 'SIGN', 'meadows', false, 0, 0, 0)");
+            statement.execute("COPY (SELECT * FROM zdo WHERE category = 'BUILDING') TO '" +
+                geometry.toString().replace("'", "''") + "' (FORMAT PARQUET)");
+        }
+        java.nio.file.Files.copy(source, catalog);
+        assertThrows(IllegalArgumentException.class,
+            () -> CreatorCacheExporter.export(source, geometry, catalog, output, 7));
+        assertFalse(java.nio.file.Files.exists(output));
+        java.nio.file.Files.delete(geometry);
+        try (var connection = DriverManager.getConnection("jdbc:duckdb:" + source);
+             var statement = connection.createStatement()) {
+            statement.execute("COPY zdo TO '" + geometry.toString().replace("'", "''") +
+                "' (FORMAT PARQUET)");
+        }
+        CreatorCacheExporter.export(source, geometry, catalog, output, 7);
+        ObjectMapper mapper = new ObjectMapper();
+        ScenePackage scenes = new ScenePackage(
+            new SnapshotRepository(output, new LensRegistry(), mapper), mapper);
+        assertEquals(5, scenes.buildAuthoring(7, "build-density", -10, 10, -10, 10,
+            List.of(), "test", "f".repeat(40)).pieces());
+    }
+
     @Test void appliesVerifiedUnityEulerOrder() {
         double[][] rotation = ScenePackage.rotation(0, 90, 0);
         assertEquals(0, rotation[0][0], 1e-9);

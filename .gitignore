@@ -17,3 +17,4 @@ design_mocks/.thumbnail
 /steward-config.json
 # Synthetic validation saves, caches, ledgers, PNGs, and receipts
 /artifacts/synthetic-history/
+/artifacts/creator-dm/

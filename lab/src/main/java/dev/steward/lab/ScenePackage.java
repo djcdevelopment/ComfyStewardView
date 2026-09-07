@@ -103,7 +103,7 @@ public final class ScenePackage {
             throw new IllegalArgumentException("3D exploration is available for Build density only");
         }
         validateBounds(minX, maxX, minZ, maxZ);
-        long pieceCount = count(snapshotId, minX, maxX, minZ, maxZ, biomes);
+        long pieceCount = count(snapshotId, minX, maxX, minZ, maxZ, biomes, authoring);
         if (authoring && pieceCount > DIRECT_LIMIT) {
             throw new CapacityException(false,
                 "Creator scenes are limited to 5,000 exact pieces. Tighten the selected area.");
@@ -121,7 +121,7 @@ public final class ScenePackage {
         }
 
         Map<Integer, List<Primitive>> primitives = queryPrimitives();
-        List<Piece> pieces = query(snapshotId, minX, maxX, minZ, maxZ, biomes, (int) pieceCount);
+        List<Piece> pieces = query(snapshotId, minX, maxX, minZ, maxZ, biomes, (int) pieceCount, authoring);
         if (pieces.size() != pieceCount) {
             throw new IllegalStateException("The exact scene changed while it was being assembled");
         }
@@ -307,7 +307,7 @@ public final class ScenePackage {
     }
 
     private List<Piece> query(long snapshotId, double minX, double maxX,
-            double minZ, double maxZ, List<String> biomes, int limit) throws SQLException {
+            double minZ, double maxZ, List<String> biomes, int limit, boolean authoring) throws SQLException {
         StringBuilder biomeSql = new StringBuilder();
         if (!biomes.isEmpty()) {
             biomeSql.append(" AND z.biome IN (");
@@ -325,7 +325,7 @@ public final class ScenePackage {
             "pr.animation_pivot_y, pr.animation_pivot_z FROM zdo z " +
             "LEFT JOIN prefab_geometry pg USING (prefab_hash) " +
             "LEFT JOIN prefab_representation pr USING (prefab_hash) WHERE z.snapshot_id = ? " +
-            "AND z.category = 'BUILDING' AND z.x >= ? AND z.x <= ? AND z.z >= ? AND z.z <= ?" +
+            "AND " + categoryPredicate("z.", authoring) + " AND z.x >= ? AND z.x <= ? AND z.z >= ? AND z.z <= ?" +
             biomeSql + " ORDER BY COALESCE(pg.family, 'unknown'), z.zdo_index LIMIT ?";
         List<Piece> result = new ArrayList<>(Math.min(limit + 1, 8_192));
         try (Connection connection = snapshots.open();
@@ -434,8 +434,14 @@ public final class ScenePackage {
         return Map.copyOf(result);
     }
 
+    private static String categoryPredicate(String prefix, boolean authoring) {
+        // The save parser classifies bindable signs separately from structural pieces.
+        // Their real snapshot identities belong only to the authenticated authoring lane.
+        return prefix + "category " + (authoring ? "IN ('BUILDING', 'SIGN')" : "= 'BUILDING'");
+    }
+
     private long count(long snapshotId, double minX, double maxX,
-            double minZ, double maxZ, List<String> biomes) throws SQLException {
+            double minZ, double maxZ, List<String> biomes, boolean authoring) throws SQLException {
         StringBuilder biomeSql = new StringBuilder();
         if (!biomes.isEmpty()) {
             biomeSql.append(" AND biome IN (");
@@ -445,7 +451,7 @@ public final class ScenePackage {
             }
             biomeSql.append(')');
         }
-        String sql = "SELECT COUNT(*) FROM zdo WHERE snapshot_id = ? AND category = 'BUILDING' " +
+        String sql = "SELECT COUNT(*) FROM zdo WHERE snapshot_id = ? AND " + categoryPredicate("", authoring) + " " +
             "AND x >= ? AND x <= ? AND z >= ? AND z <= ?" + biomeSql;
         try (Connection connection = snapshots.open();
              PreparedStatement statement = connection.prepareStatement(sql)) {
