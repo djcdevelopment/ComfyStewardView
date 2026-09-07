@@ -156,7 +156,7 @@ struct VertexOut { @builtin(position) position: vec4f, @location(0) color: vec4f
     const ratio = Math.min(devicePixelRatio || 1, 2);
     const width = Math.max(1, Math.floor(canvas.clientWidth * ratio));
     const height = Math.max(1, Math.floor(canvas.clientHeight * ratio));
-    if (canvas.width === width && canvas.height === height) return;
+    if (depth && pickTexture && canvas.width === width && canvas.height === height) return;
     canvas.width = width; canvas.height = height;
     depth?.destroy(); pickTexture?.destroy();
     depth = device.createTexture({ size: [width, height], format: "depth24plus",
@@ -188,17 +188,18 @@ struct VertexOut { @builtin(position) position: vec4f, @location(0) color: vec4f
     const encoder = device.createCommandEncoder(); pass(encoder, context.getCurrentTexture().createView());
     device.queue.submit([encoder.finish()]);
   };
-  const requestDraw = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(draw); };
+  const requestDraw = () => { if (disposed) return; cancelAnimationFrame(frame); frame = requestAnimationFrame(draw); };
   const observer = new ResizeObserver(requestDraw); observer.observe(canvas);
+  const events = new AbortController();
   let drag = null, moved = false;
   canvas.addEventListener("pointerdown", event => {
     drag = [event.clientX, event.clientY]; moved = false; canvas.setPointerCapture(event.pointerId);
-  });
+  }, { signal: events.signal });
   canvas.addEventListener("pointermove", event => {
     if (!drag) return; const dx = event.clientX - drag[0], dy = event.clientY - drag[1];
     moved ||= Math.abs(dx) + Math.abs(dy) > 2; drag = [event.clientX, event.clientY];
     yaw -= dx * .007; pitch = Math.max(-1.45, Math.min(1.45, pitch + dy * .007)); requestDraw();
-  });
+  }, { signal: events.signal });
   canvas.addEventListener("pointerup", async event => {
     drag = null; if (moved || disposed || !scene.manifest.renderInstances) return;
     resize(); device.queue.writeBuffer(uniformBuffer, 0, cameraBytes());
@@ -207,22 +208,31 @@ struct VertexOut { @builtin(position) position: vec4f, @location(0) color: vec4f
     const y = Math.max(0, Math.min(canvas.height - 1,
       Math.floor((event.clientY - canvas.getBoundingClientRect().top) * canvas.height / canvas.clientHeight)));
     const read = device.createBuffer({ size: 256, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
-    const encoder = device.createCommandEncoder(); pass(encoder, pickTexture.createView(), true);
-    encoder.copyTextureToBuffer({ texture: pickTexture, origin: { x, y } },
-      { buffer: read, bytesPerRow: 256 }, { width: 1, height: 1 });
-    device.queue.submit([encoder.finish()]); await read.mapAsync(GPUMapMode.READ);
-    const slot = new Uint32Array(read.getMappedRange())[0]; read.unmap(); read.destroy();
-    if (slot) { selected = identities[slot - 1]; onSelection({
-      zdoIndex: selected, instanceIndex: slot - 1, manifest: scene.manifest }); requestDraw(); }
-  });
+    try {
+      const encoder = device.createCommandEncoder(); pass(encoder, pickTexture.createView(), true);
+      encoder.copyTextureToBuffer({ texture: pickTexture, origin: { x, y } },
+        { buffer: read, bytesPerRow: 256 }, { width: 1, height: 1 });
+      device.queue.submit([encoder.finish()]); await read.mapAsync(GPUMapMode.READ);
+      if (disposed) return;
+      const slot = new Uint32Array(read.getMappedRange())[0];
+      if (slot) { selected = identities[slot - 1]; onSelection({
+        zdoIndex: selected, instanceIndex: slot - 1, manifest: scene.manifest }); requestDraw(); }
+    } catch (error) {
+      if (!disposed) onSelection({ error: "webgpu_pick_failed" });
+    } finally {
+      if (read.mapState === "mapped") read.unmap();
+      read.destroy();
+    }
+  }, { signal: events.signal });
   canvas.addEventListener("wheel", event => {
     event.preventDefault(); distance = Math.max(.5, Math.min(25000, distance * Math.exp(event.deltaY * .001)));
     requestDraw();
-  }, { passive: false });
+  }, { passive: false, signal: events.signal });
   device.lost.then(() => { if (!disposed) onSelection({ error: "webgpu_device_lost" }); });
   requestDraw();
   return { scene, reset() { yaw = .7; pitch = .5;
     distance = Math.max(12, Number(scene.manifest.home?.radiusM || 5) * 2.5); requestDraw(); },
-    dispose() { disposed = true; observer.disconnect(); cancelAnimationFrame(frame);
-      instanceBuffer.destroy(); identityBuffer.destroy(); uniformBuffer.destroy(); depth?.destroy(); pickTexture?.destroy(); } };
+    dispose() { disposed = true; events.abort(); observer.disconnect(); cancelAnimationFrame(frame);
+      instanceBuffer.destroy(); identityBuffer.destroy(); uniformBuffer.destroy(); depth?.destroy(); pickTexture?.destroy();
+      device.destroy(); } };
 }
