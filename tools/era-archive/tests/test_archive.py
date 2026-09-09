@@ -12,7 +12,9 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import archive
 import community
 import gallery
+import import_captures
 import jobs
+import score_frames
 from records import ITEMS, count, records, stable_hash
 
 
@@ -140,6 +142,119 @@ class ArchiveTest(unittest.TestCase):
             archive.save(path,bad)
             with self.assertRaises(ValueError):community.attach_captures(
                 [{"buildKey":"a"*64,"sourceKey":"src","photos":[],"contributors":[]}],[path])
+
+    def test_a_frame_its_own_capture_receipt_condemned_is_never_published(self):
+        """The runner's ray test flags occlusion, and this importer collected the flag and
+        ignored it, so era 14 shipped 86 frames it already knew were obstructed. The
+        receipt predicts an unusable frame 3-6x better than chance -- 2.9% of `planned`
+        poses are visually flat against 15.5% of `still_blocked` -- and it needs no
+        pixels, so the rejection happens before the derivative worklist is written."""
+        for receipt, expected in (({"clearance": "planned", "occluded": False, "pieces_near_aim": 900}, None),
+                                  ({"occluded": True}, "view obstructed"),
+                                  ({"pieces_near_aim": 0}, "world never loaded"),
+                                  ({"clearance": "still_blocked"}, "camera never found a clear ray"),
+                                  ({"skipped": True}, "skipped by the runner")):
+            self.assertEqual(expected, import_captures.receipt_reject(receipt), msg=str(receipt))
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            shots = [{"shot": "orbit%d" % n, "shotKey": "k%d" % n} for n in range(1, 5)]
+            archive.save(root / "campaign.json", {"era": "era14", "sourceKey": "src", "snapshotId": 1,
+                "world": "W", "width": 3840, "height": 2160,
+                "builds": [{"buildKey": "a" * 64, "shots": shots}]})
+            receipts = [{"clearance": "planned", "occluded": False, "pieces_near_aim": 900},
+                        {"clearance": "planned", "occluded": True, "pieces_near_aim": 900},
+                        {"clearance": "still_blocked", "occluded": False, "pieces_near_aim": 5},
+                        {"clearance": "planned", "occluded": False, "pieces_near_aim": 900}]
+            archive.save(root / "state.json", {"sourceKey": "src", "completed": {
+                "k%d" % (n + 1): {"file": "images/%d.png" % n, "sha256": "s%d" % n,
+                                  "metadata": {"dimensions": [3840, 2160]}, "receipt": r}
+                for n, r in enumerate(receipts)}})
+            _, builds, worklist, counts, rejects = import_captures.collect(root, "era14", "https://h/e14/")
+            self.assertEqual(2, counts["photographs"])
+            self.assertEqual(2, counts["rejected"])
+            # A rejected frame never reaches the encoder, not just the manifest.
+            self.assertEqual(2, len(worklist))
+            self.assertEqual(["era14-aaaaaaaaaaaa-orbit1", "era14-aaaaaaaaaaaa-orbit4"],
+                             [p["id"] for p in builds["a" * 64]])
+            self.assertEqual({"view obstructed", "camera never found a clear ray"},
+                             {f["reason"] for f in rejects[0]["frames"]})
+            # --keep-rejects measures without withholding.
+            _, builds, worklist, counts, _ = import_captures.collect(
+                root, "era14", "https://h/e14/", gate=False)
+            self.assertEqual((4, 4, 2), (len(worklist), len(builds["a" * 64]), counts["rejected"]))
+
+    def test_an_album_that_kept_no_frame_says_so_instead_of_looking_unvisited(self):
+        """1,963 of 2,747 threads read "0 photos" because nobody has been there yet. A
+        build that WAS photographed and had every frame withheld is a different fact, and
+        only the album can state it -- such a build is absent from the manifest entirely."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            builds = [{"buildKey": "a" * 64, "sourceKey": "src", "photos": [],
+                       "contributors": [{"builderKey": "b" * 32, "pieces": 9, "share": 1,
+                                         "evidence": "saved-piece-creator"}]},
+                      {"buildKey": "c" * 64, "sourceKey": "src", "photos": [],
+                       "contributors": [{"builderKey": "d" * 32}]}]
+            path = root / "captures-era14.json"
+            archive.save(path, {"schema": "steward-capture-gallery/v1", "era": "era14",
+                "sourceKey": "src", "base": "https://host/valheim/era14/", "photographs": 0,
+                "rejected": 4, "rejectedBuilds": ["a" * 64], "builds": {}})
+            receipts, _, _, _ = community.attach_captures(builds, [path])
+            self.assertEqual("rejected", builds[0].get("photoStatus"))
+            self.assertIsNone(builds[1].get("photoStatus"))
+            self.assertEqual((4, 1), (receipts[0]["rejectedFrames"], receipts[0]["rejectedAlbums"]))
+            # It still has no photographs, so the ranker queues it for another attempt --
+            # into jobs.json, which campaigns are cut from, never into a live campaign.
+            self.assertEqual(2, len([b for b in builds if not b["photos"] and b["contributors"]]))
+            projection = root / "site"
+            gallery.project({"generatedAt": "now", "eras": [], "legacyImports": [],
+                "builders": [{"builderKey": "b" * 32, "displayName": "A", "aliases": [],
+                              "nameStatus": "recorded", "builds": ["a" * 64]}],
+                "builds": [dict(builds[0], era=14, slug="era14", label="Hall", pieces=9,
+                                attribution="x")]}, projection, "https://world.example/w/")
+            thread = archive.load(projection / "threads" / ("b" * 32 + ".json"))
+            self.assertEqual("rejected", thread["eras"][0]["albums"][0]["photoStatus"])
+
+    def test_the_night_guard_keeps_a_dark_frame_with_its_lamps_lit(self):
+        """Applied to the era 16/17 legacy set these thresholds veto 22.9% of it, and
+        inspection showed much of that is deliberate twilight photography -- the only
+        light that shows a builder's own lighting design. Dark plus a wide highlight span
+        is a lantern, not a fault."""
+        fog = {"lumaMean": 0.68, "lumaStd": 0.09, "edgeEnergy": 0.0027, "highlightSpan": 0.09}
+        black = {"lumaMean": 0.11, "lumaStd": 0.04, "edgeEnergy": 0.0004, "highlightSpan": 0.01}
+        night = {"lumaMean": 0.032, "lumaStd": 0.06, "edgeEnergy": 0.0086, "highlightSpan": 0.57}
+        blown = {"lumaMean": 0.78, "lumaStd": 0.10, "edgeEnergy": 0.02, "highlightSpan": 0.20}
+        wall = {"lumaMean": 0.45, "lumaStd": 0.20, "edgeEnergy": 0.02, "highlightSpan": 0.40,
+                "centerBlock": 0.62}
+        good = {"lumaMean": 0.52, "lumaStd": 0.20, "edgeEnergy": 0.025, "highlightSpan": 0.45}
+        self.assertEqual("empty", score_frames.verdict(fog)[0])
+        self.assertEqual("empty", score_frames.verdict(black)[0])
+        self.assertEqual("keep", score_frames.verdict(night)[0])
+        self.assertEqual("night lighting", score_frames.verdict(night)[1])
+        self.assertEqual("blown", score_frames.verdict(blown)[0])
+        self.assertEqual("keep", score_frames.verdict(good)[0])
+        # The depth veto is opt-in: validated on twelve hand-labelled selfie-stick frames,
+        # it picks 14 of era 14's 2,089 orbit captures and they are mostly legitimate
+        # builds that fill the middle of the frame. Measured, recorded, not acted on.
+        self.assertEqual("keep", score_frames.verdict(wall)[0])
+        self.assertEqual("wall", score_frames.verdict(wall, wall_veto=True)[0])
+        # And it must never fire on an absent measurement.
+        self.assertEqual("keep", score_frames.verdict(
+            {k: v for k, v in wall.items() if k != "centerBlock"}, wall_veto=True)[0])
+
+    def test_near_identical_frames_collapse_and_the_best_one_survives(self):
+        """227 near-duplicate pairs in era 14, 226 of them joining two different builds --
+        one sky platform published nine times over. The four orbits of a single build are
+        genuinely different corners (median hamming 68 of 144), so a threshold of 18 never
+        touches them."""
+        frames = {"a": {"dhash": "%036x" % 0, "edgeEnergy": 0.02, "aesthetic": 5.1},
+                  "b": {"dhash": "%036x" % (1 << 3), "edgeEnergy": 0.03, "aesthetic": 5.9},
+                  "c": {"dhash": "%036x" % ((1 << 60) - 1), "edgeEnergy": 0.09, "aesthetic": 6.5}}
+        clusters = score_frames.cluster_duplicates(frames, ["a", "b", "c"])
+        self.assertEqual(1, len(clusters))
+        # The aesthetic head, not edge energy, decides which twin represents the pair.
+        self.assertEqual("b", clusters[0]["keep"])
+        self.assertEqual(["a"], clusters[0]["drop"])
+        self.assertNotIn("c", clusters[0]["drop"])
 
     def test_a_better_reshoot_supersedes_a_provisional_frame_rather_than_joining_it(self):
         """A laptop that can only deliver 1080p shoots an era now; better hardware

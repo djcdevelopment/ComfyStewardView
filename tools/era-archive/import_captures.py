@@ -35,6 +35,31 @@ SAFE_ID = re.compile(r"[A-Za-z0-9_-]+")
 RECEIPT_FIELDS = ("clearance", "occluded", "pieces_near_aim", "environment", "time_of_day")
 
 
+def receipt_reject(receipt):
+    """Frames the capture itself already knew were bad.
+
+    No judgement about whether a picture is *good* -- only whether it is a picture of the
+    thing at all. `build_valheim_index.py:357` has carried the first three of these for
+    months while this importer collected the same fields and ignored them, so era 14 was
+    published with 86 frames the runner's own ray test had already called occluded.
+
+    Measured over era 14's 2,089 photographs, the receipt predicts an unusable frame 3-6x
+    better than chance: 2.9% of `planned` poses are visually flat against 15.5% of
+    `still_blocked`, 12.8% of `occluded`, and 19.1% of cameras that had to climb 45 m or
+    more to find a ray. This costs nothing and needs no pixels, so it runs before the
+    derivative worklist is written and a rejected frame is never even encoded.
+    """
+    if receipt.get("skipped"):
+        return "skipped by the runner"
+    if receipt.get("pieces_near_aim") == 0:
+        return "world never loaded"
+    if receipt.get("occluded"):
+        return "view obstructed"
+    if receipt.get("clearance") == "still_blocked":
+        return "camera never found a clear ray"
+    return None
+
+
 def read(path):
     return json.loads(Path(path).read_text(encoding="utf-8-sig"))
 
@@ -56,6 +81,14 @@ def parse_args():
                         "e.g. https://host/valheim/era14/ -- must be an explicit origin, "
                         "matching import_legacy's rule")
     p.add_argument("--out", type=Path, default=None)
+    p.add_argument("--quality", type=Path, default=None,
+                   help="quality-<era>.json from score_frames.py. Frames it rejects are "
+                        "left out of the manifest; albums it empties say so rather than "
+                        "leading with a frame the gate just called unusable.")
+    p.add_argument("--keep-rejects", action="store_true",
+                   help="measure and journal, but publish everything anyway")
+    p.add_argument("--rejects", type=Path, default=None,
+                   help="write the per-frame rejection journal and the re-shoot worklist")
     p.add_argument("--worklist", type=Path, default=None,
                    help="also write the source PNG -> derivative id list for the "
                         "thumbnail step, which runs on the capture host")
@@ -67,17 +100,19 @@ def photo_id(slug, build_key, shot):
     return f"{slug}-{build_key[:12]}-{shot}"
 
 
-def collect(root, slug, base):
+def collect(root, slug, base, quality=None, gate=True):
     plan = read(root / "campaign.json")
     state = read(root / "state.json")
     if state["sourceKey"] != plan["sourceKey"]:
         raise SystemExit("state.json belongs to another campaign")
     completed = state["completed"]
 
-    builds, worklist = {}, []
+    verdicts = (quality or {}).get("frames", {})
+    builds, worklist, rejects = {}, [], []
     counts = collections.Counter()
     for build in plan["builds"]:
         photos = []
+        dropped = []
         for shot in build["shots"]:
             entry = completed.get(shot["shotKey"])
             if not entry:
@@ -88,6 +123,17 @@ def collect(root, slug, base):
             if not SAFE_ID.fullmatch(identifier):
                 raise SystemExit(f"unsafe photo identifier: {identifier}")
             receipt = entry.get("receipt", {})
+            frame = verdicts.get(identifier, {})
+            reason = receipt_reject(receipt) or (
+                frame.get("reason") if frame.get("verdict", "keep") != "keep" else None)
+            stage = "receipt" if receipt_reject(receipt) else "frame"
+            if reason:
+                counts["rejected"] += 1
+                counts["rejected_" + stage] += 1
+                dropped.append({"id": identifier, "stage": stage, "reason": reason,
+                                "verdict": frame.get("verdict", stage)})
+                if gate:
+                    continue
             photos.append({
                 "id": identifier,
                 "thumb": base + "thumb/" + identifier + ".webp",
@@ -102,6 +148,7 @@ def collect(root, slug, base):
                 "height": entry["metadata"]["dimensions"][1],
                 "sha256": entry["sha256"],
                 "capture": {k: receipt.get(k) for k in RECEIPT_FIELDS if k in receipt},
+                **({"aesthetic": frame["aesthetic"]} if "aesthetic" in frame else {}),
             })
             worklist.append({"id": identifier, "source": entry["file"],
                              "sha256": entry["sha256"],
@@ -111,9 +158,21 @@ def collect(root, slug, base):
                 counts["recovered_pose"] += 1
             if receipt.get("occluded"):
                 counts["receipt_occluded"] += 1
+        # The weakest bearing led every album: over 522 four-shot era-14 albums, orbit1 is
+        # the best frame 10% of the time and the worst 39%. Lead with the best one when
+        # the aesthetic head has an opinion, and keep shot order when it does not.
+        if any("aesthetic" in p for p in photos):
+            photos.sort(key=lambda p: (-p.get("aesthetic", 0.0), p["shot"]))
+            counts["ordered_albums"] += 1
         if photos:
             builds[build["buildKey"]] = photos
             counts["albums"] += 1
+        elif dropped:
+            # Say why rather than leading with a frame the gate just called unusable.
+            counts["emptied_albums"] += 1
+        if dropped:
+            rejects.append({"buildKey": build["buildKey"], "kept": len(photos),
+                            "frames": dropped})
 
     # Builds retired mid-campaign keep their journal rows but lose their shots, so their
     # photographs would otherwise be dropped here. Recover them from the retirement record.
@@ -124,7 +183,7 @@ def collect(root, slug, base):
             if not kept:
                 continue
             counts["retired_albums"] += 1
-    return plan, builds, worklist, counts
+    return plan, builds, worklist, counts, rejects
 
 
 def main():
@@ -135,7 +194,11 @@ def main():
         raise SystemExit("Gallery needs an explicit HTTP origin")
     plan = read(root / "campaign.json")
     slug = plan["era"]
-    plan, builds, worklist, counts = collect(root, slug, base)
+    quality = read(args.quality) if args.quality else None
+    if quality and quality.get("era") not in (None, slug):
+        raise SystemExit(f"quality file is for {quality['era']}, not {slug}")
+    plan, builds, worklist, counts, rejects = collect(root, slug, base, quality,
+                                                     gate=not args.keep_rejects)
 
     out = args.out or root / f"captures-{slug}.json"
     write(out, {
@@ -149,6 +212,14 @@ def main():
         "provisional": [plan["width"], plan["height"]] != [3840, 2160],
         "albums": len(builds),
         "photographs": counts["photographs"],
+        "rejected": counts["rejected"],
+        "emptiedAlbums": counts["emptied_albums"],
+        # Albums that had photographs taken and kept none. They are not in `builds`, so
+        # without this the projection cannot tell them apart from a build nobody has
+        # visited yet -- which is the whole point of saying why an album is empty.
+        "rejectedBuilds": sorted(r["buildKey"] for r in rejects if r["kept"] == 0),
+        "gate": {"applied": not args.keep_rejects,
+                 "quality": str(args.quality) if args.quality else None},
         "builds": builds,
     })
     print(f"{counts['albums']:,} albums, {counts['photographs']:,} photographs, "
@@ -159,10 +230,32 @@ def main():
     if counts["receipt_occluded"]:
         print(f"  {counts['receipt_occluded']:,} frames the runner's own ray test called "
               f"occluded (it cannot see player builds, so treat as a floor)")
+    if counts["rejected"]:
+        print(f"  {counts['rejected']:,} frames rejected "
+              f"({counts['rejected_receipt']:,} by their own capture receipt, "
+              f"{counts['rejected_frame']:,} by measurement)"
+              + ("  -- NOT applied, --keep-rejects" if args.keep_rejects else ""))
+    if counts["emptied_albums"]:
+        print(f"  {counts['emptied_albums']:,} album(s) lost every frame and will say so")
+    if counts["ordered_albums"]:
+        print(f"  {counts['ordered_albums']:,} album(s) ordered best-first")
     if counts["retired_albums"]:
         print(f"  {counts['retired_albums']:,} retired build(s) still hold journalled "
               f"photographs; they are excluded from this manifest by design")
     print(out)
+
+    if args.rejects:
+        write(args.rejects, {"schema": "steward-frame-rejects/v1", "era": slug,
+                             "gated": not args.keep_rejects,
+                             "rejected": counts["rejected"],
+                             "emptiedAlbums": counts["emptied_albums"],
+                             # Subjects that produced nothing usable. This is a worklist to
+                             # read later, not a queue: nothing here re-enters a campaign
+                             # that is being captured against right now.
+                             "reshoot": sorted(r["buildKey"] for r in rejects
+                                               if r["kept"] == 0),
+                             "builds": rejects})
+        print(args.rejects)
 
     if args.worklist:
         write(args.worklist, {"schema": "steward-derivative-worklist/v1", "era": slug,

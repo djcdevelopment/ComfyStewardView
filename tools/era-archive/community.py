@@ -260,10 +260,18 @@ def attach_captures(builds, manifests):
                 record["shot"]=photo.get("shot")
                 build["photos"].append(record);existing[key]=record
                 attached+=1
+        # A build whose every frame the quality gate rejected is absent from doc["builds"],
+        # so without this it is indistinguishable from one nobody has visited yet. The
+        # thread says which it is; a re-shoot is queued either way by the ranker below.
+        for build_key in doc.get("rejectedBuilds",[]):
+            build=by_key.get(build_key)
+            if build is not None and not build["photos"]:
+                build["photoStatus"]="rejected"
         unknown+=missing
         receipts.append({"manifest":digest(path),"era":doc["era"],"sourceKey":doc["sourceKey"],
                          "albums":len(doc["builds"]),"photographs":doc["photographs"],
                          "resolution":doc.get("resolution"),"provisional":doc.get("provisional",False),
+                         "rejectedFrames":doc.get("rejected",0),"rejectedAlbums":len(doc.get("rejectedBuilds",[])),
                          "unresolvedBuilds":missing})
     # The pixel counts were only needed to choose between competing frames.
     for build in builds:
@@ -319,6 +327,11 @@ def project(root, analyses, links_path=None, legacy_config=None, capture_manifes
             replaced=sum(1 for _,_,w in superseded if w=="replaced")
             print(f"  {replaced:,} lower-resolution frame(s) replaced by a better re-shoot, "
                   f"{len(superseded)-replaced:,} kept because the new frame was not larger",flush=True)
+        gated=sum(r.get("rejectedFrames",0) for r in capture_receipts)
+        if gated:
+            print(f"  {gated:,} frame(s) the quality gate withheld; "
+                  f"{sum(r.get('rejectedAlbums',0) for r in capture_receipts):,} album(s) "
+                  f"kept none and will say so",flush=True)
         for r in capture_receipts:
             if r.get("provisional"):
                 print(f"  NOTE: {r['era']} frames are {r['resolution'][0]}x{r['resolution'][1]}, "

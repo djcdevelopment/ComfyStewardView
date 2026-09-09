@@ -359,7 +359,9 @@
       return `None of these ${plural(albums.length, 'album')} has been photographed yet. Photography is running era by era; this thread fills in as captures land.`;
     }
     const pending = thread.eras.filter((e) => !e.albums.some((a) => a.photos?.length)).map((e) => e.era);
-    const line = `${shot.length.toLocaleString()} of ${plural(albums.length, 'album')} photographed so far.`;
+    const withheld = albums.filter((a) => a.photoStatus === 'rejected').length;
+    let line = `${shot.length.toLocaleString()} of ${plural(albums.length, 'album')} photographed so far.`;
+    if (withheld) line += ` ${plural(withheld, 'album')} had every frame withheld and will be shot again.`;
     if (!pending.length) return line;
     return `${line} ${sentenceCase(eraRange(pending))} ${pending.length === 1 ? 'is' : 'are'} still being photographed.`;
   }
@@ -577,8 +579,14 @@
 
   function renderAlbumPhotos(album) {
     // The old per-album "photography planned" line rendered up to forty times on one
-    // page. The single note under the title says it once, with the real numbers.
-    if (!album.photos?.length) return null;
+    // page. The single note under the title says it once, with the real numbers. The one
+    // exception is a build that WAS photographed and had every frame withheld -- that is
+    // a different fact from "not shot yet" and only this album can state it.
+    if (!album.photos?.length) {
+      return album.photoStatus === 'rejected'
+        ? node('p', 'Photographed, but none of the frames were worth showing — fog, a blocked camera, or a near-identical shot of a neighbouring build. This one is queued for another attempt.', 'muted')
+        : null;
+    }
     const photos = node('div', null, 'photos');
     for (const p of album.photos) {
       const a = link('', p.href);

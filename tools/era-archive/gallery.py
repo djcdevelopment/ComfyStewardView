@@ -129,6 +129,9 @@ def project(document, destination, world_url, analysis_root=None):
         for key in builder["builds"]:
             b=builds[key]
             public={k:b[k] for k in ("buildKey","era","slug","label","pieces","contributors","photos")}
+            # "rejected" means photographed and withheld, which the thread must not show as
+            # though nobody had visited yet.
+            if b.get("photoStatus"):public["photoStatus"]=b["photoStatus"]
             public["attribution"]=b.get("attribution","Every saved construction contributor is credited; nearby ownership is not inferred.")
             public["worldUrl"]=None if b.get("legacyClusterId") is not None else world_url.rstrip("/")+"/?era="+b["slug"]+"&build="+key
             public["terrainStatus"]="historical-gallery" if public["worldUrl"] is None else "awaiting-runtime"
