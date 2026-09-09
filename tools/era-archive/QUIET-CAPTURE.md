@@ -78,17 +78,67 @@ root using a new user systemd unit with `Restart=no`, `KillMode=mixed`, and
 stopped and `systemctl --user start` returns exit 5; re-issue `systemd-run`. Over a
 non-interactive SSH the user manager also needs its socket named explicitly.
 
+**Set `DISPLAY` explicitly on every unit.** A transient unit inherits nothing from
+your shell, and Valheim, Steam and openbox all need an X display. This is invisible
+until the machine reboots: before a reboot these units are usually started from a
+session that already exports `DISPLAY`, so they work; afterwards they do not, and
+the failure does not name the cause. Steam logs `Unable to open X11 display,
+exiting` and is gone about two seconds later, openbox dies the same way (leaving a
+black screen with a cursor, which looks like a broken desktop-sharing session), and
+the capture worker then reports the misleading `Steam must be running before
+capture starts`. X itself is fine throughout -- check with `pgrep -a -f Xorg` and
+`DISPLAY=:0 xdpyinfo`, which needs no `XAUTHORITY` on this host.
+
 ```sh
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
 export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
-systemd-run --user --unit=steward-era14-capture --property=Restart=no \
+
+# Support services first, in this order, each with DISPLAY.
+systemd-run --user --unit=steward-capture-openbox --setenv=DISPLAY=:0 \
+  --property=Restart=no /usr/bin/openbox
+systemd-run --user --unit=steward-capture-steam --setenv=DISPLAY=:0 \
+  --property=Restart=no /usr/games/steam
+
+# Then the worker, once Steam is not merely running but LOGGED IN (see below).
+systemd-run --user --unit=steward-era14-capture --setenv=DISPLAY=:0 \
+  --property=Restart=no \
   --property=KillMode=mixed --property=TimeoutStopSec=150 \
   /usr/bin/python3 /home/derek/valheim-capture/era14-quiet-20260909/capture_worker.py \
   --root /home/derek/valheim-capture/era14-quiet-20260909
 ```
 
+**Wait for Steam to finish logging in, not just to appear in `pgrep`.** The worker's
+precondition only checks that the process exists, so starting it too early launches
+Valheim into `[S_API FAIL] SteamAPI_Init() failed; connect to global user failed`.
+The game stays up and the campaign reports `capturing` while capturing nothing.
+Confirm the login landed before starting the worker:
+
+```sh
+tail -3 /home/derek/.local/share/Steam/logs/connection_log.txt   # want "Logged On"
+```
+
+`SteamAPI_Init(): ... OK` with no following `[S_API FAIL]` in the attempt's
+`stdout.log` is the positive signal that the race was avoided.
+
 The persistent state prevents completed shots from being
 repeated. Exhausted retries require investigation, not automatic reset.
+
+**Never delete an attempt directory to clear a failure.** `state.json` records
+`activeAttempt`, and on restart the worker reads that attempt's `dispatch.json` to
+recover the last completed writes; removing the directory turns a recoverable stop
+into `FileNotFoundError: .../dispatch.json` on every subsequent start. If a
+campaign that has captured nothing must be reset, clear the bookkeeping instead,
+and refuse to do it once any shot is completed:
+
+```sh
+python3 - <<'PY'
+import json, pathlib
+p = pathlib.Path('state.json'); s = json.loads(p.read_text(encoding='utf-8-sig'))
+assert not s.get('completed'), 'refusing to reset a campaign that has captured shots'
+s['activeAttempt'] = None; s['attempts'] = {}
+p.write_text(json.dumps(s, indent=2), encoding='utf-8')
+PY
+```
 
 After stopping the service and confirming Valheim is closed, restore the prior
 quest setup with the preserved script:
