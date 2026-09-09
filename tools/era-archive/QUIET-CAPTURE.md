@@ -104,3 +104,24 @@ The initial compressed plan/worker transfer was 344214 bytes, followed by a
 `67d17346cc4bd66bb626ccfb4930444f93acd23708f32ca97ef127d6b07c69d9`,
 from pushed revision `cdd6b218bb5452f99bf09ed35dbc548d7146f628`.
 This proves installation and startup, not completion of the 4,000-shot campaign.
+
+## Stage additional worlds when network use is authorized
+
+`stage_worlds.py` takes an explicit catalog, era list, SSH target, remote root,
+local output directory and pushed tool revision. It compresses each original pair,
+checks the transport hash, then checks both decompressed files against the archive
+catalog on AM4. Only a verified pair becomes a ready directory; source files are
+read-only. A rerun verifies and skips existing pairs. Game saves and capture control
+files are never transfer targets. The transfer runs independently of the capture
+worker and writes progress and per-era receipts in the local output directory.
+
+```powershell
+python tools/era-archive/stage_worlds.py `
+  --catalog <archive-root>/catalog.json --eras era7 era8 era9 era10 era11 era12 `
+  --ssh-target <am4-ssh-alias> `
+  --remote-root /home/derek/valheim-capture/staged-worlds `
+  --output <transfer-receipt-directory> --revision <pushed-40-character-commit>
+```
+
+Staging does not switch the running world or establish compatibility for another
+era. Its first capture still needs to be observed before starting that era's queue.
