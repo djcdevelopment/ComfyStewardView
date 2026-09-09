@@ -175,6 +175,10 @@ storage limit, and only after both the capture service and Valheim have exited. 
 era runs in an isolated XDG save directory and produces 2048-pixel map, height and
 forest caches plus a source-bound receipt. Operator-stopped and failed photography
 never trigger the terrain workload.
+`am4_biome_context.py` can wait on that worker and then run the established terrain
+builder on AM4. It emits both the authoritative query mask and the separately
+smoothed display mask, verifies every declared variant, and binds the observed game,
+Unity and world-generator versions from the per-era Player log into provenance.
 
 The server independently validates hashes, world identity, snapshot, context and
 public cache schema at startup. `--era-catalog <catalog.json>` enables request-local
