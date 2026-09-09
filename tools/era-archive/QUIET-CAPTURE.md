@@ -125,3 +125,7 @@ python tools/era-archive/stage_worlds.py `
 
 Staging does not switch the running world or establish compatibility for another
 era. Its first capture still needs to be observed before starting that era's queue.
+
+The [September 8 resume receipt](../../docs/am4-capture-resume-2026-09-08.md)
+records the subsequent Steam-session recovery, updated worker, new 4K captures
+and historical-world transfer checkpoint.
