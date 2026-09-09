@@ -6,8 +6,11 @@ source receipt in `../selfie-stick/source-provenance.json`. Baseline retains dis
 and historical evidence; it is not an executable dependency.
 
 The first release processes Eras 7, 8, 9, 10, 11, 12 and 14. It preserves the active
-Era 17 gallery and world view, and the archived Era 16 photo URLs. Historical terrain
-and future photographs require manually dispatched, era-matched game sessions.
+Era 17 gallery and world view, and the archived Era 16 photo URLs. A current-client
+Era 14 run has now produced native 4K photographs and all three terrain caches.
+The [quiet AM4 campaign](QUIET-CAPTURE.md) runs capture batches locally without
+requiring historical runtime parity or transferring images while OMEN is gaming.
+The older publication-review contract below is separate from this capture route.
 
 ## Run the CPU pipeline
 

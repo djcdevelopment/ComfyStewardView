@@ -89,3 +89,14 @@ source/snapshot isolation, four-view completion, unfinished-angle recovery,
 truncated PNGs, local durable harvesting, retry limits, disk boundaries and stalls.
 The installed service must pass a one-build four-PNG metadata check before the
 remaining batches are launched.
+
+VERIFIED deployment on 2026-09-09 UTC: the one-build service passed at 04:16:41
+with four matching 3840 x 2160 PNGs stored on AM4 and the game stopped. The full
+`steward-era14-capture.service` was then started independently of SSH. Its first
+100-build batch resumes with the verification build already complete. No images,
+terrain caches or detailed logs were downloaded during this verification.
+The initial compressed plan/worker transfer was 344214 bytes, followed by a
+15522-byte worker update. Deployed worker SHA-256:
+`67d17346cc4bd66bb626ccfb4930444f93acd23708f32ca97ef127d6b07c69d9`,
+from pushed revision `cdd6b218bb5452f99bf09ed35dbc548d7146f628`.
+This proves installation and startup, not completion of the 4,000-shot campaign.
