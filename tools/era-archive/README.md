@@ -166,6 +166,16 @@ DB and all four source hashes (FWL, map, height and forest caches). The public v
 labels that terrain as regenerated; it does not present it as historical terrain.
 Eras without terrain begin in Heatmap mode and cannot submit biome-filtered queries.
 
+When an AM4 photo campaign already owns the current client, install
+`am4_terrain_cache.py` as a separate worker. Give it the campaign `status.json`, the
+capture service name, the archive catalog and the hash-verified `staged-worlds`
+directory. The worker waits without touching the game while photography is active.
+It accepts a handoff only after the campaign completes or stops at its configured
+storage limit, and only after both the capture service and Valheim have exited. Each
+era runs in an isolated XDG save directory and produces 2048-pixel map, height and
+forest caches plus a source-bound receipt. Operator-stopped and failed photography
+never trigger the terrain workload.
+
 The server independently validates hashes, world identity, snapshot, context and
 public cache schema at startup. `--era-catalog <catalog.json>` enables request-local
 era selection. Exact build membership filters item queries and 3D instances, even for
