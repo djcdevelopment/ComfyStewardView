@@ -26,6 +26,7 @@ public final class SnapshotRepository {
     private final ObjectMapper mapper;
     private final boolean constrained;
     private String buildKey;
+    private SnapshotRepository worldScope;
     private final Map<String, Double> worldTotals = new ConcurrentHashMap<>();
 
     public SnapshotRepository(Path cachePath, LensRegistry lenses, ObjectMapper mapper) throws Exception {
@@ -54,6 +55,7 @@ public final class SnapshotRepository {
         if (!key.matches("[a-f0-9]{64}")) throw new IllegalArgumentException("Invalid build key");
         SnapshotRepository scoped = new SnapshotRepository(cachePath,lenses,mapper,constrained);
         scoped.buildKey=key;
+        scoped.worldScope=worldScope == null ? this : worldScope;
         return scoped;
     }
 
@@ -125,6 +127,7 @@ public final class SnapshotRepository {
     }
 
     public void validatePublicRelease(TerrainContext context) throws SQLException {
+        Snapshot snapshot = requireSnapshot(context == null ? latestSnapshotId() : context.snapshotId());
         try (Connection connection = open();
              PreparedStatement statement = connection.prepareStatement(
                  "SELECT schema_version, snapshot_id, snapshot_hash, biome_mask_sha256, " +
@@ -134,10 +137,12 @@ public final class SnapshotRepository {
                  "representation_rows, representation_primitive_rows " +
                  "FROM release_metadata");
              ResultSet row = statement.executeQuery()) {
-            if (!row.next() || row.getInt("schema_version") != PublicCacheExporter.SCHEMA_VERSION ||
-                    row.getLong("snapshot_id") != context.snapshotId() ||
-                    !context.snapshotHash().equalsIgnoreCase(row.getString("snapshot_hash")) ||
-                    !context.biomeMask().sha256().equalsIgnoreCase(row.getString("biome_mask_sha256")) ||
+            if (!row.next() || row.getInt("schema_version") != (context == null
+                        ? PublicCacheExporter.SPATIAL_SCHEMA_VERSION : PublicCacheExporter.SCHEMA_VERSION) ||
+                    row.getLong("snapshot_id") != snapshot.snapshotId() ||
+                    !snapshot.fileHash().equalsIgnoreCase(row.getString("snapshot_hash")) ||
+                    (context != null && !context.snapshotHash().equalsIgnoreCase(snapshot.fileHash())) ||
+                    !(context == null ? "" : context.biomeMask().sha256()).equalsIgnoreCase(row.getString("biome_mask_sha256")) ||
                     !isSha256(row.getString("building_geometry_sha256")) ||
                     !isSha256(row.getString("piece_geometry_sha256")) ||
                     !isSha256(row.getString("representation_catalog_sha256")) ||
@@ -150,7 +155,14 @@ public final class SnapshotRepository {
                         row.getLong("estimated_geometry_rows") ||
                     row.getLong("representation_rows") <= 0 ||
                     row.getLong("representation_primitive_rows") < 0) {
-                throw new IllegalArgumentException("Public cache does not match the biome context package");
+                throw new IllegalArgumentException("Public cache does not match the snapshot and terrain availability");
+            }
+            if (context == null) {
+                try (var query = connection.createStatement();
+                     var invalid = query.executeQuery("SELECT count(*) FROM zdo WHERE biome IS DISTINCT FROM 'unclassified'")) {
+                    invalid.next();
+                    if (invalid.getLong(1) != 0) throw new IllegalArgumentException("Terrain-free cache contains biome claims");
+                }
             }
             try (PreparedStatement counts = connection.prepareStatement(
                     "SELECT (SELECT COUNT(*) FROM zdo) AS zdo_rows, " +
@@ -165,8 +177,9 @@ public final class SnapshotRepository {
                     throw new IllegalArgumentException("Public cache geometry receipts do not match its tables");
                 }
             }
+            if (row.next()) throw new IllegalArgumentException("Public release metadata must contain one snapshot");
         } catch (SQLException error) {
-            throw new IllegalArgumentException("Public cache is not terrain-and-scene enabled", error);
+            throw new IllegalArgumentException("Public cache is not scene enabled", error);
         }
     }
 
@@ -237,8 +250,9 @@ public final class SnapshotRepository {
             }
         }
 
-        double worldTotal = worldTotals.computeIfAbsent(snapshotId + ":" + lensId, ignored -> {
-            try (Connection connection = open()) {
+        Map<String,Double> totals = worldScope == null ? worldTotals : worldScope.worldTotals;
+        double worldTotal = totals.computeIfAbsent(snapshotId + ":" + lensId, ignored -> {
+            try (Connection connection = worldScope == null ? open() : worldScope.open()) {
                 return scalarValue(connection, snapshotId, lens,
                     WorldBounds.VALHEIM.minX(), WorldBounds.VALHEIM.maxX(),
                     WorldBounds.VALHEIM.minZ(), WorldBounds.VALHEIM.maxZ(), List.of());

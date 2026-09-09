@@ -31,6 +31,7 @@ import java.util.UUID;
 /** Builds the smallest self-contained DuckDB needed by the public Build density experience. */
 public final class PublicCacheExporter {
     static final int SCHEMA_VERSION = 4;
+    static final int SPATIAL_SCHEMA_VERSION = 5;
 
     private PublicCacheExporter() {}
 
@@ -49,7 +50,8 @@ public final class PublicCacheExporter {
             Path buildingGeometry, Path pieceGeometry, Path prefabRepresentations,
             Path promotionReceipt) throws Exception {
         sourcePath = requireFile(sourcePath, "Source cache");
-        contextManifest = requireFile(contextManifest, "Context manifest");
+        if (contextManifest != null && contextManifest.toString().equals("-")) contextManifest = null;
+        if (contextManifest != null) contextManifest = requireFile(contextManifest, "Context manifest");
         buildingGeometry = requireFile(buildingGeometry, "Building geometry");
         pieceGeometry = requireFile(pieceGeometry, "Piece geometry");
         prefabRepresentations = requireFile(prefabRepresentations, "Prefab representations");
@@ -114,15 +116,15 @@ public final class PublicCacheExporter {
             }
             validateGeometryJoin(statement, snapshotId, buildingCount);
 
-            TerrainContext context = TerrainContext.load(
+            TerrainContext context = contextManifest == null ? null : TerrainContext.load(
                 contextManifest, mapper, snapshotId, snapshotHash, worldId);
-            BiomeClassifier classifier = new BiomeClassifier(context);
+            BiomeClassifier classifier = context == null ? null : new BiomeClassifier(context);
             try (var function = DuckDBFunctions.scalarFunction()
                     .withName("steward_biome")
                     .withParameters(Double.class, Double.class)
                     .withReturnType(String.class)
                     .withNullInNullOut()) {
-                function.withFunction((Double x, Double z) -> classifier.classify(x, z)).register(connection);
+                function.withFunction((Double x, Double z) -> classifier == null ? "unclassified" : classifier.classify(x, z)).register(connection);
             }
 
             statement.execute("CREATE TABLE public_cache.world_snapshot AS SELECT " +
@@ -169,9 +171,9 @@ public final class PublicCacheExporter {
                 estimatedGeometryCount = row.getLong("estimated_count");
             }
             statement.execute("CREATE TABLE public_cache.release_metadata AS SELECT " +
-                SCHEMA_VERSION + "::INTEGER AS schema_version, " + snapshotId + "::BIGINT AS snapshot_id, '" +
+                (context == null ? SPATIAL_SCHEMA_VERSION : SCHEMA_VERSION) + "::INTEGER AS schema_version, " + snapshotId + "::BIGINT AS snapshot_id, '" +
                 sqlText(snapshotHash) + "'::VARCHAR AS snapshot_hash, '" +
-                sqlText(context.biomeMask().sha256()) + "'::VARCHAR AS biome_mask_sha256, '" +
+                (context == null ? "" : sqlText(context.biomeMask().sha256())) + "'::VARCHAR AS biome_mask_sha256, '" +
                 geometrySha256 + "'::VARCHAR AS building_geometry_sha256, '" +
                 catalogSha256 + "'::VARCHAR AS piece_geometry_sha256, " +
                 "'" + representationSha256 + "'::VARCHAR AS representation_catalog_sha256, " +
@@ -198,7 +200,7 @@ public final class PublicCacheExporter {
                     "SELECT biome, COUNT(*) AS item_count FROM public_cache.zdo GROUP BY biome ORDER BY biome")) {
                 while (rows.next()) biomeCounts.put(rows.getString("biome"), rows.getLong("item_count"));
             }
-            for (TerrainContext.Biome biome : context.biomes().catalog()) {
+            for (TerrainContext.Biome biome : context == null ? List.<TerrainContext.Biome>of() : context.biomes().catalog()) {
                 biomeCounts.putIfAbsent(biome.id(), 0L);
             }
             statement.execute("DETACH public_cache");
@@ -211,13 +213,14 @@ public final class PublicCacheExporter {
         moveReplace(temporary, outputPath);
         mapper.enable(SerializationFeature.INDENT_OUTPUT);
         ObjectNode manifest = mapper.createObjectNode();
-        TerrainContext context = TerrainContext.load(contextManifest, mapper, snapshotId, snapshotHash, worldId);
-        manifest.put("schemaVersion", SCHEMA_VERSION);
+        TerrainContext context = contextManifest == null ? null : TerrainContext.load(contextManifest, mapper, snapshotId, snapshotHash, worldId);
+        manifest.put("schemaVersion", context == null ? SPATIAL_SCHEMA_VERSION : SCHEMA_VERSION);
+        manifest.put("terrainAvailable", context != null);
         manifest.put("snapshotId", snapshotId);
         manifest.put("snapshotHash", snapshotHash);
         manifest.put("zdoCount", fullZdoCount);
         manifest.put("buildingCount", buildingCount);
-        manifest.put("biomeMaskSha256", context.biomeMask().sha256());
+        manifest.put("biomeMaskSha256", context == null ? "" : context.biomeMask().sha256());
         manifest.put("buildingGeometrySha256", geometrySha256);
         manifest.put("pieceGeometrySha256", catalogSha256);
         manifest.put("representationCatalogSha256", representationSha256);

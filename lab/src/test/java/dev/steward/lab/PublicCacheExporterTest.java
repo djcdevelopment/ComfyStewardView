@@ -92,6 +92,47 @@ class PublicCacheExporterTest {
         assertTrue(Files.notExists(output));
     }
 
+    @Test void spatialPackageOpensWithoutTerrainAndCannotClaimBiomes() throws Exception {
+        Path output = temporary.resolve("spatial.duckdb");
+        PublicCacheExporter.export(sourceCache(), output, 107, null, buildingGeometry(false),
+            pieceGeometry(), representations(), promotionReceipt());
+        var metadata = mapper.readTree(Path.of(output + ".json").toFile());
+        assertEquals(5, metadata.path("schemaVersion").asInt());
+        assertEquals("", metadata.path("biomeMaskSha256").asText());
+        SnapshotRepository repository = new SnapshotRepository(output, new LensRegistry(), mapper, true);
+        repository.validatePublicRelease(null);
+        assertThrows(IllegalArgumentException.class, () -> repository.validatePublicRelease(
+            TerrainContext.load(contextManifest(), mapper, 107, "a".repeat(64), "ComfyEra17")));
+
+        Path artifacts = temporary.resolve("artifacts/107"); Files.createDirectories(artifacts);
+        Path raster = artifacts.resolve("manifest.json");
+        Files.writeString(raster, "{\"snapshotId\":107,\"snapshot\":{\"fileHash\":\"" + "a".repeat(64) + "\"}}");
+        var catalog = mapper.createObjectNode(); catalog.put("schema", "steward-world-catalog/v1"); catalog.put("defaultEra", "era17");
+        var era = catalog.putArray("eras").addObject(); era.put("slug", "era17"); era.put("status", "ready");
+        era.put("snapshotId", 107); era.put("cache", "spatial.duckdb"); era.put("artifacts", "artifacts");
+        var receipts = era.putArray("files");
+        for (Path path : new Path[]{output, raster}) {
+            var receipt = receipts.addObject(); receipt.put("path", temporary.relativize(path).toString().replace('\\','/'));
+            receipt.put("bytes", Files.size(path)); receipt.put("sha256", sha256(path));
+        }
+        Path catalogFile = temporary.resolve("catalog.json"); mapper.writeValue(catalogFile.toFile(), catalog);
+        EraCatalog loaded = new EraCatalog(catalogFile, mapper, new LensRegistry());
+        assertEquals(null, loaded.ready("era17").context());
+        assertTrue(loaded.publicJson(mapper).path("eras").get(0).path("sceneAvailable").asBoolean());
+        assertEquals(false, loaded.publicJson(mapper).path("eras").get(0).path("terrainAvailable").asBoolean());
+        try (var connection = DriverManager.getConnection("jdbc:duckdb:" + output); var statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE build_membership AS SELECT snapshot_id, '" + "b".repeat(64) + "' AS build_key, zdo_index FROM zdo WHERE zdo_index IN (10,11)");
+        }
+        var selection = repository.forBuild("b".repeat(64)).selection(107,"build-density",-10,10,-10,10,10);
+        assertEquals(2, selection.path("total").asInt());
+        assertEquals(3, selection.path("worldTotal").asInt());
+        assertEquals(200.0/3, selection.path("worldSharePct").asDouble(),0.0001);
+        try (var connection = DriverManager.getConnection("jdbc:duckdb:" + output); var statement = connection.createStatement()) {
+            statement.execute("UPDATE zdo SET biome='meadows' WHERE zdo_index=10");
+        }
+        assertThrows(IllegalArgumentException.class, () -> repository.validatePublicRelease(null));
+    }
+
     @Test void rejectsRepresentationThatIsNotAnExactPrefabNameHashMatch() throws Exception {
         Path representations = representations();
         ObjectNode root = (ObjectNode) mapper.readTree(representations.toFile());

@@ -164,7 +164,7 @@
       if (!selected) throw new Error('This era is not in the published archive.');
       const eraSelect = $('era-select');
       for (const era of catalog.eras) {
-        const option = new Option(`${era.label}${era.status === 'ready' ? '' : ' · terrain pending'}`, era.slug);
+        const option = new Option(`${era.label}${era.status !== 'ready' ? ' · preparing' : era.terrainAvailable === false ? ' · construction map' : ''}`, era.slug);
         eraSelect.add(option);
       }
       eraSelect.value = selectedEra;
@@ -178,8 +178,8 @@
       if (selected.status !== 'ready') {
         $('public-world-name').textContent = selected.label;
         const panel=document.createElement('section');panel.style.padding='48px';
-        const title=document.createElement('h1');title.textContent=`${selected.label} · Terrain preparation pending`;
-        const copy=document.createElement('p');copy.textContent='The world archive has been extracted. Its terrain view will open after a historical Valheim runtime has been verified. Explore creator albums while preparation continues.';
+        const title=document.createElement('h1');title.textContent=`${selected.label} · Map preparation pending`;
+        const copy=document.createElement('p');copy.textContent='This world’s spatial package is being prepared. Explore creator albums while it is being added.';
         const gallery=document.createElement('a');gallery.href='https://fx99.tail8e749c.ts.net/valheim/creators/';gallery.textContent='Explore builders across eras →';
         panel.append(title,copy,gallery);document.querySelector('.workspace').replaceChildren(panel);
         return;
@@ -188,8 +188,15 @@
       PUBLIC_MODE = state.bootstrap.publicMode === true || !REQUESTED_LAB_MODE;
       document.body.classList.toggle('public-experience', PUBLIC_MODE);
       document.body.classList.toggle('lab-experience', !PUBLIC_MODE);
-      state.viewMode = PUBLIC_MODE ? 'terrain' : 'heatmap';
+      state.viewMode = PUBLIC_MODE && state.bootstrap.terrainAvailable ? 'terrain' : 'heatmap';
       document.body.classList.toggle('terrain-mode', state.viewMode === 'terrain');
+      document.body.classList.toggle('construction-only', PUBLIC_MODE && !state.bootstrap.terrainAvailable);
+      $('terrain-status').textContent = !state.bootstrap.terrainAvailable ? 'Construction map · terrain pending'
+        : state.bootstrap.context?.generationMode === 'current-client' ? 'Terrain regenerated in current game' : '';
+      document.querySelectorAll('[data-view-mode]').forEach(button => {
+        const active = button.dataset.viewMode === state.viewMode;
+        button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active));
+      });
       state.lenses = state.bootstrap.lenses || [];
       state.lensById = new Map(state.lenses.map(lens => [lens.id, lens]));
       state.biomeCatalog = (state.bootstrap.context?.biomes?.catalog || []).map(biome => {
@@ -525,6 +532,7 @@
       if (mode === 'terrain') return;
       mode = 'terrain';
     }
+    if (PUBLIC_MODE && !state.bootstrap.terrainAvailable && mode === 'terrain') mode = 'heatmap';
     state.viewMode = mode;
     document.body.classList.toggle('biome-mode', mode === 'biomes');
     document.body.classList.toggle('terrain-mode', mode === 'terrain');
@@ -1089,6 +1097,7 @@
   }
 
   async function applyContext() {
+    if (PUBLIC_MODE && !state.bootstrap.terrainAvailable) { removeContext(); return; }
     if (!state.map || (!state.contextEnabled && state.viewMode === 'heatmap')) {
       removeContext();
       return;
@@ -1663,7 +1672,7 @@
         ? `${fmt(start)}–${fmt(end)} OF ${fmt(result.total)}` : `0 OF ${fmt(result.total)}`;
       $('inspect-items-list').innerHTML = items.length ? items.map(item => {
         const biome = state.biomeCatalog.find(candidate => candidate.id === item.biome);
-        return `<button type="button" class="inspect-item" data-item-x="${Number(item.x)}" data-item-z="${Number(item.z)}" style="--biome-color:${escapeHtml(biome?.color || '#b3bac5')}"><strong>${escapeHtml(item.label)}</strong><span class="inspect-item-biome">${escapeHtml(biome?.label || item.biome || 'Mountains + Forest')}</span><span class="inspect-item-coords">X ${Math.round(item.x).toLocaleString()} · Z ${Math.round(item.z).toLocaleString()}</span></button>`;
+        return `<button type="button" class="inspect-item" data-item-x="${Number(item.x)}" data-item-z="${Number(item.z)}" style="--biome-color:${escapeHtml(biome?.color || '#b3bac5')}"><strong>${escapeHtml(item.label)}</strong><span class="inspect-item-biome">${escapeHtml(item.biome === 'unclassified' ? 'Biome not mapped' : biome?.label || item.biome || 'Biome not mapped')}</span><span class="inspect-item-coords">X ${Math.round(item.x).toLocaleString()} · Z ${Math.round(item.z).toLocaleString()}</span></button>`;
       }).join('') : '<div class="inspect-item-empty">No objects match this biome and area scope.</div>';
       $('inspect-items-prev').disabled = state.itemPageIndex === 0;
       $('inspect-items-next').disabled = !result.hasMore;

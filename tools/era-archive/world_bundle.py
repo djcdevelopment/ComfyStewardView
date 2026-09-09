@@ -10,14 +10,13 @@ from pathlib import Path
 import shutil
 import duckdb
 from archive import artifact,checked_file,digest,load,now,save,sql_path
-from jobs import validate_runtime
 
 
 def add_ready(root, spec):
     slug=spec['slug'];snapshot=int(spec['snapshotId'])
     if slug!='era'+str(int(slug.removeprefix('era'))):raise ValueError('Invalid era slug')
     cache=Path(spec['cache']);metadata=load(str(cache)+'.json')
-    if metadata.get('schemaVersion')!=4 or metadata.get('snapshotId')!=snapshot or metadata.get('sha256')!=digest(cache)['sha256']:
+    if metadata.get('schemaVersion') not in (4,5) or metadata.get('snapshotId')!=snapshot or metadata.get('sha256')!=digest(cache)['sha256']:
         raise ValueError('Public cache metadata or byte hash mismatch')
     with duckdb.connect(str(cache),read_only=True) as con:
         columns={r[1] for r in con.execute("PRAGMA table_info('zdo')").fetchall()}
@@ -28,14 +27,19 @@ def add_ready(root, spec):
     dest=root/slug;dest.mkdir(parents=True)
     output=dest/'public.duckdb';shutil.copyfile(cache,output)
     if digest(cache)!=digest(output):raise ValueError('Cache transfer mismatch')
-    context=Path(spec['context']);context_manifest=load(context/'manifest.json')
-    if context_manifest['snapshot']['id']!=snapshot or context_manifest['snapshot']['sha256']!=metadata['snapshotHash']:
-        raise ValueError('Context identity mismatch')
-    context_output=dest/'context';context_output.mkdir()
-    shutil.copyfile(context/'manifest.json',context_output/'manifest.json')
-    for variant in context_manifest['variants']:
-        path=checked_file(context,{'path':variant['file'],'sha256':variant['sha256'],'bytes':variant['bytes']})
-        shutil.copyfile(path,context_output/variant['file'])
+    context_output=None
+    if spec.get('context'):
+        if metadata['schemaVersion']!=4:raise ValueError('Terrain requires a biome-classified public cache')
+        context=Path(spec['context']);context_manifest=load(context/'manifest.json')
+        if context_manifest['snapshot']['id']!=snapshot or context_manifest['snapshot']['sha256']!=metadata['snapshotHash']:
+            raise ValueError('Context identity mismatch')
+        context_output=dest/'context';context_output.mkdir()
+        shutil.copyfile(context/'manifest.json',context_output/'manifest.json')
+        for variant in context_manifest['variants']:
+            path=checked_file(context,{'path':variant['file'],'sha256':variant['sha256'],'bytes':variant['bytes']})
+            shutil.copyfile(path,context_output/variant['file'])
+    elif metadata['schemaVersion']!=5 or metadata.get('biomeMaskSha256'):
+        raise ValueError('Terrain-free publication requires an explicitly unclassified cache')
     raster=Path(spec['artifacts'])/str(snapshot);manifest=load(raster/'manifest.json')
     if manifest['snapshot']['fileHash']!=metadata['snapshotHash']:raise ValueError('Raster identity mismatch')
     raster_output=dest/'artifacts'/str(snapshot);raster_output.mkdir(parents=True)
@@ -53,7 +57,8 @@ def add_ready(root, spec):
             if bad or duplicates:raise ValueError('Build membership is not exact for this public snapshot')
             con.execute('CREATE INDEX membership_build ON build_membership(build_key)')
     return {'slug':slug,'label':'Comfy Era '+slug[3:],'status':'ready','snapshotId':snapshot,
-            'cache':output.relative_to(root).as_posix(),'contextManifest':(context_output/'manifest.json').relative_to(root).as_posix(),
+            'cache':output.relative_to(root).as_posix(),
+            **({'contextManifest':(context_output/'manifest.json').relative_to(root).as_posix()} if context_output else {}),
             'artifacts':(dest/'artifacts').relative_to(root).as_posix(),
             'files':[artifact(root,p) for p in sorted(dest.rglob('*')) if p.is_file()]}
 
@@ -71,8 +76,8 @@ def main():
     eras=[]
     for spec in inputs['eras']:
         if spec['slug'] in sources:
-            if not spec.get('runtime'):raise ValueError('Archived era publication requires its reviewed historical runtime receipt')
-            validate_runtime(args.output_root,sources[spec['slug']],Path(spec['runtime']))
+            # Spatial evidence and current catalog previews do not require a historical game runtime.
+            # Terrain, when supplied, remains independently matched to this exact source snapshot.
             if load(str(spec['cache'])+'.json')['snapshotHash']!=sources[spec['slug']]['db']['sha256']:
                 raise ValueError('Ready cache is not the inventoried source revision')
             analyses={e['slug']:e for e in load(args.output_root/'analysis/catalog.json')['eras']}

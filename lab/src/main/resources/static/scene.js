@@ -1,6 +1,9 @@
 const PAGE_STARTED = performance.now();
 const APP_BASE = new URL('.', location.href);
 const params = new URLSearchParams(location.search);
+const returnMap = new URL(APP_BASE);
+for (const key of ['era','build']) if (params.has(key)) returnMap.searchParams.set(key,params.get(key));
+for (const link of document.querySelectorAll('[data-return-map]')) link.href = returnMap.href;
 const statusNode = document.getElementById('scene-status');
 const blockedNode = document.getElementById('scene-blocked');
 const errors = [];

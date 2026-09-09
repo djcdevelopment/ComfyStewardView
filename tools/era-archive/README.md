@@ -127,8 +127,10 @@ CPU rasters are generated automatically at 320/160/80/64/16 m. Terrain textures 
 require the era's map, height and forest caches. Feed these explicit paths and the
 save/raster manifest into `lab/tools/build-terrain-context.py`. That reader now
 accepts the legacy and compact layouts and retains saved TerrainCompiler edits.
-The relevant era's runtime must also supply verified piece geometry and a compatible
-capture plugin before new scene packages or photography can be published.
+Game photography needs a compatible capture plugin and observed runtime evidence.
+Spatial previews can use the verified current prefab catalog with saved XYZ and
+Euler transforms. Their scene receipts distinguish measured, estimated and unknown
+geometry; they do not claim that the historical game assets have been recreated.
 
 ## Publish and verify
 
@@ -138,15 +140,31 @@ paths, coordinates, seed and private review evidence. Existing photos link to th
 original thumbnail/large URLs. New albums deep-link to `/world/?era=era7&build=…`.
 
 `world_bundle.py` accepts an explicit `ready-inputs.json`: `defaultEra`, and an `eras`
-list containing `slug`, `snapshotId`, `cache`, `context` (the directory containing its
+list containing `slug`, `snapshotId`, `cache`, optional `context` (the directory containing its
 manifest), `artifacts` (parent of the numeric snapshot directory), and optional exact
 `membership` Parquet.
-Archived-era entries also need `runtime`, the reviewed historical runtime receipt;
-the 5%/10% measured availability gates are enforced again at publication.
+Archived-era entries require verified exact membership and the inventoried snapshot
+hash. Historical runtime parity is not a prerequisite for spatial publication.
 Every ready cache must first be exported by
-`dev.steward.lab.PublicCacheExporter` with matching terrain, geometry, representations
-and promotion receipt. The bundle refuses private attribution columns and pins every
-served file. Eras without complete ready inputs are listed as `awaiting-runtime`.
+`dev.steward.lab.PublicCacheExporter` with matching geometry, representations and
+promotion receipt. Schema 4 includes matching terrain and classified biomes; schema
+5 explicitly has no terrain and stores `unclassified` biome values. Pass `-` as the
+exporter's context argument for schema 5. The bundle refuses private attribution
+columns and pins every served file. A ready era can open its construction map,
+inspection and 3D previews before terrain is generated.
+
+`prepare_public.py` verifies the archive, membership and raster receipts and exports
+all historical eras using an explicit current geometry artifact and SHA-256. Its
+`--terrain-inputs` JSON maps only eras with available context directories. Known
+non-finite positions are retained in the archive and recorded in an input receipt;
+they can be excluded from spatial export only when absent from exact membership.
+The exporter still rejects mismatched geometry and invalid transforms.
+
+For terrain regenerated in a current client, `terrain_provenance.py` binds an
+observed `steward-terrain-generation/v1` receipt to the context. It checks the original
+DB and all four source hashes (FWL, map, height and forest caches). The public viewer
+labels that terrain as regenerated; it does not present it as historical terrain.
+Eras without terrain begin in Heatmap mode and cannot submit biome-filtered queries.
 
 The server independently validates hashes, world identity, snapshot, context and
 public cache schema at startup. `--era-catalog <catalog.json>` enables request-local
@@ -167,6 +185,7 @@ python -m unittest discover -s tools/era-archive/tests -v
 python -m unittest discover -s lab/tools/tests -v
 # Run mvnw.cmd test in viewer and lab.
 node tools/era-archive/browser-smoke.mjs <creator-base-url> <world-base-url> <receipt-dir>
+node tools/era-archive/world-browser-smoke.mjs <world-base-url> <build-cases.json> <receipt-dir>
 ```
 
 Operational data and screenshots belong outside Git. Keep the original archive,

@@ -40,11 +40,13 @@ public final class TerrainContext {
     private final double closeDetailFactor;
     private final Map<String, Variant> variants;
     private final BiomeConfiguration biomes;
+    private final String generationMode;
+    private final String gameVersion;
 
     private TerrainContext(Path manifestPath, long snapshotId, String snapshotHash,
             String worldId, String worldName, String style, Bounds bounds,
             double defaultOpacity, double detailZoom, double closeDetailFactor,
-            Map<String, Variant> variants, BiomeConfiguration biomes) {
+            Map<String, Variant> variants, BiomeConfiguration biomes, String generationMode, String gameVersion) {
         this.manifestPath = manifestPath;
         this.snapshotId = snapshotId;
         this.snapshotHash = snapshotHash;
@@ -57,6 +59,8 @@ public final class TerrainContext {
         this.closeDetailFactor = closeDetailFactor;
         this.variants = Map.copyOf(variants);
         this.biomes = biomes;
+        this.generationMode = generationMode;
+        this.gameVersion = gameVersion;
     }
 
     public static TerrainContext load(Path manifestPath, ObjectMapper mapper,
@@ -107,8 +111,17 @@ public final class TerrainContext {
             throw new IllegalArgumentException("Terrain context requires overview and detail variants");
         }
         BiomeConfiguration biomes = BiomeConfiguration.parse(root.path("biomes"), variants);
+        String generationMode = "snapshot-matched", gameVersion = "";
+        if (root.has("generation")) {
+            JsonNode generation = root.path("generation");
+            generationMode = requiredText(generation, "mode");
+            gameVersion = requiredText(generation, "gameVersion");
+            if (!"current-client".equals(generationMode) || !gameVersion.matches("[A-Za-z0-9._-]{1,40}") ||
+                    !snapshotHash.equals(generation.path("sourceDbSha256").asText()))
+                throw new IllegalArgumentException("Terrain generation receipt does not match this snapshot");
+        }
         return new TerrainContext(normalizedManifest, snapshotId, snapshotHash, worldId,
-            worldName, style, bounds, defaultOpacity, detailZoom, closeDetailFactor, variants, biomes);
+            worldName, style, bounds, defaultOpacity, detailZoom, closeDetailFactor, variants, biomes, generationMode, gameVersion);
     }
 
     public ObjectNode publicJson(ObjectMapper mapper) {
@@ -116,8 +129,10 @@ public final class TerrainContext {
         result.put("available", true);
         result.put("kind", KIND);
         result.put("label", "Terrain + water · snapshot #" + snapshotId);
-        result.put("provenance", "SNAPSHOT-MATCHED");
-        result.put("authoritative", true);
+        result.put("provenance", "current-client".equals(generationMode) ? "REGENERATED · GAME " + gameVersion : "SNAPSHOT-MATCHED");
+        result.put("authoritative", !"current-client".equals(generationMode));
+        result.put("generationMode", generationMode);
+        if (!gameVersion.isBlank()) result.put("gameVersion", gameVersion);
         result.put("snapshotId", snapshotId);
         result.put("worldId", worldId);
         result.put("worldName", worldName);

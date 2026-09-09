@@ -74,7 +74,7 @@ def start(name,port):
         '--env-file',str(envfile),'-v',str(dest/'catalog')+':/catalog:ro','-p','127.0.0.1:'+str(port)+':8091','--entrypoint','java',image,
         '-Xms256m','-Xmx1g','-Djava.awt.headless=true','-jar','/app/steward-spatial-lab.jar','serve','--public','--bind','0.0.0.0',
         '--port','8091','--cache','/catalog/'+default['cache'],'--artifacts','/catalog/'+default['artifacts'],
-        '--context-manifest','/catalog/'+default['contextManifest'],'--era-catalog','/catalog/catalog.json',
+        *(['--context-manifest','/catalog/'+default['contextManifest']] if default.get('contextManifest') else []),'--era-catalog','/catalog/catalog.json',
         '--snapshot',str(default['snapshotId']),'--public-url',environment.get('PUBLIC_URL','https://am4.tail8e749c.ts.net/world/'),
         '--release-version',settings['release'],'--no-browser')
 def get(port,path):
@@ -92,6 +92,13 @@ try:
     assert healthy(7083)['release']==settings['release']
     eras=get(7083,'/api/eras');assert len(eras['eras'])==len(catalog['eras'])
     bootstrap=get(7083,'/api/bootstrap');assert len(bootstrap['snapshots'])==1 and bootstrap['snapshots'][0]['snapshotId']==default['snapshotId']
+    for ready in [e for e in catalog['eras'] if e['status']=='ready']:
+        selected=get(7083,'/api/bootstrap?era='+ready['slug'])
+        assert len(selected['snapshots'])==1 and selected['snapshots'][0]['snapshotId']==ready['snapshotId']
+        assert selected['terrainAvailable']==bool(ready.get('contextManifest')) and selected['sceneAvailable']
+        if not ready.get('contextManifest'):
+            try:get(7083,'/api/items?era='+ready['slug']+'&snapshot='+str(ready['snapshotId'])+'&lens=build-density&minX=-100&maxX=100&minZ=-100&maxZ=100&biomes=meadows');raise AssertionError('Unclassified era admitted biome claims')
+            except urllib.error.HTTPError as error:assert error.code==400
     for pending in [e for e in catalog['eras'] if e['status']!='ready']:
         try:get(7083,'/api/bootstrap?era='+pending['slug']);raise AssertionError('Pending era fell through')
         except urllib.error.HTTPError as error:assert error.code==503

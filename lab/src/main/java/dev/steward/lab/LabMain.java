@@ -58,9 +58,6 @@ public final class LabMain {
             if (artifacts.readManifest(config.snapshotId()) == null) {
                 throw new IllegalArgumentException("Public artifacts are missing for snapshot #" + config.snapshotId());
             }
-            if (terrainContext == null) {
-                throw new IllegalArgumentException("Public mode requires --context-manifest");
-            }
             snapshots.validatePublicRelease(terrainContext);
             lenses.require("build-density");
         }

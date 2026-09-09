@@ -49,6 +49,20 @@ class TerrainContextTest {
             () -> TerrainContext.load(manifest, mapper, 107, "a".repeat(64), "ComfyEra17"));
     }
 
+    @Test void currentClientTerrainDisclosesGenerationAndRejectsOtherSource() throws Exception {
+        Path manifest = contextManifest("a".repeat(64));
+        var root = (ObjectNode) mapper.readTree(manifest.toFile());
+        var generation = root.putObject("generation");
+        generation.put("mode", "current-client"); generation.put("gameVersion", "0.221.12");
+        generation.put("sourceDbSha256", "a".repeat(64)); mapper.writeValue(manifest.toFile(), root);
+        var context = TerrainContext.load(manifest, mapper, 107, "a".repeat(64), "ComfyEra17");
+        assertEquals("current-client", context.publicJson(mapper).path("generationMode").asText());
+        assertEquals(false, context.publicJson(mapper).path("authoritative").asBoolean());
+        generation.put("sourceDbSha256", "b".repeat(64)); mapper.writeValue(manifest.toFile(), root);
+        assertThrows(IllegalArgumentException.class,
+            () -> TerrainContext.load(manifest, mapper, 107, "a".repeat(64), "ComfyEra17"));
+    }
+
     private Path contextManifest(String snapshotHash) throws Exception {
         Path overview = image("overview.png");
         Path detail = image("detail.png");

@@ -30,10 +30,10 @@ try{
   await wait("document.querySelectorAll('.photos img').length>0");
   results.thread=await evaluate("({title:document.getElementById('title').textContent,eras:document.querySelectorAll('details').length,photos:document.querySelectorAll('.photos img').length})");
   await wait("[...document.querySelectorAll('.photos img')].filter(i=>i.loading!=='lazy'||i.getBoundingClientRect().top<innerHeight).every(i=>i.complete&&i.naturalWidth>0)");await screenshot('creator-thread');
-  await cdp('Page.navigate',{url:new URL('?era=era7&build='+'a'.repeat(64),world).href});
-  await wait("document.querySelector('.workspace h1')?.textContent.includes('Terrain preparation pending')");
-  if(await evaluate("document.querySelectorAll('.context-raster').length")!==0)throw Error('Pending era displayed stale terrain');
-  results.pending=await evaluate("document.querySelector('.workspace h1').textContent");await screenshot('pending-era');
+  await cdp('Page.navigate',{url:new URL('?era=era7',world).href});
+  await wait("[...document.querySelectorAll('.analysis-raster')].some(i=>i.complete&&i.naturalWidth>0)");
+  if(await evaluate("document.querySelectorAll('.context-raster').length")!==0)throw Error('Construction map displayed another era terrain');
+  results.spatial=await evaluate("document.getElementById('terrain-status').textContent");await screenshot('construction-era');
   await evaluate("document.getElementById('era-select').value='era17';document.getElementById('era-select').dispatchEvent(new Event('change'))");
   await wait("[...document.querySelectorAll('.context-raster')].some(i=>i.complete&&i.naturalWidth>0)");
   if(await evaluate("new URLSearchParams(location.search).has('build')"))throw Error('Era switch retained previous build');

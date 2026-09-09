@@ -9,6 +9,7 @@ import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.ArrayList;
 
 /** Immutable, validated public packages. Selection never mutates shared server state. */
 public final class EraCatalog {
@@ -39,11 +40,15 @@ public final class EraCatalog {
                     verified.put(artifact, true);
                 }
                 Path cache = resolve(root, node.path("cache").asText());
-                Path manifest = resolve(root, node.path("contextManifest").asText());
+                Path manifest = node.path("contextManifest").asText().isBlank() ? null
+                    : resolve(root, node.path("contextManifest").asText());
                 Path artifactRoot = resolve(root, node.path("artifacts").asText());
-                for (Path required : new Path[]{cache, manifest})
+                var requiredFiles = new ArrayList<Path>(); requiredFiles.add(cache);
+                var directories = new ArrayList<Path>(); directories.add(artifactRoot);
+                if (manifest != null) { requiredFiles.add(manifest); directories.add(manifest.getParent()); }
+                for (Path required : requiredFiles)
                     if (!verified.containsKey(required)) throw new IllegalArgumentException("Missing artifact receipt");
-                for (Path directory : new Path[]{artifactRoot, manifest.getParent()}) {
+                for (Path directory : directories) {
                     try (var paths = Files.walk(directory)) {
                         for (Path path : paths.filter(Files::isRegularFile).toList())
                             if (!verified.containsKey(path.toRealPath()))
@@ -58,7 +63,7 @@ public final class EraCatalog {
                 var raster = artifacts.readManifest(snapshot);
                 if (raster==null || !saved.fileHash().equals(raster.path("snapshot").path("fileHash").asText()))
                     throw new IllegalArgumentException("Era raster snapshot mismatch");
-                context = TerrainContext.load(manifest,mapper,snapshot,saved.fileHash(),saved.worldId());
+                context = manifest == null ? null : TerrainContext.load(manifest,mapper,snapshot,saved.fileHash(),saved.worldId());
                 repository.validatePublicRelease(context);
             } else if (!"awaiting-runtime".equals(status)) {
                 throw new IllegalArgumentException("Unsupported era publication status");
@@ -76,7 +81,7 @@ public final class EraCatalog {
     }
     public Era ready(String slug) {
         Era era=require(slug);
-        if (!"ready".equals(era.status())) throw new IllegalStateException("This era is awaiting its historical terrain runtime");
+        if (!"ready".equals(era.status())) throw new IllegalStateException("This era's spatial package is being prepared");
         return era;
     }
     public ObjectNode publicJson(ObjectMapper mapper) {
@@ -85,6 +90,8 @@ public final class EraCatalog {
         for(Era era:eras.values()) {
             var item=array.addObject();item.put("slug",era.slug());item.put("label",era.label());
             item.put("status",era.status());item.put("snapshotId",era.snapshotId());
+            item.put("terrainAvailable",era.context()!=null);
+            item.put("sceneAvailable",era.snapshots()!=null);
         }
         return result;
     }

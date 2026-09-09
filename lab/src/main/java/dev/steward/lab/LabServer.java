@@ -164,12 +164,13 @@ public final class LabServer {
         result.put("feedbackEnabled", config.publicMode() && config.feedback().feedbackEnabled());
         result.put("discordIdentityEnabled", config.publicMode() && config.feedback().identityEnabled());
         result.put("sceneAvailable", config.publicMode());
+        result.put("terrainAvailable", terrainContext != null);
         boolean suppliedContext = terrainContext != null || config.contextImage() != null;
         result.put("contextAvailable", suppliedContext);
         result.put("contextLabel", terrainContext != null
             ? "Terrain + water · snapshot #" + terrainContext.snapshotId()
             : config.contextImage() == null ? "Inferred land mask" : config.contextImage().getFileName().toString());
-        result.put("contextAuthoritative", suppliedContext);
+        result.put("contextAuthoritative", terrainContext == null ? suppliedContext : terrainContext.publicJson(mapper).path("authoritative").asBoolean());
         if (terrainContext != null) {
             ObjectNode context = terrainContext.publicJson(mapper);
             if (snapshots.available()) {
@@ -636,6 +637,8 @@ public final class LabServer {
     private List<String> biomeQuery(Context ctx) {
         String raw = ctx.queryParam("biomes");
         if (raw == null || raw.isBlank() || "all".equalsIgnoreCase(raw.trim())) return List.of();
+        EraCatalog.Era selected = era(ctx);
+        TerrainContext terrainContext = selected == null ? this.terrainContext : selected.context();
         if (terrainContext == null) throw new IllegalArgumentException("Biome filters are not available");
         Set<String> requested = new HashSet<>();
         for (String item : raw.split(",")) {
