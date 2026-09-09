@@ -64,6 +64,18 @@ def should_retry(attempts, maximum=2):
     return attempts<maximum
 
 
+def failed_attempts(root, group, attempts):
+    """Keep launch IDs monotonic, but do not charge deliberate pauses as failures."""
+    failures=0
+    for number in range(1,attempts+1):
+        path=Path(root)/'runs'/f'{group}-attempt-{number:02d}'/'result.json'
+        result=read(path) if path.exists() else None
+        if result is None or (not result.get('success') and result.get('reason') not in
+                              ('operator-stop','output-limit','disk-reserve')):
+            failures+=1
+    return failures
+
+
 def progress_stalled(last_progress, current, timeout=900):
     return current-last_progress>=timeout
 
@@ -118,6 +130,8 @@ class Worker:
         for spec in self.runtime.get('runtimeFiles',[]):verify(Path(spec['path']),spec)
         if subprocess.run(['pgrep','-x','valheim.x86_64'],capture_output=True).returncode!=1:
             raise ValueError('Another Valheim process is running')
+        if subprocess.run(['pgrep','-x','steam'],capture_output=True).returncode!=0:
+            raise ValueError('Steam must be running before capture starts')
 
     def stop_game(self):
         if not self.process or self.process.poll() is not None:return
@@ -177,8 +191,10 @@ class Worker:
             verify(Path(spec['path']),spec)
             cache_copy=worlds/Path(spec['path']).name
             shutil.copy2(spec['path'],cache_copy);cache_copy.chmod(0o600)
-        if self.stopped():return False,'operator-stop'
-        if self.limit():return False,self.limit()
+        reason='operator-stop' if self.stopped() else self.limit()
+        if reason:
+            write(dest/'result.json',{'success':False,'reason':reason,'launched':False})
+            return False,reason
         allowed={(b['localClusterId'],s['shot']):s for b in builds for s in b['shots']}
         for name in ('shotplan.tsv','shotplan-receipts.jsonl','orbit-request.json'):
             p=self.cfg/name
@@ -255,7 +271,8 @@ class Worker:
                     reason='operator-stop' if self.stopped() else self.limit()
                     if reason:self.status('stopped',reason=reason);return
                     attempts=self.state['attempts'].get(name,0)
-                    if not should_retry(attempts,self.plan['maxAttempts']):
+                    failures=failed_attempts(self.root,name,attempts)
+                    if not should_retry(failures,self.plan['maxAttempts']):
                         self.status('failed',reason='repeated-failure',batch=name);return
                     self.state['attempts'][name]=attempts+1;self.status('preparing',batch=name,attempt=attempts+1)
                     success,reason=self.attempt(pending,name,attempts+1)

@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from campaign import completed_builds, select_jobs
-from capture_worker import Worker, disk_stop, png_metadata, progress_stalled, should_retry, unfinished
+from capture_worker import Worker, disk_stop, failed_attempts, png_metadata, progress_stalled, should_retry, unfinished
 
 
 class CampaignTests(unittest.TestCase):
@@ -49,6 +49,22 @@ class CampaignTests(unittest.TestCase):
             with self.assertRaises(ValueError):png_metadata(p)
             with p.open('ab') as f:f.write(b'\0\0\0\0IEND\xaeB`\x82')
             self.assertEqual([3840,2160],png_metadata(p)['dimensions'])
+
+    def test_operator_pause_does_not_exhaust_retry_budget_and_missing_result_does(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            results=[{'success':False,'reason':'process-exit'},
+                     {'success':False,'reason':'operator-stop'},
+                     {'success':False,'reason':'disk-reserve'},
+                     {'success':False,'reason':'output-limit'},
+                     {'success':True,'reason':'process-exit'}]
+            for number,result in enumerate(results,1):
+                path=root/'runs'/f'batch-0000-attempt-{number:02d}'/'result.json'
+                path.parent.mkdir(parents=True);path.write_text(json.dumps(result))
+            self.assertEqual(1,failed_attempts(root,'batch-0000',5))
+            self.assertTrue(should_retry(failed_attempts(root,'batch-0000',5)))
+            self.assertEqual(2,failed_attempts(root,'batch-0000',6))
+            self.assertFalse(should_retry(failed_attempts(root,'batch-0000',6)))
 
     def test_harvest_is_durable_and_other_era_or_unsafe_receipts_are_ignored(self):
         with tempfile.TemporaryDirectory() as temp:

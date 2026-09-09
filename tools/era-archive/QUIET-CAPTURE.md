@@ -36,7 +36,11 @@ Partial final receipt lines and incomplete images do not count. A restart recove
 completed writes and schedules only unfinished angles, preserving dispatch IDs.
 Visual quality and attribution review remain deferred.
 
-The supervisor retries an interrupted batch once. Fifteen minutes without a new
+The supervisor allows two failed launches per batch. Operator pauses and disk
+limit stops do not consume that budget; attempt directory numbers always increase
+so prior evidence remains intact. A missing result counts as failure. Steam must
+be running before launch, and its account must remain available throughout capture.
+Fifteen minutes without a new
 completed photograph triggers a controlled stop of its own game process; the game
 gets 120 seconds to exit before that specific child is killed. Repeated failure
 stops the campaign. Reaching 32 GiB of PNG output or falling below 20 GiB free space
