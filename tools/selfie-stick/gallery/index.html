@@ -145,7 +145,7 @@
 
 <script>
 // ---- state ----
-let DB={images:[]}, MINE=new Set(), VOTES={}, REQS={}, CLAIMS={}, USER='anon', SIGNEDIN=false;
+let DB={images:[]}, MINE=new Set(), VOTES={};   // REQS/CLAIMS/USER/SIGNEDIN went with the signals API
 let DEPTH={}, JUDGE={};               // instrument side-files; absent is fine
 let sel={region:new Set(),kind:new Set(),environment:new Set(),structure:new Set(),perspective:new Set(),area:new Set()};
 let showFog=false;                    // whiteout frames stay one click away, not gone
@@ -521,7 +521,6 @@ function openLb(i){
   // fifteenth chip in a line of fourteen read-only facts styled exactly like it,
   // and the two drill-ins lived in a separate row below -- three groups of
   // controls scattered through a wall of text.
-  const nreq=REQS[r.cluster_id]||0, claimed=CLAIMS[r.cluster_id];
   const voted=MINE.has(r.id);
   let acts=`<button class="act${voted?' on':''}" id=lbstar>${voted?'★':'☆'} `+
            `${voted?'voted':'vote'}${nv?` · ${nv}`:''}</button>`;
@@ -529,21 +528,18 @@ function openLb(i){
     acts+=`<button class="act pri" id=actall>${svg('grid')} all ${nHere} shots of this build</button>`;
   if(nArea>1&&scope!=='area')
     acts+=`<button class="act pri" id=actarea>${svg('pin')} ${nArea-1} more ${esc(areaPhrase(r))}</button>`;
-  if(r.cluster_id!=null&&SIGNEDIN)
-    acts+=`<button class=act id=actreq>${svg('camera')} more shots of this${nreq?` · ${nreq}`:''}</button>`+
-          `<button class=act id=actmine>${svg('home')} ${claimed?`claimed by ${esc(claimed)}`:'this one is mine'}</button>`+
-          `<button class=act id=actnot>not mine</button>`;
   $('lbactions').innerHTML=acts;
-  $('lbhint').innerHTML = (r.cluster_id!=null&&!SIGNEDIN)
-    ? `${nreq?`${nreq} request(s) for this build · `:''}${claimed?`claimed by ${esc(claimed)} · `:''}`+
-      `sign in to ask for more shots or claim this build`
+  // Claiming lives on the builders page, not here. This surface carried its own
+  // claim/request buttons against /api/valheim/*, served by the Discord bot on AM4
+  // (~/am4bot/bot.py:1440). That API stopped on 2026-06-25 and the page later moved to
+  // FX99, which has no /api route -- so the sign-in gate could never succeed and the
+  // buttons never rendered. One claim surface is better than two, so they are gone.
+  $('lbhint').innerHTML = r.cluster_id!=null
+    ? `<a href="/valheim/creators/">claim this build or ask for more shots on the builders page</a>`
     : '';
   $('lbstar').onclick=()=>toggleStar(r.id,true);
   if($('actall')) $('actall').onclick=()=>drillTo('structure', structKey(r), r.id);
   if($('actarea')) $('actarea').onclick=()=>drillTo('area', 'a'+r.area_id, r.id);
-  if($('actreq')) $('actreq').onclick=()=>sendSignal('request',r,{note:''});
-  if($('actmine')) $('actmine').onclick=()=>sendSignal('claim',r,{mine:true});
-  if($('actnot')) $('actnot').onclick=()=>sendSignal('claim',r,{mine:false});
 
   // Siblings of this BUILD. This used to key on run, which was right when a run
   // meant 23 light variants of one viewpoint and is wrong now that a run means
@@ -629,49 +625,27 @@ const VOTER=(()=>{
   }catch(e){ return ''; }   // private mode: vote still counts, just not remembered
 })();
 
+// Stars are kept in this browser. They used to come from /api/valheim/signals, served
+// by the Discord bot on AM4 (~/am4bot/bot.py) -- that API stopped on 2026-06-25 and the
+// page then moved to FX99, which has never had an /api route. So every load called a
+// 404 and every star rolled itself back with an error. Local is honest and works.
+const STAR_KEY='valheim_stars';
 async function loadSignals(){
-  try{
-    const s=await fetch('/api/valheim/signals?voter='+encodeURIComponent(VOTER),
-                        {cache:'no-store'}).then(r=>r.json());
-    VOTES=s.votes||{}; REQS=s.requests||{}; CLAIMS=s.claims||{};
-    MINE=new Set(s.mine||[]); USER=s.user||'anon';
-    SIGNEDIN=!!USER && USER.indexOf('anon')!==0;
-  }catch(e){ /* bot down — page still works, just no counts */ }
+  try{ MINE=new Set(JSON.parse(localStorage.getItem(STAR_KEY)||'[]')); }
+  catch(e){ MINE=new Set(); }   // private mode: stars work, just are not remembered
+}
+function saveStars(){
+  try{ localStorage.setItem(STAR_KEY,JSON.stringify([...MINE])); }catch(e){}
 }
 
-async function toggleStar(id,fromLb){
+function toggleStar(id,fromLb){
   const on=!MINE.has(id);
   on?MINE.add(id):MINE.delete(id);
   VOTES[id]=Math.max(0,(VOTES[id]||0)+(on?1:-1));
+  saveStars();
   render(); if(fromLb) openLb(cur);
-  try{
-    const r=await fetch('/api/valheim/vote',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({image_id:id,on,voter:VOTER})});
-    if(!r.ok) throw new Error(r.status);
-    const j=await r.json();
-    VOTES[id]=j.votes;                            // server count wins
-    render(); if(fromLb) openLb(cur);
-  }catch(e){
-    on?MINE.delete(id):MINE.add(id);              // put it back; the server is the truth
-    VOTES[id]=Math.max(0,(VOTES[id]||0)+(on?-1:1));
-    render(); toast('could not save that vote');
-  }
 }
 
-// Requests and claims act on the structure, not the frame, so they live in the
-// lightbox where the structure is named.
-async function sendSignal(kind,r,body){
-  try{
-    const res=await fetch('/api/valheim/'+kind,{method:'POST',
-      headers:{'content-type':'application/json'},
-      body:JSON.stringify(Object.assign({cluster_id:r.cluster_id,
-        label:`#${r.cluster_rank} · ${(r.pieces||0).toLocaleString()} pieces`},body))});
-    const j=await res.json();
-    if(!res.ok) throw new Error(j.error||res.status);
-    await loadSignals(); render(); openLb(cur);
-    toast(kind==='request'?'asked for more shots':'thanks — noted');
-  }catch(e){ toast(String(e.message||e)); }
-}
 let tt;
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show');
   clearTimeout(tt); tt=setTimeout(()=>t.classList.remove('show'),2200); }

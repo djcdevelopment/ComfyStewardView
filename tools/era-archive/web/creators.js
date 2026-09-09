@@ -103,7 +103,15 @@
   function saveState() {
     state.updatedAt = nowISOString();
     state.participant = normalizeHandle(state.participant);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // setItem throws in a private window with site data blocked, and on quota
+    // exhaustion. loadState() already tolerates that; without the same here the throw
+    // escapes the click handler, so the modal never closes and the claim is lost with
+    // no explanation. Persistence is a convenience -- the payload is the real handoff.
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      showToast('This browser will not remember your participation. Copy the payload before leaving.');
+    }
     updateParticipantSnapshot();
   }
 
@@ -167,6 +175,8 @@
       method: 'POST',
       headers: {'content-type': 'application/json'},
       body: JSON.stringify(payload),
+      // Without this a hung endpoint awaits forever with the modal stuck open.
+      signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined,
     });
     if (!response.ok) throw new Error(response.statusText || 'submission failed');
     return true;
@@ -185,16 +195,26 @@
     return payload;
   }
 
+  function showPayloadFallback(text, message) {
+    const area = $('activity-payload');
+    area.value = text;
+    openModal(activityModal);
+    showToast(message);
+  }
+
   async function copyActivityPayload(payload) {
     const text = JSON.stringify(payload, null, 2);
-    if (navigator.clipboard?.writeText) {
+    // The likelier failure is not that the clipboard API is missing but that it
+    // rejects -- permission denied, or the document not focused. Falling back only on
+    // absence leaves those users with neither a copy nor anywhere to read the payload.
+    if (!navigator.clipboard?.writeText) {
+      return showPayloadFallback(text, 'Copy the payload from this box.');
+    }
+    try {
       await navigator.clipboard.writeText(text);
-      showToast('Payload copied.');
-    } else {
-      const area = $('activity-payload');
-      area.value = text;
-      openModal(activityModal);
-      showToast('Copy from the activity modal.');
+      showToast('Payload copied — send it over to finish.');
+    } catch {
+      showPayloadFallback(text, 'Clipboard unavailable. Copy the payload from this box.');
     }
   }
 
@@ -204,12 +224,12 @@
     const counts = {
       claims: Object.keys(state.claims).length,
       requests: Object.keys(state.requests).length,
-      submitted: Object.values(state.requests).filter((x) => x.deliveryStatus === 'submitted').length,
+      submitted: [...Object.values(state.claims), ...Object.values(state.requests)]
+        .filter((x) => x.deliveryStatus === 'submitted').length,
     };
     const participants = new Set();
     for (const c of Object.values(state.claims)) participants.add(c.participant);
     for (const r of Object.values(state.requests)) participants.add(r.participant);
-    if (isNaN(counts.claims) || isNaN(counts.requests)) return;
 
     const parts = [
       `${counts.claims} claimed builds`,
@@ -461,8 +481,12 @@
     $('claim-handle').value = state.participant || '';
     $('claim-note').value = '';
     $('claim-confirm').onclick = async () => {
-      const participant = normalizeHandle($('claim-handle').value);
-      if (!participant) return showToast('Add a volunteer handle.');
+      // normalizeHandle substitutes a placeholder, so validate the raw field:
+      // the previous check could never fire and the `required` attribute is inert
+      // outside a <form>.
+      const typed = $('claim-handle').value.trim();
+      if (!typed) return showToast('Add a volunteer handle so the claim can be matched to you.');
+      const participant = normalizeHandle(typed);
       const claim = {
         claimId: randomId('claim'),
         buildKey: album.buildKey,
@@ -487,10 +511,23 @@
 
       state.participant = participant;
       claim.deliveryStatus = deliveryStatus;
+      // A re-claim must not discard the record that an earlier one was delivered.
+      const prior = state.claims[album.buildKey];
+      if (prior && prior.deliveryStatus === 'submitted' && deliveryStatus !== 'submitted') {
+        claim.deliveryStatus = 'submitted';
+        claim.resubmittedFrom = prior.claimId;
+      }
       state.claims[album.buildKey] = claim;
       saveState();
       closeModal(claimModal);
-      showToast('Build claim saved.');
+      // Without an ingestion endpoint a claim reaches nobody on its own, so the claim
+      // is not finished until the volunteer sends the payload. Say that, and hand them
+      // the payload the same way the photo-request path already does.
+      if (deliveryStatus === 'submitted') {
+        showToast('Build claim sent.');
+      } else {
+        await copyActivityPayload(exportPayload('claim'));
+      }
       if (isThread) renderThread(); else renderDirectory();
     };
     $('claim-cancel').onclick = () => closeModal(claimModal);
@@ -573,6 +610,25 @@
       }
     };
     $('activity-close').onclick = () => closeModal(activityModal);
+    // The contact field invites a Discord handle or e-mail and persists indefinitely.
+    // Offer a way out that does not require clearing site data by hand.
+    if ($('forget-participation')) {
+      $('forget-participation').onclick = () => {
+        if (!confirm('Forget every claim, request and handle stored in this browser?')) return;
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+        } catch {
+          // Nothing was persisted in the first place; clearing memory is enough.
+        }
+        const fresh = DEFAULT_STATE();
+        state.participant = fresh.participant;
+        state.claims = fresh.claims;
+        state.requests = fresh.requests;
+        updateParticipantSnapshot();
+        showToast('Local participation cleared.');
+        if (isThread) renderThread(); else renderDirectory();
+      };
+    }
     for (const modal of [claimModal, requestModal, activityModal]) {
       modal.addEventListener('click', (event) => {
         if (event.target === modal) closeModal(modal);
@@ -591,6 +647,8 @@
         buildersByKey = new Map(directory.builders.map((b) => [b.builderKey, b]));
         externalParticipation = await readOptional('participation.json');
         updateParticipantSnapshot();
+        // Render inside the promise chain so a throw here reaches the same .catch as a
+        // failed fetch, instead of leaving a half-drawn page with no status line.
         if (isThread) {
           read(`threads/${builderKey}.json`)
             .then((entry) => {
