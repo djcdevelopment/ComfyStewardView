@@ -7,7 +7,7 @@ the private analysis artifacts; gallery projections use opaque identifiers.
 """
 from __future__ import annotations
 import argparse
-from collections import defaultdict
+from collections import Counter, defaultdict
 import hashlib
 import heapq
 import json
@@ -120,6 +120,15 @@ def analyze_era(root, entry):
             sha256(string_agg(zdo_index::VARCHAR,',' ORDER BY zdo_index)),
             count(*) FILTER(WHERE creator_id IS NOT NULL AND creator_id<>0)
             FROM members GROUP BY cid ORDER BY min(zdo_index)""").fetchall()
+        # Identity of the building rather than of the plot. Two builds with the same
+        # prefab multiset are the same building stamped twice, and a world that hands
+        # every player an identical lot produces hundreds of them under different
+        # owners. Keyed on prefab_hash, not the resolved name: a dictionary gap reports
+        # several distinct prefabs as one null name, and grouping on that would merge
+        # genuinely different buildings into a single identity.
+        templates = dict(con.execute("""SELECT cid,sha256(string_agg(signature,',' ORDER BY signature))
+            FROM (SELECT cid,prefab_hash::VARCHAR||':'||count(*) AS signature FROM members GROUP BY cid,prefab_hash)
+            GROUP BY cid""").fetchall())
         contributors = defaultdict(list)
         for cid, creator, n in con.execute("SELECT cid,creator_id::VARCHAR,count(*) FROM members WHERE creator_id IS NOT NULL AND creator_id<>0 GROUP BY 1,2 ORDER BY 1,3 DESC,2").fetchall():
             contributors[cid].append({"characterId": creator, "pieces": n})
@@ -136,6 +145,7 @@ def analyze_era(root, entry):
                            "unknownNameFraction": unknown/count, "contributors": contributors[cid],
                            "score": score(count,ymax-ymin,footprint,varieties,1),
                            "region": "outland" if math.hypot((xmin+xmax)/2,(zmin+zmax)/2)>10500 else "in-world",
+                           "templateKey": templates[cid],
                            "membershipSha256": membership_hash, "photos": []})
         con.execute("CREATE TEMP TABLE build_keys(cid BIGINT,build_key VARCHAR)")
         if mapping:
@@ -207,7 +217,42 @@ def import_legacy(config, namespace, links):
     return result, receipts
 
 
-def project(root, analyses, links_path=None, legacy_config=None):
+def attach_captures(builds, manifests):
+    """Give a modern album the photographs a capture campaign actually took.
+
+    The legacy path invents an album from a photograph's cluster_id and credits one
+    leading contributor. Here the album already exists with exact membership, so a
+    capture manifest only has to name its buildKey. Nothing else in the projection
+    needs to know the difference -- and once photos land here, the coverage ranker
+    below stops re-queueing builds that have already been photographed."""
+    by_key={b["buildKey"]:b for b in builds}
+    receipts,attached,unknown=[],0,0
+    for path in manifests or []:
+        doc=load(path)
+        if doc.get("schema")!="steward-capture-gallery/v1":
+            raise ValueError("Not a capture gallery manifest: "+str(path))
+        if not str(doc.get("base","")).startswith(("http://","https://")):
+            raise ValueError("Capture gallery needs an explicit HTTP origin")
+        missing=0
+        for build_key,photos in doc["builds"].items():
+            build=by_key.get(build_key)
+            if build is None:
+                missing+=1; continue
+            if build.get("sourceKey") and build["sourceKey"]!=doc["sourceKey"]:
+                raise ValueError("Capture manifest crosses a source boundary")
+            for photo in photos:
+                if not re.fullmatch(r"[A-Za-z0-9_-]+",photo.get("id","")):
+                    raise ValueError("Unsafe capture image identifier")
+                build["photos"].append({k:photo[k] for k in ("id","thumb","large","href","label")})
+                attached+=1
+        unknown+=missing
+        receipts.append({"manifest":digest(path),"era":doc["era"],"sourceKey":doc["sourceKey"],
+                         "albums":len(doc["builds"]),"photographs":doc["photographs"],
+                         "unresolvedBuilds":missing})
+    return receipts,attached,unknown
+
+
+def project(root, analyses, links_path=None, legacy_config=None, capture_manifests=None):
     root = Path(root)
     settings_path = root / "analysis" / "identity-registry.json"
     settings = load(settings_path) if settings_path.exists() else {"namespace":str(uuid.uuid4())}
@@ -244,6 +289,14 @@ def project(root, analyses, links_path=None, legacy_config=None):
             "status":"blocked","missingPrerequisites":["verified era-matched game runtime","runtime prefab availability audit","isolated cache-generation adapter"],
             "sourceKey":analysis["sourceKey"],"snapshotId":analysis["snapshotId"],"era":analysis["era"]})
 
+    # Before the legacy import and before the ranking: these photographs belong to
+    # albums that already exist, and the ranker reads build["photos"] to decide who is
+    # covered.
+    capture_receipts,captured_photos,unresolved=attach_captures(all_builds,capture_manifests)
+    if capture_receipts:
+        print(f"Attached {captured_photos:,} captured photographs from "
+              f"{len(capture_receipts)} manifest(s); {unresolved:,} unresolved build(s)",flush=True)
+
     legacy,legacy_receipts=import_legacy(legacy_config,namespace,links)
     for build in legacy:
         all_builds.append(build)
@@ -260,6 +313,15 @@ def project(root, analyses, links_path=None, legacy_config=None):
         builder["displayName"]=next(iter(candidates)) if len(candidates)==1 else "Builder "+builder["builderKey"][:8]
         builder["nameStatus"]="recorded" if len(candidates)==1 else "ambiguous" if candidates else "unresolved"
 
+    # A stamped lot is one subject however many owners it has. Era 14 queued 238 copies
+    # of one 1,629-piece building as 238 separate jobs, because coverage ranks by owner
+    # and each copy had a different one; four orbits apiece is 952 photographs of the
+    # same walls. The first copy earns the photograph and the rest point at it.
+    copies=Counter((b["era"],b["templateKey"]) for b in all_builds if b.get("templateKey"))
+    for b in all_builds:
+        if b.get("templateKey"):b["templateCopies"]=copies[(b["era"],b["templateKey"])]
+    stamped={}
+
     # Greedy coverage first, then geometry score; each builder-era receives a first opportunity.
     remaining={b["buildKey"]:b for b in all_builds if not b["photos"] and b.get("contributors")}
     covered={(c["builderKey"],b["era"]) for b in all_builds if b["photos"] for c in b["contributors"]}
@@ -273,13 +335,20 @@ def project(root, analyses, links_path=None, legacy_config=None):
         if current!=previous:
             heapq.heappush(heap,current);continue
         gain=-current[0]
+        template=(best["era"],best.get("templateKey"))
+        if best.get("templateKey") and template in stamped:
+            # Deliberately before covered.add: this owner is not getting a photograph,
+            # so leaving them uncovered keeps their own distinct build worth selecting.
+            best["duplicateOfBuildKey"]=stamped[template];continue
         for c in best["contributors"]:covered.add((c["builderKey"],best["era"]))
+        if best.get("templateKey"):stamped[template]=best["buildKey"]
         priority=best.get("unknownNameFraction",0)>=.10
         jobs.append({"jobId":"photos-"+best["buildKey"][:20],"kind":"photography","dispatch":"manual",
             "status":"blocked","missingPrerequisites":["verified era-matched capture runtime","terrain context","capture plugin compatibility"],
             "era":best["era"],"sourceKey":best["sourceKey"],"snapshotId":best["snapshotId"],"buildKey":best["buildKey"],
             "newBuilderEraCoverage":gain,"priorityInvestigation":priority,"pilotCandidate":False,
             "shots":{"exteriors":4,"interiorWhenSupported":1,"width":3840,"height":2160},
+            "templateKey":best.get("templateKey"),"templateCopies":best.get("templateCopies",1),
             "membershipSha256":best.get("membershipSha256"),"bounds":best.get("bounds")})
     for era in {a["era"] for a in analyses}:
         candidates=[b for b in all_builds if b["era"]==era and not b.get("legacyClusterId") and b.get("contributors") and b.get("unknownNameFraction",0)<.10]
@@ -293,7 +362,8 @@ def project(root, analyses, links_path=None, legacy_config=None):
         for job in jobs:
             if job.get("buildKey") in selected:job["pilotCandidate"]=True
     document={"schema":"steward-community/v1","generatedAt":now(),"builders":list(builders.values()),
-        "builds":all_builds,"eras":era_reports,"legacyImports":legacy_receipts}
+        "builds":all_builds,"eras":era_reports,"legacyImports":legacy_receipts,
+        "captureImports":capture_receipts}
     save(root/"analysis/community-private.json",document)
     save(root/"analysis/unknown-assets.json",{"schema":"steward-unknown-assets/v1","eras":era_reports,
         "patterns":[{"prefabHash":h,"eras":v,"recurring":len(v)>1} for h,v in sorted(unknown_patterns.items(),key=lambda kv:-sum(x["constructionPieces"] for x in kv[1]))]})
@@ -309,11 +379,13 @@ def main():
     parser.add_argument("--output-root",type=Path,required=True)
     parser.add_argument("--links",type=Path)
     parser.add_argument("--legacy-galleries",type=Path)
+    parser.add_argument("--captures",type=Path,action="append",default=[],
+                        help="capture gallery manifest from import_captures.py; repeatable")
     args=parser.parse_args();root=args.output_root.resolve()
     with writer_lock(root/"analysis"):
         catalog=load(root/"catalog.json")
         analyses=[analyze_era(root,e) for e in catalog["eras"] if e["ingestion"].get("status")=="verified"]
-        project(root,analyses,args.links,args.legacy_galleries)
+        project(root,analyses,args.links,args.legacy_galleries,args.captures)
 
 
 if __name__=="__main__":main()

@@ -1,10 +1,103 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Comfy builders · Across the eras</title><link rel="stylesheet" href="./creators.css"><script src="./creators.js" defer></script></head>
-<body><header><a href="/valheim/">← Valheim gallery</a><a id="directory-link" href="/valheim/creators/">All builders</a></header>
-<main><p class="eyebrow">THE COMFY COMMUNITY</p><h1 id="title">Across the eras</h1>
-<p id="intro">Find a builder. Explore their work, shared creations and photographs through the years.</p>
-<div id="filters"><label>Find a builder <input id="search" type="search" placeholder="Name or recorded alias"></label><label>Era <select id="era"><option value="">Every era</option></select></label></div>
-<p id="status" role="status">Opening the community archive…</p><div id="content"></div><button id="more" hidden>Show more</button>
-<footer>Credits follow the creators recorded on saved construction pieces. Shared albums can appear in several builders’ threads. Matching names alone never join characters. Historical photo albums retain their original attribution and links.</footer>
-</main></body></html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="creator-participation-endpoint" content="">
+    <title>Comfy builders · Across the eras</title>
+    <link rel="stylesheet" href="./creators.css">
+    <script src="./creators.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <a href="/valheim/">← Valheim gallery</a>
+      <a id="directory-link" href="/valheim/creators/">All builders</a>
+    </header>
+    <main>
+      <p class="eyebrow">THE COMFY COMMUNITY</p>
+      <h1 id="title">Across the eras</h1>
+      <p id="intro">Find a builder. Explore their work, shared creations and photographs through the years.</p>
+
+      <section id="participation-summary-block" class="participation-block">
+        <h2>Your participation snapshot</h2>
+        <p id="participation-summary" role="status">No local participation recorded yet.</p>
+        <p id="global-participation" class="muted" hidden></p>
+        <label>Volunteer handle
+          <input id="participant-handle" type="text" maxlength="80" placeholder="Name this volunteer uses across claims">
+        </label>
+        <div class="actions-row">
+          <button id="copy-activity" type="button">Copy participation payload</button>
+        </div>
+      </section>
+
+      <div id="filters">
+        <label>Find a builder <input id="search" type="search" placeholder="Name or recorded alias"></label>
+        <label>Era <select id="era"><option value="">Every era</option></select></label>
+      </div>
+      <p id="status" role="status">Opening the community archive…</p>
+      <div id="content"></div>
+      <button id="more" hidden>Show more</button>
+      <footer>Credits follow the creators recorded on saved construction pieces. Shared albums can appear in several builders' threads. Matching names alone never join characters. Historical photo albums retain their original attribution and links.</footer>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <section id="claim-modal" class="modal" hidden>
+      <div class="sheet">
+        <h2 id="claim-title">Claim build</h2>
+        <p id="claim-build-label" class="muted"></p>
+        <label>Volunteer handle
+          <input id="claim-handle" type="text" maxlength="80" required>
+        </label>
+        <label>Your claim note (optional)
+          <textarea id="claim-note" maxlength="500" rows="4" placeholder="What you built, where to spot your work, and any co-builders you remember."></textarea>
+        </label>
+        <p class="muted">This is an intention marker only. It is not verified in public yet.</p>
+        <div class="actions-row">
+          <button type="button" id="claim-cancel">Cancel</button>
+          <button type="button" id="claim-confirm" class="primary">I built this</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="request-modal" class="modal" hidden>
+      <div class="sheet">
+        <h2 id="request-title">Request additional photographs</h2>
+        <p id="request-build-label" class="muted"></p>
+        <p class="muted">Choose any preset style(s), then add specific notes.</p>
+        <fieldset>
+          <legend>Photography styles</legend>
+          <label><input name="shot-style" type="checkbox" value="wide-overview"> Wide overview + contextual orbit</label>
+          <label><input name="shot-style" type="checkbox" value="entry-detail"> Entry-level detail pass</label>
+          <label><input name="shot-style" type="checkbox" value="signature-interior"> Interior signature shot</label>
+          <label><input name="shot-style" type="checkbox" value="height-variation"> Height-variation pass (high/low)</label>
+          <label><input name="shot-style" type="checkbox" value="night-tone"> Evening tone study</label>
+        </fieldset>
+        <label>Photograph instructions
+          <textarea id="request-note" maxlength="800" rows="4" placeholder="Describe exact viewpoints, framing, season, or what should be visible."></textarea>
+        </label>
+        <label>Contact preference (optional)
+          <input id="request-contact" type="text" maxlength="120" placeholder="Discord, e-mail, or preferred channel">
+        </label>
+        <label><input id="request-priority" type="checkbox"> Mark as urgent</label>
+        <p class="muted" id="request-note-inline"></p>
+        <div class="actions-row">
+          <button type="button" id="request-cancel">Cancel</button>
+          <button type="button" id="request-confirm" class="primary">Submit request</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="activity-modal" class="modal" hidden>
+      <div class="sheet">
+        <h2>Submission payload</h2>
+        <p class="muted">Send this payload to the operations lead or archive it with a coordinator.</p>
+        <textarea id="activity-payload" rows="14" readonly></textarea>
+        <div class="actions-row">
+          <button type="button" id="activity-copy">Copy JSON</button>
+          <button type="button" id="activity-close">Close</button>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

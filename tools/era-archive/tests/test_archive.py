@@ -61,6 +61,86 @@ class ArchiveTest(unittest.TestCase):
             public_shared=next(b for b in projection['builds'] if b['pieces']==2)
             self.assertEqual([.5,.5],[c['share'] for c in public_shared['contributors']])
 
+    def test_one_photograph_per_stamped_building_however_many_owners_it_has(self):
+        """Era 14 queued 238 copies of one 1,629-piece lot as 238 jobs: coverage ranks by
+        owner, and a world that hands every player an identical plot gives each copy a
+        different one. Identity is the prefab multiset, so the copies collapse to one."""
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);package={}
+            with duckdb.connect(':memory:') as con:
+                con.execute('CREATE TABLE world_snapshot(snapshot_id BIGINT)');con.execute('INSERT INTO world_snapshot VALUES (1001)')
+                con.execute('CREATE TABLE zdo(snapshot_id BIGINT,zdo_index BIGINT,category VARCHAR,prefab_hash INTEGER,prefab_name VARCHAR,x DOUBLE,y DOUBLE,z DOUBLE,creator_id BIGINT,owner_id BIGINT)')
+                # Two identical two-piece lots 100 m apart under different owners, then a
+                # build of a different prefab that no template matches.
+                con.execute("""INSERT INTO zdo VALUES
+                    (1001,1,'BUILDING',1,'wall',0,0,0,1,0),(1001,2,'BUILDING',1,'wall',1,0,0,1,0),
+                    (1001,3,'BUILDING',1,'wall',100,0,0,2,0),(1001,4,'BUILDING',1,'wall',101,0,0,2,0),
+                    (1001,5,'BUILDING',2,'roof',200,0,0,3,0),(1001,6,'BUILDING',2,'roof',201,0,0,3,0)""")
+                con.execute('CREATE TABLE zdo_field(snapshot_id BIGINT,zdo_index BIGINT,field_name VARCHAR,string_value VARCHAR)')
+                con.execute('CREATE TABLE container_item(crafter_id BIGINT,crafter_name VARCHAR,container_zdo_index BIGINT)')
+                for table in ('world_snapshot','zdo','zdo_field','container_item'):
+                    path=root/(table+'.parquet');con.execute(f'COPY {table} TO {archive.sql_path(path)} (FORMAT PARQUET)');package[table]=path
+            entry={'era':14,'slug':'era14','sourceKey':'a'*64,'snapshotId':1001,'ingestion':{'artifacts':{}}}
+            with patch.object(community,'verify_package',return_value=package):result=community.analyze_era(root,entry)
+            projection=community.project(root,[result])
+            builds={b['buildKey']:b for b in projection['builds']}
+            self.assertEqual(3,len(builds))
+            keys=[b['templateKey'] for b in builds.values()]
+            self.assertEqual(2,len(set(keys)))
+            self.assertEqual([1,2,2],sorted(b['templateCopies'] for b in builds.values()))
+            photography=[j for j in archive.load(root/'analysis/jobs.json')['jobs'] if j['kind']=='photography']
+            self.assertEqual(2,len(photography))
+            self.assertEqual({1,2},{j['templateCopies'] for j in photography})
+            queued={j['buildKey'] for j in photography}
+            skipped=[b for b in builds.values() if b['buildKey'] not in queued]
+            self.assertEqual(1,len(skipped))
+            # The copy points at the photograph that stands for it rather than vanishing.
+            self.assertIn(skipped[0]['duplicateOfBuildKey'],queued)
+            self.assertEqual(skipped[0]['templateKey'],builds[skipped[0]['duplicateOfBuildKey']]['templateKey'])
+            # Its owner is left uncovered, so a distinct build of theirs stays worth queueing.
+            self.assertNotIn('duplicateOfBuildKey',builds[skipped[0]['duplicateOfBuildKey']])
+
+    def test_captured_photographs_reach_the_album_they_were_taken_of(self):
+        """Modern builds carried photos:[] forever: the only code that ever appended a
+        photograph was import_legacy. So captures had no route to the site, and the
+        coverage ranker -- which reads build["photos"] -- kept re-queueing builds that
+        had already been photographed."""
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            builds=[{"buildKey":"a"*64,"sourceKey":"src","photos":[],"contributors":[{"builderKey":"b"*32}]},
+                    {"buildKey":"c"*64,"sourceKey":"src","photos":[],"contributors":[{"builderKey":"d"*32}]}]
+            manifest={"schema":"steward-capture-gallery/v1","era":"era14","sourceKey":"src",
+                      "snapshotId":1007,"base":"https://host/valheim/era14/","photographs":2,
+                      "builds":{"a"*64:[{"id":"era14-aaaaaaaaaaaa-orbit1","thumb":"t","large":"l",
+                                         "href":"h","label":"Build aaaaaaaa","sha256":"x",
+                                         "capture":{"clearance":"planned"}}],
+                                "e"*64:[{"id":"era14-eeeeeeeeeeee-orbit1","thumb":"t","large":"l",
+                                         "href":"h","label":"gone","sha256":"y","capture":{}}]}}
+            path=root/"captures-era14.json";archive.save(path,manifest)
+            receipts,attached,unresolved=community.attach_captures(builds,[path])
+            self.assertEqual((1,1),(attached,unresolved))
+            self.assertEqual(1,len(builds[0]["photos"]));self.assertEqual([],builds[1]["photos"])
+            # Only the fields the front end reads survive; sha256 and receipt data do not
+            # belong in a public projection.
+            self.assertEqual({"id","thumb","large","href","label"},set(builds[0]["photos"][0]))
+            self.assertEqual(1,receipts[0]["unresolvedBuilds"])
+            self.assertEqual(archive.digest(path),receipts[0]["manifest"])
+            # The ranker's own eligibility test now excludes the photographed build.
+            self.assertEqual([builds[1]],[b for b in builds if not b["photos"] and b.get("contributors")])
+
+            for broken,reason in ((("schema","steward-era-jobs/v1"),"wrong schema"),
+                                  (("base","/valheim/era14/"),"no origin"),
+                                  (("sourceKey","other"),"crossed source")):
+                bad=dict(manifest);bad[broken[0]]=broken[1]
+                bad["builds"]={"a"*64:manifest["builds"]["a"*64]}
+                archive.save(path,bad)
+                with self.assertRaises(ValueError,msg=reason):community.attach_captures(
+                    [{"buildKey":"a"*64,"sourceKey":"src","photos":[],"contributors":[]}],[path])
+            bad=dict(manifest,builds={"a"*64:[{"id":"../escape","thumb":"t","large":"l","href":"h","label":"x"}]})
+            archive.save(path,bad)
+            with self.assertRaises(ValueError):community.attach_captures(
+                [{"buildKey":"a"*64,"sourceKey":"src","photos":[],"contributors":[]}],[path])
+
     def test_source_pairs_reject_name_mismatch_and_deduplicate_content(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);source=root/'source';source.mkdir();out=root/'processed'

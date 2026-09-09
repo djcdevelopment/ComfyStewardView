@@ -74,7 +74,20 @@ cat /home/derek/valheim-capture/era14-quiet-20260909/status.json
 
 To resume after deliberately clearing a stop request, launch the same worker and
 root using a new user systemd unit with `Restart=no`, `KillMode=mixed`, and
-`TimeoutStopSec=150`. The persistent state prevents completed shots from being
+`TimeoutStopSec=150`. The unit is transient, so it no longer exists once it has
+stopped and `systemctl --user start` returns exit 5; re-issue `systemd-run`. Over a
+non-interactive SSH the user manager also needs its socket named explicitly.
+
+```sh
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
+export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+systemd-run --user --unit=steward-era14-capture --property=Restart=no \
+  --property=KillMode=mixed --property=TimeoutStopSec=150 \
+  /usr/bin/python3 /home/derek/valheim-capture/era14-quiet-20260909/capture_worker.py \
+  --root /home/derek/valheim-capture/era14-quiet-20260909
+```
+
+The persistent state prevents completed shots from being
 repeated. Exhausted retries require investigation, not automatic reset.
 
 After stopping the service and confirming Valheim is closed, restore the prior
@@ -104,6 +117,30 @@ The initial compressed plan/worker transfer was 344214 bytes, followed by a
 `67d17346cc4bd66bb626ccfb4930444f93acd23708f32ca97ef127d6b07c69d9`,
 from pushed revision `cdd6b218bb5452f99bf09ed35dbc548d7146f628`.
 This proves installation and startup, not completion of the 4,000-shot campaign.
+
+## Retiring subjects from a running campaign
+
+A world that hands every player an identical plot produces hundreds of copies of one
+building under hundreds of different owners, and coverage ranking puts each of them near
+the front of the queue. `find_template_builds.py` groups a frozen campaign's subjects by
+the SHA-256 of their `(prefab_hash, count)` histogram and writes a retire list;
+`retire_builds.py` applies it on AM4. Footprint is not enough to judge by — Era 14's
+88 x 88 cohort shares a lot size and holds 25 different buildings.
+
+Stop the campaign first and wait for `state: stopped`; the tool refuses a running one, a
+`campaign.json` that no longer matches `runtime.json`, and a list from another snapshot.
+A retired build keeps its entry with an empty `shots` array, so batch names stay aligned
+with the attempt directories already on disk. Journal rows for deleted photographs move
+to `retired.json` with sha256 and receipt intact before any file is unlinked, and
+`runtime.json` is re-stamped last. `prune-receipt.json` records the whole operation.
+
+```sh
+python3 retire_builds.py --root <campaign root> --retire-file retire-<era>.json \
+    --reason '...' --delete-captured --dry-run
+```
+
+The 2026-09-09 Era 14 application is recorded in
+[the template retirement receipt](../../docs/era14-template-retirement-2026-09-09.md).
 
 ## Stage additional worlds when network use is authorized
 

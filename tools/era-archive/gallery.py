@@ -8,11 +8,48 @@ import shutil
 from archive import REPO, artifact, load, now, save
 
 
-def project(document, destination, world_url):
+def project(document, destination, world_url, analysis_root=None):
     destination=Path(destination)
     if not world_url.startswith("https://"):
         raise ValueError("World URL must use HTTPS")
     destination.mkdir(parents=True,exist_ok=True)
+
+    def normalize_int(value):
+        if value is None:
+            return 0
+        if isinstance(value, bool):
+            return int(value)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
+    def export_participation(path):
+        if not path.exists():
+            return None
+        source = load(path)
+        if not isinstance(source, dict):
+            return None
+        return {
+            "schema": "steward-creator-participation-public/v1",
+            "generatedAt": source.get("generatedAt", now()),
+            "source": source.get("schema", "steward-creator-participation/v1"),
+            "participants": normalize_int(source.get("participants", source.get("totalParticipants", source.get("total")))),
+            "claims": normalize_int(source.get("claims")),
+            "requests": normalize_int(source.get("requests")),
+            "openRequests": normalize_int(source.get("openRequests", source.get("pendingRequests"))),
+            "sourcePath": "analysis/participation.json",
+            "lastUpdatedAt": source.get("updatedAt", source.get("generatedAt")),
+        }
+
+    def write_participation_snapshot():
+        if analysis_root is None:
+            return
+        participation = export_participation(analysis_root / "analysis" / "participation.json")
+        if participation is None:
+            return
+        save(destination / "participation.json", participation)
+
     builds={b["buildKey"]:b for b in document["builds"]}
     directory=[]
     template=(REPO/"tools/era-archive/web/index.html").read_text(encoding="utf-8")
@@ -40,6 +77,7 @@ def project(document, destination, world_url):
     (destination/"index.html").write_text(template,encoding="utf-8")
     for name in ("creators.js","creators.css"):
         shutil.copyfile(REPO/"tools/era-archive/web"/name,destination/name)
+    write_participation_snapshot()
     # Whitelist above deliberately excludes raw character IDs, names from signs, coordinates,
     # source paths, inventories, world seed, snapshot hashes and private identity-review evidence.
     receipt={"schema":"steward-gallery-projection/v1","createdAt":now(),"builders":len(directory),
@@ -55,7 +93,7 @@ def main():
     parser.add_argument("--world-url",required=True)
     args=parser.parse_args()
     if args.destination.exists(): raise ValueError("Use a new immutable projection directory")
-    receipt=project(load(args.output_root/"analysis/community-private.json"),args.destination,args.world_url)
+    receipt=project(load(args.output_root/"analysis/community-private.json"),args.destination,args.world_url,args.output_root)
     print(f"VERIFIED projection: {receipt['builders']:,} creator threads; {receipt['albums']:,} albums")
 
 if __name__=="__main__":main()
