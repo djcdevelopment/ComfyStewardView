@@ -164,6 +164,11 @@ def project(document, destination, world_url, analysis_root=None):
     (destination/"index.html").write_text(template,encoding="utf-8")
     for name in ("creators.js","creators.css"):
         shutil.copyfile(REPO/"tools/era-archive/web"/name,destination/name)
+    stats_src = REPO / "tools/era-archive/web/stats.html"
+    if stats_src.exists():
+        stats_dir = destination / "stats"
+        stats_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(stats_src, stats_dir / "index.html")
     # A four-byte file whose query string is the search log: Caddy already records every
     # request as JSON with its URI, so this needs no service, no write path and no store.
     (destination/"search-beacon.txt").write_text("ok\n",encoding="utf-8")

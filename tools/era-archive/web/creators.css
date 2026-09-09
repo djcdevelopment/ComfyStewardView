@@ -477,3 +477,148 @@ footer {
     text-align: center;
   }
 }
+
+/* Navigation links */
+.nav-links {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.nav-links a.active {
+  color: #e2e9e5;
+  font-weight: 600;
+  border-bottom: 2px solid #7cae90;
+}
+
+/* Stats Page Styling */
+.stat-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin: 28px 0 40px;
+}
+
+.stat-card {
+  background: #17262a;
+  border: 1px solid #304247;
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-num {
+  font: 2.2rem / 1.1 Georgia, serif;
+  color: #b8dfbd;
+  margin-bottom: 6px;
+}
+
+.stat-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e2e9e5;
+  margin-bottom: 4px;
+}
+
+.stat-desc {
+  font-size: 0.8rem;
+  color: #9fb5af;
+}
+
+.stats-section {
+  margin: 44px 0;
+}
+
+.stats-section h2 {
+  font-size: 1.6rem;
+  margin-bottom: 6px;
+}
+
+.stats-table-wrap {
+  overflow-x: auto;
+  margin: 18px 0 12px;
+  border: 1px solid #304247;
+  border-radius: 8px;
+  background: #152428;
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stats-table th,
+.stats-table td {
+  padding: 9px 12px;
+  text-align: right;
+  border-bottom: 1px solid #223438;
+}
+
+.stats-table th {
+  background: #121f23;
+  color: #c8deda;
+  font-weight: 600;
+  border-bottom: 2px solid #304247;
+  position: sticky;
+  top: 0;
+}
+
+.stats-table th.text-left,
+.stats-table td.text-left {
+  text-align: left;
+}
+
+.stats-table tbody tr:nth-child(even) {
+  background: #142226;
+}
+
+.stats-table tbody tr:hover {
+  background: #1d3137;
+}
+
+.stats-table tfoot tr {
+  background: #17262a;
+  border-top: 2px solid #44615a;
+}
+
+.stats-table tfoot td {
+  border-bottom: none;
+  font-weight: 600;
+  color: #b8dfbd;
+}
+
+.table-note {
+  font-size: 0.82rem;
+  color: #9fb5af;
+  margin-top: 8px;
+}
+
+.archetypes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.archetype-card {
+  background: #17262a;
+  border: 1px solid #304247;
+  border-radius: 8px;
+  padding: 16px 18px;
+}
+
+.archetype-card h3 {
+  font-size: 1.05rem;
+  color: #b8dfbd;
+  margin-bottom: 6px;
+}
+
+.archetype-card p {
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
