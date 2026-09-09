@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""Move finished capture masters off the capture host a batch at a time.
+
+The capture host's link is slow -- measured 129 KB/s, with 83 ms RTT to OMEN and 75 ms
+to the web host -- so an 18 GB master set is a five-hour transfer that cannot be done in
+one window. But the host also needs free space for the next era, and `disk_stop` halts a
+campaign when free space falls below `minFreeBytes`. So: move a batch, verify it, delete
+that batch, repeat. Every batch that lands is space the running campaign gets to use.
+
+Verification is the campaign's own journal. `state.json` already records a sha256 for
+every harvested photograph, so a file leaves the host only after the copy on this side
+hashes to what the journal says it should. Nothing is trusted to the transfer.
+
+Note the consequence: once masters are moved, re-running the capture worker against that
+campaign root fails its startup integrity check, because `Worker.__init__` re-verifies
+every completed photograph. That is correct -- the files really did move -- but it means
+relocation is for finished campaigns only.
+
+Usage:
+  python shuttle_masters.py --state <state.json> --dest <dir> --remote-root <path>
+                            [--ssh-target homebase] [--batch 50] [--stop-after N]
+                            [--dry-run]
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import tarfile
+import time
+
+HEREDOC = "STEWARD_EOF"
+
+# Git for Windows rewrites POSIX-looking arguments into Windows paths before a native
+# binary parses them, so "-C /home/derek/..." reached the remote tar as
+# "C:/Program Files/Git/home/...". These switches are set for our children as a belt;
+# the braces are that every remote command travels on stdin rather than in argv.
+ENV = {**os.environ, "MSYS2_ARG_CONV_EXCL": "*", "MSYS_NO_PATHCONV": "1"}
+
+
+def read(path):
+    return json.loads(Path(path).read_text(encoding="utf-8-sig"))
+
+
+def write(path, value):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for block in iter(lambda: stream.read(4 * 1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--state", type=Path, required=True,
+                   help="a local copy of the campaign's state.json -- the manifest")
+    p.add_argument("--dest", type=Path, required=True)
+    p.add_argument("--remote-root", required=True, help="campaign root on the capture host")
+    p.add_argument("--ssh-target", default="homebase")
+    p.add_argument("--batch", type=int, default=50)
+    p.add_argument("--stop-after", type=int, default=0,
+                   help="stop after this many batches (0 = until everything has moved)")
+    p.add_argument("--dry-run", action="store_true")
+    return p.parse_args()
+
+
+def pending(entries, dest):
+    """Files not yet sitting locally at the right size. Hashing everything on every pass
+    would cost more than the transfer does; the per-batch check below is the real gate."""
+    return [(name, entry) for name, entry in entries
+            if not ((dest / name).exists()
+                    and (dest / name).stat().st_size == entry["metadata"]["bytes"])]
+
+
+def script_with_list(root, command, names, tail=""):
+    """A shell script whose file list arrives as a heredoc, not as arguments."""
+    lines = ["set -e", "cd " + shlex.quote(root), command + " <<'" + HEREDOC + "'"]
+    lines.extend(names)
+    lines.append(HEREDOC)
+    if tail:
+        lines.append(tail)
+    return "\n".join(lines) + "\n"
+
+
+def remote_script(target, script, sink=None):
+    """Run a script on the capture host with nothing but 'bash -s' in argv."""
+    command = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=20", target, "bash -s"]
+    process = subprocess.Popen(command, stdin=subprocess.PIPE,
+                               stdout=(sink or subprocess.PIPE),
+                               stderr=subprocess.PIPE, env=ENV)
+    out, errors = process.communicate(script.encode())
+    return process.returncode, out, errors.decode(errors="replace")
+
+
+def fetch(target, remote_root, names, dest):
+    """One tar stream per batch: a per-file scp would pay the 83 ms handshake 50 times.
+
+    Unpacked with Python's tarfile rather than the tar binary, for the same reason the
+    command travels on stdin -- no path is ever handed to an external program.
+    """
+    bundle = dest / ".incoming.tar"
+    try:
+        with bundle.open("wb") as sink:
+            code, _, errors = remote_script(
+                target, script_with_list(remote_root, "tar -cf - -T -", names), sink=sink)
+        if code:
+            print("  remote tar failed: " + errors.strip()[:200])
+            return False
+        with tarfile.open(bundle) as tar:
+            for member in tar.getmembers():
+                if (not member.isfile() or member.name.startswith("/")
+                        or ".." in Path(member.name).parts):
+                    print("  refusing unsafe member: " + member.name)
+                    return False
+            # filter="data" strips ownership/permission metadata and refuses
+            # anything outside the destination; the default becomes this in 3.14.
+            tar.extractall(dest, filter="data")
+        return True
+    finally:
+        bundle.unlink(missing_ok=True)
+
+
+def main():
+    args = parse_args()
+    dest = args.dest.resolve()
+    dest.mkdir(parents=True, exist_ok=True)
+    state = read(args.state)
+    entries = sorted(((v["file"], v) for v in state["completed"].values()), key=lambda x: x[0])
+    print(f"{len(entries):,} masters in the journal", flush=True)
+
+    receipt_path = dest / "relocation.json"
+    receipt = read(receipt_path) if receipt_path.exists() else {
+        "schema": "steward-master-relocation/v1", "sourceKey": state["sourceKey"],
+        "remoteRoot": args.remote_root, "moved": [], "bytes": 0}
+    moved = {m["file"] for m in receipt["moved"]}
+    todo = [e for e in pending(entries, dest) if e[0] not in moved]
+    print(f"{len(todo):,} still on the capture host", flush=True)
+    if args.dry_run:
+        print(f"dry run: would move {len(todo):,}")
+        return
+
+    batches = 0
+    while todo:
+        if args.stop_after and batches >= args.stop_after:
+            print(f"stopping after {batches} batch(es) as asked")
+            break
+        chunk = todo[: args.batch]
+        started = time.monotonic()
+        if not fetch(args.ssh_target, args.remote_root, [n for n, _ in chunk], dest):
+            print("transfer failed; the host is untouched")
+            break
+
+        verified, failed = [], []
+        for name, entry in chunk:
+            local = dest / name
+            if not local.exists():
+                failed.append(name)
+            elif sha256(local) != entry["sha256"]:
+                failed.append(name)
+                local.unlink(missing_ok=True)
+            else:
+                verified.append((name, entry))
+        if failed:
+            print(f"  {len(failed)} file(s) failed verification, kept on the host; "
+                  f"first {failed[0]}")
+        if not verified:
+            print("nothing verified in this batch; stopping rather than looping")
+            break
+
+        code, out, errors = remote_script(args.ssh_target, script_with_list(
+            args.remote_root, "xargs -d '\\n' rm -f --", [n for n, _ in verified],
+            tail="df --output=avail -B1 /home | tail -1"))
+        if code:
+            print("  remote delete failed: " + errors.strip()[:200])
+            break
+        free = int(out.decode(errors="replace").strip().splitlines()[-1])
+
+        moved_bytes = sum(e["metadata"]["bytes"] for _, e in verified)
+        receipt["moved"].extend({"file": n, "sha256": e["sha256"],
+                                 "bytes": e["metadata"]["bytes"]} for n, e in verified)
+        receipt["bytes"] += moved_bytes
+        receipt["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        write(receipt_path, receipt)
+
+        batches += 1
+        elapsed = time.monotonic() - started
+        todo = todo[len(chunk):]
+        print(f"  batch {batches}: {len(verified)} moved, {moved_bytes/1e6:.0f} MB in "
+              f"{elapsed:.0f}s ({moved_bytes/elapsed/1e3:.0f} KB/s); "
+              f"host free {free/1e9:.1f} GB; {len(todo):,} left", flush=True)
+
+    print(f"relocated {len(receipt['moved']):,} masters, {receipt['bytes']/1e9:.2f} GB total")
+    print(receipt_path)
+
+
+if __name__ == "__main__":
+    main()
