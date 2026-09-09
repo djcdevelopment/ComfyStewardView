@@ -377,7 +377,7 @@ class ArchiveTest(unittest.TestCase):
                 'builds':[{'buildKey':build,'era':7,'slug':'era7','label':'House','pieces':3,'photos':[],
                            'contributors':[{'builderKey':key,'pieces':3,'share':1,'evidence':'saved-piece-creator'}],
                            'bounds':{'minX':123.45},'sourceKey':'secret-source','snapshotId':1001}]}
-            gallery.project(doc,Path(temp),'https://world.example/world/')
+            gallery.project(doc,Path(temp),'https://world.example/world/',min_build_pieces=0)
             raw=''.join(p.read_text() for p in Path(temp).rglob('*.json'))
             for private in ('9007199254740993','private-evidence','123.45','secret-source','characterIds','observations'):
                 self.assertNotIn(private,raw)

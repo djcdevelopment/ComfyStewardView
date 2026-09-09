@@ -76,7 +76,41 @@ def with_head(template, block):
     return template[:start] + block + template[end:]
 
 
-def project(document, destination, world_url, analysis_root=None):
+def classify_volume_tier(pieces):
+    """Categorize builder volume across the 5 community scale tiers."""
+    if pieces >= 10000:
+        return "Megabuilder"
+    if pieces >= 2500:
+        return "Major Architect"
+    if pieces >= 500:
+        return "Established Builder"
+    if pieces >= 50:
+        return "Homesteader"
+    return "Explorer"
+
+
+def is_qualifying_album(build, contributor, min_build_pieces=20, min_builder_pieces=10, min_builder_share=0.05):
+    """Retain substantial construction and all photographed frames; prune trail markers."""
+    if min_build_pieces <= 0 and min_builder_pieces <= 0:
+        return True
+    if build.get("photos") or build.get("photoStatus") == "rejected":
+        return True
+    if build.get("pieces", 0) < min_build_pieces:
+        return False
+    pieces = contributor.get("pieces") or 0
+    share = contributor.get("share") or 0.0
+    if pieces >= 25:
+        return True
+    if pieces >= min_builder_pieces and share >= min_builder_share:
+        return True
+    if pieces >= 5 and share >= 0.25:
+        return True
+    if share >= 0.50:
+        return True
+    return False
+
+
+def project(document, destination, world_url, analysis_root=None, min_build_pieces=20, min_builder_pieces=10, min_builder_share=0.05):
     destination=Path(destination)
     if not world_url.startswith("https://"):
         raise ValueError("World URL must use HTTPS")
@@ -123,11 +157,17 @@ def project(document, destination, world_url, analysis_root=None):
     template=(REPO/"tools/era-archive/web/index.html").read_text(encoding="utf-8")
     if HEAD_START not in template or HEAD_END not in template:
         raise ValueError("Template lost its per-thread head markers")
+    published_build_keys=set()
     for builder in document["builders"]:
         if not builder["builds"]: continue
         eras=defaultdict(list)
         for key in builder["builds"]:
             b=builds[key]
+            contributor = next((c for c in b.get("contributors", []) if c.get("builderKey") == builder["builderKey"]), None)
+            if contributor is None:
+                contributor = {"pieces": b.get("pieces", 0), "share": 1.0}
+            if not is_qualifying_album(b, contributor, min_build_pieces, min_builder_pieces, min_builder_share):
+                continue
             public={k:b[k] for k in ("buildKey","era","slug","label","pieces","contributors","photos")}
             # "rejected" means photographed and withheld, which the thread must not show as
             # though nobody had visited yet.
@@ -137,8 +177,23 @@ def project(document, destination, world_url, analysis_root=None):
             public["terrainStatus"]="historical-gallery" if public["worldUrl"] is None else "awaiting-runtime"
             public["galleryUrl"]=b.get("galleryUrl")
             eras[b["era"]].append(public)
+            published_build_keys.add(key)
+        if not eras:
+            continue
+        builder_pieces = sum(
+            c["pieces"] for bs in eras.values() for b in bs
+            for c in b.get("contributors", []) if c.get("builderKey") == builder["builderKey"] and c.get("pieces")
+        )
+        album_count = sum(len(bs) for bs in eras.values())
+        photo_count = sum(len(b["photos"]) for bs in eras.values() for b in bs)
         record={k:builder[k] for k in ("builderKey","displayName","aliases","nameStatus")}
-        record.update(eras=sorted(eras,reverse=True),albums=len(builder["builds"]),photos=sum(len(b["photos"]) for bs in eras.values() for b in bs))
+        record.update(
+            eras=sorted(eras,reverse=True),
+            albums=album_count,
+            photos=photo_count,
+            pieces=builder_pieces,
+            tier=classify_volume_tier(builder_pieces),
+        )
         directory.append(record)
         save(destination/"threads"/(builder["builderKey"]+".json"),{**record,"eras":[{"era":e,"albums":sorted(bs,key=lambda b:(-len(b["photos"]),-b["pieces"],b["buildKey"]))} for e,bs in sorted(eras.items(),reverse=True)]})
         page=destination/builder["builderKey"]/"index.html";page.parent.mkdir(parents=True,exist_ok=True)
@@ -150,6 +205,8 @@ def project(document, destination, world_url, analysis_root=None):
     # albums themselves, across every era that produced one.
     era_albums=defaultdict(int);era_shot=defaultdict(int);era_photos=defaultdict(int)
     for b in builds.values():
+        if b["buildKey"] not in published_build_keys:
+            continue
         era_albums[b["era"]]+=1
         if b["photos"]:
             era_shot[b["era"]]+=1;era_photos[b["era"]]+=len(b["photos"])
@@ -159,7 +216,8 @@ def project(document, destination, world_url, analysis_root=None):
         "buildersWithPhotos":sum(1 for r in directory if r["photos"])}
     save(destination/"directory.json",{"schema":"steward-creator-directory/v1","generatedAt":document["generatedAt"],
         "builders":sorted(directory,key=lambda b:(b["displayName"].casefold(),b["builderKey"])),
-        "eras":document["eras"],"photography":photography,"unattributedAlbums":sum(not b["contributors"] for b in builds.values()),
+        "eras":document["eras"],"photography":photography,
+        "unattributedAlbums":sum(not b["contributors"] for b in builds.values() if b["buildKey"] in published_build_keys),
         "legacyImports":[{k:r[k] for k in ("slug","images","albums","unresolvedImages")} for r in document["legacyImports"]]})
     (destination/"index.html").write_text(template,encoding="utf-8")
     for name in ("creators.js","creators.css"):
@@ -178,7 +236,7 @@ def project(document, destination, world_url, analysis_root=None):
     # Whitelist above deliberately excludes raw character IDs, names from signs, coordinates,
     # source paths, inventories, world seed, snapshot hashes and private identity-review evidence.
     receipt={"schema":"steward-gallery-projection/v1","createdAt":now(),"builders":len(directory),
-        "albums":len(builds),"files":[artifact(destination,p) for p in sorted(destination.rglob("*")) if p.is_file() and p.name!="receipt.json"]}
+        "albums":len(published_build_keys),"files":[artifact(destination,p) for p in sorted(destination.rglob("*")) if p.is_file() and p.name!="receipt.json"]}
     save(destination/"receipt.json",receipt)
     return receipt
 
@@ -188,9 +246,20 @@ def main():
     parser.add_argument("--output-root",type=Path,required=True)
     parser.add_argument("--destination",type=Path,required=True)
     parser.add_argument("--world-url",required=True)
+    parser.add_argument("--min-build-pieces",type=int,default=20)
+    parser.add_argument("--min-builder-pieces",type=int,default=10)
+    parser.add_argument("--min-builder-share",type=float,default=0.05)
     args=parser.parse_args()
     if args.destination.exists(): raise ValueError("Use a new immutable projection directory")
-    receipt=project(load(args.output_root/"analysis/community-private.json"),args.destination,args.world_url,args.output_root)
+    receipt=project(
+        load(args.output_root/"analysis/community-private.json"),
+        args.destination,
+        args.world_url,
+        args.output_root,
+        min_build_pieces=args.min_build_pieces,
+        min_builder_pieces=args.min_builder_pieces,
+        min_builder_share=args.min_builder_share,
+    )
     print(f"VERIFIED projection: {receipt['builders']:,} creator threads; {receipt['albums']:,} albums")
 
 if __name__=="__main__":main()

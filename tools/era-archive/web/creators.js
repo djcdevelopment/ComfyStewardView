@@ -307,7 +307,12 @@
       card.append(
         link(b.displayName, new URL(`${b.builderKey}/`, base)),
         node('p', sentenceCase(eraRange(b.eras))),
-        node('p', `${b.albums.toLocaleString()} albums · ${b.photos.toLocaleString()} photos`),
+        node('p', [
+          plural(b.albums, 'album'),
+          b.pieces != null ? `${b.pieces.toLocaleString()} pieces` : null,
+          b.tier || null,
+          `${b.photos.toLocaleString()} photos`
+        ].filter(Boolean).join(' · ')),
       );
 
       const chips = addBuilderParticipationLine(b.builderKey);
@@ -395,11 +400,15 @@
     const named = (PLACEHOLDER_NAME.test(a.displayName) ? 1 : 0) - (PLACEHOLDER_NAME.test(b.displayName) ? 1 : 0);
     if (named) return named;
     if (a.photos !== b.photos) return b.photos - a.photos;
+    if ((b.pieces || 0) !== (a.pieces || 0)) return (b.pieces || 0) - (a.pieces || 0);
     return a.displayName.localeCompare(b.displayName, undefined, {sensitivity: 'base'});
   }
 
   function builderSummary(b) {
-    const parts = [plural(b.albums, 'build'), `${b.photos.toLocaleString()} photos`];
+    const parts = [plural(b.albums, 'build')];
+    if (b.pieces != null) parts.push(`${b.pieces.toLocaleString()} pieces`);
+    if (b.tier) parts.push(b.tier);
+    parts.push(`${b.photos.toLocaleString()} photos`);
     const range = eraRange(b.eras);
     if (range) parts.push(range);
     return parts.join(' · ');
@@ -692,7 +701,11 @@
     if ($('search-hero')) $('search-hero').hidden = true;
     const eraCount = thread.eras.reduce((sum, e) => sum + e.albums.length, 0);
     $('title').textContent = thread.displayName;
-    $('intro').textContent = `${eraCount.toLocaleString()} build albums · ${thread.photos.toLocaleString()} photographs`;
+    const introParts = [plural(eraCount, 'build album')];
+    if (thread.pieces != null) introParts.push(`${thread.pieces.toLocaleString()} construction pieces`);
+    if (thread.tier) introParts.push(thread.tier);
+    introParts.push(`${thread.photos.toLocaleString()} photographs`);
+    $('intro').textContent = introParts.join(' · ');
     $('status').textContent = thread.nameStatus === 'ambiguous'
       ? 'Several recorded names need review. Searchable aliases are retained.'
       : 'No unresolved name conflicts for this builder.';
