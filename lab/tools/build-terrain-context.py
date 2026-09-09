@@ -276,78 +276,34 @@ def parse_world_edits(db_path: Path) -> tuple[np.ndarray, np.ndarray, dict[str, 
         "mudRoadCount": 0,
         "pavedRoadCount": 0,
     }
-    unpack_u16 = struct.Struct("<H").unpack_from
-    unpack_i32 = struct.Struct("<i").unpack_from
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools' / 'era-archive'))
+    from records import records
     legacy: list[tuple[int, float, float]] = []
-
-    with db_path.open("rb") as handle:
-        data = mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ)
-        try:
-            data_version = unpack_i32(data, 0)[0]
-            if data_version < 33:
-                raise ValueError(f"unsupported world DB version {data_version}; expected 33+")
-            offset = 4 + (8 if data_version >= 4 else 0) + 8 + 4
-            zdo_count = unpack_i32(data, offset)[0]
-            offset += 4
-            stats["zdoCount"] = zdo_count
-            stats["dataVersion"] = data_version
-            for _index in range(zdo_count):
-                flags = unpack_u16(data, offset)[0]
-                offset += 2
-                position_offset = offset + 4
-                offset += 4 + 12
-                prefab = unpack_i32(data, offset)[0]
-                offset += 4
-                center_x = struct.unpack_from("<f", data, position_offset)[0]
-                center_z = struct.unpack_from("<f", data, position_offset + 8)[0]
-                if prefab == TERRAIN_COMPILER_HASH:
-                    stats["compilerZdoCount"] += 1
-                elif prefab == MUD_ROAD_HASH:
-                    stats["mudRoadCount"] += 1
-                    legacy.append((prefab, center_x, center_z))
-                elif prefab == PAVED_ROAD_HASH:
-                    stats["pavedRoadCount"] += 1
-                    legacy.append((prefab, center_x, center_z))
-                if flags & 0x1000:
-                    offset += 12
-                low_flags = flags & 0xFF
-                if not low_flags:
-                    continue
-                if low_flags & 0x01:
-                    offset += 5
-                for bit, record_size in ((0x02, 8), (0x04, 16), (0x08, 20), (0x10, 8), (0x20, 12)):
-                    if low_flags & bit:
-                        count, offset = read_small_count(data, offset)
-                        offset += count * record_size
-                if low_flags & 0x40:
-                    count, offset = read_small_count(data, offset)
-                    for _ in range(count):
-                        offset += 4
-                        offset = skip_string(data, offset)
-                if low_flags & 0x80:
-                    count, offset = read_small_count(data, offset)
-                    for _ in range(count):
-                        key_hash = unpack_i32(data, offset)[0]
-                        byte_length = unpack_i32(data, offset + 4)[0]
-                        offset += 8
-                        if byte_length < 0 or offset + byte_length > len(data):
-                            raise ValueError("invalid ZDO byte-array length")
-                        if prefab == TERRAIN_COMPILER_HASH and key_hash == TCDATA_HASH:
-                            try:
-                                raw = gzip.decompress(data[offset:offset + byte_length])
-                                operations, heights, paints = decode_tcdata(raw)
-                            except Exception as error:
-                                raise ValueError(
-                                    f"could not decode TerrainCompiler at ({center_x:g}, {center_z:g}): {error}") from error
-                            height_count, paint_count = aggregate_payload(
-                                center_x, center_z, heights, paints, delta_sum, paint_sum)
-                            stats["compilerPayloadCount"] += 1
-                            stats["operations"] += operations
-                            stats["heightRecordCount"] += height_count
-                            stats["paintRecordCount"] += paint_count
-                        offset += byte_length
-        finally:
-            data.close()
+    with db_path.open('rb') as stream:
+        header = stream.read(28)
+    stats['dataVersion'] = struct.unpack_from('<i', header)[0]
+    stats['zdoCount'] = struct.unpack_from('<i', header, 24)[0]
+    for index, prefab, center_x, _y, center_z, payloads in records(
+            db_path, {TERRAIN_COMPILER_HASH, MUD_ROAD_HASH, PAVED_ROAD_HASH}):
+        if prefab == TERRAIN_COMPILER_HASH:
+            stats['compilerZdoCount'] += 1
+        elif prefab == MUD_ROAD_HASH:
+            stats['mudRoadCount'] += 1
+            legacy.append((prefab, center_x, center_z))
+        elif prefab == PAVED_ROAD_HASH:
+            stats['pavedRoadCount'] += 1
+            legacy.append((prefab, center_x, center_z))
+        for kind, key, value in payloads:
+            if prefab != TERRAIN_COMPILER_HASH or kind != 'bytearray' or key != TCDATA_HASH:
+                continue
+            operations, heights, paints = decode_tcdata(gzip.decompress(value))
+            height_count, paint_count = aggregate_payload(
+                center_x, center_z, heights, paints, delta_sum, paint_sum)
+            stats['compilerPayloadCount'] += 1
+            stats['operations'] += operations
+            stats['heightRecordCount'] += height_count
+            stats['paintRecordCount'] += paint_count
 
     # A small number of pre-compiler road modifiers remain in Era 17. Their
     # persistent prefab footprints are paint-only; keep them visible as one

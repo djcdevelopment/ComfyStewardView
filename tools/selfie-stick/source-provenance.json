@@ -1,0 +1,51 @@
+{
+  "schema": "steward-source-transfer/v1",
+  "repository": "https://github.com/djcdevelopment/baseline",
+  "revision": "7a30d2d7f5319008cf811db9bdbf9bb3e4b404fa",
+  "archive": {
+    "bytes": 67279,
+    "sha256": "89f1e1698d02f23ddf467d795f17cab9f4bc6e2135032391b1a837880cf492d1"
+  },
+  "files": [
+    {
+      "path": "tools/selfie-stick/build_valheim_index.py",
+      "bytes": 35356,
+      "sha256": "94aef0a8867d56ba69df63a80421ed54723218b1c2f7a61b6e75ee4133b275b8"
+    },
+    {
+      "path": "tools/selfie-stick/export_cluster_points.py",
+      "bytes": 9912,
+      "sha256": "fee4321e6d071392b465a754ff3294463f1e9ef60f49b8fc1d225adb55819cd9"
+    },
+    {
+      "path": "tools/selfie-stick/gallery/index.html",
+      "bytes": 37972,
+      "sha256": "11060cffded902fa808f0ea771e06bfe94f722972d42a0936771c5b1a34164c0"
+    },
+    {
+      "path": "tools/selfie-stick/plan_interiors.py",
+      "bytes": 29319,
+      "sha256": "b95aaca1c419442493d888a4f478ef24b1fcf85bfd9abc4be6782d15a065da03"
+    },
+    {
+      "path": "tools/selfie-stick/plan_shots.py",
+      "bytes": 33575,
+      "sha256": "52cbad702b8f27836f4000d8430d4c1806560d82853c0beb04b6d29aef12a8a8"
+    },
+    {
+      "path": "tools/selfie-stick/scan_clusters.py",
+      "bytes": 21263,
+      "sha256": "a4a5e3f34c15db91a3710c556cd575f30668c98edecef03b87613616f706d3f4"
+    },
+    {
+      "path": "tools/selfie-stick/scan_features.py",
+      "bytes": 26125,
+      "sha256": "ea030b446dfff4171dd8bcaec8b87cde58b41b1c853d58139e2910ebc790f194"
+    },
+    {
+      "path": "tools/selfie-stick/scrub_index.py",
+      "bytes": 1447,
+      "sha256": "4fcbe156d57508db87d920bf76ee9996b503c8ec48db3ab642e45f052ebf57fe"
+    }
+  ]
+}

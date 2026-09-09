@@ -4,6 +4,7 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 from PIL import Image
@@ -39,6 +40,23 @@ def tcdata(height_changes=None, paint_changes=None):
 
 
 class TerrainContextBuilderTest(unittest.TestCase):
+    def test_reads_saved_terrain_from_legacy_and_compact_worlds(self):
+        compressed=gzip.compress(tcdata({0:(1.,2.)}))
+        properties=b'\x01'+struct.pack('<ii',builder.TCDATA_HASH,len(compressed))+compressed
+        for version in (29,32,35):
+            with self.subTest(version=version),tempfile.TemporaryDirectory() as temp:
+                if version==29:
+                    prefix=bytearray(71);struct.pack_into('<i',prefix,31,builder.TERRAIN_COMPILER_HASH)
+                    struct.pack_into('<fff',prefix,43,32,0,32)
+                    payload=bytes(prefix)+b'\x00'*6+properties
+                    record=struct.pack('<qii',1,2,len(payload))+payload
+                else:record=struct.pack('<Hhhfffi',128,0,0,32,0,32,builder.TERRAIN_COMPILER_HASH)+properties
+                world=Path(temp)/'world.db';world.write_bytes(struct.pack('<idqii',version,10.,1,2,1)+record)
+                with patch.object(builder,'DETAIL_SIZE',32),patch.object(builder,'WORLD_EDGE_METERS',96):
+                    delta,paint,stats=builder.parse_world_edits(world)
+                self.assertEqual(1,stats['compilerPayloadCount']);self.assertEqual(7,stats['operations'])
+                self.assertEqual(3.,float(delta.sum()))
+
     def test_decodes_and_clamps_height_and_paint(self):
         raw = tcdata(
             {0: (7.5, 2.0), 66: (-7.0, -3.0)},

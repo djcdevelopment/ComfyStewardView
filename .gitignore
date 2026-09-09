@@ -18,3 +18,6 @@ design_mocks/.thumbnail
 # Synthetic validation saves, caches, ledgers, PNGs, and receipts
 /artifacts/synthetic-history/
 /artifacts/creator-dm/
+/tools/selfie-stick/out/
+__pycache__/
+/artifacts/era-archive/

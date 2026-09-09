@@ -4,6 +4,17 @@
   const $ = id => document.getElementById(id);
   const APP_BASE = new URL('.', location.href);
   const API = new URL('api', APP_BASE).pathname.replace(/\/$/, '');
+  const eraParams = new URLSearchParams(location.search);
+  let selectedEra = eraParams.get('era');
+  const selectedBuild = eraParams.get('build');
+  function scopedUrl(value) {
+    const url = new URL(value, location.href);
+    if (url.origin === location.origin && url.pathname.startsWith(`${API}/`)) {
+      if (selectedEra) url.searchParams.set('era', selectedEra);
+      if (selectedBuild && /\/(selection|points|items|scene|build)$/.test(url.pathname)) url.searchParams.set('build', selectedBuild);
+    }
+    return url.href;
+  }
   const REQUESTED_LAB_MODE = new URLSearchParams(location.search).get('lab') === '1';
   let PUBLIC_MODE = true;
   document.body.classList.toggle('public-experience', PUBLIC_MODE);
@@ -128,7 +139,7 @@
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
   async function fetchJson(url, options) {
-    const response = await fetch(url, options);
+    const response = await fetch(scopedUrl(url), options);
     let body = null;
     try { body = await response.json(); } catch (_) {}
     if (!response.ok) throw new Error(body?.error || `${response.status} ${response.statusText}`);
@@ -137,7 +148,7 @@
 
   async function preloadImage(url) {
     const image = new Image();
-    image.src = url;
+    image.src = scopedUrl(url);
     if (image.decode) await image.decode();
     else await new Promise((resolve, reject) => {
       image.onload = resolve;
@@ -147,6 +158,32 @@
 
   async function bootstrap() {
     try {
+      const catalog = await fetchJson(`${API}/eras`);
+      selectedEra = selectedEra || catalog.defaultEra;
+      const selected = catalog.eras.find(era => era.slug === selectedEra);
+      if (!selected) throw new Error('This era is not in the published archive.');
+      const eraSelect = $('era-select');
+      for (const era of catalog.eras) {
+        const option = new Option(`${era.label}${era.status === 'ready' ? '' : ' · terrain pending'}`, era.slug);
+        eraSelect.add(option);
+      }
+      eraSelect.value = selectedEra;
+      eraSelect.addEventListener('change', () => {
+        const next = new URL(location.href);
+        next.searchParams.set('era', eraSelect.value);
+        next.searchParams.delete('build');
+        // A navigation gives every era its own image caches, cursors and pending requests.
+        location.assign(next.href);
+      });
+      if (selected.status !== 'ready') {
+        $('public-world-name').textContent = selected.label;
+        const panel=document.createElement('section');panel.style.padding='48px';
+        const title=document.createElement('h1');title.textContent=`${selected.label} · Terrain preparation pending`;
+        const copy=document.createElement('p');copy.textContent='The world archive has been extracted. Its terrain view will open after a historical Valheim runtime has been verified. Explore creator albums while preparation continues.';
+        const gallery=document.createElement('a');gallery.href='https://fx99.tail8e749c.ts.net/valheim/creators/';gallery.textContent='Explore builders across eras →';
+        panel.append(title,copy,gallery);document.querySelector('.workspace').replaceChildren(panel);
+        return;
+      }
       state.bootstrap = await fetchJson(`${API}/bootstrap`);
       PUBLIC_MODE = state.bootstrap.publicMode === true || !REQUESTED_LAB_MODE;
       document.body.classList.toggle('public-experience', PUBLIC_MODE);
@@ -172,13 +209,19 @@
       await loadManifest();
       bindEvents();
       if (PUBLIC_MODE) await initializePublicExperience();
+      if (selectedBuild) {
+        const build = await fetchJson(`${API}/build?snapshot=${state.snapshotId}`);
+        const bounds = L.latLngBounds([build.minZ - 2, build.minX - 2], [build.maxZ + 2, build.maxX + 2]);
+        state.map.fitBounds(bounds, { padding:[30,30] });
+        await inspectBounds(bounds);
+      }
       if (!PUBLIC_MODE) {
         state.pollTimer = setInterval(pollJobs, 500);
         pollJobs();
       }
     } catch (error) {
       setStory('error', PUBLIC_MODE ? 'This world view could not open' : 'Lab could not start',
-        PUBLIC_MODE ? 'Please refresh and try again.' : error.message);
+        error.message);
       console.error(error);
     }
   }
@@ -347,6 +390,8 @@
       minX:String(scope.bounds.minX), maxX:String(scope.bounds.maxX),
       minZ:String(scope.bounds.minZ), maxZ:String(scope.bounds.maxZ)
     }).toString();
+    if (selectedEra) url.searchParams.set('era', selectedEra);
+    if (selectedBuild) url.searchParams.set('build', selectedBuild);
     if (scope.biomes.length) url.searchParams.set('biomes', scope.biomes.join(','));
     if (worldwideBiome) url.searchParams.set('scope', 'world-biome');
     const overrideRequired = count > EXACT_POINT_LIMIT;
@@ -541,7 +586,7 @@
         return [parseInt(color, 16), Number(biome.index)];
       }));
       const decode = async variant => {
-        const response = await fetch(`${API}/context/${encodeURIComponent(variant.id)}?v=${encodeURIComponent(variant.version)}`);
+        const response = await fetch(scopedUrl(`${API}/context/${encodeURIComponent(variant.id)}?v=${encodeURIComponent(variant.version)}`));
         if (!response.ok) throw new Error(`Biome mask request failed (${response.status})`);
         const bitmap = await createImageBitmap(await response.blob());
         const canvas = document.createElement('canvas');
@@ -1092,12 +1137,12 @@
         bounds = contextEntry.bounds;
         miniBounds = navigatorEntry.bounds;
       }
-      const overlay = L.imageOverlay(imageUrl, leafletBounds(bounds), { pane:'contextPane', opacity:state.contextOpacity, interactive:false, className:'context-raster' }).addTo(state.map);
+      const overlay = L.imageOverlay(scopedUrl(imageUrl), leafletBounds(bounds), { pane:'contextPane', opacity:state.contextOpacity, interactive:false, className:'context-raster' }).addTo(state.map);
       if (state.contextOverlay) state.map.removeLayer(state.contextOverlay);
       state.contextOverlay = overlay;
       state.contextVariantId = variantId;
       syncCompositeOpacity();
-      const mini = L.imageOverlay(miniImageUrl, leafletBounds(miniBounds), { opacity:1, interactive:false, className:'context-raster' }).addTo(state.minimap);
+      const mini = L.imageOverlay(scopedUrl(miniImageUrl), leafletBounds(miniBounds), { opacity:1, interactive:false, className:'context-raster' }).addTo(state.minimap);
       if (state.miniContextOverlay) state.minimap.removeLayer(state.miniContextOverlay);
       state.miniContextOverlay = mini;
       state.miniContextVariantId = miniVariantId;
@@ -1130,7 +1175,7 @@
     let raw = state.rawImages.get(url);
     if (!raw) {
       const fetchStarted = performance.now();
-      const response = await fetch(url);
+      const response = await fetch(scopedUrl(url));
       if (!response.ok) throw new Error(`Image request failed (${response.status})`);
       const blob = await response.blob();
       const fetchedAt = performance.now();
@@ -2239,7 +2284,9 @@
       renderIdentityState();
       updateFeedbackCount();
       openFeedbackDialog(discordResult !== 'error');
-      history.replaceState({}, '', APP_BASE.pathname);
+      const preserved = new URL(location.href);
+      preserved.searchParams.delete('discord');
+      history.replaceState({}, '', preserved.pathname + preserved.search);
     }
     if (!discordResult && !quickStartDismissed()) openDialog($('quick-start-dialog'));
   }

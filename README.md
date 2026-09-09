@@ -2,6 +2,11 @@
 
 Valheim world-file (`.db`) parser, steward API, and browser viewer for high-player-count community servers.
 
+The [multi-era archive pipeline](tools/era-archive/README.md) extracts immutable world
+saves into Parquet and DuckDB, builds contributor-aware albums and capture queues,
+and publishes creator threads alongside the existing Valheim galleries. Its world
+catalog keeps each era bound to its own terrain, item queries and exact 3D membership.
+
 ## Applications and repository structure
 
 This repository contains two separately built and deployed Java applications:
@@ -9,7 +14,7 @@ This repository contains two separately built and deployed Java applications:
 | Application | Path | Purpose | Live route |
 |---|---|---|---|
 | Steward viewer | [`viewer/`](viewer/) | Production parser, historical read model, GM dashboard, batch analytics, and Quest evidence integration. | [`/steward/`](https://am4.tail8e749c.ts.net/steward/) |
-| Steward Spatial Lab | [`lab/`](lab/) | Interaction laboratory and deliberately constrained public Comfy Era 17 terrain, Heatmap, Biomes, inspection, and exact selection-to-3D experience. | [`/world/`](https://am4.tail8e749c.ts.net/world/) |
+| Steward Spatial Lab | [`lab/`](lab/) | Public era catalog, terrain, Heatmap, Biomes, inspection, and exact selection-to-3D experience. Era 17 is ready; archived eras await historical runtime preparation. | [`/world/`](https://am4.tail8e749c.ts.net/world/) |
 
 The root `Dockerfile`, `docker-compose.am4.yml`, `entrypoint.sh`, and Steward deployment tools belong
 to the production viewer. The lab owns its Maven build, container definition, deployment script, test

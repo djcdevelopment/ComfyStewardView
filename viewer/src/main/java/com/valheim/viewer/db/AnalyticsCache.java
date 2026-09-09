@@ -60,6 +60,7 @@ public final class AnalyticsCache implements AutoCloseable {
     private PreparedStatement itemStmt;
     private DuckDBAppender zdoAppender;
     private DuckDBAppender itemAppender;
+    private DuckDBAppender fieldAppender;
 
     private int zdoBatch;
     private int fieldBatch;
@@ -322,11 +323,13 @@ public final class AnalyticsCache implements AutoCloseable {
         closeQuietly(itemStmt);
         closeQuietly(zdoAppender);
         closeQuietly(itemAppender);
+        closeQuietly(fieldAppender);
         zdoStmt = null;
         fieldStmt = null;
         itemStmt = null;
         zdoAppender = null;
         itemAppender = null;
+        fieldAppender = null;
         finished = true;
     }
 
@@ -343,17 +346,18 @@ public final class AnalyticsCache implements AutoCloseable {
 
         if (snapshotId < 0 || !captureFields) return;
 
-        fieldStmt.setLong(1, snapshotId);
-        fieldStmt.setInt(2, zdoIndex);
-        fieldStmt.setString(3, type);
-        fieldStmt.setInt(4, hash);
-        fieldStmt.setString(5, name);
-        if (intValue == null) fieldStmt.setNull(6, Types.INTEGER); else fieldStmt.setInt(6, intValue);
-        if (longValue == null) fieldStmt.setNull(7, Types.BIGINT); else fieldStmt.setLong(7, longValue);
-        if (floatValue == null) fieldStmt.setNull(8, Types.DOUBLE); else fieldStmt.setDouble(8, floatValue);
-        fieldStmt.setString(9, stringValue);
-        if (blobSize == null) fieldStmt.setNull(10, Types.INTEGER); else fieldStmt.setInt(10, blobSize);
-        fieldStmt.addBatch();
+        fieldAppender.beginRow();
+        fieldAppender.append(snapshotId);
+        fieldAppender.append(zdoIndex);
+        fieldAppender.append(type);
+        fieldAppender.append(hash);
+        appendNullableString(fieldAppender, name);
+        if (intValue == null) fieldAppender.appendNull(); else fieldAppender.append(intValue.intValue());
+        if (longValue == null) fieldAppender.appendNull(); else fieldAppender.append(longValue.longValue());
+        if (floatValue == null) fieldAppender.appendNull(); else fieldAppender.append(floatValue.doubleValue());
+        appendNullableString(fieldAppender, stringValue);
+        if (blobSize == null) fieldAppender.appendNull(); else fieldAppender.append(blobSize.intValue());
+        fieldAppender.endRow();
         fieldBatch++;
         flushIfNeeded();
     }
@@ -408,7 +412,9 @@ public final class AnalyticsCache implements AutoCloseable {
                     if (rs.getLong(1) > 0) continue;
                 }
                 String p = byId.get(id).getAbsolutePath().replace('\\', '/').replace("'", "''");
-                for (String table : new String[] {"world_snapshot", "zdo", "container_item"}) {
+                for (String table : new String[] {"world_snapshot", "zdo", "container_item", "zdo_field"}) {
+                    // Legacy archives did not capture optional fields. Preserve them when present.
+                    if (table.equals("zdo_field") && !new File(p, table + ".parquet").isFile()) continue;
                     st.executeUpdate("INSERT INTO " + table + " BY NAME " +
                         "SELECT * FROM read_parquet('" + p + "/" + table + ".parquet')");
                 }
@@ -527,11 +533,7 @@ public final class AnalyticsCache implements AutoCloseable {
         itemAppender = duck.createAppender("container_item");
 
         if (captureFields) {
-            fieldStmt = conn.prepareStatement(
-                "INSERT INTO zdo_field " +
-                "(snapshot_id, zdo_index, field_type, field_hash, field_name, int_value, long_value, " +
-                "float_value, string_value, blob_size) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            fieldAppender = duck.createAppender("zdo_field");
         }
     }
 
@@ -581,7 +583,7 @@ public final class AnalyticsCache implements AutoCloseable {
             zdoBatch = 0;
         }
         if (fieldBatch > 0) {
-            fieldStmt.executeBatch();
+            fieldAppender.flush();
             fieldBatch = 0;
         }
         if (itemBatch > 0) {

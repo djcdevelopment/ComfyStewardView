@@ -19,7 +19,7 @@ public record SnapshotProvenance(
      * until they are re-ingested, so a pair spanning the two versions under-counts the removed
      * channel of build-activity; {@code world_snapshot.parser_version} is how that is detected.
      */
-    public static final String DEFAULT_PARSER_VERSION = "1.1.0";
+    public static final String DEFAULT_PARSER_VERSION = "1.2.0";
     /** 3 adds world_snapshot.prefab_dictionary_version / prefab_dictionary_entries. */
     public static final int CURRENT_SCHEMA_VERSION = 3;
 

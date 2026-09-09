@@ -25,6 +25,7 @@ public final class SnapshotRepository {
     private final LensRegistry lenses;
     private final ObjectMapper mapper;
     private final boolean constrained;
+    private String buildKey;
     private final Map<String, Double> worldTotals = new ConcurrentHashMap<>();
 
     public SnapshotRepository(Path cachePath, LensRegistry lenses, ObjectMapper mapper) throws Exception {
@@ -48,6 +49,14 @@ public final class SnapshotRepository {
         return Files.isRegularFile(cachePath);
     }
 
+    public SnapshotRepository forBuild(String key) throws Exception {
+        if (key == null || key.isBlank()) return this;
+        if (!key.matches("[a-f0-9]{64}")) throw new IllegalArgumentException("Invalid build key");
+        SnapshotRepository scoped = new SnapshotRepository(cachePath,lenses,mapper,constrained);
+        scoped.buildKey=key;
+        return scoped;
+    }
+
     public Connection open() throws SQLException {
         if (!available()) throw new SQLException("Analytics cache not found: " + cachePath);
         Properties properties = new Properties();
@@ -61,6 +70,18 @@ public final class SnapshotRepository {
                 connection.close();
                 throw error;
             }
+        }
+        if (buildKey != null) {
+            try (var statement=connection.createStatement()) {
+                String database;
+                try(var row=statement.executeQuery("SELECT current_database()")) {row.next();database=row.getString(1);}
+                String qualified="\""+database.replace("\"","\"\"")+"\".main.";
+                try(var row=statement.executeQuery("SELECT count(*) FROM build_membership WHERE build_key='"+buildKey+"'")) {
+                    row.next();if(row.getLong(1)==0) throw new IllegalArgumentException("Build does not belong to this era");
+                }
+                statement.execute("CREATE TEMP VIEW zdo AS SELECT z.* FROM "+qualified+"zdo z JOIN "+qualified+
+                    "build_membership m ON z.snapshot_id=m.snapshot_id AND z.zdo_index=m.zdo_index WHERE m.build_key='"+buildKey+"'");
+            } catch(SQLException | RuntimeException error) {connection.close();throw error;}
         }
         return connection;
     }
@@ -367,7 +388,8 @@ public final class SnapshotRepository {
             throw new IllegalArgumentException("Individual rows are available for object lenses only");
         }
         int limit = Math.max(1, Math.min(250, requestedLimit));
-        String scope = scopeKey(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes);
+        String scope = scopeKey(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes)
+            + (buildKey==null ? "" : "|build:"+buildKey);
         long after = decodeCursor(cursor, scope);
         ArrayNode items = mapper.createArrayNode();
         long total;

@@ -254,12 +254,17 @@ public class WorldParser {
 
             // --- Header ---
             int worldVersion = buf.getInt();
+            if (worldVersion < 29 || worldVersion > 37) {
+                throw new IllegalArgumentException("Unsupported world format " + worldVersion + "; supported formats are 29–37");
+            }
             store.worldVersion = worldVersion;
             store.netTimeSeconds = buf.getDouble();
             buf.getLong();   // myId
             buf.getInt();    // nextUid (uint32)
 
             int count = buf.getInt();
+            if (count < 0 || count > buf.remaining() / 22) throw new IllegalArgumentException("Invalid world object count " + count);
+            LegacyZdoDecoder legacy = worldVersion < 31 ? new LegacyZdoDecoder() : null;
             totalZdos.set(count);
             statusMsg.set("Parsing " + String.format("%,d", count) + " world objects...");
             log.info("World version={}, ZDOs={}", worldVersion, count);
@@ -280,7 +285,13 @@ public class WorldParser {
                         i, count, (double)i/count*100));
                 }
                 zdosParsed.set(i);
-                parseZdo(buf, worldVersion, store, t0, i);
+                try {
+                    if (legacy == null) parseZdo(buf, worldVersion, store, t0, i);
+                    else parseZdo(legacy.next(buf, worldVersion), 33, store, t0, i);
+                } catch (RuntimeException error) {
+                    throw new IllegalArgumentException("Invalid ZDO #" + i + " at byte " + buf.position()
+                        + " in world format " + worldVersion, error);
+                }
             }
         }
 
@@ -907,12 +918,8 @@ public class WorldParser {
     /** Valheim numItems encoding: 1 byte for <128, 2 bytes for >=128 (worldVersion>=33) */
     private static int readNumItems(ByteBuffer buf, int worldVersion) {
         if (worldVersion < 33) {
-            // readChar() — full UTF-8 code point
-            int first = buf.get() & 0xFF;
-            if (first < 0x80) return first;
-            if (first < 0xE0) return ((first & 0x1F) << 6) | (buf.get() & 0x3F);
-            if (first < 0xF0) return ((first & 0x0F) << 12) | ((buf.get() & 0x3F) << 6) | (buf.get() & 0x3F);
-            return ((first & 0x07) << 18) | ((buf.get() & 0x3F) << 12) | ((buf.get() & 0x3F) << 6) | (buf.get() & 0x3F);
+            // Compact v31/v32 uses a byte. Legacy UTF-8 char counts are normalized separately.
+            return buf.get() & 0xFF;
         }
         int num = buf.get() & 0xFF;
         if ((num & 128) != 0) {

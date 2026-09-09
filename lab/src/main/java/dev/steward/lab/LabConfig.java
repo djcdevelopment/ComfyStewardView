@@ -29,7 +29,8 @@ public record LabConfig(
         Path fidelityReceipts,
         Path fidelityClusters,
         Path fidelityCandidates,
-        FeedbackConfig feedback) {
+        FeedbackConfig feedback,
+        Path eraCatalog) {
 
     public static final List<Integer> ALLOWED_RESOLUTIONS = List.of(16, 64, 80, 160, 320, 500, 1000);
 
@@ -45,6 +46,7 @@ public record LabConfig(
         Path artifacts = Path.of("data", "artifacts");
         Path context = null;
         Path contextManifest = null;
+        Path eraCatalog = null;
         String bindAddress = "127.0.0.1";
         int port = 8091;
         boolean noBrowser = false;
@@ -58,11 +60,11 @@ public record LabConfig(
         String sourceRevision = environment("STEWARD_SOURCE_REVISION", releaseVersion);
         String questOperatorToken = environment("STEWARD_QUEST_IMPORT_TOKEN", "");
         Path fidelityGallery = optionalPath("STEWARD_FIDELITY_GALLERY",
-            Path.of("C:/work/baseline/tools/selfie-stick/out/era17/gallery"), true);
+            Path.of("data/fidelity/gallery"), true);
         Path fidelityReceipts = optionalPath("STEWARD_FIDELITY_RECEIPTS",
             Path.of("C:/Program Files (x86)/Steam/steamapps/common/Valheim/BepInEx/config/shotplan-receipts.jsonl"), false);
         Path fidelityClusters = optionalPath("STEWARD_FIDELITY_CLUSTERS",
-            Path.of("C:/work/baseline/tools/selfie-stick/out/era17/clusters.json"), false);
+            Path.of("data/fidelity/clusters.json"), false);
         Path fidelityCandidates = optionalPath("STEWARD_FIDELITY_CANDIDATES",
             Path.of("tools/prefab-renderer-probe/receipts/windmill-0.221.12.json"), false);
 
@@ -73,6 +75,7 @@ public record LabConfig(
                 case "--artifacts" -> artifacts = Path.of(requireValue(args, ++i, arg));
                 case "--context-image" -> context = Path.of(requireValue(args, ++i, arg));
                 case "--context-manifest" -> contextManifest = Path.of(requireValue(args, ++i, arg));
+                case "--era-catalog" -> eraCatalog = Path.of(requireValue(args, ++i, arg));
                 case "--bind" -> bindAddress = requireValue(args, ++i, arg);
                 case "--port" -> port = Integer.parseInt(requireValue(args, ++i, arg));
                 case "--snapshot" -> snapshot = Long.parseLong(requireValue(args, ++i, arg));
@@ -138,7 +141,8 @@ public record LabConfig(
             fidelityGallery == null ? null : absolute(fidelityGallery),
             fidelityReceipts == null ? null : absolute(fidelityReceipts),
             fidelityClusters == null ? null : absolute(fidelityClusters),
-            fidelityCandidates == null ? null : absolute(fidelityCandidates), feedback);
+            fidelityCandidates == null ? null : absolute(fidelityCandidates), feedback,
+            eraCatalog == null ? null : absolute(eraCatalog));
     }
 
     private static Path defaultCache() {

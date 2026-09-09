@@ -34,6 +34,7 @@ public final class LabServer {
     private final DiscordFeedbackService feedback;
     private final ScenePackage scenes;
     private final FidelityWorkbench fidelity;
+    private final EraCatalog eraCatalog;
     private final SlidingWindowRateLimiter queryRate = new SlidingWindowRateLimiter(30, Duration.ofMinutes(1));
     private final SlidingWindowRateLimiter sceneRate = new SlidingWindowRateLimiter(6, Duration.ofMinutes(1));
     private final SlidingWindowRateLimiter feedbackRate = new SlidingWindowRateLimiter(3, Duration.ofMinutes(10));
@@ -50,6 +51,7 @@ public final class LabServer {
         this.jobs = jobs;
         this.mapper = mapper;
         this.terrainContext = terrainContext;
+        this.eraCatalog = config.eraCatalog()==null ? null : new EraCatalog(config.eraCatalog(),mapper,lenses);
         this.feedback = new DiscordFeedbackService(config.feedback(), mapper);
         this.scenes = new ScenePackage(snapshots, mapper,
             config.publicMode() ? null : config.fidelityCandidates());
@@ -86,6 +88,10 @@ public final class LabServer {
             "context", terrainContext == null ? "fallback" : "ready",
             "contextSnapshot", terrainContext == null ? 0 : terrainContext.snapshotId())));
         app.get("/api/bootstrap", this::bootstrap);
+        app.get("/api/eras", ctx -> ctx.json(eraCatalog==null ? Map.of("defaultEra","era17","eras",
+            List.of(Map.of("slug","era17","label","Comfy Era 17","status","ready","snapshotId",config.snapshotId())))
+            : eraCatalog.publicJson(mapper)));
+        app.get("/api/build", ctx -> boundedQuery(ctx, this::buildBounds));
         app.get("/api/manifest", this::manifest);
         app.get("/api/artifacts/{snapshot}/{file}", this::artifact);
         app.get("/api/context", this::contextImage);
@@ -140,9 +146,14 @@ public final class LabServer {
     }
 
     private void bootstrap(Context ctx) throws Exception {
+        EraCatalog.Era era=era(ctx);
+        SnapshotRepository snapshots=era==null ? this.snapshots : era.snapshots();
+        ArtifactStore artifacts=era==null ? this.artifacts : era.artifacts();
+        TerrainContext terrainContext=era==null ? this.terrainContext : era.context();
+        long selectedSnapshot=era==null ? config.snapshotId() : era.snapshotId();
         ObjectNode result = mapper.createObjectNode();
         result.put("cacheAvailable", snapshots.available());
-        result.put("cachePath", config.publicMode() ? "read-only Era 17 cache" : snapshots.cachePath().toString());
+        result.put("cachePath", config.publicMode() ? "read-only era cache" : snapshots.cachePath().toString());
         result.put("cacheBytes", config.publicMode() ? 0 :
             (snapshots.available() ? Files.size(snapshots.cachePath()) : 0));
         result.put("cacheModifiedAt", snapshots.available()
@@ -163,7 +174,7 @@ public final class LabServer {
             ObjectNode context = terrainContext.publicJson(mapper);
             if (snapshots.available()) {
                 Map<String, Long> biomeCounts = snapshots.biomeCounts(config.publicMode()
-                        ? config.snapshotId() : snapshots.latestSnapshotId(),
+                        ? selectedSnapshot : snapshots.latestSnapshotId(),
                     WorldBounds.VALHEIM.minX(), WorldBounds.VALHEIM.maxX(),
                     WorldBounds.VALHEIM.minZ(), WorldBounds.VALHEIM.maxZ());
                 long publishedItemCount = 0;
@@ -192,9 +203,9 @@ public final class LabServer {
         ArrayNode snapshotNodes = result.putArray("snapshots");
         if (snapshots.available()) {
             ObjectNode publicManifest = config.publicMode()
-                ? artifacts.readManifest(config.snapshotId()) : null;
+                ? artifacts.readManifest(selectedSnapshot) : null;
             for (SnapshotRepository.Snapshot snapshot : snapshots.snapshots()) {
-                if (!config.publicMode() || snapshot.snapshotId() == config.snapshotId()) {
+                if (!config.publicMode() || snapshot.snapshotId() == selectedSnapshot) {
                     ObjectNode node = snapshot.toJson(mapper);
                     if (publicManifest != null) {
                         long publishedCount = publicManifest.path("snapshot").path("zdoCount")
@@ -211,8 +222,9 @@ public final class LabServer {
 
     private void manifest(Context ctx) throws Exception {
         long snapshotId = longQuery(ctx, "snapshot", true);
-        enforcePublicScope(snapshotId, "build-density");
-        ObjectNode manifest = artifacts.readManifest(snapshotId);
+        enforcePublicScope(ctx, snapshotId, "build-density");
+        EraCatalog.Era era=era(ctx);
+        ObjectNode manifest = (era==null ? artifacts : era.artifacts()).readManifest(snapshotId);
         if (manifest == null) {
             apiError(ctx, HttpStatus.NOT_FOUND,
                 "No lab rasters exist for snapshot #" + snapshotId + ". Render a lens ladder.");
@@ -223,7 +235,8 @@ public final class LabServer {
 
     private void artifact(Context ctx) throws Exception {
         long snapshotId = Long.parseLong(ctx.pathParam("snapshot"));
-        if (config.publicMode() && snapshotId != config.snapshotId()) {
+        EraCatalog.Era era=era(ctx);
+        if (config.publicMode() && snapshotId != (era==null ? config.snapshotId() : era.snapshotId())) {
             apiError(ctx, HttpStatus.NOT_FOUND, "Artifact not found");
             return;
         }
@@ -231,7 +244,7 @@ public final class LabServer {
             apiError(ctx, HttpStatus.NOT_FOUND, "Artifact not found");
             return;
         }
-        Path file = artifacts.resolveArtifact(snapshotId, ctx.pathParam("file"));
+        Path file = (era==null ? artifacts : era.artifacts()).resolveArtifact(snapshotId, ctx.pathParam("file"));
         if (!Files.isRegularFile(file)) {
             apiError(ctx, HttpStatus.NOT_FOUND, "Artifact not found");
             return;
@@ -264,6 +277,8 @@ public final class LabServer {
     }
 
     private void contextImage(Context ctx) throws Exception {
+        EraCatalog.Era era=era(ctx);
+        TerrainContext terrainContext=era==null ? this.terrainContext : era.context();
         if (terrainContext != null) {
             serveContext(ctx, terrainContext.overview());
             return;
@@ -278,6 +293,8 @@ public final class LabServer {
     }
 
     private void contextVariant(Context ctx) throws Exception {
+        EraCatalog.Era era=era(ctx);
+        TerrainContext terrainContext=era==null ? this.terrainContext : era.context();
         if (terrainContext == null) {
             apiError(ctx, HttpStatus.NOT_FOUND, "No snapshot-matched terrain context configured");
             return;
@@ -301,11 +318,11 @@ public final class LabServer {
     private void selection(Context ctx) throws Exception {
         long snapshot = longQuery(ctx, "snapshot", true);
         String lens = requiredQuery(ctx, "lens");
-        enforcePublicScope(snapshot, lens);
+        enforcePublicScope(ctx, snapshot, lens);
         double minX = doubleQuery(ctx, "minX"), maxX = doubleQuery(ctx, "maxX");
         double minZ = doubleQuery(ctx, "minZ"), maxZ = doubleQuery(ctx, "maxZ");
         requirePublishedBounds(minX, maxX, minZ, maxZ);
-        ctx.json(snapshots.selection(snapshot, lens,
+        ctx.json(repository(ctx).selection(snapshot, lens,
             minX, maxX, minZ, maxZ,
             (int) longQuery(ctx, "topN", false, 12), biomeQuery(ctx)));
     }
@@ -313,25 +330,25 @@ public final class LabServer {
     private void points(Context ctx) throws Exception {
         long snapshot = longQuery(ctx, "snapshot", true);
         String lens = requiredQuery(ctx, "lens");
-        enforcePublicScope(snapshot, lens);
+        enforcePublicScope(ctx, snapshot, lens);
         double minX = doubleQuery(ctx, "minX"), maxX = doubleQuery(ctx, "maxX");
         double minZ = doubleQuery(ctx, "minZ"), maxZ = doubleQuery(ctx, "maxZ");
         requirePublishedBounds(minX, maxX, minZ, maxZ);
         int limit = (int) longQuery(ctx, "limit", false, 5000);
         List<String> biomes = biomeQuery(ctx);
         ctx.json(booleanQuery(ctx, "sample")
-            ? snapshots.samplePoints(snapshot, lens, minX, maxX, minZ, maxZ, limit, biomes)
-            : snapshots.exactPoints(snapshot, lens, minX, maxX, minZ, maxZ, limit, biomes));
+            ? repository(ctx).samplePoints(snapshot, lens, minX, maxX, minZ, maxZ, limit, biomes)
+            : repository(ctx).exactPoints(snapshot, lens, minX, maxX, minZ, maxZ, limit, biomes));
     }
 
     private void items(Context ctx) throws Exception {
         long snapshot = longQuery(ctx, "snapshot", true);
         String lens = requiredQuery(ctx, "lens");
-        enforcePublicScope(snapshot, lens);
+        enforcePublicScope(ctx, snapshot, lens);
         double minX = doubleQuery(ctx, "minX"), maxX = doubleQuery(ctx, "maxX");
         double minZ = doubleQuery(ctx, "minZ"), maxZ = doubleQuery(ctx, "maxZ");
         requirePublishedBounds(minX, maxX, minZ, maxZ);
-        ctx.json(snapshots.items(snapshot, lens, minX, maxX, minZ, maxZ,
+        ctx.json(repository(ctx).items(snapshot, lens, minX, maxX, minZ, maxZ,
             (int) longQuery(ctx, "limit", false, 100), ctx.queryParam("cursor"), biomeQuery(ctx)));
     }
 
@@ -348,14 +365,14 @@ public final class LabServer {
     private void scene(Context ctx) throws Exception {
         long snapshot = longQuery(ctx, "snapshot", true);
         String lens = requiredQuery(ctx, "lens");
-        enforcePublicScope(snapshot, lens);
+        enforcePublicScope(ctx, snapshot, lens);
         double minX = doubleQuery(ctx, "minX"), maxX = doubleQuery(ctx, "maxX");
         double minZ = doubleQuery(ctx, "minZ"), maxZ = doubleQuery(ctx, "maxZ");
         requirePublishedBounds(minX, maxX, minZ, maxZ);
         boolean rnd = !config.publicMode() && booleanQuery(ctx, "rnd");
         String presentation = rnd && "baseline".equalsIgnoreCase(ctx.queryParam("presentation"))
             ? "baseline" : "candidate";
-        ScenePackage.Result scene = scenes.build(snapshot, lens, minX, maxX, minZ, maxZ,
+        ScenePackage.Result scene = new ScenePackage(repository(ctx), mapper, config.publicMode() ? null : config.fidelityCandidates()).build(snapshot, lens, minX, maxX, minZ, maxZ,
             biomeQuery(ctx), booleanQuery(ctx, "override"), config.releaseVersion(), presentation, rnd);
         ctx.contentType(ScenePackage.CONTENT_TYPE);
         ctx.header("X-Steward-Scene-Pieces", Integer.toString(scene.pieces()));
@@ -367,11 +384,11 @@ public final class LabServer {
         requireQuestOperator(ctx);
         long snapshot = longQuery(ctx, "snapshot", true);
         String lens = requiredQuery(ctx, "lens");
-        enforcePublicScope(snapshot, lens);
+        enforcePublicScope(ctx, snapshot, lens);
         double minX = doubleQuery(ctx, "minX"), maxX = doubleQuery(ctx, "maxX");
         double minZ = doubleQuery(ctx, "minZ"), maxZ = doubleQuery(ctx, "maxZ");
         requirePublishedBounds(minX, maxX, minZ, maxZ);
-        ScenePackage.Result scene = scenes.buildAuthoring(snapshot, lens, minX, maxX, minZ, maxZ,
+        ScenePackage.Result scene = new ScenePackage(repository(ctx), mapper, config.publicMode() ? null : config.fidelityCandidates()).buildAuthoring(snapshot, lens, minX, maxX, minZ, maxZ,
             biomeQuery(ctx), config.releaseVersion(), config.sourceRevision());
         ctx.contentType(ScenePackage.AUTHORING_CONTENT_TYPE);
         ctx.header("X-Content-Type-Options", "nosniff");
@@ -469,10 +486,38 @@ public final class LabServer {
             "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
     }
 
-    private void enforcePublicScope(long snapshot, String lens) {
+    private EraCatalog.Era era(Context ctx) {
+        if (eraCatalog!=null) return eraCatalog.ready(ctx.queryParam("era"));
+        String slug=ctx.queryParam("era");
+        if(slug!=null && !slug.equals("era17")) throw new IllegalArgumentException("Unknown era");
+        return null;
+    }
+
+    private SnapshotRepository repository(Context ctx) throws Exception {
+        EraCatalog.Era selected=era(ctx);
+        return (selected==null ? snapshots : selected.snapshots()).forBuild(ctx.queryParam("build"));
+    }
+
+    private void buildBounds(Context ctx) throws Exception {
+        if(ctx.queryParam("build")==null) throw new IllegalArgumentException("Build key is required");
+        long snapshot=longQuery(ctx,"snapshot",true);
+        enforcePublicScope(ctx,snapshot,"build-density");
+        try(var connection=repository(ctx).open();var query=connection.prepareStatement(
+                "SELECT min(x),max(x),min(y),max(y),min(z),max(z),count(*) FROM zdo WHERE snapshot_id=?")) {
+            query.setLong(1,snapshot);
+            try(var row=query.executeQuery()) {
+                row.next();ctx.json(Map.of("minX",row.getDouble(1),"maxX",row.getDouble(2),
+                    "minY",row.getDouble(3),"maxY",row.getDouble(4),"minZ",row.getDouble(5),
+                    "maxZ",row.getDouble(6),"pieces",row.getLong(7)));
+            }
+        }
+    }
+
+    private void enforcePublicScope(Context ctx, long snapshot, String lens) {
+        EraCatalog.Era era=era(ctx);
         if (!config.publicMode()) return;
-        if (snapshot != config.snapshotId() || !"build-density".equals(lens)) {
-            throw new IllegalArgumentException("This shared view is focused on Comfy Era 17 build density");
+        if (snapshot != (era==null ? config.snapshotId() : era.snapshotId()) || !"build-density".equals(lens)) {
+            throw new IllegalArgumentException("Snapshot and lens do not belong to the selected public era");
         }
     }
 

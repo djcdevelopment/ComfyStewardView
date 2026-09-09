@@ -61,6 +61,7 @@ function sceneRequestUrl() {
     minX:String(minX), maxX:String(maxX), minZ:String(minZ), maxZ:String(maxZ)
   });
   if (params.get('biomes')) query.set('biomes', params.get('biomes'));
+  for (const key of ['era','build']) if (params.get(key)) query.set(key, params.get(key));
   if (params.get('override') === 'true' || params.get('override') === '1') query.set('override', 'true');
   if (params.get('rnd') === '1') {
     query.set('rnd', 'true');

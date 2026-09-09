@@ -24,6 +24,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ScenePackageTest {
     @TempDir Path temporary;
 
+    @Test void exactBuildMembershipSeparatesVerticallyOverlappingStructures() throws Exception {
+        Path cache=temporary.resolve("stacked.duckdb");createFixture(cache,0);
+        String ground="a".repeat(64),sky="b".repeat(64);
+        try(var connection=DriverManager.getConnection("jdbc:duckdb:"+cache);var sql=connection.createStatement()) {
+            sql.execute("CREATE TABLE build_membership(snapshot_id BIGINT,build_key VARCHAR,zdo_index BIGINT)");
+            sql.execute("INSERT INTO zdo VALUES (7,14,0,100,0,'piece_wall',1,'BUILDING','meadows',false,0,0,0)");
+            sql.execute("INSERT INTO build_membership VALUES (7,'"+ground+"',10),(7,'"+sky+"',14)");
+        }
+        ObjectMapper mapper=new ObjectMapper();
+        SnapshotRepository repository=new SnapshotRepository(cache,new LensRegistry(),mapper,true);
+        ScenePackage.Result scene=new ScenePackage(repository.forBuild(ground),mapper).build(
+            7,"build-density",-10,10,-10,10,List.of(),false,"test");
+        assertEquals(1,scene.pieces());
+        assertEquals(1,new ScenePackage(repository.forBuild(sky),mapper).build(
+            7,"build-density",-10,10,-10,10,List.of(),false,"test").pieces());
+        assertEquals(5,new ScenePackage(repository,mapper).build(
+            7,"build-density",-10,10,-10,10,List.of(),false,"test").pieces());
+        assertThrows(IllegalArgumentException.class,()->repository.forBuild("c".repeat(64)).open());
+        assertThrows(IllegalArgumentException.class,()->repository.forBuild("' OR true --"));
+    }
+
     @BeforeAll static void driver() throws Exception {
         Class.forName("org.duckdb.DuckDBDriver");
     }
