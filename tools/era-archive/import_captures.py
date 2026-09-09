@@ -95,6 +95,11 @@ def collect(root, slug, base):
                 "href": base + "#build=" + build["buildKey"][:12],
                 "label": receipt.get("label") or f"Build {build['buildKey'][:8]}",
                 "shot": name,
+                # Recorded per photograph, not just per manifest: a host that can only
+                # deliver 1080p today gets superseded build by build as better hardware
+                # re-shoots, and the projection needs to know which frame is which.
+                "width": entry["metadata"]["dimensions"][0],
+                "height": entry["metadata"]["dimensions"][1],
                 "sha256": entry["sha256"],
                 "capture": {k: receipt.get(k) for k in RECEIPT_FIELDS if k in receipt},
             })
@@ -141,6 +146,7 @@ def main():
         "world": plan["world"],
         "base": base,
         "resolution": [plan["width"], plan["height"]],
+        "provisional": [plan["width"], plan["height"]] != [3840, 2160],
         "albums": len(builds),
         "photographs": counts["photographs"],
         "builds": builds,

@@ -97,6 +97,26 @@ def parse_args():
                    default="offscreen",
                    help="where to put the game window. 'minimized' is offered but Unity "
                         "throttles a minimised app; 'offscreen' keeps it rendering")
+    p.add_argument("--window-size", default="",
+                   help="WxH for the game window. USUALLY LEAVE THIS ALONE. The mod "
+                        "captures with ScreenCapture.CaptureScreenshot(path) and no "
+                        "superSize argument (Plugin.cs:2094), so the photograph is the "
+                        "backbuffer and its size IS the window size -- a smaller window "
+                        "yields smaller frames, which the harvest then rejects. It exists "
+                        "for a host whose mod build takes a supersize multiplier, or to "
+                        "deliberately shoot an era at another resolution")
+    p.add_argument("--graphics", choices=("auto", "vulkan", "d3d11", "d3d12", "glcore"),
+                   default="auto",
+                   help="which renderer Unity should use. DX11 refuses to switch to a "
+                        "resolution larger than the desktop and the game wedges there; "
+                        "vulkan does not go through the same swapchain path, so it is "
+                        "worth trying on a host whose display is smaller than the "
+                        "capture size")
+    p.add_argument("--stall-seconds", type=int, default=0,
+                   help="give up on a launch after this long with no new photograph "
+                        "(default: the campaign's stallSeconds). A slower host needs a "
+                        "wider window -- the first shot of a launch also carries the "
+                        "one-time environment write, fires sweep and god-mode setup")
     p.add_argument("--timeout-minutes", type=int, default=90)
     return p.parse_args()
 
@@ -200,6 +220,25 @@ def main():
     if valheim_pids():
         raise RuntimeError("Valheim is already running on OMEN")
 
+    # If a previous run died before its finally could execute -- an ssh session closing
+    # takes its children with it on Windows -- the operator's tree is still parked under
+    # an .operator-* name and the live tree is the disposable capture one. Put it back
+    # before doing anything else, rather than starting a run on top of the wreckage or
+    # refusing with "Session backup path already exists" and leaving it parked.
+    def recover(live, prefix):
+        parent, restored = live.parent, []
+        for backup in sorted(parent.glob(prefix + ".operator-*")):
+            if live.exists():
+                shutil.rmtree(live, ignore_errors=True)
+            backup.rename(live)
+            restored.append(backup.name)
+        return restored
+
+    for live, prefix in ((game / "BepInEx", "BepInEx"),
+                         (args.valheim_data.resolve(), args.valheim_data.name)):
+        for name in recover(live, prefix):
+            print(f"recovered {name} -- a previous run did not restore it", flush=True)
+
     # Stage every input outside the game tree BEFORE anything is parked. The character
     # lives under the save directory and the capture DLL under BepInEx, both of which are
     # about to be renamed out from under us -- copying from them afterwards reads a path
@@ -243,6 +282,7 @@ def main():
     config_dir = live_bepinex / "config"
     capture_root = config_dir / "comfy-orbit-captures"
 
+    stall_seconds = args.stall_seconds or plan["stallSeconds"]
     builds = plan["builds"][:1] if args.smoke else plan["builds"]
     groups = [(f"batch-{i // batch_size:04d}", builds[i:i + batch_size])
               for i in range(0, len(builds), batch_size)]
@@ -305,16 +345,28 @@ def main():
             status("capturing", batch=name, batchTarget=len(allowed), batchShots=0)
 
             log = (attempt / "stdout.log").open("wb")
+            if args.window_size:
+                window_w, window_h = args.window_size.lower().split("x")
+            else:
+                window_w, window_h = width, height
+            command = [str(game / "valheim.exe"), "-console", "-screen-fullscreen", "0",
+                       "-screen-width", str(window_w), "-screen-height", str(window_h),
+                       "-monitor", "1"]
+            if args.graphics != "auto":
+                command.append("-force-" + args.graphics)
             process = subprocess.Popen(
-                [str(game / "valheim.exe"), "-console", "-screen-fullscreen", "0",
-                 "-screen-width", str(width), "-screen-height", str(height), "-monitor", "1"],
+                command,
                 cwd=game, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
             handle = place_window(process.pid, args.window)
             write(attempt / "launch.json", {"pid": process.pid, "window": args.window,
+                                            "windowSize": f"{window_w}x{window_h}",
+                                            "captureSize": f"{width}x{height}",
+                                            "graphics": args.graphics,
                                             "windowFound": bool(handle), "startedAt": now()})
 
             deadline = time.monotonic() + args.timeout_minutes * 60
-            last, stalled_at = 0, time.monotonic()
+            launched = time.monotonic()
+            last, stalled_at, first_shot, armed = 0, time.monotonic(), None, None
             while process.poll() is None and time.monotonic() < deadline:
                 for shot, row, image, metadata in read_receipts(
                         config_dir, capture_root, allowed, width, height):
@@ -331,10 +383,21 @@ def main():
                         "receipt": row}
                     write(state_path, state)
                     image.unlink()
+                # Loading a world is not a stall. A slow host can spend minutes on the
+                # portal cache and the fires sweep before the first shutter, and timing
+                # that against the shot budget declares failure on a run that is working.
+                # The clock restarts when the mod actually arms its capture directory.
+                if armed is None and capture_root.exists():
+                    armed = round(time.monotonic() - launched, 1)
+                    stalled_at = time.monotonic()
+                    print(f"    world loaded and capture armed after {armed}s", flush=True)
                 done = sum(s["shotKey"] in state["completed"] for s in allowed.values())
                 if done > last:
+                    if first_shot is None:
+                        first_shot = round(time.monotonic() - launched, 1)
+                        print(f"    first photograph after {first_shot}s", flush=True)
                     last, stalled_at = done, time.monotonic()
-                if time.monotonic() - stalled_at > plan["stallSeconds"]:
+                if time.monotonic() - stalled_at > stall_seconds:
                     break
                 status("capturing", batch=name, batchTarget=len(allowed), batchShots=done)
                 time.sleep(10)
@@ -354,7 +417,12 @@ def main():
                     shutil.copy2(source, attempt / target)
             done = sum(s["shotKey"] in state["completed"] for s in allowed.values())
             write(attempt / "result.json", {"completed": done, "expected": len(allowed),
-                                            "success": done == len(allowed)})
+                                            "success": done == len(allowed),
+                                            "stallSeconds": stall_seconds,
+                                            "armedSeconds": armed,
+                                            "firstShotSeconds": first_shot,
+                                            "secondsPerShot": round(
+                                                (time.monotonic() - launched) / done, 1) if done else None})
             print(f"  {name}: {done}/{len(allowed)} shots", flush=True)
             if args.smoke:
                 break

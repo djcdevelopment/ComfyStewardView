@@ -66,7 +66,8 @@ def select_named(jobs, era, build_keys):
 
 
 def prepare(root, era_slug, destination, limit, pilot_path, receipt_path,
-            build_keys=None, batch_size=100, min_free_bytes=20 * 1024 ** 3):
+            build_keys=None, batch_size=100, min_free_bytes=20 * 1024 ** 3,
+            width=3840, height=2160):
     if destination.exists():
         raise ValueError('Use a new immutable campaign directory')
     era = next(e for e in load(root / 'catalog.json')['eras'] if e['slug'] == era_slug)
@@ -128,7 +129,7 @@ def prepare(root, era_slug, destination, limit, pilot_path, receipt_path,
     result = {'schema':'steward-local-campaign/v1', 'createdAt':now(), 'era':era_slug,
               'sourceKey':era['sourceKey'], 'snapshotId':era['snapshotId'], 'world':era['worldId'],
               'sourceFiles':{k:{p:era[k][p] for p in ('bytes','sha256')} for k in ('db','fwl')},
-              'runtimeMode':'current-client', 'width':3840, 'height':2160,
+              'runtimeMode':'current-client', 'width':width, 'height':height,
               'batchSize':batch_size, 'maxOutputBytes':32*1024**3, 'minFreeBytes':min_free_bytes,
               'stallSeconds':900, 'maxAttempts':2, 'excludedCompleted':sorted(completed), 'builds':ordered}
     save(destination/'campaign.json',result)
@@ -153,6 +154,13 @@ if __name__ == '__main__':
                              'about a fifth of a large campaign relaunching (default 100)')
     parser.add_argument('--min-free-bytes',type=int,default=20*1024**3,
                         help='stop if free space falls below this (default 20 GiB)')
+    parser.add_argument('--width',type=int,default=3840)
+    parser.add_argument('--height',type=int,default=2160,
+                        help='capture resolution, frozen into the campaign and enforced by '
+                             'the harvest. The mod screenshots the backbuffer with no '
+                             'supersize, so this is also the game window size: a host whose '
+                             'display driver offers no 4K mode can only shoot an era at what '
+                             'it can actually show')
     args=parser.parse_args()
     if args.limit<1:parser.error('limit must be positive')
     keys=None
@@ -164,4 +172,5 @@ if __name__ == '__main__':
     elif not (args.completed_pilot and args.completed_receipts):
         parser.error('pass --coverage-plan, or both --completed-pilot and --completed-receipts')
     prepare(args.output_root,args.era,args.destination,args.limit,args.completed_pilot,
-            args.completed_receipts,keys,args.batch_size,args.min_free_bytes)
+            args.completed_receipts,keys,args.batch_size,args.min_free_bytes,
+            args.width,args.height)

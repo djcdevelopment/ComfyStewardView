@@ -226,7 +226,7 @@ def attach_captures(builds, manifests):
     needs to know the difference -- and once photos land here, the coverage ranker
     below stops re-queueing builds that have already been photographed."""
     by_key={b["buildKey"]:b for b in builds}
-    receipts,attached,unknown=[],0,0
+    receipts,attached,unknown,superseded=[],0,0,[]
     for path in manifests or []:
         doc=load(path)
         if doc.get("schema")!="steward-capture-gallery/v1":
@@ -240,16 +240,35 @@ def attach_captures(builds, manifests):
                 missing+=1; continue
             if build.get("sourceKey") and build["sourceKey"]!=doc["sourceKey"]:
                 raise ValueError("Capture manifest crosses a source boundary")
+            # A build may be photographed more than once: a laptop that can only deliver
+            # 1080p shoots an era now, better hardware re-shoots it later. Keep the larger
+            # frame for each shot rather than showing both, and say how many were replaced
+            # -- silent supersession retired 150 frames unnoticed on 2026-08-24.
+            existing={p.get("shot") or p["id"]:p for p in build["photos"]}
             for photo in photos:
                 if not re.fullmatch(r"[A-Za-z0-9_-]+",photo.get("id","")):
                     raise ValueError("Unsafe capture image identifier")
-                build["photos"].append({k:photo[k] for k in ("id","thumb","large","href","label")})
+                key=photo.get("shot") or photo["id"]
+                pixels=photo.get("width",0)*photo.get("height",0)
+                prior=existing.get(key)
+                if prior is not None:
+                    if pixels<=prior.get("_pixels",0):
+                        superseded.append((build_key,key,"kept"));continue
+                    build["photos"].remove(prior);superseded.append((build_key,key,"replaced"))
+                record={k:photo[k] for k in ("id","thumb","large","href","label")}
+                record["_pixels"]=pixels
+                record["shot"]=photo.get("shot")
+                build["photos"].append(record);existing[key]=record
                 attached+=1
         unknown+=missing
         receipts.append({"manifest":digest(path),"era":doc["era"],"sourceKey":doc["sourceKey"],
                          "albums":len(doc["builds"]),"photographs":doc["photographs"],
+                         "resolution":doc.get("resolution"),"provisional":doc.get("provisional",False),
                          "unresolvedBuilds":missing})
-    return receipts,attached,unknown
+    # The pixel counts were only needed to choose between competing frames.
+    for build in builds:
+        for photo in build["photos"]:photo.pop("_pixels",None)
+    return receipts,attached,unknown,superseded
 
 
 def project(root, analyses, links_path=None, legacy_config=None, capture_manifests=None):
@@ -292,10 +311,18 @@ def project(root, analyses, links_path=None, legacy_config=None, capture_manifes
     # Before the legacy import and before the ranking: these photographs belong to
     # albums that already exist, and the ranker reads build["photos"] to decide who is
     # covered.
-    capture_receipts,captured_photos,unresolved=attach_captures(all_builds,capture_manifests)
+    capture_receipts,captured_photos,unresolved,superseded=attach_captures(all_builds,capture_manifests)
     if capture_receipts:
         print(f"Attached {captured_photos:,} captured photographs from "
               f"{len(capture_receipts)} manifest(s); {unresolved:,} unresolved build(s)",flush=True)
+        if superseded:
+            replaced=sum(1 for _,_,w in superseded if w=="replaced")
+            print(f"  {replaced:,} lower-resolution frame(s) replaced by a better re-shoot, "
+                  f"{len(superseded)-replaced:,} kept because the new frame was not larger",flush=True)
+        for r in capture_receipts:
+            if r.get("provisional"):
+                print(f"  NOTE: {r['era']} frames are {r['resolution'][0]}x{r['resolution'][1]}, "
+                      f"below the 3840x2160 standard -- provisional until re-shot",flush=True)
 
     # Omitting --legacy-galleries is not "no legacy galleries", it is "drop the ones you
     # had": the projection is rebuilt from scratch every run, so a forgotten flag silently

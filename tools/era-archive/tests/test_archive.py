@@ -117,12 +117,12 @@ class ArchiveTest(unittest.TestCase):
                                 "e"*64:[{"id":"era14-eeeeeeeeeeee-orbit1","thumb":"t","large":"l",
                                          "href":"h","label":"gone","sha256":"y","capture":{}}]}}
             path=root/"captures-era14.json";archive.save(path,manifest)
-            receipts,attached,unresolved=community.attach_captures(builds,[path])
+            receipts,attached,unresolved,_=community.attach_captures(builds,[path])
             self.assertEqual((1,1),(attached,unresolved))
             self.assertEqual(1,len(builds[0]["photos"]));self.assertEqual([],builds[1]["photos"])
             # Only the fields the front end reads survive; sha256 and receipt data do not
             # belong in a public projection.
-            self.assertEqual({"id","thumb","large","href","label"},set(builds[0]["photos"][0]))
+            self.assertEqual({"id","thumb","large","href","label","shot"},set(builds[0]["photos"][0]))
             self.assertEqual(1,receipts[0]["unresolvedBuilds"])
             self.assertEqual(archive.digest(path),receipts[0]["manifest"])
             # The ranker's own eligibility test now excludes the photographed build.
@@ -140,6 +140,41 @@ class ArchiveTest(unittest.TestCase):
             archive.save(path,bad)
             with self.assertRaises(ValueError):community.attach_captures(
                 [{"buildKey":"a"*64,"sourceKey":"src","photos":[],"contributors":[]}],[path])
+
+    def test_a_better_reshoot_supersedes_a_provisional_frame_rather_than_joining_it(self):
+        """A laptop that can only deliver 1080p shoots an era now; better hardware
+        re-shoots it later. The album must end up with the larger frame, not both --
+        and the replacement must be counted, because a silent supersede retired 150
+        frames unnoticed on 2026-08-24."""
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            def manifest(w,h,tag):
+                return {"schema":"steward-capture-gallery/v1","era":"era12","sourceKey":"src",
+                        "snapshotId":1006,"base":"https://host/valheim/era12/","photographs":1,
+                        "resolution":[w,h],"provisional":[w,h]!=[3840,2160],
+                        "builds":{"a"*64:[{"id":"era12-aaaaaaaaaaaa-orbit1","thumb":"t"+tag,
+                                           "large":"l"+tag,"href":"h","label":"Build aaaaaaaa",
+                                           "shot":"orbit1","width":w,"height":h,"sha256":tag}]}}
+            small=root/"small.json";big=root/"big.json"
+            archive.save(small,manifest(1920,1080,"lo"));archive.save(big,manifest(3840,2160,"hi"))
+
+            # Provisional first, then the re-shoot: the better frame wins.
+            builds=[{"buildKey":"a"*64,"sourceKey":"src","photos":[],"contributors":[]}]
+            _,attached,_,superseded=community.attach_captures(builds,[small,big])
+            self.assertEqual(1,len(builds[0]["photos"]))
+            self.assertEqual("lhi",builds[0]["photos"][0]["large"])
+            self.assertEqual([("a"*64,"orbit1","replaced")],superseded)
+            self.assertEqual(2,attached)
+
+            # And the other order must not undo it: a smaller frame never displaces a
+            # larger one just because it was imported second.
+            builds=[{"buildKey":"a"*64,"sourceKey":"src","photos":[],"contributors":[]}]
+            _,_,_,superseded=community.attach_captures(builds,[big,small])
+            self.assertEqual(1,len(builds[0]["photos"]))
+            self.assertEqual("lhi",builds[0]["photos"][0]["large"])
+            self.assertEqual([("a"*64,"orbit1","kept")],superseded)
+            # The pixel count was scaffolding for the choice, not something to publish.
+            self.assertNotIn("_pixels",builds[0]["photos"][0])
 
     def test_rebuilding_without_the_legacy_config_refuses_to_drop_those_albums(self):
         """The projection is rebuilt from scratch every run, so omitting --legacy-galleries
