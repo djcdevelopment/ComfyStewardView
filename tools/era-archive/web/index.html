@@ -23,12 +23,37 @@
       <div class="nav-links">
         <a id="directory-link" href="/valheim/creators/">All builders</a>
         <a id="stats-link" href="/valheim/creators/stats/">Statistics</a>
+        <a id="participation-link" href="#participation-details">Your participation</a>
       </div>
     </header>
     <main>
       <p class="eyebrow">THE COMFY COMMUNITY</p>
       <h1 id="title">Across the eras</h1>
       <p id="intro">Every builder recorded on a saved construction piece, era by era, with the photographs taken of their work.</p>
+      <div id="thread-actions" hidden></div>
+
+      <section id="hero-stats" class="stat-mosaic" aria-label="Archive totals">
+        <div class="stat-tile">
+          <span class="stat-tile-label">Builders</span>
+          <span class="stat-tile-value" id="stat-builders">—</span>
+          <span class="stat-tile-note">Logged across the archive</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile-label">Archived captures</span>
+          <span class="stat-tile-value" id="stat-captures">—</span>
+          <span class="stat-tile-note" id="stat-captures-note"></span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile-label">Populated eras</span>
+          <span class="stat-tile-value" id="stat-eras">—</span>
+          <span class="stat-tile-note" id="stat-eras-note"></span>
+        </div>
+        <div class="stat-tile stat-tile-ledger">
+          <span class="stat-tile-label">Local ledger</span>
+          <span class="stat-tile-value">100% client</span>
+          <span class="stat-tile-note">Claims &amp; requests never leave this browser on their own</span>
+        </div>
+      </section>
 
       <section id="search-hero">
         <label class="hero-label" for="search">Search for your builds</label>
@@ -36,13 +61,26 @@
           <input id="search" type="search" autocomplete="off" autocapitalize="off" spellcheck="false"
                  role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="suggestions"
                  placeholder="Your Valheim name, or any name you have built under">
+          <kbd id="search-hotkey" aria-hidden="true">Ctrl K</kbd>
           <ul id="suggestions" role="listbox" aria-label="Matching builders" hidden></ul>
         </div>
         <p id="capture-note" class="muted"></p>
       </section>
 
       <div id="filters">
-        <label>Era <select id="era"><option value="">Every era</option></select></label>
+        <div id="filter-controls">
+          <label>Sort
+            <select id="sort">
+              <option value="default">Default</option>
+              <option value="photos">Most photos</option>
+              <option value="az">A–Z</option>
+              <option value="albums">Most albums</option>
+            </select>
+          </label>
+          <label class="checkbox-field"><input type="checkbox" id="with-albums"> With albums</label>
+          <label>Era <select id="era"><option value="">Every era</option></select></label>
+        </div>
+        <div id="era-ribbon" role="group" aria-label="Filter by era"></div>
       </div>
       <p id="status" role="status">Opening the community archive…</p>
       <p id="empty-state" class="muted" hidden></p>
@@ -62,9 +100,30 @@
         </div>
         <p class="muted">Claims and requests stay in this browser. Nothing is sent anywhere
           until you copy the payload and pass it on.</p>
+        <p class="muted">To request photography, open a builder's page, claim one of their
+          builds, then use <strong>Request additional photographs</strong> on that album.</p>
       </details>
 
-      <footer>Credits follow the creators recorded on saved construction pieces. Shared albums can appear in several builders' threads. Matching names alone never join characters. Historical photo albums retain their original attribution and links. Search terms are recorded in this web server's access log so the next capture sessions can follow what people are actually looking for.</footer>
+      <footer>
+        <div class="footer-codex">
+          <div class="codex-col">
+            <h2 class="codex-heading">Piece attribution</h2>
+            <p>Credits follow the creators recorded on saved construction pieces. Historical
+              photo albums retain their original attribution and links.</p>
+          </div>
+          <div class="codex-col">
+            <h2 class="codex-heading">Independent identities</h2>
+            <p>Shared albums can appear in several builders' threads. Matching names alone
+              never join characters.</p>
+          </div>
+          <div class="codex-col">
+            <h2 class="codex-heading">Curatorial access logs</h2>
+            <p>Search terms are recorded in this web server's access log so the next capture
+              sessions can follow what people are actually looking for.</p>
+          </div>
+        </div>
+        <p id="footer-unresolved-note" class="muted" hidden></p>
+      </footer>
     </main>
 
     <div id="toast" role="status" aria-live="polite"></div>
@@ -126,6 +185,20 @@
         <div class="actions-row">
           <button type="button" id="activity-copy">Copy JSON</button>
           <button type="button" id="activity-close">Close</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="photo-viewer-modal" class="modal" hidden>
+      <div class="sheet photo-viewer-sheet">
+        <h2 id="photo-viewer-title">Photograph</h2>
+        <div class="photo-viewer-frame">
+          <img id="photo-viewer-image" alt="">
+          <p id="photo-viewer-error" class="muted" hidden>This image could not be loaded.</p>
+        </div>
+        <div class="actions-row">
+          <a id="photo-viewer-original" href="#" target="_blank" rel="noopener">Open capture session</a>
+          <button type="button" id="photo-viewer-close">Close</button>
         </div>
       </div>
     </section>

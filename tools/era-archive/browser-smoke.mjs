@@ -26,6 +26,28 @@ try{
   if(!results.directory.note)throw Error('Landing page never said which eras are photographed');
   if(await evaluate("document.querySelector('.builder p:nth-of-type(2)').textContent.endsWith('0 photos')"))throw Error('Directory still opens on a thread with no photographs');
   const directory=await fetch(new URL('directory.json',gallery)).then(r=>r.json());
+  // Chronicler Archive redesign: hero stat mosaic, era ribbon, sort modes, card shortcut, Ctrl+K.
+  results.heroStats=await evaluate("({builders:document.getElementById('stat-builders').textContent,captures:document.getElementById('stat-captures').textContent,eras:document.getElementById('stat-eras').textContent})");
+  if([results.heroStats.builders,results.heroStats.captures,results.heroStats.eras].some(v=>!v||v==='—'))throw Error('Hero stats did not populate');
+  if(Number(results.heroStats.builders.replace(/,/g,''))!==directory.builders.length)throw Error('Hero builder count does not match directory.json');
+  if(await evaluate("document.querySelectorAll('.era-chip').length")<2)throw Error('Era ribbon did not render');
+  await evaluate("[...document.querySelectorAll('.era-chip')].find(c=>/Era \\d/.test(c.textContent)).click()");
+  await wait("document.querySelector('.era-chip.active') && !document.querySelector('.era-chip.active').textContent.startsWith('All eras')");
+  if(await evaluate("document.getElementById('status').textContent")===results.directory.status)throw Error('Era ribbon click did not change the result count');
+  await evaluate("document.querySelector('.era-chip').click()");
+  await wait("document.querySelector('.era-chip.active').textContent.startsWith('All eras')");
+  const mostPhotos=directory.builders.slice().sort((a,b)=>b.photos-a.photos)[0].photos;
+  await evaluate("document.getElementById('sort').value='photos';document.getElementById('sort').dispatchEvent(new Event('change'))");
+  await wait("document.querySelectorAll('.builder').length>0");
+  if(!(await evaluate("document.querySelector('.builder p:nth-of-type(2)').textContent")).includes(String(mostPhotos)))throw Error('Most-photos sort did not surface the highest photo count first');
+  await evaluate("document.getElementById('sort').value='default';document.getElementById('sort').dispatchEvent(new Event('change'))");
+  await wait("document.querySelectorAll('.builder').length>0");
+  results.requestShortcut=await evaluate("document.querySelector('.card-actions a')?.getAttribute('href')");
+  if(!/#request$/.test(results.requestShortcut||''))throw Error('Card Request Photo shortcut is missing or malformed');
+  await evaluate("document.activeElement.blur();document.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true}))");
+  if(await evaluate("document.activeElement!==document.getElementById('search')"))throw Error('Ctrl+K did not focus search');
+  await evaluate("document.getElementById('search').blur()");
+  await screenshot('creators-hero-and-ribbon');
   const photographed=directory.builders.filter(b=>b.photos>0&&b.eras.length>1).sort((a,b)=>b.photos-a.photos)[0];
   if(!photographed)throw Error('No cross-era photographed builder');
   const named=directory.builders.filter(b=>b.photos>0&&!/^Builder [0-9a-f]{8}$/.test(b.displayName)&&b.displayName.trim().length>2).sort((a,b)=>b.photos-a.photos)[0];
@@ -54,6 +76,24 @@ try{
   await screenshot('claim-modal');
   await evaluate("document.getElementById('claim-cancel').click()");
   await wait("!document.getElementById('claim-modal').classList.contains('open')");
+  // Manifest download must target this exact builder's own thread file, not a shared one.
+  results.manifest=await evaluate("document.getElementById('manifest-download')?.getAttribute('href')");
+  if(!results.manifest||!results.manifest.endsWith(photographed.builderKey+'.json'))throw Error('Manifest download link missing or targets the wrong builder');
+  // Basic photo lightbox: opens over the real large/thumb URLs, moves focus to its own
+  // close control, and returns focus to the exact thumbnail that opened it.
+  const triggerId='__smoke_photo_trigger__';
+  await evaluate(`document.querySelector('.photo-thumb').id=${JSON.stringify(triggerId)}`);
+  // .focus() first: a synthetic .click() alone does not reliably move browser focus the
+  // way a real pointer click does, and this check is specifically about focus return.
+  await evaluate(`document.getElementById(${JSON.stringify(triggerId)}).focus();document.getElementById(${JSON.stringify(triggerId)}).click()`);
+  await wait("document.getElementById('photo-viewer-modal').classList.contains('open')");
+  results.lightbox=await evaluate("(()=>{const s=document.querySelector('#photo-viewer-modal .sheet');const r=s.getBoundingClientRect();return{display:getComputedStyle(s).display,height:Math.round(r.height),focused:document.activeElement.id};})()");
+  if(results.lightbox.display==='none'||results.lightbox.height<40)throw Error('Photo viewer opened an empty overlay');
+  if(results.lightbox.focused!=='photo-viewer-close')throw Error('Photo viewer did not move focus to its close control');
+  await screenshot('photo-viewer');
+  await evaluate("document.getElementById('photo-viewer-close').click()");
+  await wait("!document.getElementById('photo-viewer-modal').classList.contains('open')");
+  if(await evaluate(`document.activeElement.id!==${JSON.stringify(triggerId)}`))throw Error('Closing the photo viewer did not return focus to the trigger thumbnail');
   if(!world){
     results.spatial='skipped: no world base URL';
     if(errors.length)throw Error(errors.join('\n'));

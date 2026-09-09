@@ -1,6 +1,128 @@
 'use strict';
 
-(async () => {
+// "Builder 8014fa60" is what community.py writes when no single recorded name won.
+// Those are real threads and stay searchable, they are just nobody's own name.
+const PLACEHOLDER_NAME = /^Builder [0-9a-f]{8}$/;
+// gallery.py's auto-generated album label when a build has no source-recorded title.
+const AUTO_ALBUM_LABEL = /^Build [0-9a-f]{8}$/;
+
+function searchTerms(builder) {
+  return [builder.displayName, ...(builder.aliases || [])].filter(Boolean);
+}
+
+function matchScore(builder, q) {
+  let best = 3;
+  for (const term of searchTerms(builder)) {
+    const lower = term.toLocaleLowerCase();
+    if (lower === q) best = Math.min(best, 0);
+    else if (lower.startsWith(q)) best = Math.min(best, 1);
+    else if (lower.includes(q)) best = Math.min(best, 2);
+  }
+  return best;
+}
+
+// Alphabetical on both sides meant the first eighty cards held seventeen photographs
+// and opened on "-Boewona-, 4 albums, 0 photos". Photographed and named work first.
+// Sorting on photos alone is a trap: that top eight is anonymous "Builder 8014fa60"
+// records with 12,770 albums.
+function compareBuilders(a, b, q) {
+  if (q) {
+    const byMatch = matchScore(a, q) - matchScore(b, q);
+    if (byMatch) return byMatch;
+  }
+  const shot = (a.photos > 0 ? 0 : 1) - (b.photos > 0 ? 0 : 1);
+  if (shot) return shot;
+  const named = (PLACEHOLDER_NAME.test(a.displayName) ? 1 : 0) - (PLACEHOLDER_NAME.test(b.displayName) ? 1 : 0);
+  if (named) return named;
+  if (a.photos !== b.photos) return b.photos - a.photos;
+  if ((b.pieces || 0) !== (a.pieces || 0)) return (b.pieces || 0) - (a.pieces || 0);
+  return a.displayName.localeCompare(b.displayName, undefined, {sensitivity: 'base'});
+}
+
+// New sort modes for the redesign. Each keeps the existing search-relevance priority (a
+// live query still wins first, in every mode) and ends on the full 32-hex builderKey so
+// two builders that tie on the visible metric still render in a fixed order instead of
+// reshuffling between renders.
+const SORT_MODES = {
+  default: {label: 'Default', compare: compareBuilders},
+  photos: {
+    label: 'Most photos',
+    compare(a, b, q) {
+      if (q) {
+        const byMatch = matchScore(a, q) - matchScore(b, q);
+        if (byMatch) return byMatch;
+      }
+      if (b.photos !== a.photos) return b.photos - a.photos;
+      return a.builderKey.localeCompare(b.builderKey);
+    },
+  },
+  az: {
+    label: 'A–Z',
+    compare(a, b, q) {
+      if (q) {
+        const byMatch = matchScore(a, q) - matchScore(b, q);
+        if (byMatch) return byMatch;
+      }
+      const byName = a.displayName.localeCompare(b.displayName, undefined, {sensitivity: 'base'});
+      if (byName) return byName;
+      return a.builderKey.localeCompare(b.builderKey);
+    },
+  },
+  albums: {
+    label: 'Most albums',
+    compare(a, b, q) {
+      if (q) {
+        const byMatch = matchScore(a, q) - matchScore(b, q);
+        if (byMatch) return byMatch;
+      }
+      if (b.albums !== a.albums) return b.albums - a.albums;
+      return a.builderKey.localeCompare(b.builderKey);
+    },
+  },
+};
+
+// Pure filter composition: search + era + With Albums, in the order applyFilter() uses
+// them. Exported so it can be exercised without a DOM.
+function filterBuilders(builders, {era, query, withAlbums} = {}) {
+  const q = (query || '').trim().toLocaleLowerCase();
+  return builders
+    .filter((b) => (!era || b.eras.includes(Number(era))))
+    .filter((b) => !withAlbums || b.albums > 0)
+    .filter((b) => !q || searchTerms(b).some((x) => x.toLocaleLowerCase().includes(q)));
+}
+
+// Archive-wide hero totals. `directory.photography.photos` (not a sum of each builder's
+// own `photos` field) is authoritative because a shared album's photos would otherwise be
+// counted once per credited contributor. Populated eras is the union of every builder's
+// own `eras` list, since the top-level `eras[]` only covers terrain-analysed eras and
+// omits the legacy photo-only eras (16, 17).
+function computeHeroStats(directoryDoc) {
+  const builders = directoryDoc.builders.length;
+  const captures = directoryDoc.photography?.photos ?? 0;
+  const buildersWithPhotos = directoryDoc.photography?.buildersWithPhotos ?? 0;
+  const populatedEras = new Set(directoryDoc.builders.flatMap((b) => b.eras)).size;
+  return {builders, captures, buildersWithPhotos, populatedEras};
+}
+
+// Only a build with a source-recorded title is worth surfacing as a "signature creation" --
+// gallery.py's auto-generated "Build <hex8>" label says nothing a builder would recognise.
+function pickSignatureAlbums(threadDoc, limit = 2) {
+  if (!threadDoc) return [];
+  const albums = threadDoc.eras.flatMap((e) => e.albums);
+  return albums
+    .filter((a) => a.label && !AUTO_ALBUM_LABEL.test(a.label))
+    .sort((a, b) => (b.pieces || 0) - (a.pieces || 0) || a.buildKey.localeCompare(b.buildKey))
+    .slice(0, limit);
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    PLACEHOLDER_NAME, AUTO_ALBUM_LABEL, searchTerms, matchScore, compareBuilders,
+    SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums,
+  };
+}
+
+const initCreatorsPage = async () => {
   const PAGE_SIZE_DIRECTORY = 80;
   const PAGE_SIZE_ALBUMS = 40;
   const SUGGESTION_LIMIT = 8;
@@ -24,10 +146,6 @@
     ['height-variation', 'Height-variation pass (high/low)'],
     ['night-tone', 'Evening tone study'],
   ];
-
-  // "Builder 8014fa60" is what community.py writes when no single recorded name won.
-  // Those are real threads and stay searchable, they are just nobody's own name.
-  const PLACEHOLDER_NAME = /^Builder [0-9a-f]{8}$/;
 
   const $ = (id) => document.getElementById(id);
   const node = (tag, text, cls) => {
@@ -60,11 +178,14 @@
   let lastBeaconTerm = '';
   let filterTimer = 0;
   let beaconTimer = 0;
+  const threadCache = new Map();
 
   const claimModal = $('claim-modal');
   const requestModal = $('request-modal');
   const activityModal = $('activity-modal');
+  const photoViewerModal = $('photo-viewer-modal');
   let selectedAlbum = null;
+  let lastFocusedBeforeViewer = null;
 
   const read = async (name) => {
     const response = await fetch(new URL(name, base));
@@ -201,6 +322,7 @@
     closeModal(claimModal);
     closeModal(requestModal);
     closeModal(activityModal);
+    if (photoViewerModal && photoViewerModal.classList.contains('open')) closePhotoViewer();
   }
 
   async function submitPayload(payload) {
@@ -300,10 +422,50 @@
     return chips;
   }
 
+  // Fetching every builder's thread just to render the directory would turn an 80-card
+  // page into 80 extra requests. Instead each card's Signature Creations section is
+  // populated lazily, only once the card actually scrolls near the viewport, and only
+  // from that one builder's own thread file.
+  const signatureObserver = typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          signatureObserver.unobserve(entry.target);
+          hydrateSignatureCreations(entry.target);
+        }
+      }, {rootMargin: '200px'})
+    : null;
+
+  function fetchThreadForSignature(builderKeyValue) {
+    if (!threadCache.has(builderKeyValue)) {
+      threadCache.set(builderKeyValue, readOptional(`threads/${builderKeyValue}.json`));
+    }
+    return threadCache.get(builderKeyValue);
+  }
+
+  function hydrateSignatureCreations(card) {
+    const key = card.dataset.builderKey;
+    const container = card.querySelector('.signature-creations');
+    if (!key || !container) return;
+    fetchThreadForSignature(key).then((doc) => {
+      const picks = pickSignatureAlbums(doc);
+      if (!picks.length) { container.remove(); return; }
+      const list = node('ul');
+      for (const album of picks) {
+        const li = node('li');
+        li.append(link(album.label, new URL(`${key}/`, base)));
+        list.append(li);
+      }
+      container.append(list);
+      container.hidden = false;
+    });
+  }
+
   function appendBuilderCards() {
     const container = $('content');
     for (const b of filteredBuilders.slice(directoryOffset, directoryOffset + PAGE_SIZE_DIRECTORY)) {
       const card = node('article', null, 'builder');
+      card.dataset.builderKey = b.builderKey;
       card.append(
         link(b.displayName, new URL(`${b.builderKey}/`, base)),
         node('p', sentenceCase(eraRange(b.eras))),
@@ -330,6 +492,19 @@
       if (b.nameStatus === 'ambiguous') {
         card.append(node('p', 'Several recorded names remain under review', 'muted'));
       }
+
+      card.append(node('p', `Builder ID ${b.builderKey.slice(0, 8)}…`, 'builder-id'));
+
+      const signature = node('div', null, 'signature-creations');
+      signature.hidden = true;
+      signature.append(node('span', 'Signature creations', 'signature-creations-label'));
+      card.append(signature);
+      if (signatureObserver) signatureObserver.observe(card);
+      else hydrateSignatureCreations(card);
+
+      const actions = node('div', null, 'card-actions');
+      actions.append(link('Request photo', new URL(`${b.builderKey}/#request`, base)));
+      card.append(actions);
 
       container.append(card);
     }
@@ -371,49 +546,6 @@
     return `${line} ${sentenceCase(eraRange(pending))} ${pending.length === 1 ? 'is' : 'are'} still being photographed.`;
   }
 
-  function searchTerms(builder) {
-    return [builder.displayName, ...(builder.aliases || [])].filter(Boolean);
-  }
-
-  function matchScore(builder, q) {
-    let best = 3;
-    for (const term of searchTerms(builder)) {
-      const lower = term.toLocaleLowerCase();
-      if (lower === q) best = Math.min(best, 0);
-      else if (lower.startsWith(q)) best = Math.min(best, 1);
-      else if (lower.includes(q)) best = Math.min(best, 2);
-    }
-    return best;
-  }
-
-  // Alphabetical on both sides meant the first eighty cards held seventeen photographs
-  // and opened on "-Boewona-, 4 albums, 0 photos". Photographed and named work first.
-  // Sorting on photos alone is a trap: that top eight is anonymous "Builder 8014fa60"
-  // records with 12,770 albums.
-  function compareBuilders(a, b, q) {
-    if (q) {
-      const byMatch = matchScore(a, q) - matchScore(b, q);
-      if (byMatch) return byMatch;
-    }
-    const shot = (a.photos > 0 ? 0 : 1) - (b.photos > 0 ? 0 : 1);
-    if (shot) return shot;
-    const named = (PLACEHOLDER_NAME.test(a.displayName) ? 1 : 0) - (PLACEHOLDER_NAME.test(b.displayName) ? 1 : 0);
-    if (named) return named;
-    if (a.photos !== b.photos) return b.photos - a.photos;
-    if ((b.pieces || 0) !== (a.pieces || 0)) return (b.pieces || 0) - (a.pieces || 0);
-    return a.displayName.localeCompare(b.displayName, undefined, {sensitivity: 'base'});
-  }
-
-  function builderSummary(b) {
-    const parts = [plural(b.albums, 'build')];
-    if (b.pieces != null) parts.push(`${b.pieces.toLocaleString()} pieces`);
-    if (b.tier) parts.push(b.tier);
-    parts.push(`${b.photos.toLocaleString()} photos`);
-    const range = eraRange(b.eras);
-    if (range) parts.push(range);
-    return parts.join(' · ');
-  }
-
   function closeSuggestions() {
     suggestions = [];
     activeSuggestion = -1;
@@ -447,6 +579,16 @@
     $('search').setAttribute('aria-expanded', 'true');
   }
 
+  function builderSummary(b) {
+    const parts = [plural(b.albums, 'build')];
+    if (b.pieces != null) parts.push(`${b.pieces.toLocaleString()} pieces`);
+    if (b.tier) parts.push(b.tier);
+    parts.push(`${b.photos.toLocaleString()} photos`);
+    const range = eraRange(b.eras);
+    if (range) parts.push(range);
+    return parts.join(' · ');
+  }
+
   function highlightSuggestion(delta) {
     if (!suggestions.length) return false;
     // One extra slot past the end returns focus to the raw typed text.
@@ -477,25 +619,60 @@
     if (url.href !== location.href) history.replaceState(null, '', url);
   }
 
+  function syncEraRibbon() {
+    const ribbon = $('era-ribbon');
+    if (!ribbon) return;
+    const current = $('era').value;
+    for (const chip of ribbon.children) {
+      const active = chip.dataset.era === current;
+      chip.classList.toggle('active', active);
+      chip.setAttribute('aria-pressed', String(active));
+    }
+  }
+
+  function buildEraRibbon(erasDescending) {
+    const ribbon = $('era-ribbon');
+    if (!ribbon || ribbon.children.length) return;
+    const counts = new Map();
+    for (const b of directory.builders) for (const e of b.eras) counts.set(e, (counts.get(e) || 0) + 1);
+    const makeChip = (value, label, count) => {
+      const chip = node('button', null, 'era-chip');
+      chip.type = 'button';
+      chip.dataset.era = value;
+      chip.setAttribute('aria-pressed', 'false');
+      chip.append(node('span', label));
+      if (count != null) chip.append(document.createTextNode(' '), node('span', `(${count.toLocaleString()})`, 'era-chip-count'));
+      chip.onclick = () => {
+        $('era').value = value;
+        applyFilter();
+        syncEraRibbon();
+      };
+      return chip;
+    };
+    ribbon.append(makeChip('', 'All eras', directory.builders.length));
+    for (const era of erasDescending) ribbon.append(makeChip(String(era), `Era ${era}`, counts.get(era) || 0));
+    syncEraRibbon();
+  }
+
   function applyFilter({suggest = true} = {}) {
     const typed = $('search').value.trim();
     const q = typed.toLocaleLowerCase();
-    const era = Number($('era').value);
-    filteredBuilders = directory.builders
-      .filter((b) => (!era || b.eras.includes(era)))
-      .filter((b) => !q || searchTerms(b).some((x) => x.toLocaleLowerCase().includes(q)));
-    filteredBuilders.sort((a, b) => compareBuilders(a, b, q));
+    const era = $('era').value;
+    const withAlbums = $('with-albums')?.checked || false;
+    const sortMode = SORT_MODES[$('sort')?.value] || SORT_MODES.default;
+    filteredBuilders = filterBuilders(directory.builders, {era, query: typed, withAlbums});
+    filteredBuilders.sort((a, b) => sortMode.compare(a, b, q));
 
     directoryOffset = 0;
     $('content').replaceChildren();
-    $('status').textContent = `${filteredBuilders.length.toLocaleString()} builders · ${directory.unattributedAlbums.toLocaleString()} additional albums have no saved creator`;
+    $('status').textContent = `${filteredBuilders.length.toLocaleString()} of ${directory.builders.length.toLocaleString()} builders · ${directory.unattributedAlbums.toLocaleString()} additional albums have no saved creator`;
 
     const empty = $('empty-state');
     if (!filteredBuilders.length) {
       empty.hidden = false;
       empty.textContent = q
         ? `No builder matches “${typed}”. Names come from the creator recorded on each saved construction piece, so anyone who never placed a piece in these worlds has no thread. Try a shorter fragment, or a name you built under earlier.`
-        : 'No builder is recorded for this era yet.';
+        : (withAlbums ? 'No builder with albums is recorded for this era yet.' : 'No builder is recorded for this era yet.');
     } else {
       empty.hidden = true;
     }
@@ -508,23 +685,57 @@
     if (q) beaconTimer = setTimeout(() => beaconSearch(q, filteredBuilders.length), BEACON_DEBOUNCE_MS);
   }
 
+  function renderHeroStats() {
+    const hero = computeHeroStats(directory);
+    if ($('stat-builders')) $('stat-builders').textContent = hero.builders.toLocaleString();
+    if ($('stat-captures')) $('stat-captures').textContent = hero.captures.toLocaleString();
+    if ($('stat-captures-note')) {
+      $('stat-captures-note').textContent = hero.captures
+        ? `Across ${plural(hero.buildersWithPhotos, 'builder')}`
+        : 'Photography has not started yet';
+    }
+    if ($('stat-eras')) $('stat-eras').textContent = hero.populatedEras.toLocaleString();
+    if ($('stat-eras-note')) $('stat-eras-note').textContent = 'Chip ribbon below shows which';
+  }
+
+  function setSearchHotkeyLabel() {
+    const hint = $('search-hotkey');
+    if (!hint) return;
+    const platform = navigator.userAgentData?.platform || navigator.platform || '';
+    hint.textContent = /Mac|iPhone|iPad|iPod/i.test(platform) ? '⌘K' : 'Ctrl K';
+  }
+
+  function wireGlobalHotkey() {
+    addEventListener('keydown', (event) => {
+      if (event.key.toLowerCase() !== 'k' || (!event.ctrlKey && !event.metaKey) || event.shiftKey || event.altKey) return;
+      const search = $('search');
+      const hero = $('search-hero');
+      if (!search || !hero || hero.hidden) return;
+      if ([claimModal, requestModal, activityModal, photoViewerModal].some((m) => m?.classList.contains('open'))) return;
+      event.preventDefault();
+      search.focus();
+      search.select();
+    });
+  }
+
   function renderDirectory() {
     const buildersByEra = [...new Set(directory.builders.flatMap((b) => b.eras))]
       .sort((a, b) => b - a);
-    if (!$('era').children.length) {
+    // Pre-existing bug fixed here: the static markup already ships one <option> ("Every
+    // era"), so the old `!$('era').children.length` guard was always false and this loop
+    // never ran -- the native era select has never actually offered a specific era. Guard
+    // on the option count instead, so this still only populates once.
+    if ($('era').options.length <= 1) {
       for (const era of buildersByEra) $('era').add(new Option(`Era ${era}`, era));
     }
+    buildEraRibbon(buildersByEra);
+    renderHeroStats();
 
     const unresolved = directory.legacyImports.reduce((n, e) => n + e.unresolvedImages, 0);
-    const unresolvedLine = `${unresolved.toLocaleString()} historical photographs remain in their original galleries while creator attribution is unresolved.`;
-    if (unresolved > 0) {
-      // renderDirectory() runs once per load now, but a footer that grows by a sentence
-      // every time it is called is a trap waiting for the next caller.
-      const footer = document.querySelector('footer');
-      if (!footer.dataset.unresolvedNoted) {
-        footer.textContent = `${footer.textContent} ${unresolvedLine}`;
-        footer.dataset.unresolvedNoted = '1';
-      }
+    const unresolvedNote = $('footer-unresolved-note');
+    if (unresolved > 0 && unresolvedNote) {
+      unresolvedNote.textContent = `${unresolved.toLocaleString()} historical photographs remain in their original galleries while creator attribution is unresolved.`;
+      unresolvedNote.hidden = false;
     }
 
     $('capture-note').textContent = captureNoteForDirectory();
@@ -534,7 +745,9 @@
       clearTimeout(filterTimer);
       filterTimer = setTimeout(() => applyFilter(), FILTER_DEBOUNCE_MS);
     };
-    $('era').onchange = () => applyFilter();
+    $('era').onchange = () => { applyFilter(); syncEraRibbon(); };
+    if ($('sort')) $('sort').onchange = () => applyFilter();
+    if ($('with-albums')) $('with-albums').onchange = () => applyFilter();
     $('search').onkeydown = (event) => {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         if (highlightSuggestion(event.key === 'ArrowDown' ? 1 : -1)) event.preventDefault();
@@ -574,6 +787,8 @@
       anchor.className = 'credit';
       anchor.dataset.builderKey = c.builderKey;
       credits.append(anchor);
+      // Legacy contributors carry no `share` (evidence: legacy-leading-contributor) --
+      // showing a percentage there would imply a precision the historical import never had.
       if (c.share != null) credits.append(` (${(100 * c.share).toFixed(1)}%)`);
     });
     return credits;
@@ -584,6 +799,53 @@
       const name = buildersByKey.get(anchor.dataset.builderKey)?.displayName;
       if (name) anchor.textContent = name;
     }
+  }
+
+  function closePhotoViewer() {
+    closeModal(photoViewerModal);
+    const img = $('photo-viewer-image');
+    if (img) {
+      // Clear the handler before the src, otherwise clearing the src can itself fire a
+      // spurious error event that the still-attached handler reacts to after the viewer
+      // is already closed.
+      img.onerror = null;
+      img.src = '';
+    }
+    if (lastFocusedBeforeViewer && document.contains(lastFocusedBeforeViewer)) lastFocusedBeforeViewer.focus();
+    lastFocusedBeforeViewer = null;
+  }
+
+  // Basic in-page viewer over the existing thumb/large URLs -- not a masterpiece viewer,
+  // just a bigger look with no navigation away from the thread. Falls back from `large`
+  // to `thumb` on a load failure, and to a plain message if both fail.
+  function openPhotoViewer(photo) {
+    if (!photoViewerModal) return;
+    lastFocusedBeforeViewer = document.activeElement;
+    const img = $('photo-viewer-image');
+    const err = $('photo-viewer-error');
+    const candidates = [photo.large, photo.thumb].filter(Boolean);
+    let attempt = 0;
+    err.hidden = true;
+    img.alt = photo.label || 'Photograph';
+    img.onerror = () => {
+      attempt += 1;
+      if (attempt < candidates.length) { img.src = candidates[attempt]; return; }
+      img.hidden = true;
+      err.hidden = false;
+    };
+    if (candidates.length) {
+      img.hidden = false;
+      img.src = candidates[0];
+    } else {
+      img.hidden = true;
+      err.hidden = false;
+    }
+    $('photo-viewer-title').textContent = photo.label || 'Photograph';
+    const originalLink = $('photo-viewer-original');
+    if (photo.href) { originalLink.href = photo.href; originalLink.hidden = false; }
+    else { originalLink.hidden = true; }
+    openModal(photoViewerModal);
+    $('photo-viewer-close').focus();
   }
 
   function renderAlbumPhotos(album) {
@@ -598,13 +860,16 @@
     }
     const photos = node('div', null, 'photos');
     for (const p of album.photos) {
-      const a = link('', p.href);
+      const btn = node('button', null, 'photo-thumb');
+      btn.type = 'button';
       const img = document.createElement('img');
       img.src = p.thumb;
-      img.alt = p.label;
+      img.alt = p.label + (p.shot ? ` (${p.shot})` : '');
       img.loading = 'lazy';
-      a.append(img);
-      photos.append(a);
+      btn.append(img);
+      btn.setAttribute('aria-label', `View image: ${p.label}`);
+      btn.onclick = () => openPhotoViewer(p);
+      photos.append(btn);
     }
     return photos;
   }
@@ -672,7 +937,7 @@
 
     const links = node('div', null, 'links');
     if (album.galleryUrl) links.append(link('Open original gallery', album.galleryUrl));
-    if (album.worldUrl) links.append(link('World view', album.worldUrl));
+    if (album.worldUrl) links.append(link('Open in world viewer', album.worldUrl));
     card.append(links);
 
     const requestHistory = requestsForBuild(album.buildKey);
@@ -696,9 +961,35 @@
     if (existing) existing.replaceWith(buildAlbumCard(album, targetBuilderKey));
   }
 
+  function renderManifestAction() {
+    const holder = $('thread-actions');
+    if (!holder) return;
+    holder.replaceChildren();
+    const manifest = link('Download builder manifest (JSON)', new URL(`threads/${thread.builderKey}.json`, base));
+    manifest.setAttribute('download', `${thread.builderKey}.json`);
+    manifest.id = 'manifest-download';
+    holder.append(manifest);
+    holder.hidden = false;
+  }
+
+  // A card's Request Photo shortcut links here with #request. There is no builder-level
+  // request in this data model -- a request is always against one album -- so the
+  // shortcut opens the request dialog for the builder's largest album if it is already
+  // claimed, and otherwise surfaces the same "claim first" rule a direct click would.
+  function openRequestShortcutIfLinked() {
+    if (location.hash !== '#request') return;
+    const albums = thread.eras.flatMap((e) => e.albums);
+    if (!albums.length) return;
+    const top = albums.slice().sort((a, b) => (b.pieces || 0) - (a.pieces || 0))[0];
+    const current = claimForBuild(top.buildKey);
+    if (current) openRequestDialog(top, thread.builderKey, current.claimId);
+    else showToast('Claim this build before requesting photographs.');
+  }
+
   function renderThread() {
     $('filters').hidden = true;
     if ($('search-hero')) $('search-hero').hidden = true;
+    if ($('hero-stats')) $('hero-stats').hidden = true;
     const eraCount = thread.eras.reduce((sum, e) => sum + e.albums.length, 0);
     $('title').textContent = thread.displayName;
     const introParts = [plural(eraCount, 'build album')];
@@ -709,6 +1000,7 @@
     $('status').textContent = thread.nameStatus === 'ambiguous'
       ? 'Several recorded names need review. Searchable aliases are retained.'
       : 'No unresolved name conflicts for this builder.';
+    renderManifestAction();
 
     const h = node('p', null, 'muted');
     h.id = 'thread-participation-line';
@@ -741,6 +1033,7 @@
       appendAlbums();
       $('content').append(section);
     }
+    openRequestShortcutIfLinked();
   }
 
   function refreshThreadParticipationLine() {
@@ -891,6 +1184,7 @@
       }
     };
     $('activity-close').onclick = () => closeModal(activityModal);
+    if ($('photo-viewer-close')) $('photo-viewer-close').onclick = closePhotoViewer;
     // The contact field invites a Discord handle or e-mail and persists indefinitely.
     // Offer a way out that does not require clearing site data by hand.
     if ($('forget-participation')) {
@@ -910,14 +1204,18 @@
         if (isThread && thread) renderThread();
       };
     }
-    for (const modal of [claimModal, requestModal, activityModal]) {
-      modal.addEventListener('click', (event) => {
-        if (event.target === modal) closeModal(modal);
+    for (const modal of [claimModal, requestModal, activityModal, photoViewerModal]) {
+      modal?.addEventListener('click', (event) => {
+        if (event.target !== modal) return;
+        if (modal === photoViewerModal) closePhotoViewer();
+        else closeModal(modal);
       });
     }
     addEventListener('keydown', (event) => {
       if (event.key === 'Escape') closeAllModals();
     });
+    setSearchHotkeyLabel();
+    wireGlobalHotkey();
   }
 
   function bootstrap() {
@@ -965,4 +1263,8 @@
   }
 
   bootstrap();
-})();
+};
+
+// Guarded so `require()`-ing this file for the pure-logic unit tests (creators.logic.test.js)
+// doesn't try to run the page bootstrap against Node's missing `document`/`location`.
+if (typeof document !== 'undefined') initCreatorsPage();
