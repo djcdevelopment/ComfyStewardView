@@ -145,10 +145,35 @@ def main():
         "remoteRoot": args.remote_root, "moved": [], "bytes": 0}
     moved = {m["file"] for m in receipt["moved"]}
     todo = [e for e in pending(entries, dest) if e[0] not in moved]
-    print(f"{len(todo):,} still on the capture host", flush=True)
+    already = [e for e in entries if e[0] not in moved and e not in todo]
+    print(f"{len(todo):,} still to fetch, {len(already):,} already here from an earlier "
+          f"transfer", flush=True)
     if args.dry_run:
-        print(f"dry run: would move {len(todo):,}")
+        print(f"dry run: would free {len(already):,} without transferring, "
+              f"then move {len(todo):,}")
         return
+
+    # A file copied by some earlier attempt is space the host is still paying for. Verify
+    # the local copy against the journal and release the remote one -- no bytes move.
+    if already:
+        freed = [(n, e) for n, e in already if (dest / n).exists()
+                 and sha256(dest / n) == e["sha256"]]
+        if freed:
+            code, out, errors = remote_script(args.ssh_target, script_with_list(
+                args.remote_root, "xargs -d '\n' rm -f --", [n for n, _ in freed],
+                tail="df --output=avail -B1 /home | tail -1"))
+            if code:
+                print("  reconcile delete failed: " + errors.strip()[:200])
+            else:
+                free = int(out.decode(errors="replace").strip().splitlines()[-1])
+                size = sum(e["metadata"]["bytes"] for _, e in freed)
+                receipt["moved"].extend({"file": n, "sha256": e["sha256"],
+                                         "bytes": e["metadata"]["bytes"]} for n, e in freed)
+                receipt["bytes"] += size
+                write(receipt_path, receipt)
+                print(f"  reconciled {len(freed):,} already-copied master(s), freed "
+                      f"{size/1e9:.2f} GB without transferring; host free {free/1e9:.1f} GB",
+                      flush=True)
 
     batches = 0
     while todo:
