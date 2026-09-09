@@ -217,7 +217,12 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
     save(destination/"directory.json",{"schema":"steward-creator-directory/v1","generatedAt":document["generatedAt"],
         "builders":sorted(directory,key=lambda b:(b["displayName"].casefold(),b["builderKey"])),
         "eras":document["eras"],"photography":photography,
-        "unattributedAlbums":sum(not b["contributors"] for b in builds.values() if b["buildKey"] in published_build_keys),
+        # published_build_keys only ever collects builds reached through a builder, and an
+        # unattributed build belongs to no builder -- so gating this on it made the count
+        # structurally zero and the landing page read "0 additional albums have no saved
+        # creator". Count the unattributed builds that clear the same size bar instead.
+        "unattributedAlbums":sum(1 for b in builds.values()
+            if not b["contributors"] and b.get("pieces",0)>=min_build_pieces),
         "legacyImports":[{k:r[k] for k in ("slug","images","albums","unresolvedImages")} for r in document["legacyImports"]]})
     (destination/"index.html").write_text(template,encoding="utf-8")
     for name in ("creators.js","creators.css"):
