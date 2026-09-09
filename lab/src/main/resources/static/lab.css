@@ -336,11 +336,14 @@ select, input[type="number"] { height: 27px; border: 1px solid var(--border); bo
 
 /* The default route is the user-facing world view. Add ?lab=1 for the full
    rendering bench and interaction controls. */
-body.public-experience .app-header { height: 58px; padding: 0 18px; background: rgba(15,20,29,.98); }
+body.public-experience .app-header { height: 72px; padding: 0 18px; background: rgba(15,20,29,.98); }
 body.public-experience .brand-public { display: inline; }
 body.public-experience .brand-lab { display: none; }
 body.public-experience .public-world { display: flex; }
+body.public-experience .public-world { flex: 0 0 250px; min-width: 0; align-self: stretch; }
+body.public-experience .public-world strong { min-width: 0; overflow-wrap: anywhere; }
 body.public-experience .map-view-controls { display: flex; }
+body.public-experience .map-view-controls { flex: 0 0 auto; margin-left: auto; }
 body.public-experience .public-actions { display: flex; }
 body.public-experience .header-spacer { flex: 0; }
 body.public-experience .header-field,
@@ -349,7 +352,7 @@ body.public-experience .header-metric,
 body.public-experience .primary-nav,
 body.public-experience .controls-panel,
 body.public-experience .jobs-panel { display: none; }
-body.public-experience .workspace { height: calc(100% - 58px); grid-template-columns: minmax(0,1fr); }
+body.public-experience .workspace { height: calc(100% - 72px); grid-template-columns: minmax(0,1fr); }
 body.public-experience.inspection-open .workspace { grid-template-columns: minmax(0,1fr) 360px; }
 body.public-experience.inspection-open .jobs-panel { position: static; display: flex; width: auto; box-shadow: -12px 0 32px rgba(0,0,0,.32); }
 body.public-experience .panel-tabs,
@@ -375,7 +378,7 @@ body.public-experience .legend-ticks { color: var(--muted); }
   .jobs-panel { position: absolute; z-index: 1300; right: 0; top: 94px; bottom: 0; width: 348px; box-shadow: -10px 0 30px rgba(0,0,0,.45); }
   .map-story { max-width: calc(100% - 410px); }
   body.public-experience.inspection-open .workspace { grid-template-columns: minmax(0,1fr); }
-  body.public-experience.inspection-open .jobs-panel { position: absolute; top: 58px; bottom: 0; width: 360px; }
+  body.public-experience.inspection-open .jobs-panel { position: absolute; top: 72px; bottom: 0; width: 360px; }
   body.public-experience .map-story { max-width: calc(100% - 300px); }
   body.public-experience .public-world { display: none; }
   .biome-chip { width: 27px; padding: 0; }
@@ -387,6 +390,7 @@ body.public-experience .legend-ticks { color: var(--muted); }
   body.public-experience .brand { padding-right: 10px; }
   body.public-experience .brand-public { display: none; }
   body.public-experience .public-world { min-width: 0; }
+  body.public-experience .public-world { flex-basis: 150px; }
   body.public-experience .public-world span { display: none; }
   body.public-experience .public-world strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .public-actions { gap: 5px; }
