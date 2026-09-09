@@ -297,6 +297,22 @@ def project(root, analyses, links_path=None, legacy_config=None, capture_manifes
         print(f"Attached {captured_photos:,} captured photographs from "
               f"{len(capture_receipts)} manifest(s); {unresolved:,} unresolved build(s)",flush=True)
 
+    # Omitting --legacy-galleries is not "no legacy galleries", it is "drop the ones you
+    # had": the projection is rebuilt from scratch every run, so a forgotten flag silently
+    # removed 535 albums and 5,176 photographs, and the only visible sign was a builder
+    # count falling from 3,328 to 3,194. Refuse to do that quietly.
+    if not legacy_config:
+        previous=root/"analysis/community-private.json"
+        if previous.exists():
+            try:had=len(load(previous).get("legacyImports",[]))
+            except (ValueError,OSError):had=0
+            if had:
+                raise ValueError(
+                    f"The current projection imports {had} legacy gallery/galleries, but no "
+                    f"--legacy-galleries was given. Re-running would drop those albums and "
+                    f"their photographs. Pass the config, or delete "
+                    f"analysis/community-private.json to say the loss is intended.")
+
     legacy,legacy_receipts=import_legacy(legacy_config,namespace,links)
     for build in legacy:
         all_builds.append(build)

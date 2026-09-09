@@ -98,6 +98,15 @@ class Worker:
         for key,value in self.state['completed'].items():
             path=self.root/value['file']
             if not path.resolve().is_relative_to(self.root):raise ValueError('Unsafe completed path')
+            # A missing master is usually not corruption: shuttle_masters.py moves finished
+            # campaigns off this host and records what it took. Say which it is, because the
+            # raw FileNotFoundError reads like a failed capture.
+            if not path.exists():
+                marker=self.root/'.masters-relocated.json'
+                raise ValueError(
+                    f"Journalled photograph is gone: {value['file']}. "
+                    + (read(marker)['note'] if marker.exists()
+                       else "The file was deleted outside the worker."))
             if png_metadata(path)!=value['metadata']:raise ValueError('Completed photograph changed')
 
     def stopped(self):

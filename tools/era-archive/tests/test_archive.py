@@ -141,6 +141,22 @@ class ArchiveTest(unittest.TestCase):
             with self.assertRaises(ValueError):community.attach_captures(
                 [{"buildKey":"a"*64,"sourceKey":"src","photos":[],"contributors":[]}],[path])
 
+    def test_rebuilding_without_the_legacy_config_refuses_to_drop_those_albums(self):
+        """The projection is rebuilt from scratch every run, so omitting --legacy-galleries
+        is not 'no legacy galleries', it is 'drop the ones you had'. It silently removed
+        535 albums and 5,176 photographs once; the only visible sign was a builder count
+        falling from 3,328 to 3,194."""
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            archive.save(root/'analysis/community-private.json',
+                         {'legacyImports':[{'slug':'era17','images':3543}]})
+            with self.assertRaises(ValueError) as caught:
+                community.project(root,[],None,None)
+            self.assertIn('--legacy-galleries',str(caught.exception))
+            # No prior import means nothing to lose, so it must not block a first run.
+            archive.save(root/'analysis/community-private.json',{'legacyImports':[]})
+            community.project(root,[],None,None)
+
     def test_source_pairs_reject_name_mismatch_and_deduplicate_content(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);source=root/'source';source.mkdir();out=root/'processed'
