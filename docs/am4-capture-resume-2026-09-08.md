@@ -62,6 +62,12 @@ running in the background (Windows Python worker PID 38736, launcher PID 38352),
 with progress in `transfers/status.json`. Completion of all six transfers was
 still pending at this checkpoint. The 4,000-photo campaign also remained running.
 
+VERIFIED completion update: all six original DB/FWL pairs finished staging at
+05:25:36 UTC, totaling 5545801854 bytes. Each pair has a verified receipt under
+`/home/derek/valheim-capture/staged-worlds`. The subsequent
+[spatial publication receipt](era-archive-spatial-publication-2026-09-08.md) records
+their use in the viewer while photography continues.
+
 Validation: all 17 archive, campaign and staging tests passed. The regression
 checks cover deliberate pauses, crash accounting, original-pair preservation,
 corrupt transport/source rejection, archive traversal rejection, and repeat
