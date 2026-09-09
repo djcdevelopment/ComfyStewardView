@@ -269,4 +269,34 @@ class ArchiveTest(unittest.TestCase):
             thread=archive.load(Path(temp)/'threads'/(key+'.json'))
             self.assertIn('era=era7&build='+build,thread['eras'][0]['albums'][0]['worldUrl'])
 
+    def test_thread_pages_carry_their_own_unfurl(self):
+        with tempfile.TemporaryDirectory() as temp:
+            key='c'*32;build='d'*64
+            photo={'id':'p1','thumb':'https://pics.example/thumb/p1.webp','large':'https://pics.example/large/p1.webp',
+                   'href':'https://pics.example/#build=x','label':'Hall of "Echoes"'}
+            doc={'generatedAt':'now','eras':[],'legacyImports':[],
+                'builders':[{'builderKey':key,'displayName':'Softstyles & Co','aliases':[],'nameStatus':'recorded','builds':[build]}],
+                'builds':[{'buildKey':build,'era':14,'slug':'era14','label':'Hall','pieces':9,'photos':[photo],
+                           'contributors':[{'builderKey':key,'pieces':9,'share':1,'evidence':'saved-piece-creator'}]}]}
+            gallery.project(doc,Path(temp),'https://world.example/world/')
+            page=(Path(temp)/key/'index.html').read_text(encoding='utf-8')
+            # A pasted Discord link has to name this builder and show their photograph.
+            self.assertIn('<title>Softstyles &amp; Co · Comfy builders</title>',page)
+            self.assertIn('content="https://pics.example/large/p1.webp"',page)
+            self.assertIn('Hall of &quot;Echoes&quot;',page)
+            self.assertNotIn(gallery.HEAD_START,page)
+            # The directory keeps the shared identity, and still loads its own assets.
+            root=(Path(temp)/'index.html').read_text(encoding='utf-8')
+            self.assertIn('<title>Comfy builders',root)
+            self.assertIn('"./creators.js"',root)
+            self.assertIn('"../creators.js"',page)
+            directory=archive.load(Path(temp)/'directory.json')
+            self.assertEqual([{'era':14,'albums':1,'albumsWithPhotos':1,'photos':1}],directory['photography']['eras'])
+            self.assertEqual(1,directory['photography']['buildersWithPhotos'])
+            self.assertTrue((Path(temp)/'search-beacon.txt').exists())
+
+    def test_projection_refuses_a_template_without_head_markers(self):
+        with self.assertRaises(ValueError):
+            gallery.with_head('<head></head>','')
+
 if __name__=='__main__':unittest.main()

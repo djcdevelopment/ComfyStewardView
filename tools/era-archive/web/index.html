@@ -4,7 +4,16 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="creator-participation-endpoint" content="">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2317262a'/%3E%3Cpath d='M5 20 16 8l11 12' fill='none' stroke='%23b8dfbd' stroke-width='2.4' stroke-linejoin='round'/%3E%3Cpath d='M10 20v6h12v-6' fill='none' stroke='%237cae90' stroke-width='2.2'/%3E%3C/svg%3E">
+    <!-- per-thread head: replaced by gallery.py -->
     <title>Comfy builders · Across the eras</title>
+    <meta name="description" content="Every builder recorded on a saved construction piece, era by era, with the photographs taken of their work.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Comfy builders">
+    <meta property="og:title" content="Comfy builders · Across the eras">
+    <meta property="og:description" content="Search the community archive for your own builds across every era.">
+    <meta name="twitter:card" content="summary">
+    <!-- /per-thread head -->
     <link rel="stylesheet" href="./creators.css">
     <script src="./creators.js" defer></script>
   </head>
@@ -16,10 +25,29 @@
     <main>
       <p class="eyebrow">THE COMFY COMMUNITY</p>
       <h1 id="title">Across the eras</h1>
-      <p id="intro">Find a builder. Explore their work, shared creations and photographs through the years.</p>
+      <p id="intro">Every builder recorded on a saved construction piece, era by era, with the photographs taken of their work.</p>
 
-      <section id="participation-summary-block" class="participation-block">
-        <h2>Your participation snapshot</h2>
+      <section id="search-hero">
+        <label class="hero-label" for="search">Search for your builds</label>
+        <div class="search-wrap">
+          <input id="search" type="search" autocomplete="off" autocapitalize="off" spellcheck="false"
+                 role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="suggestions"
+                 placeholder="Your Valheim name, or any name you have built under">
+          <ul id="suggestions" role="listbox" aria-label="Matching builders" hidden></ul>
+        </div>
+        <p id="capture-note" class="muted"></p>
+      </section>
+
+      <div id="filters">
+        <label>Era <select id="era"><option value="">Every era</option></select></label>
+      </div>
+      <p id="status" role="status">Opening the community archive…</p>
+      <p id="empty-state" class="muted" hidden></p>
+      <div id="content"></div>
+      <button id="more" hidden>Show more</button>
+
+      <details id="participation-details" class="participation-block">
+        <summary>Your participation on this device</summary>
         <p id="participation-summary" role="status">No local participation recorded yet.</p>
         <p id="global-participation" class="muted" hidden></p>
         <label>Volunteer handle
@@ -31,16 +59,9 @@
         </div>
         <p class="muted">Claims and requests stay in this browser. Nothing is sent anywhere
           until you copy the payload and pass it on.</p>
-      </section>
+      </details>
 
-      <div id="filters">
-        <label>Find a builder <input id="search" type="search" placeholder="Name or recorded alias"></label>
-        <label>Era <select id="era"><option value="">Every era</option></select></label>
-      </div>
-      <p id="status" role="status">Opening the community archive…</p>
-      <div id="content"></div>
-      <button id="more" hidden>Show more</button>
-      <footer>Credits follow the creators recorded on saved construction pieces. Shared albums can appear in several builders' threads. Matching names alone never join characters. Historical photo albums retain their original attribution and links.</footer>
+      <footer>Credits follow the creators recorded on saved construction pieces. Shared albums can appear in several builders' threads. Matching names alone never join characters. Historical photo albums retain their original attribution and links. Search terms are recorded in this web server's access log so the next capture sessions can follow what people are actually looking for.</footer>
     </main>
 
     <div id="toast" role="status" aria-live="polite"></div>

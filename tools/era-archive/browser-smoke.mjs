@@ -2,7 +2,9 @@ import {spawn} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 const [gallery,world,output]=process.argv.slice(2);
-if(!gallery||!world||!output)throw Error('Usage: browser-smoke.mjs <creator-base-url> <world-base-url> <output-dir>');
+// The world view deploys on its own lane and is not always up; the creator lane has to
+// be verifiable on its own before a release goes out. Pass an empty world URL to skip it.
+if(!gallery||!output)throw Error('Usage: browser-smoke.mjs <creator-base-url> <world-base-url-or-empty> <output-dir>');
 await mkdir(output,{recursive:true});
 const chrome=process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const browser=spawn(chrome,['--headless','--disable-gpu','--no-first-run','--no-default-browser-check','--remote-debugging-port=0','--window-size=1440,1000',`--user-data-dir=${path.resolve(output,'profile')}`,'about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:true});
@@ -20,16 +22,43 @@ const results={};
 try{
   await cdp('Page.enable');await cdp('Runtime.enable');
   await cdp('Page.navigate',{url:gallery});await wait("document.querySelectorAll('.builder').length>0");
-  results.directory=await evaluate("({title:document.title,cards:document.querySelectorAll('.builder').length,status:document.getElementById('status').textContent})");await screenshot('creators');
-  await evaluate("document.getElementById('search').value='__no_such_builder_928478__';document.getElementById('search').dispatchEvent(new Event('input'))");
-  if(await evaluate("document.querySelectorAll('.builder').length")!==0)throw Error('Builder search did not filter');
+  results.directory=await evaluate("({title:document.title,cards:document.querySelectorAll('.builder').length,status:document.getElementById('status').textContent,note:document.getElementById('capture-note').textContent})");await screenshot('creators');
+  if(!results.directory.note)throw Error('Landing page never said which eras are photographed');
+  if(await evaluate("document.querySelector('.builder p:nth-of-type(2)').textContent.endsWith('0 photos')"))throw Error('Directory still opens on a thread with no photographs');
   const directory=await fetch(new URL('directory.json',gallery)).then(r=>r.json());
   const photographed=directory.builders.filter(b=>b.photos>0&&b.eras.length>1).sort((a,b)=>b.photos-a.photos)[0];
   if(!photographed)throw Error('No cross-era photographed builder');
+  const named=directory.builders.filter(b=>b.photos>0&&!/^Builder [0-9a-f]{8}$/.test(b.displayName)&&b.displayName.trim().length>2).sort((a,b)=>b.photos-a.photos)[0];
+  if(!named)throw Error('No named photographed builder to search for');
+  const term=named.displayName.slice(0,5).trim();
+  await evaluate(`document.getElementById('search').value=${JSON.stringify(term)};document.getElementById('search').dispatchEvent(new Event('input'))`);
+  await wait("document.querySelectorAll('#suggestions li').length>0");
+  results.autocomplete=await evaluate("({reflected:new URLSearchParams(location.search).get('q'),suggestions:[...document.querySelectorAll('#suggestions li')].map(li=>li.textContent)})");
+  if(results.autocomplete.reflected!==term)throw Error('Search was not reflected into ?q=');
+  if(!results.autocomplete.suggestions.some(t=>t.includes('photos')))throw Error('Suggestions carry no build counts');
+  await evaluate("document.getElementById('search').value='__no_such_builder_928478__';document.getElementById('search').dispatchEvent(new Event('input'))");
+  await wait("document.querySelectorAll('.builder').length===0");
+  if(await evaluate("document.getElementById('empty-state').hidden"))throw Error('Search with no matches showed a blank void');
   await cdp('Page.navigate',{url:new URL(photographed.builderKey+'/',gallery).href});
   await wait("document.querySelectorAll('.photos img').length>0");
-  results.thread=await evaluate("({title:document.getElementById('title').textContent,eras:document.querySelectorAll('details').length,photos:document.querySelectorAll('.photos img').length})");
+  results.thread=await evaluate("({title:document.title,heading:document.getElementById('title').textContent,eras:document.querySelectorAll('#content details').length,photos:document.querySelectorAll('.photos img').length,description:document.querySelector('meta[name=\"description\"]')?.content||'',image:document.querySelector('meta[property=\"og:image\"]')?.content||''})");
+  if(!results.thread.title.startsWith(results.thread.heading))throw Error('Thread page still carries the shared directory title');
+  if(!results.thread.image||!results.thread.description)throw Error('Thread page would unfurl bare in Discord');
   await wait("[...document.querySelectorAll('.photos img')].filter(i=>i.loading!=='lazy'||i.getBoundingClientRect().top<innerHeight).every(i=>i.complete&&i.naturalWidth>0)");await screenshot('creator-thread');
+  // The check that would have caught a modal whose sheet was display:none inside a
+  // visible overlay: every participation dialog opened as an empty black screen.
+  await evaluate("document.querySelector('.album button.primary').click()");
+  await wait("document.getElementById('claim-modal').classList.contains('open')");
+  results.modal=await evaluate("(()=>{const s=document.querySelector('#claim-modal .sheet');const r=s.getBoundingClientRect();return{display:getComputedStyle(s).display,height:Math.round(r.height),width:Math.round(r.width)};})()");
+  if(results.modal.display==='none'||results.modal.height<40||results.modal.width<40)throw Error('Claim modal opened an empty overlay');
+  await screenshot('claim-modal');
+  await evaluate("document.getElementById('claim-cancel').click()");
+  await wait("!document.getElementById('claim-modal').classList.contains('open')");
+  if(!world){
+    results.spatial='skipped: no world base URL';
+    if(errors.length)throw Error(errors.join('\n'));
+  results.status='passed';await writeFile(path.join(output,'receipt.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results,null,2));
+  }else{
   await cdp('Page.navigate',{url:new URL('?era=era7',world).href});
   await wait("[...document.querySelectorAll('.analysis-raster')].some(i=>i.complete&&i.naturalWidth>0)");
   if(await evaluate("document.querySelectorAll('.context-raster').length")!==0)throw Error('Construction map displayed another era terrain');
@@ -42,4 +71,5 @@ try{
   await screenshot('era17');
   if(errors.length)throw Error(errors.join('\n'));
   results.status='passed';await writeFile(path.join(output,'receipt.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results,null,2));
+  }
 }finally{socket.close();browser.kill();}

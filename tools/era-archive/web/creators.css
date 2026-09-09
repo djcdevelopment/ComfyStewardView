@@ -229,10 +229,115 @@ fieldset input {
   font-size: 1.1rem;
 }
 
-details > summary {
+#content details > summary {
   cursor: pointer;
   font-size: 1.5rem;
   margin: 28px 0 12px;
+}
+
+#participation-details {
+  margin-top: 48px;
+}
+
+#participation-details > summary {
+  cursor: pointer;
+  font-size: 1rem;
+  color: #b6c8c2;
+}
+
+#participation-details[open] > summary {
+  margin-bottom: 10px;
+}
+
+/* Search first: this is the one thing 95% of visitors came to do. */
+#search-hero {
+  margin: 30px 0 8px;
+}
+
+.hero-label {
+  display: block;
+  font: 1.6rem Georgia, serif;
+  margin-bottom: 10px;
+}
+
+.search-wrap {
+  position: relative;
+  max-width: 720px;
+}
+
+#search {
+  font-size: 1.15rem;
+  padding: 15px 16px;
+  border-color: #7cae90;
+  background: #16262b;
+}
+
+#suggestions {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: #16252b;
+  border: 1px solid #44615a;
+  border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(4, 10, 12, 0.55);
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.suggestion a {
+  display: grid;
+  gap: 2px;
+  padding: 9px 11px;
+  border-radius: 7px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.suggestion.active a,
+.suggestion a:hover,
+.suggestion a:focus {
+  background: #22383e;
+  text-decoration: none;
+}
+
+.suggestion-name {
+  font-size: 1.05rem;
+}
+
+.suggestion-alias,
+.suggestion-counts {
+  font-size: 0.82rem;
+  color: #9fb5af;
+}
+
+#capture-note {
+  max-width: 740px;
+  margin-top: 14px;
+  color: #9fb5af;
+  font-size: 0.9rem;
+}
+
+#empty-state {
+  max-width: 700px;
+  margin: 8px 0 24px;
+}
+
+/* Was a <button> with no handler; and a `disabled` button swallows the tap that would
+   otherwise explain itself, which is invisible on a touch screen. */
+.chip.claimed {
+  align-self: center;
+  padding: 8px 12px;
+  color: #b8dfbd;
+}
+
+button.inert {
+  opacity: 0.62;
+  border-style: dashed;
 }
 
 .modal,
@@ -265,6 +370,13 @@ details > summary {
 
 .modal.open {
   display: flex;
+}
+
+/* .sheet is display:none above, and .modal.open only re-showed the overlay -- so every
+   modal opened as an empty dark screen and the whole participation feature was dead on
+   arrival. The sheet has to be re-shown too. */
+.modal.open .sheet {
+  display: block;
 }
 
 .modal[hidden] {
@@ -323,5 +435,45 @@ footer {
 @media (max-width: 680px) {
   button {
     width: 100%;
+  }
+
+  header,
+  main {
+    padding: 16px 14px;
+  }
+
+  header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  h1 {
+    margin: 10px 0;
+  }
+
+  .search-wrap {
+    max-width: none;
+  }
+
+  .hero-label {
+    font-size: 1.3rem;
+  }
+
+  #content.directory {
+    grid-template-columns: 1fr;
+  }
+
+  #content .builder,
+  #content .album {
+    padding: 16px;
+  }
+
+  .photos {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+
+  .chip.claimed {
+    width: 100%;
+    text-align: center;
   }
 }
