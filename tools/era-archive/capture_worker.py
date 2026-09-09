@@ -116,7 +116,13 @@ class Worker:
         summary={'updatedAt':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'state':state,
                  'era':self.plan['era'],'completedShots':len(self.state['completed']),
                  'targetShots':sum(len(b['shots']) for b in self.plan['builds']),
-                 'outputBytes':self.output_bytes(),'freeBytes':shutil.disk_usage(self.root).free,
+                 # outputBytes is what disk_stop measures, so it deliberately counts the
+                 # mod's staging tree and any orphan alongside the journal. That makes it
+                 # the wrong number to size a campaign from -- it read 19 MB/shot on era 7
+                 # against a true 10.6 -- so report the journal's own total beside it.
+                 'outputBytes':self.output_bytes(),
+                 'journalBytes':sum(v['metadata']['bytes'] for v in self.state['completed'].values()),
+                 'freeBytes':shutil.disk_usage(self.root).free,
                  'gamePid':self.process.pid if self.process and self.process.poll() is None else None,
                  'downloadsEnabled':False,**extra}
         write(self.root/'status.json',summary)

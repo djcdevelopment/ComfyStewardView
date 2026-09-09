@@ -321,6 +321,15 @@ def project(root, analyses, links_path=None, legacy_config=None, capture_manifes
     for b in all_builds:
         if b.get("templateKey"):b["templateCopies"]=copies[(b["era"],b["templateKey"])]
     stamped={}
+    # analyze_era returns a cached receipt when one exists, so an era analysed before
+    # templateKey was recorded carries none and this dedupe silently does nothing --
+    # which looks exactly like a world that has no stamped lots. Say which it is.
+    untyped={b["era"] for b in all_builds if not b.get("legacyClusterId") and not b.get("templateKey")}
+    if untyped:
+        print(f"NOTE: era(s) {sorted(untyped)} were analysed before build identity was "
+              f"recorded, so repeated stamped builds are NOT deduplicated in this queue. "
+              f"Delete their analysis receipts to recompute, or select with "
+              f"plan_coverage.py, which excludes templates itself.",flush=True)
 
     # Greedy coverage first, then geometry score; each builder-era receives a first opportunity.
     remaining={b["buildKey"]:b for b in all_builds if not b["photos"] and b.get("contributors")}
