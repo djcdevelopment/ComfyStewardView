@@ -99,7 +99,7 @@ def is_qualifying_album(build, contributor, min_build_pieces=20, min_builder_pie
         return False
     pieces = contributor.get("pieces") or 0
     share = contributor.get("share") or 0.0
-    if pieces >= 25:
+    if pieces >= min_builder_pieces:
         return True
     if pieces >= min_builder_pieces and share >= min_builder_share:
         return True

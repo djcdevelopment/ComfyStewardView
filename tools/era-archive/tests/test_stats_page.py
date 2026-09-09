@@ -98,6 +98,7 @@ class StatsPageTests(unittest.TestCase):
         self.assertFalse(is_qualifying_album({"pieces": 1000, "photos": []}, {"pieces": 1, "share": 0.001}))
         # Real 35-piece contribution on a 1000-piece build is preserved
         self.assertTrue(is_qualifying_album({"pieces": 1000, "photos": []}, {"pieces": 35, "share": 0.035}))
+        self.assertFalse(is_qualifying_album({"pieces": 1000, "photos": []}, {"pieces": 35, "share": 0.035}, min_builder_pieces=50))
 
     def test_classify_volume_tier(self):
         from gallery import classify_volume_tier
