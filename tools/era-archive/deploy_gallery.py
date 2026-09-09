@@ -11,8 +11,10 @@ from archive import REPO,checked_file,digest,load,now,save
 
 
 def remote(target,code):
-    return subprocess.run(['ssh','-T','-o','BatchMode=yes','-o','ConnectTimeout=10',target,'python3','-'],
-        input=code,text=True,capture_output=True,check=True).stdout
+    result=subprocess.run(['ssh','-T','-o','BatchMode=yes','-o','ConnectTimeout=10',target,'python3','-'],
+        input=code,text=True,capture_output=True)
+    if result.returncode:raise RuntimeError(f'Remote operation failed ({result.returncode}): {result.stderr.strip()}')
+    return result.stdout
 
 
 def main():
@@ -53,7 +55,7 @@ from pathlib import Path
 root=Path(settings['root']);archive=Path(settings['archive'])
 assert archive.stat().st_size==settings['bytes']
 assert hashlib.sha256(archive.read_bytes()).hexdigest()==settings['sha256']
-releases=root.parent/('.'+root.name+'-creator-releases');releases.mkdir(exist_ok=True)
+releases=root/'.creator-releases';releases.mkdir(exist_ok=True)
 dest=releases/settings['release'];assert not dest.exists();dest.mkdir()
 with tarfile.open(archive) as tar:
     for member in tar.getmembers():
