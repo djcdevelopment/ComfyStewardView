@@ -5,8 +5,59 @@ from collections import defaultdict
 import hashlib
 import html
 from pathlib import Path
+import re
 import shutil
 from archive import REPO, artifact, load, now, save
+
+# The closed kinship tag vocabulary, identical to KINSHIP_TAGS in
+# tools/era-archive/web/creators.js and to the checkbox values in web/kinship.html. A tag
+# outside this list is not a tag this archive publishes -- the coordinator's file may hold
+# anything, the public projection holds only these.
+KINSHIP_TAGS = (
+    "basemate", "collab", "helping-hand", "visitor",
+    "mason", "roof", "fields", "portal", "defense", "interior",
+)
+HEX32 = re.compile(r"^[0-9a-f]{32}$")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def sanitize_confirmed_tags(items):
+    """Coordinator-confirmed kinship tags, stripped to what a public page may carry.
+
+    Everything a volunteer typed -- their handle, their note, a contact address, the claim
+    the tag rode in on -- stays in the coordinator's own file. What ships is the join
+    (build, contributor, builder), the closed tag vocabulary, and the confirmation stamp.
+    Anything malformed is dropped rather than repaired: a tag whose keys do not parse is a
+    tag nobody can attach to a build, and publishing it would only leak the fields around it."""
+    kept = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        build_key = item.get("buildKey")
+        contributor_key = item.get("contributorKey")
+        builder_key = item.get("builderKey")
+        if not isinstance(build_key, str) or not HEX64.match(build_key):
+            continue
+        if not isinstance(contributor_key, str) or not HEX32.match(contributor_key):
+            continue
+        if not isinstance(builder_key, str) or not HEX32.match(builder_key):
+            continue
+        raw = item.get("tags")
+        if not isinstance(raw, list):
+            continue
+        tags = sorted({t for t in raw if isinstance(t, str) and t in KINSHIP_TAGS})
+        if not tags:
+            continue
+        confirmed_at = item.get("confirmedAt")
+        kept.append({
+            "buildKey": build_key,
+            "contributorKey": contributor_key,
+            "builderKey": builder_key,
+            "tags": tags,
+            "confirmedAt": confirmed_at if isinstance(confirmed_at, str) else None,
+        })
+    kept.sort(key=lambda tag: (tag["buildKey"], tag["contributorKey"]))
+    return kept
 
 # Every one of the 2,747 thread pages shipped the same <title> and no description, so a
 # link pasted into Discord -- the channel this archive is actually shared through --
@@ -140,6 +191,7 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
             "claims": normalize_int(source.get("claims")),
             "requests": normalize_int(source.get("requests")),
             "openRequests": normalize_int(source.get("openRequests", source.get("pendingRequests"))),
+            "confirmedTags": sanitize_confirmed_tags(source.get("confirmedTags")),
             "sourcePath": "analysis/participation.json",
             "lastUpdatedAt": source.get("updatedAt", source.get("generatedAt")),
         }
@@ -225,21 +277,35 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
             if not b["contributors"] and b.get("pieces",0)>=min_build_pieces),
         "legacyImports":[{k:r[k] for k in ("slug","images","albums","unresolvedImages")} for r in document["legacyImports"]]})
     (destination/"index.html").write_text(template,encoding="utf-8")
-    for name in ("creators.js","creators.css"):
+    for name in ("creators.js","creators.css","kinship.js"):
         shutil.copyfile(REPO/"tools/era-archive/web"/name,destination/name)
-    stats_src = REPO / "tools/era-archive/web/stats.html"
-    if stats_src.exists():
-        stats_content = stats_src.read_text(encoding="utf-8")
-        stats_dir = destination / "stats"
-        stats_dir.mkdir(parents=True, exist_ok=True)
-        (stats_dir / "index.html").write_text(stats_content.replace('"./creators.', '"../creators.'), encoding="utf-8")
-        (destination / "stats.html").write_text(stats_content, encoding="utf-8")
+    # The two other shells. Each is served from its own directory, so every relative asset
+    # link climbs one level -- the same rewrite the thread pages get, plus kinship.html's
+    # own page script. stats.html also keeps a copy at the root because that URL is already
+    # published; kinship has no such history and gets the directory form only.
+    for source_name, folder, keep_at_root in (("stats.html", "stats", True), ("kinship.html", "kinship", False)):
+        source = REPO / "tools/era-archive/web" / source_name
+        if not source.exists():
+            continue
+        content = source.read_text(encoding="utf-8")
+        folder_dir = destination / folder
+        folder_dir.mkdir(parents=True, exist_ok=True)
+        (folder_dir / "index.html").write_text(
+            content.replace('"./creators.', '"../creators.').replace('"./kinship.js', '"../kinship.js'),
+            encoding="utf-8")
+        if keep_at_root:
+            (destination / source_name).write_text(content, encoding="utf-8")
     # A four-byte file whose query string is the search log: Caddy already records every
     # request as JSON with its URI, so this needs no service, no write path and no store.
     (destination/"search-beacon.txt").write_text("ok\n",encoding="utf-8")
     write_participation_snapshot()
     # Whitelist above deliberately excludes raw character IDs, names from signs, coordinates,
     # source paths, inventories, world seed, snapshot hashes and private identity-review evidence.
+    # creators.js, creators.css, kinship.js and the kinship shell are presentation only: they
+    # carry no archive data, they read the same public JSON any visitor can fetch, and the
+    # only participation they ever see is what that visitor typed into their own browser.
+    # participation.json is the one exception and it is sanitised on the way out --
+    # sanitize_confirmed_tags() drops handles, notes, contacts and claim ids.
     receipt={"schema":"steward-gallery-projection/v1","createdAt":now(),"builders":len(directory),
         "albums":len(published_build_keys),"files":[artifact(destination,p) for p in sorted(destination.rglob("*")) if p.is_file() and p.name!="receipt.json"]}
     save(destination/"receipt.json",receipt)

@@ -139,6 +139,61 @@ The creator directory and per-era threads exclude raw IDs, inventories, source
 paths, coordinates, seed and private review evidence. Existing photos link to their
 original thumbnail/large URLs. New albums deep-link to `/world/?era=era7&build=…`.
 
+### Participation and kinship
+
+There is no backend and no sign-in anywhere in this archive, by design. Claims, photo
+requests and kinship tags are written to the visitor's own browser under
+`creators-participation-v1` (schema `steward-creator-participation-local/v1`), whose
+`kinshipTags` map is keyed `<buildKey>:<contributorKey>` — one tag per co-builder per
+build. Confirming a tag also emits the wire event
+`{"schema": "steward-creator-participation-event/v1", "eventType": "kinshipTag",
+"kinshipTag": {…}}` to the configured participation endpoint if one is set, and hands the
+volunteer the same payload to copy if it is not. **Forget my participation** clears the
+kinship tags along with the claims and the handle: a tag names a second person, so it is
+the first thing that control has to drop.
+
+Only the majority owner of a build may tag its co-builders. Ownership is read from the
+saved construction pieces: a share of 0.5 or more is `majority`, and below that the single
+strictly largest known share still counts from 0.25 up as `largest`. A tie, a share under
+a quarter, and a legacy import (which carries no share at all) own nothing. A tag never
+edits the credited contributors — those come from the pieces and nothing else moves them.
+
+`gallery.py` publishes `participation.json` beside the directory: schema
+`steward-creator-participation-public/v1`, carrying the four counts (`participants`,
+`claims`, `requests`, `openRequests`) plus `confirmedTags`. It is projected from the
+coordinator's own file at `analysis/participation.json`:
+
+```json
+{"schema": "steward-creator-participation/v1", "generatedAt": "…", "updatedAt": "…",
+ "participants": 0, "claims": 0, "requests": 0, "openRequests": 0,
+ "confirmedTags": [{"buildKey": "<64 hex>", "contributorKey": "<32 hex>",
+                    "builderKey": "<32 hex>", "tags": ["basemate", "mason"],
+                    "confirmedAt": "…"}]}
+```
+
+`sanitize_confirmed_tags()` keeps exactly those five keys, drops any entry whose keys are
+not hex of the right length and any tag id outside the closed vocabulary
+(`basemate`, `collab`, `helping-hand`, `visitor`, `mason`, `roof`, `fields`, `portal`,
+`defense`, `interior`), and never copies the participant handle, note, contact or claim id
+that the coordinator's file may hold beside them.
+
+### Phase 2: bed evidence
+
+Bed ownership is parsed today for one purpose only — names. `community.py` reads it into
+`name_observations` so a recorded owner can be matched against the creators saved on
+construction pieces. It is never joined to a build, and no bed influences who is credited
+for anything. That is the standing invariant: **identity is never derived from nearby
+structures.** A bed inside a footprint proves somebody slept there, not that they laid a
+single piece of the roof over it.
+
+Joining bed ownership to builds is therefore a schema change, not a query. It would need
+`analyze_era` to emit the join and a `RECIPE_HASH` bump so every era re-derives, a table in
+`community_store.py` to hold it, an entry in `archive.py`'s allowlist, and an entry in
+`gallery.py`'s album allowlist before any of it could reach a page. It must land as its own
+evidence type, `bed-owner-in-footprint`, alongside `saved-piece-creator` rather than folded
+into it — a reader has to be able to see which claim rests on a piece and which rests on a
+bed, and be able to reject the second without losing the first.
+
 `world_bundle.py` accepts an explicit `ready-inputs.json`: `defaultEra`, and an `eras`
 list containing `slug`, `snapshotId`, `cache`, optional `context` (the directory containing its
 manifest), `artifacts` (parent of the numeric snapshot directory), and optional exact
