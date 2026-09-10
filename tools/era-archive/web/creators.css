@@ -345,7 +345,10 @@ fieldset input {
   margin-bottom: 14px;
 }
 
+/* `flex-direction` here was inert: the base `label` rule makes every label a grid, so
+   the box stacked above its own caption and sat out of line with the two selects. */
 .checkbox-field {
+  display: flex;
   flex-direction: row;
   align-items: center;
   gap: 8px;
