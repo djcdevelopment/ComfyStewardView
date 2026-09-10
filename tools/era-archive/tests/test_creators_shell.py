@@ -104,7 +104,7 @@ class ChroniclerStyleTests(unittest.TestCase):
 
     def test_stylesheet_href_is_cache_busted_and_still_rewritable(self):
         for name, content in (("index.html", self.index), ("stats.html", self.stats)):
-            self.assertIn('href="./creators.css?v=2"', content, name)
+            self.assertIn('href="./creators.css?v=3"', content, name)
         self.assertIn('src="./creators.js"', self.index)
 
     def test_projected_thread_page_keeps_the_rewritten_asset_paths(self):
@@ -124,10 +124,10 @@ class ChroniclerStyleTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             project(document, dest, "https://example.invalid/world")
             thread = (dest / key / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=2"', thread)
+            self.assertIn('href="../creators.css?v=3"', thread)
             self.assertIn('src="../creators.js"', thread)
             stats = (dest / "stats" / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=2"', stats)
+            self.assertIn('href="../creators.css?v=3"', stats)
 
 
 if __name__ == "__main__":

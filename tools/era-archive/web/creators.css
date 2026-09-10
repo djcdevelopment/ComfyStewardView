@@ -1243,3 +1243,207 @@ textarea:focus-visible,
     gap: 10px;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Builder hero: the profile card at the top of a thread page. Portrait, name,
+   aliases, tier, era span, the counters this page already had, and the
+   builder's own signature creations.
+   -------------------------------------------------------------------------- */
+.builder-hero {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  margin: 18px 0 26px;
+  padding: 22px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-container-low);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.hero-avatar,
+.hero-avatar img,
+.hero-avatar-fallback {
+  width: 160px;
+  height: 160px;
+  border-radius: 6px;
+}
+
+.hero-avatar img,
+.hero-avatar-fallback {
+  display: block;
+  object-fit: cover;
+  border: 1px solid var(--ember);
+  background: var(--surface-low);
+}
+
+.hero-avatar-fallback {
+  display: grid;
+  place-items: center;
+}
+
+.hero-avatar-fallback svg {
+  width: 56%;
+  height: auto;
+}
+
+.hero-text {
+  min-width: 0;
+}
+
+/* The h1 keeps its own node; inside the card it just wears a tighter scale so a
+   long builder name cannot push the portrait off a laptop screen. */
+.builder-hero h1 {
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  margin: 6px 0 4px;
+}
+
+.hero-aliases {
+  margin: 0 0 10px;
+  color: var(--parchment);
+  font-size: 0.9rem;
+}
+
+.hero-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0 0 12px;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--outline);
+}
+
+.hero-facts dt,
+.hero-facts dd {
+  display: inline;
+  margin: 0;
+}
+
+.hero-facts dt::after {
+  content: " ";
+}
+
+.hero-facts dd {
+  color: var(--parchment);
+}
+
+#hero-signature {
+  margin-top: 12px;
+}
+
+/* --------------------------------------------------------------------------
+   Where to go next: the wordless figures ported from the Chronicles landing
+   page. One stone slab per path -- a figure, a backlight, one action line.
+   -------------------------------------------------------------------------- */
+#look-out {
+  margin-top: 48px;
+}
+
+#look-out.paths {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.look-out-h2 {
+  font-size: 1.5rem;
+  margin: 0 0 14px;
+  grid-column: 1 / -1;
+}
+
+#look-out .path {
+  position: relative;
+  display: block;
+  isolation: isolate;
+  padding: 16px;
+  border: 1px solid var(--chisel);
+  border-radius: 6px;
+  background: var(--surface-container);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+#look-out .path img {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  transition: transform 0.14s ease, filter 0.14s ease;
+}
+
+#look-out .ember {
+  position: absolute;
+  z-index: 0;
+  left: 50%;
+  top: 52%;
+  width: 82%;
+  aspect-ratio: 1 / 1;
+  transform: translate(-50%, -50%) scale(1);
+  background: radial-gradient(circle closest-side, var(--ember), rgba(245, 158, 11, 0));
+  filter: blur(18px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.14s ease, opacity 0.14s ease;
+}
+
+#look-out .path:hover,
+#look-out .path:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(217, 119, 7, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+#look-out .path:hover img,
+#look-out .path:focus-visible img {
+  transform: translateY(-6px) scale(1.04);
+  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.6));
+}
+
+#look-out .path:hover .ember,
+#look-out .path:focus-visible .ember {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.15);
+}
+
+.path-line {
+  display: block;
+  margin-top: 8px;
+  text-align: center;
+  font: 600 13px/1.3 var(--font-body);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--parchment);
+}
+
+@media (max-width: 980px) {
+  #look-out.paths {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .builder-hero {
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .hero-avatar,
+  .hero-avatar img,
+  .hero-avatar-fallback {
+    width: 96px;
+    height: 96px;
+  }
+}
+
+@media (max-width: 640px) {
+  #look-out.paths {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -152,10 +152,49 @@ function computeTopEight(threadDoc, limit = 8) {
     .slice(0, limit);
 }
 
+// Which portrait tile a builder wears. The key is already a uniformly distributed hash,
+// so its first 32 bits modulo the tile count is a stable, serverless assignment: the same
+// builder gets the same face on every device, every render, with no state anywhere. The
+// count comes from the manifest rather than a constant, so adding tiles is a data change.
+function portraitIndex(builderKey, count = 48) {
+  if (!count) return 0;
+  const parsed = parseInt(String(builderKey || '').slice(0, 8), 16);
+  if (!Number.isFinite(parsed)) return 0;
+  return ((parsed % count) + count) % count;
+}
+
+// The span the hero card states as "First era / Latest era". Read from the thread's own
+// era blocks rather than the directory record, because a thread page renders before
+// directory.json lands -- and only the thread knows which eras survived album filtering.
+function eraBounds(threadDoc) {
+  const eras = (threadDoc?.eras || []).map((e) => e.era).filter((e) => Number.isFinite(e));
+  if (!eras.length) return {first: null, latest: null};
+  return {first: Math.min(...eras), latest: Math.max(...eras)};
+}
+
+// The other names this builder is searchable under. The display name is one of them and
+// must not be listed as an alias of itself, and community.py keeps casing variants of the
+// same name as separate aliases -- "Tugcow" and "tugcow" are one name to a reader.
+function heroAliases(threadDoc, limit = 4) {
+  if (!threadDoc) return {shown: [], more: 0};
+  const seen = new Set([String(threadDoc.displayName || '').toLocaleLowerCase()]);
+  const kept = [];
+  for (const alias of threadDoc.aliases || []) {
+    const name = String(alias || '').trim();
+    if (!name) continue;
+    const folded = name.toLocaleLowerCase();
+    if (seen.has(folded)) continue;
+    seen.add(folded);
+    kept.push(name);
+  }
+  return {shown: kept.slice(0, limit), more: Math.max(0, kept.length - limit)};
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     PLACEHOLDER_NAME, AUTO_ALBUM_LABEL, searchTerms, matchScore, compareBuilders,
     SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, computeTopEight,
+    portraitIndex, eraBounds, heroAliases,
   };
 }
 
@@ -1071,6 +1110,133 @@ const initCreatorsPage = async () => {
     else showToast('Claim this build before requesting photographs.');
   }
 
+  // The emblem the header already carries, standing in for a portrait. Used before the
+  // manifest answers, when it names no tiles, and when a named tile fails to load -- an
+  // empty square and a broken-image glyph are both worse than the archive's own mark.
+  function emblemFallback() {
+    const holder = node('div', null, 'hero-avatar-fallback');
+    const emblem = document.querySelector('.brand-emblem');
+    if (emblem) {
+      const copy = emblem.cloneNode(true);
+      copy.removeAttribute('class');
+      copy.removeAttribute('width');
+      copy.removeAttribute('height');
+      holder.append(copy);
+    }
+    return holder;
+  }
+
+  function renderHeroAvatar() {
+    const holder = $('hero-avatar');
+    if (!holder) return;
+    holder.replaceChildren(emblemFallback());
+    // Optional read: the portrait lane deploys separately, and a builder page must open
+    // whether or not it has. Same semantics the directory's optional data already uses.
+    readOptional('/chronicles/portraits.json').then((manifest) => {
+      const tiles = Array.isArray(manifest?.tiles) ? manifest.tiles : [];
+      const count = Number(manifest?.count) || 0;
+      if (!count || !tiles.length) return;
+      const tile = tiles[portraitIndex(thread.builderKey, count)];
+      if (!tile || !tile.file) return;
+      const prefix = manifest.base || '/chronicles/img/portraits/';
+      const version = tile.v ? `?v=${tile.v}` : '';
+      const img = document.createElement('img');
+      img.alt = '';
+      img.width = 512;
+      img.height = 512;
+      img.decoding = 'async';
+      img.sizes = '(max-width:680px) 96px, 160px';
+      if (tile.thumb) {
+        img.srcset = `${prefix}${tile.thumb}${version} 128w, ${prefix}${tile.file}${version} 512w`;
+      }
+      // Swap on load, not on assignment: a manifest that names a tile this server does
+      // not hold would otherwise replace the emblem with a broken-image glyph.
+      img.onload = () => holder.replaceChildren(img);
+      img.onerror = () => holder.replaceChildren(emblemFallback());
+      img.src = `${prefix}${tile.file}${version}`;
+    });
+  }
+
+  function renderHeroAliases() {
+    const holder = $('hero-aliases');
+    if (!holder) return;
+    const {shown, more} = heroAliases(thread);
+    if (!shown.length) {
+      holder.textContent = '';
+      holder.hidden = true;
+      return;
+    }
+    const quoted = shown.map((name) => `“${name}”`);
+    // The ambiguous-name sentence is #status's job and stays there verbatim; this line
+    // only names the other spellings the search box will answer to.
+    const tail = more ? `${more} more` : quoted.pop();
+    const lead = quoted.join(', ');
+    holder.textContent = `also known as ${lead ? `${lead} and ${tail}` : tail}`;
+    holder.hidden = false;
+  }
+
+  function renderHeroFacts() {
+    const facts = $('hero-facts');
+    if (!facts) return;
+    facts.replaceChildren();
+    const bounds = eraBounds(thread);
+    const rows = [];
+    if (thread.tier) rows.push(['Tier', thread.tier]);
+    if (bounds.first != null) rows.push(['First era', `Era ${bounds.first}`]);
+    if (bounds.latest != null) rows.push(['Latest era', `Era ${bounds.latest}`]);
+    for (const [term, value] of rows) {
+      facts.append(node('dt', term), node('dd', value));
+    }
+  }
+
+  // The same picking rule the directory cards use, asked for three instead of two: a
+  // build with a source-recorded title, largest first. A builder whose every album is an
+  // auto-labelled "Build 0a1b2c3d" gets no panel rather than a panel of hex.
+  function renderHeroSignature() {
+    const holder = $('hero-signature');
+    if (!holder) return;
+    for (const stale of holder.querySelectorAll('ul')) stale.remove();
+    const picks = pickSignatureAlbums(thread, 3);
+    if (!picks.length) {
+      holder.hidden = true;
+      return;
+    }
+    const list = node('ul');
+    for (const album of picks) {
+      const li = node('li');
+      li.append(album.label);
+      if (album.pieces != null) li.append(` · ${album.pieces.toLocaleString()} pieces`);
+      if (album.worldUrl) {
+        li.append(' · ');
+        li.append(link('Open in world viewer', album.worldUrl));
+      }
+      list.append(li);
+    }
+    holder.append(list);
+    holder.hidden = false;
+  }
+
+  // Moving the existing nodes rather than rebuilding them is the whole trick: #title,
+  // #intro and #thread-actions keep their ids, their listeners and their rendered strings,
+  // and appending all seven children in a fixed order makes a second call (forget-
+  // participation re-renders the thread) a no-op instead of a duplicated card.
+  function renderHeroCard() {
+    const hero = $('builder-hero');
+    const text = hero?.querySelector('.hero-text');
+    if (!hero || !text) return;
+    renderHeroAliases();
+    renderHeroFacts();
+    renderHeroSignature();
+    renderHeroAvatar();
+    const ordered = [
+      document.querySelector('main .eyebrow'),
+      $('title'), $('hero-aliases'), $('hero-facts'), $('intro'), $('hero-signature'), $('thread-actions'),
+    ].filter(Boolean);
+    text.append(...ordered);
+    hero.hidden = false;
+    if ($('look-out')) $('look-out').hidden = false;
+  }
+
   function renderThread() {
     $('filters').hidden = true;
     if ($('search-hero')) $('search-hero').hidden = true;
@@ -1086,6 +1252,7 @@ const initCreatorsPage = async () => {
       ? 'Several recorded names need review. Searchable aliases are retained.'
       : 'No unresolved name conflicts for this builder.';
     renderManifestAction();
+    renderHeroCard();
 
     const h = node('p', null, 'muted');
     h.id = 'thread-participation-line';

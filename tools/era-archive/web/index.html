@@ -14,7 +14,7 @@
     <meta property="og:description" content="Search the community archive for your own builds across every era.">
     <meta name="twitter:card" content="summary">
     <!-- /per-thread head -->
-    <link rel="stylesheet" href="./creators.css?v=2">
+    <link rel="stylesheet" href="./creators.css?v=3">
     <script src="./creators.js" defer></script>
   </head>
   <body>
@@ -39,6 +39,18 @@
       <h1 id="title">Across the eras</h1>
       <p id="intro">Every builder recorded on a saved construction piece, era by era, with the photographs taken of their work.</p>
       <div id="thread-actions" hidden></div>
+
+      <!-- Thread mode only. renderThread() moves the eyebrow, #title, #intro and
+           #thread-actions into .hero-text, so every pinned id and string keeps its node
+           and the directory page never reveals this section at all. -->
+      <section id="builder-hero" class="builder-hero" hidden aria-labelledby="title">
+        <div id="hero-avatar" class="hero-avatar"></div>
+        <div class="hero-text">
+          <p id="hero-aliases" class="hero-aliases" hidden></p>
+          <dl id="hero-facts" class="hero-facts"></dl>
+          <div id="hero-signature" class="signature-creations" hidden><span class="signature-creations-label">Signature creations</span></div>
+        </div>
+      </section>
 
       <section id="hero-stats" class="stat-mosaic" aria-label="Archive totals">
         <div class="stat-tile">
@@ -95,6 +107,38 @@
       <div id="content"></div>
       <button id="more" hidden>Show more</button>
 
+      <!-- The look-out step, shown at the foot of a builder page only. One stone slab per
+           path: a wordless figure, a backlight and one action line. No title attribute,
+           no tooltip -- the aria-label is the only name the link has. -->
+      <nav id="look-out" class="paths" hidden aria-label="Where to go next">
+        <h2 class="look-out-h2">Where to go next</h2>
+        <a class="path" href="/valheim/creators/" aria-label="Find the builds you made" data-path="find">
+          <img alt="" src="/chronicles/img/cutouts/find.webp" srcset="/chronicles/img/cutouts/find.256.webp 256w, /chronicles/img/cutouts/find.webp 512w" sizes="(max-width:640px) 45vw, 180px" width="512" height="512" loading="lazy" decoding="async">
+          <span class="ember" aria-hidden="true"></span>
+          <span class="path-line">Find your builds</span>
+        </a>
+        <a class="path" href="/valheim/" aria-label="Study how the builds were made" data-path="study">
+          <img alt="" src="/chronicles/img/cutouts/study.webp" srcset="/chronicles/img/cutouts/study.256.webp 256w, /chronicles/img/cutouts/study.webp 512w" sizes="(max-width:640px) 45vw, 180px" width="512" height="512" loading="lazy" decoding="async">
+          <span class="ember" aria-hidden="true"></span>
+          <span class="path-line">Study the builds</span>
+        </a>
+        <a class="path" href="/valheim/era7/" aria-label="Walk the eras, one photograph at a time" data-path="walk">
+          <img alt="" src="/chronicles/img/cutouts/walk.webp" srcset="/chronicles/img/cutouts/walk.256.webp 256w, /chronicles/img/cutouts/walk.webp 512w" sizes="(max-width:640px) 45vw, 180px" width="512" height="512" loading="lazy" decoding="async">
+          <span class="ember" aria-hidden="true"></span>
+          <span class="path-line">Walk the eras</span>
+        </a>
+        <a class="path" href="/valheim/creators/#participation-details" aria-label="Ask for new photographs of a build" data-path="request">
+          <img alt="" src="/chronicles/img/cutouts/request.webp" srcset="/chronicles/img/cutouts/request.256.webp 256w, /chronicles/img/cutouts/request.webp 512w" sizes="(max-width:640px) 45vw, 180px" width="512" height="512" loading="lazy" decoding="async">
+          <span class="ember" aria-hidden="true"></span>
+          <span class="path-line">Ask for photographs</span>
+        </a>
+        <a class="path" href="/valheim/creators/stats/" aria-label="Open the statistics and the raw data" data-path="data">
+          <img alt="" src="/chronicles/img/cutouts/data.webp" srcset="/chronicles/img/cutouts/data.256.webp 256w, /chronicles/img/cutouts/data.webp 512w" sizes="(max-width:640px) 45vw, 180px" width="512" height="512" loading="lazy" decoding="async">
+          <span class="ember" aria-hidden="true"></span>
+          <span class="path-line">Read the data</span>
+        </a>
+      </nav>
+
       <details id="participation-details" class="participation-block">
         <summary>Your participation on this device</summary>
         <p id="participation-summary" role="status">No local participation recorded yet.</p>
@@ -122,7 +166,7 @@
           <div class="codex-col">
             <h2 class="codex-heading">Independent identities</h2>
             <p>Shared albums can appear in several builders' threads. Matching names alone
-              never join characters.</p>
+              never join builders.</p>
           </div>
           <div class="codex-col">
             <h2 class="codex-heading">Curatorial access logs</h2>
