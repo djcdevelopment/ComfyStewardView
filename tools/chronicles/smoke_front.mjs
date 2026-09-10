@@ -83,8 +83,8 @@ async function go(route) {
   return url;
 }
 async function key(k, code, keyCode) {
-  // Enter needs the '' text on the keyDown or Chrome never runs implicit form submission.
-  const text = k === 'Enter' ? '' : undefined;
+  // Enter needs the '\r' text on the keyDown or Chrome never runs implicit form submission.
+  const text = k === 'Enter' ? '\r' : undefined;
   await cdp('Input.dispatchKeyEvent', {type: 'keyDown', key: k, code, windowsVirtualKeyCode: keyCode, text, unmodifiedText: text});
   await cdp('Input.dispatchKeyEvent', {type: 'keyUp', key: k, code, windowsVirtualKeyCode: keyCode});
 }
