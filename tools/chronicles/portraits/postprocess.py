@@ -4,8 +4,8 @@ r"""Turn raw 1024x1024 portrait renders into the committed 512x512 library + man
         [--jobs E:\omen\chronicles-portraits\jobs.json] [--out tools/chronicles/assets/portraits]
         [--contact-sheet E:\omen\chronicles-portraits\contact.png] [--reject p07,p23]
 
-Raw files are named <id>.<seed>.png. Auto-reject: not 1024 square, or the four 64px
-corner patches are not a dark, desaturated ground (the prompt asks for flat dark slate).
+Raw files are named <id>.<seed>.png. Auto-reject: not 1024 square, or the four 64px corner patches are pale (a white frame or
+paper) or coloured. The model paints "dark slate" as mid-grey, so the bar is 130/255, not dark.
 Everything else is a human call on the contact sheet. Rejected ids are listed in the
 manifest under "rejected" so generate.py --reseed can pick them up.
 """
@@ -38,7 +38,7 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=Path("tools/chronicles/assets/portraits"))
     ap.add_argument("--contact-sheet", type=Path, default=None)
     ap.add_argument("--reject", default="", help="comma-separated ids rejected by eye")
-    ap.add_argument("--max-lum", type=float, default=70.0)
+    ap.add_argument("--max-lum", type=float, default=130.0)  # the model paints slate as mid-grey (55-92); only a white or pale ground is wrong
     ap.add_argument("--max-sat", type=float, default=0.25)
     a = ap.parse_args()
     jobs = json.loads(a.jobs.read_text(encoding="utf-8")) if a.jobs and a.jobs.exists() else {}
