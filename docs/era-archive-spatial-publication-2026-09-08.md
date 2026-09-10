@@ -1,5 +1,9 @@
 # Historical world spatial publication
 
+> The six eras below that opened as construction maps received terrain and biomes on
+> 2026-09-10. See the [terrain and biome publication](era-terrain-publication-2026-09-10.md).
+> This receipt is left as written; it records what was true when it was written.
+
 The seven archived eras contain **22,051,164 finite construction positions** in
 their public spatial packages. Each package retains saved Euler transforms and
 exact build membership. All 35 existing construction raster layers are included,

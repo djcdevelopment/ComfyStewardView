@@ -6,7 +6,7 @@ if(!baseArg||!casesFile||!outputArg)throw Error('Usage: world-browser-smoke.mjs 
 const base=new URL(baseArg),output=path.resolve(outputArg),cases=JSON.parse((await readFile(casesFile,'utf8')).replace(/^\uFEFF/,''));
 const url=(route,query={})=>{const u=new URL(route,base);for(const [k,v] of Object.entries(query))u.searchParams.set(k,String(v));return u;};
 const json=async u=>{const r=await fetch(u);if(!r.ok)throw Error(`${r.status} ${u}`);return r.json();};
-const results={eras:[],builds:[]};
+const results={eras:[],biomeQueries:[],builds:[]};
 const catalog=await json(url('api/eras'));
 for(const era of catalog.eras){
   if(era.status!=='ready')throw Error(`${era.slug} is not spatially ready`);
@@ -18,7 +18,22 @@ for(const era of catalog.eras){
   results.eras.push({era:era.slug,snapshot:era.snapshotId,terrain:boot.terrainAvailable,generation:boot.context?.generationMode||null});
 }
 if((await fetch(url('api/manifest',{era:'era7',snapshot:107}))).status!==400)throw Error('Cross-snapshot query admitted');
-if((await fetch(url('api/items',{era:'era7',snapshot:1001,lens:'build-density',minX:-100,maxX:100,minZ:-100,maxZ:100,biomes:'meadows'}))).status!==400)throw Error('Terrain-free era admitted biome query');
+// Biome claims follow terrain both ways, and which eras have terrain changes as the
+// archive gains contexts. Drive the check from the catalog rather than naming an era,
+// so it keeps testing the contract instead of a snapshot of who happened to lack one.
+const biomeQuery=era=>url('api/items',{era:era.slug,snapshot:era.snapshotId,lens:'build-density',minX:-100,maxX:100,minZ:-100,maxZ:100,biomes:'meadows'});
+const ready=catalog.eras.filter(era=>era.status==='ready');
+for(const era of ready.filter(era=>!era.terrainAvailable)){
+  if((await fetch(biomeQuery(era))).status!==400)throw Error(`${era.slug} admitted a biome query without terrain`);
+  results.biomeQueries.push({era:era.slug,terrain:false,refused:true});
+}
+const classified=ready.filter(era=>era.terrainAvailable);
+if(!classified.length)throw Error('No ready era carries terrain');
+for(const era of classified){
+  const response=await fetch(biomeQuery(era));
+  if(!response.ok)throw Error(`${era.slug} refused a biome query despite terrain: ${response.status}`);
+  results.biomeQueries.push({era:era.slug,terrain:true,items:(await response.json()).items?.length??null});
+}
 await mkdir(output,{recursive:true});await mkdir(path.join(output,'downloads'),{recursive:true});
 const chrome=process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const browser=spawn(chrome,['--headless=new','--no-first-run','--disable-extensions','--disable-background-networking','--disable-component-update','--disable-sync','--mute-audio','--enable-features=WebGPUDeveloperFeatures','--remote-debugging-port=0','--remote-allow-origins=*','--window-size=1600,1000',`--user-data-dir=${path.join(output,'profile')}`,'about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:true});
@@ -36,13 +51,26 @@ try{
   const screenshot=async name=>{const shot=await cdp('Page.captureScreenshot',{format:'png'});await writeFile(path.join(output,name+'.png'),Buffer.from(shot.data,'base64'));};
   await cdp('Page.enable');await cdp('Runtime.enable');
   await cdp('Page.setDownloadBehavior',{behavior:'allow',downloadPath:path.join(output,'downloads')});
-  await cdp('Page.navigate',{url:url('',{era:'era7'}).href});
-  await wait("[...document.querySelectorAll('.analysis-raster')].some(i=>i.complete&&i.naturalWidth>0)");
+  // An era opens in whichever view its own capability allows: terrain leads where a
+  // context exists, and construction is hidden behind it, so a terrain-bearing era draws
+  // no analysis raster at all. Wait for the layer this era actually draws, and hold both
+  // halves of the contract rather than only the terrain-free one.
+  const opening=ready.find(era=>era.slug==='era7')||ready[0];
+  await cdp('Page.navigate',{url:url('',{era:opening.slug}).href});
+  await wait(`[...document.querySelectorAll('${opening.terrainAvailable?'.context-raster':'.analysis-raster'}')].some(i=>i.complete&&i.naturalWidth>0)`);
   await new Promise(r=>setTimeout(r,400));
   await evaluate("document.getElementById('quick-start-close').click()");
-  if(await evaluate("document.querySelectorAll('.context-raster').length")!==0)throw Error('Terrain-free era rendered a context image');
-  if(!await evaluate("document.querySelector('[data-view-mode=biomes]').disabled"))throw Error('Unavailable biome button enabled');
-  await screenshot('era7-overview');
+  const contexts=await evaluate("document.querySelectorAll('.context-raster').length");
+  const biomesDisabled=await evaluate("document.querySelector('[data-view-mode=biomes]').disabled");
+  if(opening.terrainAvailable){
+    if(contexts===0)throw Error(`${opening.slug} drew no context image despite terrain`);
+    if(biomesDisabled)throw Error(`${opening.slug} disabled the biome button despite terrain`);
+  }else{
+    if(contexts!==0)throw Error('Terrain-free era rendered a context image');
+    if(!biomesDisabled)throw Error('Unavailable biome button enabled');
+  }
+  results.opening={era:opening.slug,terrain:opening.terrainAvailable,contextRasters:contexts,biomesEnabled:!biomesDisabled};
+  await screenshot(opening.slug+'-overview');
   for(const item of cases){
     await cdp('Page.navigate',{url:url('',{era:item.era,build:item.buildKey}).href});
     await wait("document.querySelectorAll('.inspect-item').length>0");
@@ -77,8 +105,13 @@ try{
   if(!await evaluate("document.getElementById('terrain-status').textContent.includes('current game')"))throw Error('Regenerated terrain lacks its disclosure');
   await screenshot('era14-overview');
   await evaluate("document.getElementById('era-select').value='era7';document.getElementById('era-select').dispatchEvent(new Event('change'))");
-  await wait("document.body.classList.contains('construction-only')&&[...document.querySelectorAll('.analysis-raster')].some(i=>i.complete&&i.naturalWidth>0)");
-  if(await evaluate("document.querySelectorAll('.context-raster').length")!==0)throw Error('Terrain leaked across eras');
+  // Switching eras navigates, so isolation means the new page draws only its own era's
+  // scoped imagery. Every API image URL carries an era parameter, so check that directly
+  // rather than leaning on era 7 having no terrain, which stopped being true once every
+  // era gained a context.
+  await wait("new URLSearchParams(location.search).get('era')==='era7'&&[...document.querySelectorAll('.context-raster')].some(i=>i.complete&&i.naturalWidth>0)");
+  const scoped=await evaluate("[...document.querySelectorAll('.context-raster')].map(i=>new URL(i.src,location.href).searchParams.get('era'))");
+  if(!scoped.length||scoped.some(era=>era!=='era7'))throw Error(`Imagery leaked across eras: ${scoped.join()||'none'}`);
   if(await evaluate("new URLSearchParams(location.search).has('build')"))throw Error('Build scope survived era switch');
   await evaluate("document.getElementById('era-select').value='era17';document.getElementById('era-select').dispatchEvent(new Event('change'))");
   await wait("[...document.querySelectorAll('.context-raster')].some(i=>i.complete&&i.naturalWidth>0)");
