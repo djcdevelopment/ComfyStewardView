@@ -190,11 +190,381 @@ function heroAliases(threadDoc, limit = 4) {
   return {shown: kept.slice(0, limit), more: Math.max(0, kept.length - limit)};
 }
 
+// ---------------------------------------------------------------------------
+// Local-first participation rails. Hoisted out of the page closure so the kinship
+// page can reuse them and so the pure-logic suite can exercise them in Node with an
+// injected storage object -- nothing below touches `localStorage` or `document` at
+// load time, only when it is called.
+// ---------------------------------------------------------------------------
+
+function nowISOString() {
+  return new Date().toISOString();
+}
+
+function randomId(prefix) {
+  const token = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID().replace(/-/g, '')
+    : Math.random().toString(16).slice(2);
+  return `${prefix}-${token}`;
+}
+
+function normalizeHandle(value) {
+  const text = String(value || '').trim();
+  return text || 'Anonymous volunteer';
+}
+
+async function submitPayload(endpoint, payload) {
+  // Throw rather than return: the callers wrap this in try/catch and treat a normal
+  // completion as proof of delivery. Returning false here made every claim record
+  // deliveryStatus 'submitted' and report "sent" without a request being made.
+  if (!endpoint) throw new Error('no participation endpoint configured');
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify(payload),
+    // Without this a hung endpoint awaits forever with the modal stuck open.
+    signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined,
+  });
+  if (!response.ok) throw new Error(response.statusText || 'submission failed');
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Kinship: who a builder built beside, and what the majority owner of a build says
+// about them. A tag is self-reported and never edits the credited contributors --
+// those come from the saved construction pieces and nothing else moves them.
+// ---------------------------------------------------------------------------
+
+// The closed tag vocabulary. Two groups because the modal asks two questions, one flat
+// id set because everything downstream -- the record, the export, gallery.py's public
+// sanitiser -- only ever needs "is this a tag we know".
+const KINSHIP_TAGS = {
+  relationship: [['basemate', 'Basemate'], ['collab', 'Collabing'], ['helping-hand', 'Helping hand'], ['visitor', 'Visitor']],
+  role: [['mason', 'Mason'], ['roof', 'Roof'], ['fields', 'Fields'], ['portal', 'Portal'], ['defense', 'Defense'], ['interior', 'Interior']],
+};
+const KINSHIP_TAG_IDS = new Set([...KINSHIP_TAGS.relationship, ...KINSHIP_TAGS.role].map(([id]) => id));
+
+// Who may speak for a build. A share at or above half is unambiguous. Below that the
+// single biggest known share still counts, but only from a quarter up -- that is what a
+// four-way collaboration looks like, and under it nobody is the owner. A tie has no
+// owner either, and a legacy import carries no share at all (evidence:
+// legacy-leading-contributor), so it owns nothing: a percentage there would imply a
+// precision the historical import never had.
+function majorityOwner(album, builderKey) {
+  const contributors = (album && album.contributors) || [];
+  const mine = contributors.find((c) => c && c.builderKey === builderKey);
+  if (!mine || mine.share == null) return null;
+  if (mine.share >= 0.5) return 'majority';
+  if (mine.share < 0.25) return null;
+  for (const other of contributors) {
+    if (!other || other.builderKey === builderKey || other.share == null) continue;
+    if (other.share >= mine.share) return null;
+  }
+  return 'largest';
+}
+
+const emptyKinshipTree = () => ({anchor: null, eras: [], branches: [], majorityBuilds: [], coBuilderCount: 0});
+
+// One pass over every album on the thread, and over each album's contributors: the
+// richest thread here is 1,563 albums and 676 co-builders, so anything that re-walks the
+// albums per co-builder is a page that never paints.
+//
+// Shared pieces use the same min() rule computeTopEight does -- the overlap two people
+// can claim on one structure is bounded by the smaller of the two contributions, and
+// summing would let a 40,000-piece megabuilder swamp everyone who touched one wall.
+// Legacy contributors carry `pieces: null`: they still count an album and still draw a
+// branch, they just add no pieces, and a span made only of those is drawn dashed.
+function buildKinshipTree(thread, {confirmedTags = [], localTags = {}} = {}) {
+  if (!thread) return emptyKinshipTree();
+  const self = thread.builderKey;
+  const seenEras = [];
+  const branches = new Map();
+  const majorityBuilds = [];
+
+  for (const block of thread.eras || []) {
+    const era = block.era;
+    if (Number.isFinite(era)) seenEras.push(era);
+    for (const album of block.albums || []) {
+      const contributors = album.contributors || [];
+      const mine = contributors.find((c) => c && c.builderKey === self);
+      const myPieces = mine?.pieces ?? 0;
+      const ownership = majorityOwner(album, self);
+      if (ownership) {
+        majorityBuilds.push({
+          buildKey: album.buildKey,
+          era: album.era ?? era,
+          label: album.label,
+          pieces: album.pieces ?? 0,
+          ownership,
+          worldUrl: album.worldUrl ?? null,
+          photos: album.photos || [],
+          contributors,
+        });
+      }
+      for (const other of contributors) {
+        if (!other || other.builderKey === self) continue;
+        let branch = branches.get(other.builderKey);
+        if (!branch) {
+          branch = {
+            builderKey: other.builderKey, firstEra: era, lastEra: era, spans: [],
+            totalSharedAlbums: 0, totalSharedPieces: 0, legacyOnly: true,
+            tags: {confirmed: [], pending: []},
+          };
+          branch.byEra = new Map();
+          branches.set(other.builderKey, branch);
+        }
+        let span = branch.byEra.get(era);
+        if (!span) {
+          span = {era, sharedAlbums: 0, sharedPieces: 0, legacy: true, anchorMajority: false, builds: []};
+          branch.byEra.set(era, span);
+        }
+        const shared = Math.min(myPieces, other.pieces ?? 0);
+        span.sharedAlbums += 1;
+        span.sharedPieces += shared;
+        span.builds.push(album.buildKey);
+        if (other.pieces != null) span.legacy = false;
+        if (ownership) span.anchorMajority = true;
+        branch.totalSharedAlbums += 1;
+        branch.totalSharedPieces += shared;
+      }
+    }
+  }
+
+  const eras = [...new Set(seenEras)].sort((a, b) => a - b);
+  const confirmedByContributor = indexTagsByContributor(confirmedTags, self);
+  const localByContributor = indexTagsByContributor(Object.values(localTags || {}), self);
+
+  const ranked = [...branches.values()].map((branch) => {
+    const spans = [...branch.byEra.values()].sort((a, b) => a.era - b.era);
+    delete branch.byEra;
+    branch.spans = spans;
+    branch.firstEra = spans.length ? spans[0].era : null;
+    branch.lastEra = spans.length ? spans[spans.length - 1].era : null;
+    branch.legacyOnly = spans.length > 0 && spans.every((s) => s.legacy);
+    const confirmed = [...(confirmedByContributor.get(branch.builderKey) || [])].sort();
+    const known = new Set(confirmed);
+    const pending = [...(localByContributor.get(branch.builderKey) || [])]
+      .filter((id) => !known.has(id)).sort();
+    branch.tags = {confirmed, pending};
+    return branch;
+  }).sort((a, b) => b.totalSharedPieces - a.totalSharedPieces
+    || b.totalSharedAlbums - a.totalSharedAlbums
+    || a.builderKey.localeCompare(b.builderKey));
+
+  majorityBuilds.sort((a, b) => (b.pieces || 0) - (a.pieces || 0) || a.buildKey.localeCompare(b.buildKey));
+
+  return {
+    anchor: {builderKey: self, displayName: thread.displayName, eras: [...eras]},
+    eras,
+    branches: ranked,
+    majorityBuilds,
+    coBuilderCount: ranked.length,
+  };
+}
+
+// Tag records addressed to one anchor, collapsed to the tag ids each contributor wears.
+function indexTagsByContributor(records, anchorKey) {
+  const index = new Map();
+  for (const record of records || []) {
+    if (!record || record.builderKey !== anchorKey) continue;
+    let bucket = index.get(record.contributorKey);
+    if (!bucket) {
+      bucket = new Set();
+      index.set(record.contributorKey, bucket);
+    }
+    for (const id of record.tags || []) bucket.add(id);
+  }
+  return index;
+}
+
+// What one co-builder wears on one build: confirmed by a coordinator, or still sitting
+// in this browser waiting to be sent. A pending id that has already been confirmed is
+// not pending any more -- it is the same tag, arrived.
+function mergeKinshipTags(confirmedTags, localTags, buildKey, contributorKey) {
+  const matches = (record) => record && record.buildKey === buildKey && record.contributorKey === contributorKey;
+  const confirmed = new Set();
+  for (const record of confirmedTags || []) {
+    if (!matches(record)) continue;
+    for (const id of record.tags || []) confirmed.add(id);
+  }
+  const pending = new Set();
+  for (const record of Object.values(localTags || {})) {
+    if (!matches(record)) continue;
+    for (const id of record.tags || []) if (!confirmed.has(id)) pending.add(id);
+  }
+  return {confirmed: [...confirmed].sort(), pending: [...pending].sort()};
+}
+
+// A tag as it is written down. Unknown ids are dropped rather than rejected: the modal
+// is a closed vocabulary, so an unknown id is a stale page or a hand-edited ledger, and
+// neither is worth losing the rest of the tag over. An empty tag list is different --
+// there is nothing to record -- and that throws.
+function kinshipTagRecord({buildKey, era, builderKey, contributorKey, tags, note, participant, claimId}, {id, now} = {}) {
+  const known = [...new Set((tags || []).filter((tag) => KINSHIP_TAG_IDS.has(tag)))].sort();
+  if (!known.length) throw new Error('kinship tag needs at least one tag');
+  return {
+    tagId: id ?? randomId('kintag'),
+    buildKey,
+    era,
+    builderKey,
+    contributorKey,
+    tags: known,
+    note: String(note || '').trim().slice(0, 200),
+    participant: normalizeHandle(participant),
+    claimId: claimId ?? null,
+    createdAt: now ?? nowISOString(),
+    deliveryStatus: 'queued',
+  };
+}
+
+const PARTICIPATION_STORAGE_KEY = 'creators-participation-v1';
+const PARTICIPATION_SCHEMA = 'steward-creator-participation-local/v1';
+
+// The whole participation ledger, as a store rather than a closure: same schema string,
+// same shape, plus `kinshipTags`. Storage is a parameter so Node can pass a plain object
+// and the browser can pass nothing and get `localStorage`. Every entry point tolerates a
+// storage that throws -- a private window with site data blocked, or a full quota --
+// because persistence here is a convenience and the copied payload is the real handoff.
+const StewardParticipation = {
+  STORAGE_KEY: PARTICIPATION_STORAGE_KEY,
+  SCHEMA: PARTICIPATION_SCHEMA,
+
+  defaultState(now) {
+    const stamp = now ?? nowISOString();
+    return {
+      schema: PARTICIPATION_SCHEMA,
+      createdAt: stamp,
+      updatedAt: stamp,
+      participant: '',
+      claims: {},       // buildKey -> claim
+      requests: {},     // requestId -> request
+      kinshipTags: {},  // `${buildKey}:${contributorKey}` -> tag record
+    };
+  },
+
+  load(storage = globalThis.localStorage) {
+    const next = StewardParticipation.defaultState();
+    try {
+      const raw = storage?.getItem(PARTICIPATION_STORAGE_KEY);
+      if (!raw) return next;
+      const parsed = JSON.parse(raw);
+      if (!parsed || parsed.schema !== PARTICIPATION_SCHEMA) return StewardParticipation.defaultState();
+      next.participant = String(parsed.participant || '').trim();
+      next.claims = parsed.claims && typeof parsed.claims === 'object' ? parsed.claims : {};
+      next.requests = parsed.requests && typeof parsed.requests === 'object' ? parsed.requests : {};
+      // A ledger written before kinship existed is not a broken ledger.
+      next.kinshipTags = parsed.kinshipTags && typeof parsed.kinshipTags === 'object' ? parsed.kinshipTags : {};
+      next.createdAt = typeof parsed.createdAt === 'string' ? parsed.createdAt : next.createdAt;
+      next.updatedAt = typeof parsed.updatedAt === 'string' ? parsed.updatedAt : nowISOString();
+      return next;
+    } catch {
+      return StewardParticipation.defaultState();
+    }
+  },
+
+  save(state, storage = globalThis.localStorage) {
+    state.updatedAt = nowISOString();
+    state.participant = normalizeHandle(state.participant);
+    try {
+      storage.setItem(PARTICIPATION_STORAGE_KEY, JSON.stringify(state));
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  forget(storage = globalThis.localStorage) {
+    try {
+      storage.removeItem(PARTICIPATION_STORAGE_KEY);
+    } catch {
+      // Nothing was persisted in the first place; clearing memory is enough.
+    }
+    return StewardParticipation.defaultState();
+  },
+
+  claimForBuild(state, buildKey) {
+    return state.claims?.[buildKey] || null;
+  },
+
+  requestsForBuild(state, buildKey) {
+    return Object.values(state.requests || {}).filter((r) => r.buildKey === buildKey);
+  },
+
+  tagsForBuild(state, buildKey) {
+    return Object.values(state.kinshipTags || {}).filter((t) => t.buildKey === buildKey);
+  },
+
+  tagFor(state, buildKey, contributorKey) {
+    return state.kinshipTags?.[`${buildKey}:${contributorKey}`] || null;
+  },
+
+  // A re-claim must not discard the record that an earlier one was delivered.
+  putClaim(state, claim) {
+    if (!state.claims) state.claims = {};
+    const prior = state.claims[claim.buildKey];
+    if (prior && prior.deliveryStatus === 'submitted' && claim.deliveryStatus !== 'submitted') {
+      claim.deliveryStatus = 'submitted';
+      claim.resubmittedFrom = prior.claimId;
+    }
+    state.claims[claim.buildKey] = claim;
+    return claim;
+  },
+
+  // One tag per (build, co-builder): re-tagging replaces, and the same rule as a re-claim
+  // keeps a delivered tag delivered.
+  putKinshipTag(state, record) {
+    if (!state.kinshipTags) state.kinshipTags = {};
+    const key = `${record.buildKey}:${record.contributorKey}`;
+    const prior = state.kinshipTags[key];
+    if (prior && prior.deliveryStatus === 'submitted' && record.deliveryStatus !== 'submitted') {
+      record.deliveryStatus = 'submitted';
+      record.resubmittedFrom = prior.tagId;
+    }
+    state.kinshipTags[key] = record;
+    return record;
+  },
+
+  exportPayload(state, {kindFilter, buildKey} = {}) {
+    const payload = {
+      schema: 'steward-creator-participation-export/v1',
+      createdAt: nowISOString(),
+      participant: state.participant,
+      claims: Object.values(state.claims || {}),
+      requests: Object.values(state.requests || {}),
+      kinshipTags: Object.values(state.kinshipTags || {}),
+    };
+    if (kindFilter === 'claim') payload.claims = payload.claims.filter((c) => c.buildKey === buildKey);
+    if (kindFilter === 'request' && buildKey) payload.requests = payload.requests.filter((r) => r.buildKey === buildKey);
+    if (kindFilter === 'kinship') {
+      payload.kinshipTags = payload.kinshipTags.filter((t) => t.buildKey === buildKey);
+      // The claim is what gives the tagger standing on this build, so it rides along.
+      payload.claims = payload.claims.filter((c) => c.buildKey === buildKey);
+    }
+    return payload;
+  },
+
+  buildPayload(state, {builderKey, buildKey, buildLabel}) {
+    return {
+      schema: 'steward-creator-build-participation/v1',
+      exportAt: nowISOString(),
+      builderKey,
+      buildKey,
+      buildLabel,
+      claim: StewardParticipation.claimForBuild(state, buildKey),
+      requests: StewardParticipation.requestsForBuild(state, buildKey),
+      kinshipTags: StewardParticipation.tagsForBuild(state, buildKey),
+    };
+  },
+};
+
 if (typeof module !== 'undefined') {
   module.exports = {
     PLACEHOLDER_NAME, AUTO_ALBUM_LABEL, searchTerms, matchScore, compareBuilders,
     SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, computeTopEight,
     portraitIndex, eraBounds, heroAliases,
+    nowISOString, randomId, normalizeHandle, submitPayload,
+    KINSHIP_TAGS, KINSHIP_TAG_IDS, majorityOwner, buildKinshipTree, mergeKinshipTags,
+    kinshipTagRecord, StewardParticipation,
   };
 }
 
@@ -205,15 +575,6 @@ const initCreatorsPage = async () => {
   const FILTER_DEBOUNCE_MS = 140;
   // Long enough that a typed name lands as one access-log line rather than eight.
   const BEACON_DEBOUNCE_MS = 900;
-  const STORAGE_KEY = 'creators-participation-v1';
-  const DEFAULT_STATE = () => ({
-    schema: 'steward-creator-participation-local/v1',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    participant: '',
-    claims: {},   // buildKey -> claim
-    requests: {}, // requestId -> request
-  });
 
   const SHOT_STYLES = [
     ['wide-overview', 'Wide overview + contextual orbit'],
@@ -242,7 +603,7 @@ const initCreatorsPage = async () => {
   const isThread = Boolean(builderKey);
   const base = new URL(isThread ? '../' : './', location.href);
   const endpoint = document.querySelector('meta[name="creator-participation-endpoint"]')?.content?.trim() || '';
-  const state = loadState();
+  const state = StewardParticipation.load();
   let directory = null;
   let thread = null;
   let buildersByKey = new Map();
@@ -279,20 +640,6 @@ const initCreatorsPage = async () => {
     }
   };
 
-  function nowISOString() {
-    return new Date().toISOString();
-  }
-
-  function randomId(prefix) {
-    const token = crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(16).slice(2);
-    return `${prefix}-${token}`;
-  }
-
-  function normalizeHandle(value) {
-    const text = String(value || '').trim();
-    return text || 'Anonymous volunteer';
-  }
-
   // Cards used to render "Era 17 · Era 16 · Era 14 · ...", which wraps to four lines on a
   // phone and pushes the photo count out of view. Runs of consecutive eras collapse.
   function eraRange(eras) {
@@ -313,34 +660,12 @@ const initCreatorsPage = async () => {
 
   const sentenceCase = (text) => (text ? text[0].toLocaleUpperCase() + text.slice(1) : text);
 
-  function loadState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return DEFAULT_STATE();
-      const parsed = JSON.parse(raw);
-      if (!parsed || parsed.schema !== 'steward-creator-participation-local/v1') return DEFAULT_STATE();
-      const next = DEFAULT_STATE();
-      next.participant = String(parsed.participant || '').trim();
-      next.claims = parsed.claims && typeof parsed.claims === 'object' ? parsed.claims : {};
-      next.requests = parsed.requests && typeof parsed.requests === 'object' ? parsed.requests : {};
-      next.createdAt = typeof parsed.createdAt === 'string' ? parsed.createdAt : next.createdAt;
-      next.updatedAt = typeof parsed.updatedAt === 'string' ? parsed.updatedAt : nowISOString();
-      return next;
-    } catch {
-      return DEFAULT_STATE();
-    }
-  }
-
+  // setItem throws in a private window with site data blocked, and on quota exhaustion.
+  // StewardParticipation.save() reports that as `false` rather than letting the throw
+  // escape the click handler, which used to leave the modal open and the claim lost with
+  // no explanation. Persistence is a convenience -- the payload is the real handoff.
   function saveState() {
-    state.updatedAt = nowISOString();
-    state.participant = normalizeHandle(state.participant);
-    // setItem throws in a private window with site data blocked, and on quota
-    // exhaustion. loadState() already tolerates that; without the same here the throw
-    // escapes the click handler, so the modal never closes and the claim is lost with
-    // no explanation. Persistence is a convenience -- the payload is the real handoff.
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
+    if (!StewardParticipation.save(state)) {
       showToast('This browser will not remember your participation. Copy the payload before leaving.');
     }
     updateParticipantSnapshot();
@@ -368,11 +693,11 @@ const initCreatorsPage = async () => {
   }
 
   function claimForBuild(buildKey) {
-    return state.claims[buildKey] || null;
+    return StewardParticipation.claimForBuild(state, buildKey);
   }
 
   function requestsForBuild(buildKey) {
-    return Object.values(state.requests).filter((r) => r.buildKey === buildKey);
+    return StewardParticipation.requestsForBuild(state, buildKey);
   }
 
   function showToast(message, timeoutMs = 2400) {
@@ -401,33 +726,8 @@ const initCreatorsPage = async () => {
     if (photoViewerModal && photoViewerModal.classList.contains('open')) closePhotoViewer();
   }
 
-  async function submitPayload(payload) {
-    // Throw rather than return: the callers wrap this in try/catch and treat a normal
-    // completion as proof of delivery. Returning false here made every claim record
-    // deliveryStatus 'submitted' and report "sent" without a request being made.
-    if (!endpoint) throw new Error('no participation endpoint configured');
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify(payload),
-      // Without this a hung endpoint awaits forever with the modal stuck open.
-      signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined,
-    });
-    if (!response.ok) throw new Error(response.statusText || 'submission failed');
-    return true;
-  }
-
   function exportPayload(kindFilter) {
-    const payload = {
-      schema: 'steward-creator-participation-export/v1',
-      createdAt: nowISOString(),
-      participant: state.participant,
-      claims: Object.values(state.claims),
-      requests: Object.values(state.requests),
-    };
-    if (kindFilter === 'claim') payload.claims = payload.claims.filter((c) => c.buildKey === selectedAlbum?.buildKey);
-    if (kindFilter === 'request' && selectedAlbum) payload.requests = payload.requests.filter((r) => r.buildKey === selectedAlbum.buildKey);
-    return payload;
+    return StewardParticipation.exportPayload(state, {kindFilter, buildKey: selectedAlbum?.buildKey});
   }
 
   function showPayloadFallback(text, message) {
@@ -870,6 +1170,37 @@ const initCreatorsPage = async () => {
     return credits;
   }
 
+  // Coordinator-confirmed kinship tags ride in the public participation.json and are
+  // read-only here. The chips go NEXT to the credit anchor rather than inside it:
+  // hydrateCredits() rewrites that anchor's textContent when directory.json lands, and
+  // anything parked inside would be wiped by a race nobody would ever reproduce.
+  // Keys are checked against their own hex shape before they reach a selector.
+  //
+  // Called from both ends of a race -- participation.json and the thread itself land in
+  // whichever order the network hands them over, and whichever arrives second is the one
+  // that can actually draw. Clearing first makes the second call a redraw, not a
+  // duplicate, and makes a re-rendered thread (forget-participation) safe too.
+  function renderConfirmedTagChips(doc) {
+    for (const stale of document.querySelectorAll('.kin-chip')) stale.remove();
+    const tags = doc?.confirmedTags;
+    if (!Array.isArray(tags) || !tags.length) return;
+    const labels = new Map([...KINSHIP_TAGS.relationship, ...KINSHIP_TAGS.role]);
+    for (const tag of tags) {
+      if (!tag || !/^[0-9a-f]{64}$/.test(String(tag.buildKey))) continue;
+      if (!/^[0-9a-f]{32}$/.test(String(tag.contributorKey))) continue;
+      const album = document.querySelector(`article.album[data-build-key="${tag.buildKey}"]`);
+      if (!album) continue;
+      const credit = album.querySelector(`.credits a.credit[data-builder-key="${tag.contributorKey}"]`);
+      if (!credit) continue;
+      const chips = [];
+      for (const id of tag.tags || []) {
+        if (!labels.has(id)) continue;
+        chips.push(node('span', labels.get(id), 'chip kin-chip confirmed'));
+      }
+      if (chips.length) credit.after(...chips);
+    }
+  }
+
   function hydrateCredits() {
     for (const anchor of document.querySelectorAll('a.credit[data-builder-key]')) {
       const name = buildersByKey.get(anchor.dataset.builderKey)?.displayName;
@@ -892,6 +1223,11 @@ const initCreatorsPage = async () => {
     if (!ranked.length) return null;
     const panel = node('section', null, 'top8');
     panel.append(node('h2', 'Top 8'));
+    // Top 8 is the first eight names; the kinship tree is all of them, era by era.
+    const kinshipLink = link('Open the kinship tree', new URL(`kinship/?builder=${thread.builderKey}`, base));
+    kinshipLink.id = 'top8-kinship-link';
+    kinshipLink.className = 'kin-open';
+    panel.append(kinshipLink);
     panel.append(node('p', 'The builders this builder placed the most pieces beside', 'top8-sub'));
     const grid = node('div', null, 'top8-grid');
     for (const entry of ranked) {
@@ -1034,16 +1370,11 @@ const initCreatorsPage = async () => {
 
     const exportBtn = node('button', 'Copy this build payload');
     exportBtn.onclick = async () => {
-      const requestList = requestsForBuild(album.buildKey);
-      await copyActivityPayload({
-        schema: 'steward-creator-build-participation/v1',
-        exportAt: nowISOString(),
+      await copyActivityPayload(StewardParticipation.buildPayload(state, {
         builderKey: targetBuilderKey,
         buildKey: album.buildKey,
         buildLabel: album.label,
-        claim: current,
-        requests: requestList,
-      });
+      }));
     };
     row.append(exportBtn);
     return row;
@@ -1228,9 +1559,19 @@ const initCreatorsPage = async () => {
     renderHeroFacts();
     renderHeroSignature();
     renderHeroAvatar();
+    // The kinship page is the one place a thread links out to that is about this builder
+    // and somebody else at the same time, so it belongs under the signature creations
+    // rather than in the look-out row of archive-wide paths.
+    const kinship = $('hero-kinship');
+    if (kinship) {
+      const anchor = $('hero-kinship-link');
+      if (anchor) anchor.href = new URL(`kinship/?builder=${thread.builderKey}`, base);
+      kinship.hidden = false;
+    }
     const ordered = [
       document.querySelector('main .eyebrow'),
-      $('title'), $('hero-aliases'), $('hero-facts'), $('intro'), $('hero-signature'), $('thread-actions'),
+      $('title'), $('hero-aliases'), $('hero-facts'), $('intro'), $('hero-signature'),
+      $('hero-kinship'), $('thread-actions'),
     ].filter(Boolean);
     text.append(...ordered);
     hero.hidden = false;
@@ -1289,6 +1630,8 @@ const initCreatorsPage = async () => {
       appendAlbums();
       $('content').append(section);
     }
+    // If participation.json already landed there are albums to hang its chips on now.
+    renderConfirmedTagChips(externalParticipation);
     openRequestShortcutIfLinked();
   }
 
@@ -1323,7 +1666,7 @@ const initCreatorsPage = async () => {
       };
       let deliveryStatus = 'queued';
       try {
-        await submitPayload({
+        await submitPayload(endpoint, {
           schema: 'steward-creator-participation-event/v1',
           eventType: 'claim',
           claim,
@@ -1335,13 +1678,7 @@ const initCreatorsPage = async () => {
 
       state.participant = participant;
       claim.deliveryStatus = deliveryStatus;
-      // A re-claim must not discard the record that an earlier one was delivered.
-      const prior = state.claims[album.buildKey];
-      if (prior && prior.deliveryStatus === 'submitted' && deliveryStatus !== 'submitted') {
-        claim.deliveryStatus = 'submitted';
-        claim.resubmittedFrom = prior.claimId;
-      }
-      state.claims[album.buildKey] = claim;
+      StewardParticipation.putClaim(state, claim);
       saveState();
       closeModal(claimModal);
       // Without an ingestion endpoint a claim reaches nobody on its own, so the claim
@@ -1393,7 +1730,7 @@ const initCreatorsPage = async () => {
       };
       let deliveryStatus = 'queued';
       try {
-        await submitPayload({
+        await submitPayload(endpoint, {
           schema: 'steward-creator-participation-event/v1',
           eventType: 'photoRequest',
           request: payload,
@@ -1446,15 +1783,13 @@ const initCreatorsPage = async () => {
     if ($('forget-participation')) {
       $('forget-participation').onclick = () => {
         if (!confirm('Forget every claim, request and handle stored in this browser?')) return;
-        try {
-          localStorage.removeItem(STORAGE_KEY);
-        } catch {
-          // Nothing was persisted in the first place; clearing memory is enough.
-        }
-        const fresh = DEFAULT_STATE();
+        // Retention control: kinship tags name a second person, so they are the first
+        // thing this has to clear, not an afterthought bolted on beside the claims.
+        const fresh = StewardParticipation.forget();
         state.participant = fresh.participant;
         state.claims = fresh.claims;
         state.requests = fresh.requests;
+        state.kinshipTags = fresh.kinshipTags;
         updateParticipantSnapshot();
         showToast('Local participation cleared.');
         if (isThread && thread) renderThread();
@@ -1509,6 +1844,7 @@ const initCreatorsPage = async () => {
       readOptional('participation.json').then((doc) => {
         externalParticipation = doc;
         updateParticipantSnapshot();
+        renderConfirmedTagChips(doc);
       });
       return;
     }
@@ -1532,4 +1868,8 @@ const initCreatorsPage = async () => {
 
 // Guarded so `require()`-ing this file for the pure-logic unit tests (creators.logic.test.js)
 // doesn't try to run the page bootstrap against Node's missing `document`/`location`.
-if (typeof document !== 'undefined') initCreatorsPage();
+// The kinship page loads this file for its top-level model and store only -- it has no
+// #copy-activity, no #participant-handle and no directory to render, so booting the
+// directory/thread page there would throw on the first missing node. kinship.js is the
+// page script there, and it runs against the same globals.
+if (typeof document !== 'undefined' && document.documentElement.dataset.stewardPage !== 'kinship') initCreatorsPage();
