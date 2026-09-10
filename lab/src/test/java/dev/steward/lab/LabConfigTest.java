@@ -38,4 +38,14 @@ class LabConfigTest {
                 "--context-image", image.toString()}));
         assertTrue(error.getMessage().contains("not both"));
     }
+
+    @Test void staticOverrideIsAbsoluteAndAnAbsentOneStillBoots() {
+        Path override = temp.resolve("ui");
+        assertNull(LabConfig.parse(new String[]{"serve"}).staticDir());
+        assertEquals(override.toAbsolutePath(),
+            LabConfig.parse(new String[]{"serve", "--static-dir", override.toString()}).staticDir());
+        // Unlike the other paths this one is an override, and a public page must degrade to the UI
+        // baked into the jar rather than refuse to boot when the directory is missing or empty.
+        assertFalse(Files.exists(override));
+    }
 }

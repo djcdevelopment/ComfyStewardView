@@ -30,7 +30,12 @@ public record LabConfig(
         Path fidelityClusters,
         Path fidelityCandidates,
         FeedbackConfig feedback,
-        Path eraCatalog) {
+        Path eraCatalog,
+        // Directory whose files shadow the UI baked into the jar, or null for the baked copy only.
+        // Deliberately not validated here: unlike the other paths this one is an override that may
+        // legitimately be absent or empty, and a public page must degrade to the shipped UI rather
+        // than refuse to boot. LabServer warns and falls back.
+        Path staticDir) {
 
     public static final List<Integer> ALLOWED_RESOLUTIONS = List.of(16, 64, 80, 160, 320, 500, 1000);
 
@@ -47,6 +52,7 @@ public record LabConfig(
         Path context = null;
         Path contextManifest = null;
         Path eraCatalog = null;
+        Path staticDir = null;
         String bindAddress = "127.0.0.1";
         int port = 8091;
         boolean noBrowser = false;
@@ -76,6 +82,7 @@ public record LabConfig(
                 case "--context-image" -> context = Path.of(requireValue(args, ++i, arg));
                 case "--context-manifest" -> contextManifest = Path.of(requireValue(args, ++i, arg));
                 case "--era-catalog" -> eraCatalog = Path.of(requireValue(args, ++i, arg));
+                case "--static-dir" -> staticDir = Path.of(requireValue(args, ++i, arg));
                 case "--bind" -> bindAddress = requireValue(args, ++i, arg);
                 case "--port" -> port = Integer.parseInt(requireValue(args, ++i, arg));
                 case "--snapshot" -> snapshot = Long.parseLong(requireValue(args, ++i, arg));
@@ -142,7 +149,8 @@ public record LabConfig(
             fidelityReceipts == null ? null : absolute(fidelityReceipts),
             fidelityClusters == null ? null : absolute(fidelityClusters),
             fidelityCandidates == null ? null : absolute(fidelityCandidates), feedback,
-            eraCatalog == null ? null : absolute(eraCatalog));
+            eraCatalog == null ? null : absolute(eraCatalog),
+            staticDir == null ? null : absolute(staticDir));
     }
 
     private static Path defaultCache() {

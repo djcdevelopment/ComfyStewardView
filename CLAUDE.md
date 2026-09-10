@@ -39,11 +39,14 @@ before the HTTP port opens, so a 1.3 GB boot world costs minutes on every restar
 
 ## Iterating on the UI
 
+Both frontends work the same way: `--static-dir` shadows the copy baked into the jar when it points
+at a real directory, and falls back to the jar when it does not. Never rebuild an image to change a
+stylesheet.
+
+### `/steward/` — the viewer
+
 `viewer/src/main/resources/static/index.html` is the entire frontend: one file, no build step,
 Alpine + Leaflet + Tailwind from CDN.
-
-It is served from `--static-dir` when that points at a real directory, falling back to the copy
-baked into the jar. So:
 
 - **Locally**: `.\Start-Viewer.ps1 -SkipBuild` serves it straight from the working copy against the
   real publish cache. Edit, refresh, done — no rebuild, no restart.
@@ -52,8 +55,25 @@ baked into the jar. So:
 - Only run `.\tools\Deploy-Steward.ps1` when **Java** changed. That one rebuilds the image on AM4
   and restarts the container, which re-parses the 1.3 GB world before the port reopens.
 
-Do not "fix" a failed UI push by restarting the container — avoiding the restart is the entire
-point of that path.
+### `/world/` — the lab
+
+`lab/src/main/resources/static/` (`index.html`, `lab.css`, `lab.js`, plus the scene files) is the
+world view, served by the `steward-world` container on AM4 port 7081.
+
+- **Locally**: `.\lab\lab.ps1 serve` already points `--static-dir` at the working copy. Edit,
+  refresh, done — no `mvnw package`.
+- **On AM4**: `.\tools\Push-StewardWorldUi.ps1` copies the static files into the running release's
+  `/ui` override and verifies by hashing what the server returns. Seconds, no restart.
+- Only run `tools\era-archive\deploy_world.py` when **Java** or the era bundle changed. That one
+  re-transfers ~640 MB of bundle and rebuilds the image.
+
+`deploy_world.py` creates the `/ui` override empty inside each release directory, so a fresh release
+always starts on the UI its own jar shipped and a pushed override cannot outlive the code it was
+tuned against. A container deployed before that mount existed has no `/ui`; the push script says so
+rather than appearing to succeed.
+
+Do not "fix" a failed UI push by restarting the container or redeploying — avoiding that is the
+entire point of both paths.
 
 ## Build
 
