@@ -32,7 +32,30 @@ from pathlib import Path
 import re
 
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]+")
-RECEIPT_FIELDS = ("clearance", "occluded", "pieces_near_aim", "environment", "time_of_day")
+
+# Everything the runner already wrote about how the photograph was taken. The first five
+# were the original set; the rest were being captured into state.json and discarded here,
+# which is why the era galleries had no run, time, lens, fire or flash facets to build a
+# chip row from. Nothing new is measured -- this only stops throwing it away.
+RECEIPT_FIELDS = ("clearance", "occluded", "pieces_near_aim", "environment", "time_of_day",
+                  "run", "at", "lens_offset_m", "fires", "flash", "flash_bearing_deg")
+
+
+def shot_distance(receipt):
+    """How far the camera stood from what it was aiming at.
+
+    The runner records `lens` (where the camera ended up, after any occlusion recovery)
+    and `aim` separately, so the honest distance is between those two rather than the
+    planned pose. Returns None when either is missing rather than guessing a default.
+    """
+    lens = receipt.get("lens") or receipt.get("placed")
+    aim = receipt.get("aim")
+    if not isinstance(lens, dict) or not isinstance(aim, dict):
+        return None
+    try:
+        return round(sum((float(lens[k]) - float(aim[k])) ** 2 for k in "xyz") ** 0.5, 3)
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def receipt_reject(receipt):
@@ -123,6 +146,7 @@ def collect(root, slug, base, quality=None, gate=True):
             if not SAFE_ID.fullmatch(identifier):
                 raise SystemExit(f"unsafe photo identifier: {identifier}")
             receipt = entry.get("receipt", {})
+            distance = shot_distance(receipt)
             frame = verdicts.get(identifier, {})
             reason = receipt_reject(receipt) or (
                 frame.get("reason") if frame.get("verdict", "keep") != "keep" else None)
@@ -147,7 +171,8 @@ def collect(root, slug, base, quality=None, gate=True):
                 "width": entry["metadata"]["dimensions"][0],
                 "height": entry["metadata"]["dimensions"][1],
                 "sha256": entry["sha256"],
-                "capture": {k: receipt.get(k) for k in RECEIPT_FIELDS if k in receipt},
+                "capture": {k: receipt.get(k) for k in RECEIPT_FIELDS if k in receipt}
+                           | ({"shot_distance_m": distance} if distance is not None else {}),
                 **({"aesthetic": frame["aesthetic"]} if "aesthetic" in frame else {}),
             })
             worklist.append({"id": identifier, "source": entry["file"],
