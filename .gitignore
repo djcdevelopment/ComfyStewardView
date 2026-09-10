@@ -21,3 +21,7 @@ design_mocks/.thumbnail
 /tools/selfie-stick/out/
 __pycache__/
 /artifacts/era-archive/
+
+# browser-smoke.mjs writes screenshots and a report here on every run; it is
+# evidence for the person who ran it, not source.
+/smoke-front/
