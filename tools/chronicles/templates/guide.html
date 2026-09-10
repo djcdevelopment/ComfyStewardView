@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Field Manual · Valheim Chronicles</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="{{meta_description}}">
+<meta name="theme-color" content="#0e141c">
+<link rel="icon" href="{{icon_href}}" type="image/svg+xml">
+<link rel="stylesheet" href="{{css_href}}">
+</head>
+<body>
+{{header}}
+<main id="main">
+
+  <section class="hero hero-guide">
+    <h1>{{h1}}</h1>
+    <p class="lede">{{lede}}</p>
+  </section>
+
+  <nav class="toc" aria-labelledby="toc-h2">
+    <h2 class="eyebrow" id="toc-h2">{{toc_label}}</h2>
+    <ol>
+{{toc}}
+    </ol>
+  </nav>
+
+{{path_sections}}
+
+  <section id="claims" class="chapter chapter-prose">
+    <div class="chapter-body">
+      <h2>{{claims_h2}}</h2>
+{{claims_paragraphs}}
+    </div>
+  </section>
+
+  <section id="data-files" class="chapter chapter-prose">
+    <div class="chapter-body">
+      <h2>{{data_h2}}</h2>
+      <p class="lede">{{data_lede}}</p>
+      <dl class="files">
+{{data_files}}
+      </dl>
+      <p class="world-line">{{world_viewer_text}} <a href="{{world_viewer}}" rel="noopener">Open the world viewer</a></p>
+    </div>
+  </section>
+
+  <section id="eras" class="chapter chapter-prose">
+    <div class="chapter-body">
+      <h2>{{eras_h2}}</h2>
+      <p class="lede">{{eras_lede}}</p>
+      <div class="table-scroll">
+        <table class="ledger">
+          <caption class="eyebrow">Albums and photographs by era</caption>
+          <thead>
+          <tr>
+            <th scope="col">Era</th>
+            <th scope="col" class="num">Albums</th>
+            <th scope="col" class="num">Albums with photographs</th>
+            <th scope="col" class="num">Photographs</th>
+            <th scope="col">Gallery</th>
+          </tr>
+          </thead>
+          <tbody>
+{{eras_table}}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+{{footer}}
+</body>
+</html>

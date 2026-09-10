@@ -1,0 +1,45 @@
+<!-- The header and footer both pages share. build.py lifts each block by its comment
+     markers and fills the {{tokens}}; nothing here is served as a page of its own. -->
+
+<!-- HEADER -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/chronicles/"{{brand_current}}>
+      {{emblem_header}}
+      <span class="brand-lockup">
+        <span class="brand-eyebrow">THE COMFY COMMUNITY</span>
+        <span class="brand-name">Valheim Chronicles</span>
+      </span>
+    </a>
+    <nav class="topnav" aria-label="Archive sections">
+      <a href="/valheim/">Gallery</a>
+      <a href="/valheim/creators/">Builders</a>
+      <a href="/chronicles/guide/"{{guide_current}}>Guide</a>
+    </nav>
+  </div>
+</header>
+<!-- /HEADER -->
+
+<!-- FOOTER -->
+<footer class="site-footer">
+  <div class="footer-inner">
+    <p class="footer-brand">
+      {{emblem_footer}}
+      <span class="footer-name">Valheim Chronicles</span>
+      <span class="footer-sep" aria-hidden="true">·</span>
+      <span class="footer-tagline">{{footer_tagline}}</span>
+    </p>
+    <nav class="footer-links" aria-label="Archive links">
+      <a href="/valheim/">Gallery</a>
+      <a href="/valheim/creators/">Builders</a>
+      <a href="/valheim/creators/stats/">Statistics</a>
+      <a href="/chronicles/guide/">Guide</a>
+      <a href="{{world_viewer}}" rel="noopener">World viewer</a>
+    </nav>
+    <p class="footer-meta">
+      <span class="footer-preserved">{{footer_preserved}}</span>
+      <span class="build-stamp">{{build_stamp}}</span>
+    </p>
+  </div>
+</footer>
+<!-- /FOOTER -->
