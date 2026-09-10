@@ -36,7 +36,7 @@ function tree(branches, eras = [7, 8, 9, 10]) {
 
 const SIMPLE = tree([branch(1, [span(7), span(8)]), branch(2, [span(8)])]);
 
-test('kinship.js exports its layout helpers', () => {
+test('kinship.js exports layoutKinshipTree and its layout helpers', () => {
   assert.equal(typeof kinship.layoutKinshipTree, 'function');
   assert.equal(typeof kinship.strokeWidthFor, 'function');
 });
