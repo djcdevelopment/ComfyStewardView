@@ -1,5 +1,5 @@
 {
-  "_note": "Visible copy for the gateway and guide. Drafted on gcp-gemini-pro (HEARTH task cc-d556e077), then hand-corrected: no drones, no cryptography, no visitor counters, no 3D — only controls that exist on the live pages. Never use the words character or archetype. Era facts as of 2026-09-10: photographs for 7, 8, 9, 10, 12, 14, 16, 17; era 11 pending. {{builders}}, {{photos}}, {{eras_with_photos}} are baked by build.py.",
+  "_note": "Visible copy for the gateway and guide. Drafted on gcp-gemini-pro (HEARTH task cc-d556e077), then hand-corrected: no drones, no cryptography, no visitor counters, no 3D — only controls that exist on the live pages. Never use the words character or archetype. Era facts are never hard-coded here: the guide's era table is generated at build time. {{builders}}, {{photos}}, {{eras_with_photos}} are baked by build.py.",
   "gateway": {
     "h1": "Choose Your Path",
     "lede": "Photographs of what people built on the Comfy Valheim server, era by era, credited from the saved world itself.",
@@ -75,7 +75,7 @@
         "walkthrough": [
           "Begin in era 7, the earliest era with photographs.",
           "Open Filters. The era chips at the top switch to any other era that has been photographed.",
-          "Era 11 is still being photographed. Its builders are already in the index, and their albums fill in as captures land.",
+          "Some eras are still being photographed. Their builders are already in the index, and their albums fill in as captures land.",
           "Open a photograph and use the Where you are breadcrumbs to jump to the surrounding area.",
           "The builder named on a photograph links to their page, where the same album sits beside their work from other eras."
         ],
@@ -176,7 +176,7 @@
     },
     "eras": {
       "h2": "Eras",
-      "lede": "Eras 7 through 17. Photographs exist for eras 7, 8, 9, 10, 12, 14, 16 and 17. Era 11 is still being photographed."
+      "lede": "Eras 7 through 17. The table below is generated from the archive at build time, so it shows which eras have photographs today."
     }
   },
   "footer": {
