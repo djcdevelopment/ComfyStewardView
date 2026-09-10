@@ -33,7 +33,11 @@ function ExpectStatus($path, $code) {
 ExpectStatus '/' 404
 ExpectStatus '/chronicles' 308
 if (-not $SkipChronicles) {
-    Check '/chronicles/' @('<h1', 'href="/valheim/"', 'href="/chronicles/guide/"') @('character', 'archetype', 'cdn.tailwindcss', 'fonts.googleapis')
+    Check '/chronicles/' @('<h1', 'href="/valheim/"', 'href="/chronicles/guide/"', 'role="combobox"', 'id="suggestions"', 'id="portrait-manifest"') @('character', 'archetype', 'class="path"', 'cdn.tailwindcss', 'fonts.googleapis')
+    Check '/chronicles/portraits.json' @('"count"', '"tiles"') @() 'no-cache'
+    Check '/chronicles/img/portraits/p01.webp' @() @() 'immutable'
+    Check '/chronicles/img/portraits/p01.128.webp' @() @() 'immutable'
+    Check '/chronicles/img/cutouts/find.webp' @() @() 'immutable'
     Check '/chronicles/guide/' @('<h1', 'id="claims"') @('character', 'archetype', 'fonts.googleapis')
     Check '/chronicles/build.json' @('"counts"')
     try {
@@ -74,15 +78,15 @@ if (-not $SkipViewer) {
 
 if (-not $SkipCreators) {
     "== creators"
-    Check '/valheim/creators/' @('creators.css?v=2', 'id="stats-link"', 'href="/chronicles/"')
-    Check '/valheim/creators/creators.css?v=2' @('--flame', '@font-face')
-    Check '/valheim/creators/creators.js' @('Top 8')
+    Check '/valheim/creators/' @('creators.css?v=3', 'id="stats-link"', 'href="/chronicles/"')
+    Check '/valheim/creators/creators.css?v=3' @('--flame', '@font-face')
+    Check '/valheim/creators/creators.js' @('Top 8', 'portraitIndex')
     Check '/valheim/creators/stats/' @('Archive Statistics', 'href="/chronicles/"')
     Check '/valheim/creators/directory.json' @('"builders"') @() 'no-cache'
     try {
         $d = (Invoke-WebRequest -Uri ($base + '/valheim/creators/directory.json') -UseBasicParsing -TimeoutSec 60).Content | ConvertFrom-Json
         $top = $d.builders | Sort-Object -Property albums -Descending | Select-Object -First 1
-        Check ('/valheim/creators/' + $top.builderKey + '/') @('../creators.css?v=2', 'href="/chronicles/"')
+        Check ('/valheim/creators/' + $top.builderKey + '/') @('../creators.css?v=3', 'href="/chronicles/"', 'id="builder-hero"', 'id="look-out"')
         Check ('/valheim/creators/threads/' + $top.builderKey + '.json') @('"contributors"')
     } catch { $script:fail++; "FAIL thread probe: $($_.Exception.Message)" }
 }
