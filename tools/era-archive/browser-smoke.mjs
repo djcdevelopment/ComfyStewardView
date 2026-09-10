@@ -102,6 +102,36 @@ try{
   await evaluate("document.getElementById('photo-viewer-close').click()");
   await wait("!document.getElementById('photo-viewer-modal').classList.contains('open')");
   if(await evaluate(`document.activeElement.id!==${JSON.stringify(triggerId)}`))throw Error('Closing the photo viewer did not return focus to the trigger thumbnail');
+  // Kinship: the branching tree of who a builder built beside. It needs an anchor who
+  // shares a build with somebody -- a thread whose every album is solo draws a trunk and
+  // nothing else, and this step would then be asserting against an empty canvas. The
+  // lead photographed builder is tried first, then the busiest threads, capped at ten
+  // fetches so a pathological archive cannot turn one smoke step into 2,682 requests.
+  const hasCoBuilder=doc=>(doc?.eras||[]).some(e=>(e.albums||[]).some(a=>(a.contributors||[]).some(c=>c&&c.builderKey!==doc.builderKey)));
+  let kinshipKey=null;
+  for(const candidate of [photographed,...directory.builders.slice().sort((a,b)=>b.albums-a.albums)].slice(0,10)){
+    const doc=await fetch(new URL(`threads/${candidate.builderKey}.json`,gallery)).then(r=>r.ok?r.json():null).catch(()=>null);
+    if(hasCoBuilder(doc)){kinshipKey=candidate.builderKey;break;}
+  }
+  if(!kinshipKey)throw Error('No builder in the archive shares a build with anyone');
+  await cdp('Page.navigate',{url:new URL('kinship/?builder='+kinshipKey,gallery).href});
+  await wait("document.querySelectorAll('.kin-branch').length>0");
+  results.kinship=await evaluate("({branches:document.querySelectorAll('.kin-branch').length,segs:document.querySelectorAll('.kin-seg').length,nodes:document.querySelectorAll('#kin-nodes a.kin-node').length})");
+  if(!results.kinship.segs)throw Error('Kinship tree drew bands but no branch strokes');
+  if(!results.kinship.nodes)throw Error('Kinship tree drew no builder portraits');
+  await screenshot('kinship-tree');
+  await evaluate("document.getElementById('kin-tab-ledger').click()");
+  await wait("document.querySelectorAll('#kin-ledger tbody tr').length>0");
+  results.kinship.ledgerRows=await evaluate("document.querySelectorAll('#kin-ledger tbody tr').length");
+  // A fresh profile holds no claim, so every tag control must be gated -- and gated by
+  // class and aria, never by the disabled attribute, which swallows the very tap that
+  // would explain why it is off.
+  const tagGate=await evaluate("(()=>{const b=document.querySelector('button.kin-tag-btn');return b?{inert:b.classList.contains('inert'),aria:b.getAttribute('aria-disabled'),disabled:b.disabled}:null;})()");
+  if(!tagGate)throw Error('Kinship ledger offered no tag control');
+  if(!tagGate.inert||tagGate.aria!=='true'||tagGate.disabled)throw Error('Tag control is not gated on a build this browser has never claimed');
+  await evaluate("document.querySelector('button.kin-tag-btn').click()");
+  await wait("document.getElementById('toast').classList.contains('show')");
+  results.kinship.gated=true;
   if(!world){
     results.spatial='skipped: no world base URL';
     if(errors.length)throw Error(errors.join('\n'));
