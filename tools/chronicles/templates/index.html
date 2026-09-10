@@ -12,51 +12,20 @@
 <body>
 {{header}}
 <main id="main">
-
-  <section class="hero">
+  <section class="door">
     <h1>{{h1}}</h1>
-    <p class="lede">{{lede}}</p>
+    <form class="finder" action="/valheim/creators/" method="get" role="search">
+      <label class="eyebrow" for="q">{{search_label}}</label>
+      <div class="finder-row">
+        <input id="q" name="q" type="search" maxlength="80" placeholder="{{search_placeholder}}" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-haspopup="listbox" aria-controls="suggestions">
+        <ul id="suggestions" role="listbox" aria-label="Matching builders" hidden data-loading="{{loading}}" data-failed="{{load_failed}}" data-empty="{{no_match}}"></ul>
+      </div>
+      <p id="finder-status" class="finder-status" role="status" aria-live="polite"></p>
+      <p class="finder-foot"><span class="hint">{{search_hint}}</span><a class="quiet" href="/chronicles/guide/#claims">{{claim_hint}}</a></p>
+    </form>
+    <p class="cta-row"><a class="button forged wide" href="/valheim/">{{cta}}</a></p>
   </section>
-
-  <nav class="paths" aria-label="Paths through the archive">
-{{path_cards}}
-  </nav>
-  <div class="runic-rule" aria-hidden="true"></div>
-
-  <form class="finder" action="/valheim/creators/" method="get" role="search">
-    <label class="eyebrow" for="q">{{search_label}}</label>
-    <div class="finder-row">
-      <input id="q" name="q" type="search" maxlength="80" placeholder="{{search_placeholder}}" autocomplete="off">
-      <button class="button" type="submit">Find</button>
-    </div>
-    <p class="finder-foot">
-      <span class="hint">{{search_hint}}</span>
-      <a class="quiet" href="/chronicles/guide/#claims">{{claim_hint}}</a>
-    </p>
-  </form>
-
-  <p class="cta-row"><a class="button forged" href="/valheim/">{{cta}}</a></p>
-
-  <section class="glance" aria-labelledby="glance-h2">
-    <h2 class="section-h2" id="glance-h2">{{glance_h2}}</h2>
-    <div class="stats">
-{{stat_builders}}
-{{stat_photos}}
-{{stat_eras}}
-    </div>
-    <div class="chips">
-{{era_chips}}
-    </div>
-  </section>
-
-  <section class="manual" aria-labelledby="manual-h2">
-    <h2 class="section-h2" id="manual-h2">{{manual_h2}}</h2>
-    <p class="lede">{{manual_lede}}</p>
-    <div class="manual-grid">
-{{manual_cards}}
-    </div>
-  </section>
-
+  <script type="application/json" id="portrait-manifest">{{portraits_json}}</script>
 </main>
 {{footer}}
 <script src="{{js_href}}" defer></script>

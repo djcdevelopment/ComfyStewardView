@@ -3,8 +3,10 @@
 
 The archive's own pages are client-rendered; this one is not. Every number a visitor
 reads here is fetched at build time from the same two JSON files the live pages read,
-baked into the HTML, and recorded with its source hash in build.json. Nothing on the
-built page makes a network request of its own -- no fonts, no CDN, no analytics.
+baked into the HTML, and recorded with its source hash in build.json. Nothing third-party
+is ever fetched -- no fonts, no CDN, no analytics. The one request either page makes of
+its own is the gateway prefetching this archive's directory.json so the name box can
+answer without a page load; the portrait manifest it draws from is inlined at build time.
 
     python build.py --source-base https://fx99.tail8e749c.ts.net --out DIR
     python build.py --offline tests/fixtures --out DIR          # no network
@@ -33,10 +35,9 @@ from PIL import Image
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 
-# The five illustrated paths, in the order they are read on the page. "guide" is the
-# sixth card and the only one whose figure is drawn rather than photographed.
+# The five illustrated paths, in the order the guide reads them. Their figures are still
+# built and still named in portraits.json; the front page no longer shows a row of them.
 PATH_IDS = ("find", "study", "walk", "request", "data")
-CARD_IDS = PATH_IDS + ("guide",)
 
 SOURCES = {
     "directory": "/valheim/creators/directory.json",
@@ -45,8 +46,13 @@ SOURCES = {
 
 CUTOUT_SIZES = (512, 256)
 SHOT_SIZE = (720, 450)
+PORTRAIT_THUMB = 128
 WEBP_QUALITY = 82
+PORTRAIT_THUMB_QUALITY = 80
 SHOT_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
+
+PORTRAITS_SCHEMA = "chronicles-portraits/v1"
+DEFAULT_PORTRAITS = HERE / "assets" / "portraits"
 
 WORLD_VIEWER = "https://am4.tail8e749c.ts.net/world"
 
@@ -187,7 +193,8 @@ class Out:
         return self.write(pattern.format(stamp(data)), data)
 
 
-def to_webp(image: Image.Image, size: tuple[int, int] | None = None) -> bytes:
+def to_webp(image: Image.Image, size: tuple[int, int] | None = None,
+            quality: int = WEBP_QUALITY) -> bytes:
     import io
 
     work = image
@@ -196,7 +203,7 @@ def to_webp(image: Image.Image, size: tuple[int, int] | None = None) -> bytes:
     buffer = io.BytesIO()
     # RGBA in, RGBA out: the cutouts are die-cut stickers and a white box behind one
     # would be the single most visible defect on the page.
-    work.save(buffer, "WEBP", quality=WEBP_QUALITY, method=6)
+    work.save(buffer, "WEBP", quality=quality, method=6)
     return buffer.getvalue()
 
 
@@ -214,7 +221,13 @@ def cover(image: Image.Image, width: int, height: int) -> Image.Image:
 
 def build_cutouts(out: Out) -> dict:
     """Each PNG figure becomes a 512 and a 256 webp; the drawn guide figure ships as the
-    svg it already is."""
+    svg it already is.
+
+    Each webp is written twice, byte for byte: once under its content hash for the pages
+    that link it and once under a stable name for anything that has to name a figure
+    without reading this build's manifest first. The stable copies carry a `v` in
+    portraits.json instead, which is what a consumer appends to bust the immutable cache.
+    """
     assets: dict[str, dict] = {}
     for name in PATH_IDS:
         source = HERE / "assets" / "cutouts" / f"{name}.png"
@@ -226,10 +239,64 @@ def build_cutouts(out: Out) -> dict:
             data = to_webp(figure, (size, size))
             suffix = "" if size == max(CUTOUT_SIZES) else f".{size}"
             entry[str(size)] = out.write_hashed(f"img/cutouts/{name}{suffix}.{{}}.webp", data)
+            key = "file" if size == max(CUTOUT_SIZES) else "thumb"
+            entry[key] = out.write(f"img/cutouts/{name}{suffix}.webp", data)
+            if key == "file":
+                entry["v"] = stamp(data)
         assets[name] = entry
     svg = (HERE / "assets" / "cutouts" / "guide.svg").read_bytes()
     assets["guide"] = {"svg": out.write_hashed("img/cutouts/guide.{}.svg", svg)}
     return assets
+
+
+def build_portraits(out: Out, portraits_dir: Path | None) -> dict:
+    """The drawn tiles a builder wears beside their name in the search suggestions.
+
+    Another lane generates them. This one only ships what it finds: the full tile is
+    copied byte for byte (it is already the artist's webp, and re-encoding it here would
+    quietly degrade it every build), and only the 128 thumbnail is derived. A tree with no
+    tiles in it yet is not an error -- the front door has to be a finished page on the day
+    before the first portrait exists, and count 0 is what tells the gateway to draw the
+    emblem instead.
+    """
+    empty = {"count": 0, "tiles": []}
+    directory = Path(portraits_dir) if portraits_dir is not None else DEFAULT_PORTRAITS
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.is_file():
+        print(f"  portraits       none at {directory} -- building without tiles")
+        return empty
+    source = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if source.get("schema") != PORTRAITS_SCHEMA:
+        raise SystemExit(
+            f"{manifest_path} declares schema {source.get('schema')!r}, expected {PORTRAITS_SCHEMA!r}"
+        )
+    tiles = []
+    for tile in source.get("tiles", []):
+        tile_id = tile["id"]
+        full = directory / f"{tile_id}.webp"
+        if not full.is_file():
+            raise SystemExit(f"{manifest_path} lists {tile_id} but {full} is not there")
+        data = full.read_bytes()
+        out.write(f"img/portraits/{tile_id}.webp", data)
+        with Image.open(full) as image:
+            image.load()
+            tile_image = image.convert("RGBA")
+        thumb = to_webp(tile_image, (PORTRAIT_THUMB, PORTRAIT_THUMB), PORTRAIT_THUMB_QUALITY)
+        out.write(f"img/portraits/{tile_id}.{PORTRAIT_THUMB}.webp", thumb)
+        tiles.append({
+            "id": tile_id,
+            "file": f"{tile_id}.webp",
+            "thumb": f"{tile_id}.{PORTRAIT_THUMB}.webp",
+            # The stamp of the tile itself, so a redrawn tile changes the query string on
+            # both its sizes at once and neither can be served stale against the other.
+            "v": stamp(data),
+            "seed": tile.get("seed"),
+            "tags": tile.get("tags", []),
+        })
+    declared = source.get("count")
+    if declared is not None and declared != len(tiles):
+        raise SystemExit(f"{manifest_path} says count {declared} but lists {len(tiles)} tiles")
+    return {"count": len(tiles), "tiles": tiles}
 
 
 def build_shots(out: Out, shots: Path | None) -> dict:
@@ -287,35 +354,6 @@ def shell_parts(values: dict) -> tuple[str, str]:
     return block("HEADER"), block("FOOTER")
 
 
-def path_cards(copy: dict, cutouts: dict, prefix: str = "") -> str:
-    """Six wordless slabs. The figure is the whole affordance: no caption, no title
-    attribute, no tooltip -- the aria-label is the only name, and it is the one a screen
-    reader reads. Anything visible here would have to be translated, and the point of the
-    row is that it is read at a glance."""
-    cards = []
-    for card_id in CARD_IDS:
-        entry = copy["paths"][card_id]
-        href = entry.get("href", "/chronicles/guide/")
-        art = cutouts[card_id]
-        if "svg" in art:
-            image = (
-                f'<img alt="" src="{prefix}{art["svg"]}" width="512" height="512" '
-                f'decoding="async" loading="eager">'
-            )
-        else:
-            image = (
-                f'<img alt="" src="{prefix}{art["512"]}" '
-                f'srcset="{prefix}{art["256"]} 256w, {prefix}{art["512"]} 512w" '
-                f'sizes="(max-width:640px) 45vw, 200px" width="512" height="512" '
-                f'decoding="async" loading="eager">'
-            )
-        cards.append(
-            f'    <a class="path" href="{esc(href)}" aria-label="{esc(entry["aria_label"])}" '
-            f'data-path="{card_id}">{image}<span class="ember" aria-hidden="true"></span></a>'
-        )
-    return "\n".join(cards)
-
-
 def era_chips(rows: list[dict], eras_doc: dict) -> str:
     """Chips follow eras.json, which is the list of galleries that actually exist."""
     chips = []
@@ -337,32 +375,47 @@ def stat_slab(label: str, value: str) -> str:
     )
 
 
-def manual_cards(copy: dict, shots: dict, prefix: str = "") -> str:
-    cards = []
-    for index, card_id in enumerate(PATH_IDS, start=1):
-        entry = copy["paths"][card_id]
-        steps = "\n".join(f"          <li>{text(step)}</li>" for step in entry["steps"])
-        shot = shots.get(card_id)
-        figure = (
-            f'        <img class="shot" alt="" src="{prefix}{shot}" width="720" height="450" '
-            'decoding="async" loading="lazy">\n'
-            if shot else ""
-        )
-        cards.append(
-            '      <article class="slab manual-card">\n'
-            f'        <p class="eyebrow numeral">{index:02d}</p>\n'
-            f'        <h3>{text(entry["card_h3"])}</h3>\n'
-            f"{figure}"
-            "        <ol class=\"steps\">\n"
-            f"{steps}\n"
-            "        </ol>\n"
-            '        <p class="card-links">\n'
-            f'          <a class="button" href="{esc(entry["href"])}">{text(entry["guide"]["open_label"])}</a>\n'
-            f'          <a class="quiet" href="/chronicles/guide/#{card_id}">Read the walkthrough</a>\n'
-            "        </p>\n"
-            "      </article>"
-        )
-    return "\n".join(cards)
+def portraits_doc(portraits: dict, cutouts: dict, copy: dict, head: str, generated: str) -> dict:
+    """One file naming every drawn thing the archive can put beside a builder or a path,
+    and the query string that busts each one.
+
+    It lives at the output root beside build.json, so deploy.py links it the same way, and
+    the same object is inlined into the gateway page so the search suggestions draw a
+    portrait without a second request. `index` is written out as the rule rather than as a
+    table: the mapping is a pure function of the builderKey, so a consumer that never saw
+    this build can still work out which tile a builder wears.
+    """
+    return {
+        "schema": PORTRAITS_SCHEMA,
+        "count": portraits["count"],
+        "base": "/chronicles/img/portraits/",
+        "index": "parseInt(builderKey.slice(0,8),16) % count",
+        "tiles": portraits["tiles"],
+        "cutouts": {
+            name: {
+                "file": "/chronicles/" + cutouts[name]["file"],
+                "thumb": "/chronicles/" + cutouts[name]["thumb"],
+                "v": cutouts[name]["v"],
+            }
+            for name in PATH_IDS
+        },
+        "paths": {
+            name: {
+                "aria_label": copy["paths"][name]["aria_label"],
+                "line": copy["paths"][name]["card_h3"],
+                "href": copy["paths"][name]["href"],
+            }
+            for name in PATH_IDS
+        },
+        "head": head,
+        "generatedAt": generated,
+    }
+
+
+def inline_json(doc: dict) -> str:
+    """Into a <script type="application/json"> block: the only sequence that could end the
+    block early is the one that is escaped here."""
+    return json.dumps(doc, separators=(",", ":")).replace("</", "<\\/")
 
 
 def guide_toc(copy: dict) -> str:
@@ -455,7 +508,7 @@ def eras_table(rows: list[dict]) -> str:
 # ----------------------------------------------------------------------------- build
 
 def build(source_base: str, out_dir: Path, offline: Path | None = None,
-          shots_dir: Path | None = None) -> dict:
+          shots_dir: Path | None = None, portraits_dir: Path | None = None) -> dict:
     out_dir = Path(out_dir)
     if out_dir.exists():
         raise SystemExit(f"{out_dir} already exists. Use a new output directory.")
@@ -469,6 +522,7 @@ def build(source_base: str, out_dir: Path, offline: Path | None = None,
     out = Out(out_dir)
     try:
         cutouts = build_cutouts(out)
+        portraits = build_portraits(out, portraits_dir)
         shots = build_shots(out, shots_dir)
         fonts = build_fonts(out)
         emblem = out.write_hashed(
@@ -482,6 +536,8 @@ def build(source_base: str, out_dir: Path, offline: Path | None = None,
         generated = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
         head = head_sha()
         stamp_text = f"built {generated.strftime('%Y-%m-%dT%H:%MZ')} · {head[:7]}"
+        generated_at = generated.isoformat().replace("+00:00", "Z")
+        portrait_manifest = portraits_doc(portraits, cutouts, copy, head, generated_at)
 
         for page, prefix in (("index", ""), ("guide", "../")):
             header, footer = shell_parts({
@@ -506,21 +562,15 @@ def build(source_base: str, out_dir: Path, offline: Path | None = None,
                     "js_href": js,
                     "meta_description": esc(copy["gateway"]["lede"]),
                     "h1": text(copy["gateway"]["h1"]),
-                    "lede": text(copy["gateway"]["lede"]),
-                    "path_cards": path_cards(copy, cutouts, prefix),
                     "search_label": text(copy["gateway"]["search_label"]),
                     "search_placeholder": esc(copy["gateway"]["search_placeholder"]),
                     "search_hint": text(copy["gateway"]["search_hint"]),
                     "claim_hint": text(copy["gateway"]["claim_hint"]),
                     "cta": text(copy["gateway"]["cta"]),
-                    "glance_h2": text(copy["gateway"]["glance_h2"]),
-                    "stat_builders": stat_slab("Builders", thousands(counts["builders"])),
-                    "stat_photos": stat_slab("Photographs", thousands(counts["photos"])),
-                    "stat_eras": stat_slab("Populated eras", thousands(counts["erasWithPhotos"])),
-                    "era_chips": era_chips(rows, eras_doc),
-                    "manual_h2": text(copy["gateway"]["manual_h2"]),
-                    "manual_lede": text(copy["gateway"]["manual_lede"]),
-                    "manual_cards": manual_cards(copy, shots, prefix),
+                    "loading": esc(copy["gateway"]["loading"]),
+                    "load_failed": esc(copy["gateway"]["load_failed"]),
+                    "no_match": esc(copy["gateway"]["no_match"]),
+                    "portraits_json": inline_json(portrait_manifest),
                 })
                 out.write("index.html", body.encode("utf-8"))
             else:
@@ -533,6 +583,11 @@ def build(source_base: str, out_dir: Path, offline: Path | None = None,
                     "meta_description": esc(copy["guide"]["lede"]),
                     "h1": text(copy["guide"]["h1"]),
                     "lede": text(copy["guide"]["lede"]),
+                    "glance_h2": text(copy["guide"]["glance_h2"]),
+                    "stat_builders": stat_slab("Builders", thousands(counts["builders"])),
+                    "stat_photos": stat_slab("Photographs", thousands(counts["photos"])),
+                    "stat_eras": stat_slab("Populated eras", thousands(counts["erasWithPhotos"])),
+                    "era_chips": era_chips(rows, eras_doc),
                     "toc_label": text(copy["guide"]["toc_label"]),
                     "toc": guide_toc(copy),
                     "path_sections": guide_sections(copy, cutouts, shots, prefix),
@@ -549,8 +604,11 @@ def build(source_base: str, out_dir: Path, offline: Path | None = None,
                 })
                 out.write("guide/index.html", body.encode("utf-8"))
 
+        out.write("portraits.json",
+                  (json.dumps(portrait_manifest, indent=2) + "\n").encode("utf-8"))
+
         manifest = {
-            "generatedAt": generated.isoformat().replace("+00:00", "Z"),
+            "generatedAt": generated_at,
             "sourceBase": source_base.rstrip("/"),
             "counts": counts,
             "_countsNote": (
@@ -564,7 +622,7 @@ def build(source_base: str, out_dir: Path, offline: Path | None = None,
             "head": head,
             "assets": {
                 "css": css, "js": js, "emblem": emblem,
-                "cutouts": cutouts, "shots": shots, "fonts": fonts,
+                "cutouts": cutouts, "portraits": portraits, "shots": shots, "fonts": fonts,
             },
         }
         out.write("build.json", (json.dumps(manifest, indent=2) + "\n").encode("utf-8"))
@@ -590,14 +648,18 @@ def main(argv: list[str] | None = None) -> int:
                         help="read directory.json and eras.json from this fixture directory instead")
     parser.add_argument("--shots", type=Path, default=None,
                         help="directory of tutorial crops, named <path-id>[-2].<png|jpg|webp>")
+    parser.add_argument("--portraits", type=Path, default=DEFAULT_PORTRAITS,
+                        help="directory of drawn portrait tiles with a manifest.json; "
+                             "a tree that is not there yet builds a page with no tiles")
     args = parser.parse_args(argv)
 
-    manifest = build(args.source_base, args.out, args.offline, args.shots)
+    manifest = build(args.source_base, args.out, args.offline, args.shots, args.portraits)
     counts = manifest["counts"]
     print(f"built {args.out}")
     print(f"  builders        {thousands(counts['builders'])}")
     print(f"  photographs     {thousands(counts['photos'])}")
     print(f"  populated eras  {thousands(counts['erasWithPhotos'])}")
+    print(f"  portraits       {thousands(manifest['assets']['portraits']['count'])}")
     print(f"  head            {manifest['head'][:7]}")
     for source in manifest["sources"]:
         print(f"  source          {source['url']} ({thousands(source['bytes'])} bytes, {source['sha256'][:12]})")

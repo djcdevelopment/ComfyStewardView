@@ -288,118 +288,56 @@ main {
   letter-spacing: .02em;
 }
 
-/* ------------------------------------------------------- the wordless cards */
+/* -------------------------------------------------------------------- door */
 
-.paths {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: var(--space-md);
-  max-width: var(--content);
-  margin: 0 auto;
+/* The whole front page: a line, a box, a button, and nothing under them but the footer.
+   The height is the viewport minus the fixed header and main's own bottom padding, so
+   the stack centres in the first screen and the footer starts exactly at the fold. */
+.door {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100svh - var(--header) - 6rem);
+  padding: var(--space-3xl) 0;
+  text-align: center;
 }
 
-/* One stone slab per path. It holds a figure and a backlight and nothing else: no
-   caption, no title attribute, no tooltip. The aria-label is the only name it has. */
-.path {
-  position: relative;
-  display: block;
-  isolation: isolate;
-  padding: var(--space-md);
-  border: 1px solid var(--chisel);
-  border-radius: var(--r-md);
-  background: var(--surface-container);
-  box-shadow: var(--inset);
-  transition: transform var(--lift), border-color var(--lift), box-shadow var(--lift);
+.door h1 {
+  font: 700 56px/64px var(--display);
+  letter-spacing: .04em;
 }
 
-.path img {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  object-fit: contain;
-  transition: transform var(--lift), filter var(--lift);
-}
-
-.ember {
-  position: absolute;
-  z-index: 0;
-  left: 50%;
-  top: 52%;
-  width: 82%;
-  aspect-ratio: 1 / 1;
-  transform: translate(-50%, -50%) scale(1);
-  background: radial-gradient(circle closest-side, var(--ember), rgba(245, 158, 11, 0));
-  filter: blur(18px);
-  opacity: 0;
-  pointer-events: none;
-  transition: transform var(--lift), opacity var(--lift);
-}
-
-.path:hover,
-.path:focus-visible {
-  transform: translateY(-2px);
-  border-color: rgba(217, 119, 7, .5);
-  box-shadow: var(--inset), var(--ambient);
-}
-
-.path:hover img,
-.path:focus-visible img {
-  transform: translateY(-6px) scale(1.04);
-  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, .6));
-}
-
-.path:hover .ember,
-.path:focus-visible .ember {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1.15);
-}
-
-.runic-rule {
-  position: relative;
-  max-width: var(--content);
-  height: 1px;
-  margin: var(--space-xl) auto var(--space-3xl);
-  background: var(--outline-variant);
-}
-
-.runic-rule::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 6px;
-  height: 6px;
-  transform: translate(-50%, -50%) rotate(45deg);
-  background: var(--flame);
-  box-shadow: 0 0 12px 2px var(--ember);
-}
+.door > * + * { margin-top: var(--space-xl); }
 
 /* ------------------------------------------------------------------ finder */
 
+/* margin-inline, not `margin: 0 auto`: the shorthand would land after `.door > * + *`
+   at the same specificity and quietly zero the gap between the line and the box. */
 .finder {
-  max-width: 720px;
-  margin: 0 auto;
+  width: min(720px, 100%);
+  margin-inline: auto;
 }
 
 .finder label { display: block; margin-bottom: var(--space-xs); }
 
-.finder-row {
-  display: flex;
-  gap: var(--space-xs);
-  align-items: stretch;
-}
+/* The dropdown is positioned against this, not against the form: the hint line and the
+   status line below must not move when the list opens over them. */
+.finder-row { position: relative; }
 
 .finder input {
-  flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
-  padding: 14px 16px;
-  border: 1px solid rgba(255, 255, 255, .1);
+  padding: 18px 20px;
+  border: 1px solid var(--chisel);
   border-radius: var(--r-sm);
   background: var(--void);
   color: var(--text);
   caret-color: var(--flame);
-  font: 400 16px/1.4 var(--body);
+  /* 20px: over the 16px floor that stops iOS zooming the page on focus, and the size a
+     name deserves when typing it is the only thing this page asks for. */
+  font: 400 20px/1.4 var(--body);
+  text-align: left;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, .5);
 }
 
@@ -411,13 +349,121 @@ main {
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, .5), 0 0 0 1px var(--flame), 0 0 16px var(--ember);
 }
 
+/* Reserves its line whether or not it has anything to say, so the button below never
+   jumps a row as the count under the box changes. */
+.finder-status {
+  min-height: 1.4em;
+  margin-top: var(--space-xs);
+  font: 400 13px/1.4 var(--body);
+  color: var(--muted);
+}
+
 .finder-foot {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
   align-items: baseline;
-  justify-content: space-between;
+  justify-content: center;
   margin-top: var(--space-xs);
+}
+
+/* -------------------------------------------------------------- suggestions */
+
+#suggestions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 15;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, .6);
+  max-height: min(60vh, calc(8 * 58px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  text-align: left;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 120ms ease-out, transform 120ms ease-out;
+}
+
+#suggestions.is-open {
+  opacity: 1;
+  transform: none;
+}
+
+.suggestion > a {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  color: inherit;
+  text-decoration: none;
+}
+
+.portrait {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-sm);
+  background: var(--void);
+  object-fit: cover;
+}
+
+.portrait-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.portrait-fallback svg { width: 30px; height: 30px; }
+
+.suggestion-text { min-width: 0; }
+
+/* Names run to a hundred marks and aliases to nearly two hundred; one row is one line. */
+.suggestion-name,
+.suggestion-alias,
+.suggestion-counts {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.suggestion-name { font: 600 17px/1.4 var(--body); color: var(--text); }
+.suggestion-alias { font: italic 400 13px/1.5 var(--body); color: var(--parchment); }
+
+.suggestion-counts {
+  font: 400 12px/1.5 var(--mono);
+  letter-spacing: .04em;
+  color: var(--outline);
+}
+
+.suggestion.active > a,
+.suggestion > a:hover {
+  background: var(--surface-high);
+  box-shadow: inset 2px 0 0 var(--flame);
+}
+
+.suggestion-loading,
+.suggestion-empty > a {
+  display: block;
+  padding: 12px 10px;
+  border-radius: var(--r-sm);
+  color: var(--parchment);
+  font: 400 15px/1.4 var(--body);
+  text-decoration: none;
+}
+
+.suggestion-empty > a:hover {
+  background: var(--surface-high);
+  color: var(--primary);
+  box-shadow: inset 2px 0 0 var(--flame);
 }
 
 /* ----------------------------------------------------------------- buttons */
@@ -460,8 +506,13 @@ main {
   box-shadow: 0 0 16px rgba(245, 158, 11, .4);
 }
 
+.button.forged.wide {
+  padding: 18px 56px;
+  font-size: 16px;
+}
+
 .cta-row {
-  margin: var(--space-3xl) 0 var(--space-4xl);
+  margin-top: var(--space-xl);
   text-align: center;
 }
 
@@ -476,7 +527,7 @@ main {
 
 /* ------------------------------------------------------- archive at a glance */
 
-.glance { margin-top: var(--space-4xl); }
+.glance { margin-top: var(--space-2xl); }
 
 .stats {
   display: grid;
@@ -536,32 +587,6 @@ main {
   color: var(--primary);
 }
 
-/* ------------------------------------------------------------ field manual */
-
-.manual { margin-top: var(--space-4xl); }
-.manual > .lede { margin-top: var(--space-sm); }
-
-.manual-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-lg);
-  margin-top: var(--space-xl);
-}
-
-.manual-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-  padding: var(--space-lg);
-}
-
-.numeral { color: var(--bronze); }
-
-.manual-card h3 {
-  font: 600 24px/32px var(--display);
-  letter-spacing: .01em;
-}
-
 .steps {
   margin: 0;
   padding-left: 1.2em;
@@ -576,15 +601,6 @@ main {
   width: 100%;
   border: 1px solid var(--chisel);
   border-radius: var(--r-sm);
-}
-
-.card-links {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-md);
-  margin-top: auto;
-  padding-top: var(--space-sm);
 }
 
 /* ------------------------------------------------------------------- guide */
@@ -776,9 +792,8 @@ main {
 /* ------------------------------------------------------------- breakpoints */
 
 @media (max-width: 1024px) {
-  .paths { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .manual-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hero h1 { font-size: 44px; line-height: 52px; }
+  .door h1 { font-size: 44px; line-height: 52px; }
 }
 
 @media (max-width: 768px) {
@@ -789,26 +804,26 @@ main {
   .topnav a { font-size: 11px; letter-spacing: .06em; }
   .hero { padding-top: var(--space-2xl); }
   .hero h1 { font: 700 36px/44px var(--display); letter-spacing: .02em; }
+  .door { padding: var(--space-xl) 0; }
+  .door h1 { font: 700 36px/44px var(--display); letter-spacing: .02em; }
+  .door > * + * { margin-top: var(--space-lg); }
   .lede { font-size: 16px; }
   .stats { grid-template-columns: minmax(0, 1fr); }
   .stat { padding: var(--space-lg); }
   .stat-value { font-size: 34px; }
-  .manual-grid { grid-template-columns: minmax(0, 1fr); }
   .chapter { grid-template-columns: minmax(0, 1fr); gap: var(--space-md); }
   .chapter-figure img { width: 120px; }
   .chapter-body h2 { font: 600 26px/34px var(--display); }
   .toc ol { columns: 1; }
   .footer-inner { flex-direction: column; align-items: flex-start; }
   .footer-meta { text-align: left; margin-left: 0; }
-  .cta-row { margin: var(--space-2xl) 0 var(--space-3xl); }
   .button.forged { padding: 15px 28px; }
 }
 
 @media (max-width: 640px) {
-  .paths { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-xs); }
-  .path { padding: var(--space-xs); }
-  .finder-row { flex-wrap: wrap; }
-  .finder-row .button { width: 100%; }
+  /* One thumb, one target: the button takes the width the box has. */
+  .button.forged.wide { display: block; width: 100%; padding: 18px 24px; }
+  .cta-row { align-self: stretch; }
 }
 
 @media (max-width: 400px) {
@@ -827,8 +842,7 @@ main {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* The dropdown's fade is the only motion left on the front page, and gateway.js
+     watches this query too so the panel is shown and hidden on the same frame. */
   * { transition: none !important; }
-  .path:hover, .path:focus-visible { transform: none; }
-  .path:hover img, .path:focus-visible img { transform: none; }
-  .path:hover .ember, .path:focus-visible .ember { transform: translate(-50%, -50%); }
 }
