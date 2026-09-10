@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const {
   SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, compareBuilders, matchScore,
-  computeTopEight,
+  computeTopEight, portraitIndex, eraBounds, heroAliases,
 } = require(path.join(__dirname, '..', 'web', 'creators.js'));
 
 function builder(overrides) {
@@ -199,4 +199,72 @@ test('computeTopEight returns nothing for a solo builder, so the panel can hide 
 test('computeTopEight survives an album with no contributors array', () => {
   const thread = {builderKey: SELF, eras: [{era: 7, albums: [{buildKey: 'x', label: 'x', pieces: 1, photos: []}]}]};
   assert.deepEqual(computeTopEight(thread), []);
+});
+
+// --- Hero card -------------------------------------------------------------------
+// The profile card at the top of a builder page: which portrait tile, which era span,
+// which other names, which builds are worth naming.
+
+test('portraitIndex is the first 32 bits of the builder key modulo the tile count', () => {
+  // Tugcow: 0x5897d38e = 1,486,345,102; 1486345102 % 48 = 46.
+  assert.equal(portraitIndex('5897d38e2a065e36a6895e70a2194738'), 46);
+  assert.equal(portraitIndex('0'.repeat(32)), 0);
+  // The count comes from the manifest, so a resized tile set reassigns deterministically.
+  assert.equal(portraitIndex('5897d38e2a065e36a6895e70a2194738', 12), 1486345102 % 12);
+  // Same key, same face, every render -- that is the whole point of a hash assignment.
+  assert.equal(
+    portraitIndex('17a1605b1fdb58c68c6334e49e2b0b74'),
+    portraitIndex('17a1605b1fdb58c68c6334e49e2b0b74'),
+  );
+  // A manifest that names no tiles must not produce NaN as an array index.
+  assert.equal(portraitIndex('5897d38e2a065e36a6895e70a2194738', 0), 0);
+  assert.equal(portraitIndex(undefined), 0);
+});
+
+test('eraBounds spans the thread eras regardless of the order they are stored in', () => {
+  const thread = {eras: [{era: 12, albums: []}, {era: 7, albums: []}, {era: 9, albums: []}]};
+  assert.deepEqual(eraBounds(thread), {first: 7, latest: 12});
+  // A single era is both ends of its own span.
+  assert.deepEqual(eraBounds({eras: [{era: 16, albums: []}]}), {first: 16, latest: 16});
+  // Nothing to bound: the hero card omits both rows rather than printing "Era null".
+  assert.deepEqual(eraBounds({eras: []}), {first: null, latest: null});
+  assert.deepEqual(eraBounds(null), {first: null, latest: null});
+});
+
+test('heroAliases drops the display name, dedupes case-insensitively, and counts the overflow', () => {
+  const thread = {
+    displayName: 'Tugcow',
+    aliases: ['tugcow', 'TugCow', 'Tug', 'Cowherd', 'Bessie', 'Moo', 'Daisy'],
+  };
+  const {shown, more} = heroAliases(thread);
+  assert.deepEqual(shown, ['Tug', 'Cowherd', 'Bessie', 'Moo'], 'every casing of the display name is the display name');
+  assert.equal(more, 1, 'Daisy is the seventh alias and the only one past the first four');
+});
+
+test('heroAliases returns an empty panel for a builder with no other names', () => {
+  assert.deepEqual(heroAliases({displayName: 'Solo', aliases: []}), {shown: [], more: 0});
+  assert.deepEqual(heroAliases({displayName: 'Solo', aliases: ['SOLO', '  ', null]}), {shown: [], more: 0});
+  assert.deepEqual(heroAliases(null), {shown: [], more: 0});
+});
+
+test('the hero reuses pickSignatureAlbums, asked for three instead of the directory card two', () => {
+  const thread = {
+    eras: [
+      {era: 7, albums: [
+        {buildKey: 'z', label: 'Build 0a1b2c3d', pieces: 90000},
+        {buildKey: 'y', label: 'Fortress of Dawn', pieces: 10},
+        {buildKey: 'x', label: 'Longhouse of Embers', pieces: 500},
+      ]},
+      {era: 12, albums: [
+        {buildKey: 'w', label: 'Harbour Gate', pieces: 1204},
+      ]},
+    ],
+  };
+  // Same rule, one more slot: auto-labels out, largest first, across every era block.
+  assert.deepEqual(
+    pickSignatureAlbums(thread, 3).map((a) => a.label),
+    ['Harbour Gate', 'Longhouse of Embers', 'Fortress of Dawn'],
+  );
+  assert.deepEqual(pickSignatureAlbums(thread, 2).map((a) => a.label), ['Harbour Gate', 'Longhouse of Embers']);
+  assert.deepEqual(pickSignatureAlbums({eras: []}, 3), []);
 });
