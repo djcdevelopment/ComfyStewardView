@@ -115,10 +115,47 @@ function pickSignatureAlbums(threadDoc, limit = 2) {
     .slice(0, limit);
 }
 
+// Who this builder actually built beside. For every album on the thread, each other
+// credited contributor scores one shared album and min(my pieces, their pieces) shared
+// pieces -- the min, because the overlap two people can claim on one structure is bounded
+// by the smaller of the two contributions; summing or averaging would let a 40,000-piece
+// megabuilder swamp the ranking of everyone who ever touched one of their walls.
+// Legacy imports carry `pieces: null` (evidence: legacy-leading-contributor); those count
+// toward shared albums and contribute zero shared pieces rather than being dropped.
+function computeTopEight(threadDoc, limit = 8) {
+  if (!threadDoc) return [];
+  const self = threadDoc.builderKey;
+  const tally = new Map();
+  for (const era of threadDoc.eras || []) {
+    for (const album of era.albums || []) {
+      const contributors = album.contributors || [];
+      const mine = contributors.find((c) => c && c.builderKey === self);
+      const myPieces = mine?.pieces ?? 0;
+      for (const c of contributors) {
+        if (!c || c.builderKey === self) continue;
+        let entry = tally.get(c.builderKey);
+        if (!entry) {
+          entry = {builderKey: c.builderKey, sharedAlbums: 0, sharedPieces: 0};
+          tally.set(c.builderKey, entry);
+        }
+        entry.sharedAlbums += 1;
+        entry.sharedPieces += Math.min(myPieces, c.pieces ?? 0);
+      }
+    }
+  }
+  // Ends on the full builderKey so a tie renders in a fixed order instead of reshuffling
+  // between renders, matching how the directory sort modes break their own ties.
+  return [...tally.values()]
+    .sort((a, b) => b.sharedPieces - a.sharedPieces
+      || b.sharedAlbums - a.sharedAlbums
+      || a.builderKey.localeCompare(b.builderKey))
+    .slice(0, limit);
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     PLACEHOLDER_NAME, AUTO_ALBUM_LABEL, searchTerms, matchScore, compareBuilders,
-    SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums,
+    SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, computeTopEight,
   };
 }
 
@@ -801,6 +838,54 @@ const initCreatorsPage = async () => {
     }
   }
 
+  // Same shape community.py gives a builder with no single recorded name, so the
+  // placeholder a Top 8 card shows before directory.json lands is the same string
+  // hydrateCredits() will settle on for an unnamed co-builder.
+  function placeholderName(key) {
+    return `Builder ${key.slice(0, 8)}`;
+  }
+
+  // The panel every profile page has had since 2005. Names ride the same
+  // `a.credit[data-builder-key]` hook the album credit lines use, so hydrateCredits()
+  // fills them in when directory.json arrives -- no second fetch for this.
+  function renderTopEight() {
+    const ranked = computeTopEight(thread);
+    if (!ranked.length) return null;
+    const panel = node('section', null, 'top8');
+    panel.append(node('h2', 'Top 8'));
+    panel.append(node('p', 'The builders this builder placed the most pieces beside', 'top8-sub'));
+    const grid = node('div', null, 'top8-grid');
+    for (const entry of ranked) {
+      const card = node('article', null, 'top8-card');
+      const name = buildersByKey.get(entry.builderKey)?.displayName || placeholderName(entry.builderKey);
+      const anchor = link(name, new URL(`${entry.builderKey}/`, base));
+      anchor.className = 'credit';
+      anchor.dataset.builderKey = entry.builderKey;
+      card.append(anchor);
+      card.append(node('p',
+        `${entry.sharedAlbums.toLocaleString()} shared albums · ${entry.sharedPieces.toLocaleString()} shared pieces`,
+        'top8-meta'));
+      grid.append(card);
+    }
+    panel.append(grid);
+    return panel;
+  }
+
+  // The thread's headline figures get the same recessed hit-counter cell the directory's
+  // stat tiles wear. Split on the leading number only, and keep the rendered text
+  // byte-identical to the single string this line used to set.
+  function threadIntroLine(parts) {
+    const fragment = document.createDocumentFragment();
+    parts.forEach((part, index) => {
+      if (index) fragment.append(' · ');
+      const match = /^([\d,.]+)(.*)$/.exec(part);
+      if (!match) { fragment.append(part); return; }
+      fragment.append(node('span', match[1], 'counter'));
+      if (match[2]) fragment.append(match[2]);
+    });
+    return fragment;
+  }
+
   function closePhotoViewer() {
     closeModal(photoViewerModal);
     const img = $('photo-viewer-image');
@@ -996,7 +1081,7 @@ const initCreatorsPage = async () => {
     if (thread.pieces != null) introParts.push(`${thread.pieces.toLocaleString()} construction pieces`);
     if (thread.tier) introParts.push(thread.tier);
     introParts.push(`${thread.photos.toLocaleString()} photographs`);
-    $('intro').textContent = introParts.join(' · ');
+    $('intro').replaceChildren(threadIntroLine(introParts));
     $('status').textContent = thread.nameStatus === 'ambiguous'
       ? 'Several recorded names need review. Searchable aliases are retained.'
       : 'No unresolved name conflicts for this builder.';
@@ -1010,6 +1095,10 @@ const initCreatorsPage = async () => {
 
     const note = captureNoteForThread();
     if (note) $('content').append(node('p', note, 'muted'));
+
+    // Above the era sections: who this builder worked beside, before the 1,562 albums.
+    const topEight = renderTopEight();
+    if (topEight) $('content').append(topEight);
 
     const allEraBlocks = thread.eras.slice().sort((a, b) => b.era - a.era);
     for (const era of allEraBlocks) {
@@ -1214,6 +1303,15 @@ const initCreatorsPage = async () => {
     addEventListener('keydown', (event) => {
       if (event.key === 'Escape') closeAllModals();
     });
+    // The nav link and the footer both point at #participation-details, which is a
+    // collapsed <details>: the jump landed on a closed summary and looked broken.
+    const openParticipationIfLinked = () => {
+      if (location.hash !== '#participation-details') return;
+      const block = $('participation-details');
+      if (block) block.open = true;
+    };
+    openParticipationIfLinked();
+    addEventListener('hashchange', openParticipationIfLinked);
     setSearchHotkeyLabel();
     wireGlobalHotkey();
   }

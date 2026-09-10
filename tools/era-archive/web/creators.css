@@ -1,8 +1,105 @@
+/* Self-hosted OFL faces for Valheim Chronicles. Served from /chronicles/img/fonts/ (stable names, immutable cache).
+   Subsets: latin + latin-ext only. Generated from Google Fonts css2 manifests; see OFL.txt. */
+
+@font-face {
+  font-family: 'Bodoni Moda';
+  font-style: italic;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('/chronicles/img/fonts/bodoni-moda-italic-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Bodoni Moda';
+  font-style: italic;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('/chronicles/img/fonts/bodoni-moda-italic-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Bodoni Moda';
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('/chronicles/img/fonts/bodoni-moda-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Bodoni Moda';
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+  src: url('/chronicles/img/fonts/bodoni-moda-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/chronicles/img/fonts/jetbrains-mono-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/chronicles/img/fonts/jetbrains-mono-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url('/chronicles/img/fonts/plus-jakarta-sans-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url('/chronicles/img/fonts/plus-jakarta-sans-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* --- Chronicler Archive tokens (see plans/valheim_creators_gallery/.../DESIGN.md) ---
+   Strict dark. Elevation is tonal stratification plus a 1px chisel edge, never a soft
+   drop shadow; the one ambient shadow is reserved for hover lifts and modals. */
+:root {
+  --surface-low: #090f16;          /* container-lowest: recessed inputs, counter cells */
+  --surface: #0e141c;              /* page ground */
+  --surface-container-low: #161c24;
+  --surface-container: #1a2028;
+  --surface-high: #242a33;         /* container-high: hover, modal interiors */
+  --surface-highest: #2f353e;
+
+  --flame: #f59e0b;                /* primary CTA fill, active indicators */
+  --primary: #ffc174;              /* links, focus */
+  --bronze: #d97707;               /* secondary borders, hover */
+  --tertiary: #ffc32d;             /* luminous metrics */
+
+  --on-surface: #dde3ee;
+  --parchment: #d8c3ad;            /* on-surface-variant: body copy, metadata */
+  --outline: #a08e7a;              /* labels, eyebrows */
+  --outline-variant: #534434;      /* hairlines */
+
+  --ember: rgba(245, 158, 11, 0.25);
+  --chisel: rgba(255, 255, 255, 0.08);
+
+  --font-display: 'Bodoni Moda', Georgia, serif;
+  --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 :root {
   color-scheme: dark;
-  font: 16px/1.6 system-ui, sans-serif;
-  background: #101c21;
-  color: #e2e9e5;
+  font: 16px/1.6 var(--font-body);
+  background: var(--surface);
+  color: var(--on-surface);
 }
 
 * {
@@ -22,12 +119,14 @@ main {
 
 header {
   display: flex;
+  align-items: center;
+  gap: 16px;
   justify-content: space-between;
-  border-bottom: 1px solid #304247;
+  border-bottom: 1px solid var(--outline-variant);
 }
 
 a {
-  color: #b8dfbd;
+  color: var(--primary);
   text-decoration: none;
 }
 
@@ -36,13 +135,16 @@ a:hover {
 }
 
 h1 {
-  font: clamp(2.5rem, 7vw, 5rem) / 1.1 Georgia, serif;
-  font-weight: 400;
+  font: clamp(2.5rem, 7vw, 5rem) / 1.1 var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.02em;
   margin: 18px 0;
 }
 
 h2 {
-  font: 2rem Georgia, serif;
+  font: 2rem/1.25 var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.02em;
   margin: 4px 0 10px;
 }
 
@@ -55,14 +157,17 @@ p {
 }
 
 .eyebrow {
-  color: #94b2a7;
-  letter-spacing: 0.2em;
-  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: var(--outline);
+  letter-spacing: 0.14em;
 }
 
 #intro {
   max-width: 740px;
-  color: #b6c8c2;
+  color: var(--parchment);
 }
 
 #thread-actions {
@@ -72,8 +177,8 @@ p {
 #thread-actions a {
   display: inline-block;
   padding: 8px 14px;
-  border: 1px solid #44615a;
-  border-radius: 7px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 4px;
   font-size: 0.88rem;
 }
 
@@ -88,6 +193,7 @@ label {
   display: grid;
   gap: 6px;
   font-size: 0.85rem;
+  color: var(--outline);
 }
 
 input,
@@ -95,10 +201,10 @@ select,
 button,
 textarea {
   font: inherit;
-  color: inherit;
-  background: #1b2c31;
-  border: 1px solid #49615c;
-  border-radius: 6px;
+  color: var(--on-surface);
+  background: var(--surface-low);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
   padding: 11px;
 }
 
@@ -108,19 +214,45 @@ textarea {
   width: 100%;
 }
 
+/* Secondary "stele" button: a raised iron slab bounded in bronze, never a soft pill. */
 button {
   cursor: pointer;
   margin: 20px 0;
+  background: var(--surface-container);
+  border: 1px solid rgba(217, 119, 6, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
+button:hover {
+  border-color: var(--bronze);
+  background: var(--surface-high);
+}
+
+/* Primary "forged" button: filled flame with the void colour cut out of it. */
 button.primary {
-  border-color: #7cae90;
+  background: var(--flame);
+  border-color: var(--flame);
+  color: #090f16;
+  font-weight: 700;
+}
+
+button.primary:hover {
+  background: var(--tertiary);
+  border-color: var(--tertiary);
 }
 
 fieldset {
-  border: 1px solid #304247;
-  border-radius: 8px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
   padding: 10px 12px 12px;
+}
+
+legend {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--outline);
 }
 
 fieldset label {
@@ -148,33 +280,38 @@ fieldset input {
 .stat-tile {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  align-items: start;
+  gap: 6px;
   padding: 16px 18px;
-  border: 1px solid #304247;
-  border-radius: 10px;
-  background: #16262b;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-container-low);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .stat-tile-label {
-  font-size: 0.74rem;
-  letter-spacing: 0.08em;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #8da69e;
+  color: var(--outline);
 }
 
 .stat-tile-value {
-  font: 1.9rem Georgia, serif;
-  color: #e2e9e5;
+  font-family: var(--font-mono);
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--tertiary);
 }
 
 .stat-tile-ledger .stat-tile-value {
-  color: #b8dfbd;
-  font-size: 1.4rem;
+  color: var(--primary);
+  font-size: 1.1rem;
 }
 
 .stat-tile-note {
   font-size: 0.8rem;
-  color: #9fb5af;
+  color: var(--parchment);
   min-height: 1.1em;
 }
 
@@ -184,10 +321,11 @@ fieldset input {
   right: 12px;
   top: 50%;
   transform: translateY(-50%);
-  font: 0.72rem ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: #8da69e;
-  border: 1px solid #44615a;
-  border-radius: 5px;
+  font: 0.72rem var(--font-mono);
+  color: var(--outline);
+  background: var(--surface-low);
+  border: 1px solid var(--outline-variant);
+  border-radius: 4px;
   padding: 2px 6px;
   pointer-events: none;
 }
@@ -207,7 +345,10 @@ fieldset input {
   margin-bottom: 14px;
 }
 
+/* `flex-direction` here was inert: the base `label` rule makes every label a grid, so
+   the box stacked above its own caption and sat out of line with the two selects. */
 .checkbox-field {
+  display: flex;
   flex-direction: row;
   align-items: center;
   gap: 8px;
@@ -223,36 +364,44 @@ fieldset input {
   gap: 8px;
 }
 
+/* Era tablets: squared stone, mono all-caps, a top-edge highlight where the chisel
+   caught the light. Kept as CSS-only casing so the ribbon's textContent -- which the
+   browser smoke test matches on -- stays exactly as the JS wrote it. */
 .era-chip {
-  font: inherit;
-  font-size: 0.82rem;
-  color: #c8deda;
-  background: #16262b;
-  border: 1px solid #44615a;
-  border-radius: 999px;
-  padding: 6px 13px;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--parchment);
+  background: var(--surface-container-low);
+  border: 1px solid var(--ember);
+  border-radius: 4px;
+  padding: 6px 12px;
   cursor: pointer;
   margin: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .era-chip:hover {
-  border-color: #7cae90;
+  border-color: var(--bronze);
+  background: var(--surface-high);
 }
 
 .era-chip.active {
-  background: #274038;
-  border-color: #7cae90;
-  color: #e2e9e5;
-  font-weight: 600;
+  background: var(--ember);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: var(--primary);
+  font-weight: 700;
 }
 
 .era-chip .era-chip-count {
-  color: #9fb5af;
-  font-size: 0.78em;
+  color: var(--outline);
+  font-size: 0.86em;
 }
 
 .era-chip.active .era-chip-count {
-  color: #cfe6d5;
+  color: var(--primary);
 }
 
 #content.directory {
@@ -263,16 +412,35 @@ fieldset input {
 
 #content .builder,
 #content .album {
-  border: 1px solid #304247;
-  border-radius: 10px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
   padding: 22px;
-  background: #17262a;
+  background: var(--surface-container-low);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+#content .builder {
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+/* Stone-slab lift: the only place an ambient shadow is allowed to appear. */
+#content .builder:hover {
+  transform: translateY(-2px);
+  border-color: var(--bronze);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 24px -4px rgba(0, 0, 0, 0.6);
+}
+
+#content .builder > a:first-child {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .builder p,
 .album p,
 .muted {
-  color: #9fb5af;
+  color: var(--parchment);
   font-size: 0.9rem;
 }
 
@@ -281,21 +449,22 @@ fieldset input {
 }
 
 .builder-id {
-  font: 0.74rem ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: #7f9691;
+  font: 0.74rem var(--font-mono);
+  color: var(--outline);
 }
 
 .signature-creations {
   margin: 10px 0 0;
   padding-top: 10px;
-  border-top: 1px dashed #304247;
+  border-top: 1px dashed var(--outline-variant);
 }
 
 .signature-creations-label {
+  font-family: var(--font-mono);
   font-size: 0.72rem;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #7f9691;
+  color: var(--outline);
   display: block;
   margin-bottom: 4px;
 }
@@ -335,11 +504,15 @@ fieldset input {
 }
 
 .chip {
-  font-size: 0.74rem;
-  color: #c8deda;
-  border: 1px solid #44615a;
-  border-radius: 999px;
-  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--parchment);
+  border: 1px solid var(--outline-variant);
+  border-radius: 4px;
+  padding: 3px 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .album {
@@ -348,7 +521,7 @@ fieldset input {
 
 .album .credits {
   font-size: 0.85rem;
-  color: #aac0b6;
+  color: var(--parchment);
 }
 
 .album p + p {
@@ -366,7 +539,7 @@ fieldset input {
   width: 100%;
   aspect-ratio: 16 / 9;
   object-fit: cover;
-  border-radius: 5px;
+  border-radius: 4px;
 }
 
 .links {
@@ -389,17 +562,18 @@ fieldset input {
 .track {
   margin: 12px 0;
   padding: 8px 10px;
-  border: 1px dashed #304247;
-  border-radius: 8px;
-  background: #152428;
+  border: 1px dashed var(--outline-variant);
+  border-radius: 4px;
+  background: var(--surface-container-low);
 }
 
 .participation-block {
-  border: 1px solid #304247;
-  border-radius: 10px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
   padding: 12px 16px;
   margin: 4px 0 18px;
-  background: #16262b;
+  background: var(--surface-container-low);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .participation-block h2 {
@@ -408,7 +582,9 @@ fieldset input {
 
 #content details > summary {
   cursor: pointer;
+  font-family: var(--font-display);
   font-size: 1.5rem;
+  letter-spacing: 0.02em;
   margin: 28px 0 12px;
 }
 
@@ -419,7 +595,7 @@ fieldset input {
 #participation-details > summary {
   cursor: pointer;
   font-size: 1rem;
-  color: #b6c8c2;
+  color: var(--parchment);
 }
 
 #participation-details[open] > summary {
@@ -433,7 +609,10 @@ fieldset input {
 
 .hero-label {
   display: block;
-  font: 1.6rem Georgia, serif;
+  font: 1.6rem var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--on-surface);
   margin-bottom: 10px;
 }
 
@@ -445,8 +624,9 @@ fieldset input {
 #search {
   font-size: 1.15rem;
   padding: 15px 16px;
-  border-color: #7cae90;
-  background: #16262b;
+  border-color: var(--bronze);
+  background: var(--surface-low);
+  caret-color: var(--flame);
 }
 
 #suggestions {
@@ -458,10 +638,10 @@ fieldset input {
   margin: 0;
   padding: 4px;
   list-style: none;
-  background: #16252b;
-  border: 1px solid #44615a;
-  border-radius: 10px;
-  box-shadow: 0 18px 40px rgba(4, 10, 12, 0.55);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.6);
   max-height: 60vh;
   overflow: auto;
 }
@@ -470,7 +650,7 @@ fieldset input {
   display: grid;
   gap: 2px;
   padding: 9px 11px;
-  border-radius: 7px;
+  border-radius: 4px;
   color: inherit;
   text-decoration: none;
 }
@@ -478,7 +658,7 @@ fieldset input {
 .suggestion.active a,
 .suggestion a:hover,
 .suggestion a:focus {
-  background: #22383e;
+  background: var(--surface-high);
   text-decoration: none;
 }
 
@@ -489,13 +669,13 @@ fieldset input {
 .suggestion-alias,
 .suggestion-counts {
   font-size: 0.82rem;
-  color: #9fb5af;
+  color: var(--outline);
 }
 
 #capture-note {
   max-width: 740px;
   margin-top: 14px;
-  color: #9fb5af;
+  color: var(--parchment);
   font-size: 0.9rem;
 }
 
@@ -509,7 +689,7 @@ fieldset input {
 .chip.claimed {
   align-self: center;
   padding: 8px 12px;
-  color: #b8dfbd;
+  color: var(--primary);
 }
 
 button.inert {
@@ -526,7 +706,7 @@ button.inert {
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(6, 15, 17, 0.74);
+  background: rgba(9, 15, 22, 0.8);
   z-index: 10;
   display: none;
   align-items: center;
@@ -539,9 +719,11 @@ button.inert {
   width: min(760px, 100%);
   max-height: 90vh;
   overflow: auto;
-  background: #16252b;
-  border: 1px solid #304247;
-  border-radius: 12px;
+  background: var(--surface-high);
+  /* Etched double border: bronze perimeter with a hairline cut just inside it. */
+  border: 1px solid rgba(217, 119, 6, 0.3);
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), 0 8px 24px -4px rgba(0, 0, 0, 0.6);
   padding: 16px;
 }
 
@@ -569,8 +751,8 @@ button.inert {
   align-items: center;
   justify-content: center;
   min-height: 200px;
-  background: #0c1417;
-  border-radius: 8px;
+  background: var(--surface-low);
+  border-radius: 6px;
   margin: 10px 0;
   overflow: hidden;
 }
@@ -591,9 +773,9 @@ button.inert {
   bottom: 16px;
   transform: translateX(-50%);
   padding: 10px 15px;
-  border: 1px solid #44615a;
-  background: #1f3339;
-  border-radius: 8px;
+  border: 1px solid var(--outline-variant);
+  background: var(--surface-high);
+  border-radius: 4px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s;
@@ -605,12 +787,12 @@ button.inert {
 }
 
 #activity-payload {
-  font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 13px/1.4 var(--font-mono);
   width: 100%;
 }
 
 #status {
-  color: #a9c7bf;
+  color: var(--parchment);
 }
 
 #more {
@@ -620,8 +802,8 @@ button.inert {
 footer {
   margin-top: 70px;
   padding-top: 25px;
-  border-top: 1px solid #304247;
-  color: #8da69e;
+  border-top: 1px solid var(--outline-variant);
+  color: var(--outline);
   font-size: 0.85rem;
   max-width: 1160px;
 }
@@ -633,16 +815,16 @@ footer {
 }
 
 .codex-heading {
-  font: 0.78rem system-ui, sans-serif;
+  font: 0.74rem var(--font-mono);
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #a9c7bf;
+  color: var(--outline);
   margin: 0 0 6px;
 }
 
 .footer-codex p {
-  color: #8da69e;
+  color: var(--parchment);
   font-size: 0.85rem;
 }
 
@@ -743,12 +925,17 @@ textarea:focus-visible,
   display: flex;
   gap: 20px;
   align-items: center;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .nav-links a.active {
-  color: #e2e9e5;
-  font-weight: 600;
-  border-bottom: 2px solid #7cae90;
+  color: var(--on-surface);
+  font-weight: 700;
+  border-bottom: 2px solid var(--flame);
 }
 
 /* Stats Page Styling */
@@ -760,30 +947,34 @@ textarea:focus-visible,
 }
 
 .stat-card {
-  background: #17262a;
-  border: 1px solid #304247;
-  border-radius: 10px;
+  background: var(--surface-container-low);
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
   padding: 20px;
   display: flex;
   flex-direction: column;
+  align-items: start;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .stat-num {
-  font: 2.2rem / 1.1 Georgia, serif;
-  color: #b8dfbd;
-  margin-bottom: 6px;
+  font-family: var(--font-mono);
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: var(--tertiary);
+  margin-bottom: 8px;
 }
 
 .stat-label {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #e2e9e5;
+  color: var(--on-surface);
   margin-bottom: 4px;
 }
 
 .stat-desc {
   font-size: 0.8rem;
-  color: #9fb5af;
+  color: var(--parchment);
 }
 
 .stats-section {
@@ -798,15 +989,17 @@ textarea:focus-visible,
 .stats-table-wrap {
   overflow-x: auto;
   margin: 18px 0 12px;
-  border: 1px solid #304247;
-  border-radius: 8px;
-  background: #152428;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-container-low);
 }
 
+/* Museum ledger: every figure in the mono face, tabular, hairline-ruled. */
 .stats-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -815,14 +1008,16 @@ textarea:focus-visible,
 .stats-table td {
   padding: 9px 12px;
   text-align: right;
-  border-bottom: 1px solid #223438;
+  border-bottom: 1px solid var(--chisel);
 }
 
 .stats-table th {
-  background: #121f23;
-  color: #c8deda;
-  font-weight: 600;
-  border-bottom: 2px solid #304247;
+  background: var(--surface-high);
+  color: var(--outline);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--outline-variant);
   position: sticky;
   top: 0;
 }
@@ -833,27 +1028,27 @@ textarea:focus-visible,
 }
 
 .stats-table tbody tr:nth-child(even) {
-  background: #142226;
+  background: var(--surface-container);
 }
 
 .stats-table tbody tr:hover {
-  background: #1d3137;
+  background: var(--surface-high);
 }
 
 .stats-table tfoot tr {
-  background: #17262a;
-  border-top: 2px solid #44615a;
+  background: var(--surface-container);
+  border-top: 2px solid var(--outline-variant);
 }
 
 .stats-table tfoot td {
   border-bottom: none;
-  font-weight: 600;
-  color: #b8dfbd;
+  font-weight: 700;
+  color: var(--primary);
 }
 
 .table-note {
   font-size: 0.82rem;
-  color: #9fb5af;
+  color: var(--parchment);
   margin-top: 8px;
 }
 
@@ -865,15 +1060,18 @@ textarea:focus-visible,
 }
 
 .archetype-card {
-  background: #17262a;
-  border: 1px solid #304247;
-  border-radius: 8px;
+  background: var(--surface-container-low);
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
   padding: 16px 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .archetype-card h3 {
+  font-family: var(--font-display);
   font-size: 1.05rem;
-  color: #b8dfbd;
+  letter-spacing: 0.02em;
+  color: var(--primary);
   margin-bottom: 6px;
 }
 
@@ -882,3 +1080,166 @@ textarea:focus-visible,
   line-height: 1.45;
 }
 
+/* --------------------------------------------------------------------------
+   Brand lockup: the emblem plus a two-line mono/display pairing, standing in
+   for the bare "back to gallery" link the header used to open with.
+   -------------------------------------------------------------------------- */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--on-surface);
+}
+
+.brand:hover {
+  text-decoration: none;
+}
+
+.brand-emblem {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+
+.brand-lockup {
+  display: grid;
+  gap: 1px;
+  line-height: 1.15;
+}
+
+.brand-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--outline);
+}
+
+.brand-name {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--on-surface);
+}
+
+/* --------------------------------------------------------------------------
+   Hit counters. Every headline number sits in a recessed cell, the way a
+   guestbook counter was bolted to the bottom of a page it was proud of.
+   -------------------------------------------------------------------------- */
+.stat-tile-value,
+.stat-num,
+.counter {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.12em;
+  background: #090f16;
+  border: 1px solid var(--outline-variant);
+  box-shadow: inset 0 2px 4px #000;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.counter {
+  color: var(--tertiary);
+  font-weight: 700;
+}
+
+#intro .counter {
+  font-size: 0.94em;
+  padding: 1px 6px;
+}
+
+/* --------------------------------------------------------------------------
+   Top 8: the co-builders this builder placed the most pieces beside.
+   -------------------------------------------------------------------------- */
+.top8 {
+  margin: 8px 0 34px;
+  padding: 18px 20px 20px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-container-low);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.top8 h2 {
+  font-size: 1.5rem;
+  margin: 0 0 4px;
+}
+
+.top8-sub {
+  margin: 0 0 16px;
+  color: var(--parchment);
+  font-size: 0.86rem;
+}
+
+.top8-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.top8-card {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 4px;
+  background: var(--surface-container);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 0.14s ease, border-color 0.14s ease;
+}
+
+.top8-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--bronze);
+}
+
+.top8-card a {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+
+.top8-meta {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--outline);
+}
+
+@media (max-width: 980px) {
+  .top8-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  header {
+    justify-content: flex-start;
+  }
+
+  .brand {
+    width: 100%;
+  }
+
+  .nav-links {
+    gap: 14px;
+  }
+
+  .top8 {
+    padding: 14px 14px 16px;
+  }
+
+  .top8-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
