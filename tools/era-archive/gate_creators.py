@@ -5,7 +5,7 @@ gallery.py projection against the sha256 entries in the live release's receipt.j
 on FX99. Only presentation files (index.html copies, creators.*, stats/) may differ.
 Exit 0 = safe to deploy; exit 1 = projection inputs drifted, stop and ask.
 
-    python gate_creators.py --projection E:\\omen\\steward-multi-era\\projections\\<dir>
+    python tools/era-archive/gate_creators.py --projection E:\\omen\\steward-multi-era\\projections\\<dir>
 """
 import argparse, hashlib, json, sys, urllib.request
 from pathlib import Path
