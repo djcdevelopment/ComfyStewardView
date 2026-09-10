@@ -1,0 +1,686 @@
+{
+  "schema": "chronicles-portraits/v1",
+  "count": 48,
+  "workflow": "z-image-turbo",
+  "size": 1024,
+  "steps": 8,
+  "generatedAt": "2026-09-10T17:13:47+00:00",
+  "palette": "muted slate blue and charcoal, one ember amber accent",
+  "tail": "painted bust portrait, head and shoulders, centred, square composition, plain flat dark slate grey background, soft even light, muted slate blue and charcoal palette with one warm ember amber accent, visible brushwork, Nordic iron-age wool and leather clothing, one person, no lettering, no border",
+  "tiles": [
+    {
+      "id": "p01",
+      "seed": 7000097,
+      "attempt": 1,
+      "tags": [
+        "stonemason",
+        "young",
+        "woman"
+      ],
+      "jobId": "job_12437b1542a44766359906399e20238e",
+      "sourceSha256": "e419771dd4edc833d97818da438b1d4ddd959669f444e9741006643c534bce8c",
+      "cornerLuminance": 66.4,
+      "cornerSaturation": 0.108
+    },
+    {
+      "id": "p02",
+      "seed": 7000194,
+      "attempt": 1,
+      "tags": [
+        "stonemason",
+        "young",
+        "man"
+      ],
+      "jobId": "job_5b5520332c3236ab3957930c2b10c8c8",
+      "sourceSha256": "7356cd9dab9fd2563039ea6942f36222eff0a46a07ae86d9104fda97c80ada3e",
+      "cornerLuminance": 67.9,
+      "cornerSaturation": 0.136
+    },
+    {
+      "id": "p03",
+      "seed": 7000291,
+      "attempt": 1,
+      "tags": [
+        "stonemason",
+        "elder",
+        "woman"
+      ],
+      "jobId": "job_95296650eaf87505fedcafbea77689ab",
+      "sourceSha256": "06788204ae87e7be544875cd58ea01eb3f90922760b6f622e58515564f56ce8d",
+      "cornerLuminance": 82.1,
+      "cornerSaturation": 0.098
+    },
+    {
+      "id": "p04",
+      "seed": 8000388,
+      "attempt": 1,
+      "tags": [
+        "stonemason",
+        "elder",
+        "man"
+      ],
+      "jobId": "job_7cce58f031033591c74d526998232386",
+      "sourceSha256": "8dca6f5726c70b7094e904e884635ef9e2a20c43a5fd1bffee2bce1e599a58e2",
+      "cornerLuminance": 82.9,
+      "cornerSaturation": 0.079
+    },
+    {
+      "id": "p05",
+      "seed": 7000485,
+      "attempt": 1,
+      "tags": [
+        "shipwright",
+        "young",
+        "woman"
+      ],
+      "jobId": "job_6a10f2e631754cbc13aa2887252a8d5c",
+      "sourceSha256": "c70923c143e91d32bf21498fe5a1203b1f46b194966b739dffb36ad885332f96",
+      "cornerLuminance": 60.9,
+      "cornerSaturation": 0.138
+    },
+    {
+      "id": "p06",
+      "seed": 7000582,
+      "attempt": 1,
+      "tags": [
+        "shipwright",
+        "young",
+        "man"
+      ],
+      "jobId": "job_7e822d70790aa8d446d5ae60596ebd02",
+      "sourceSha256": "5009620bc9d026d9ebf0c3c37120a54167b35b0a82e26c8e88d0454fe7853707",
+      "cornerLuminance": 82.3,
+      "cornerSaturation": 0.1
+    },
+    {
+      "id": "p07",
+      "seed": 7000679,
+      "attempt": 1,
+      "tags": [
+        "shipwright",
+        "elder",
+        "woman"
+      ],
+      "jobId": "job_995774905e2a9996c664b9a0da0ccd05",
+      "sourceSha256": "9beb84b193b5898488cabf27c236e0ca8ba3227b1dba619f55a3c5cd9ed4be88",
+      "cornerLuminance": 57.5,
+      "cornerSaturation": 0.127
+    },
+    {
+      "id": "p08",
+      "seed": 7000776,
+      "attempt": 1,
+      "tags": [
+        "shipwright",
+        "elder",
+        "man"
+      ],
+      "jobId": "job_a4b4a0aa1e0b332008c386258ea1db37",
+      "sourceSha256": "c1549afb42408df9478ca3e0c640f40267144db1f82f757ae718f9bb16675942",
+      "cornerLuminance": 55.1,
+      "cornerSaturation": 0.167
+    },
+    {
+      "id": "p09",
+      "seed": 7000873,
+      "attempt": 1,
+      "tags": [
+        "joiner",
+        "young",
+        "woman"
+      ],
+      "jobId": "job_79967c2eeb1636efbdf812162c06d4b5",
+      "sourceSha256": "d65c93bcf6e98c7c51efb14f229c8eed47e1479d638836cf586aeac822a21ce3",
+      "cornerLuminance": 76.1,
+      "cornerSaturation": 0.076
+    },
+    {
+      "id": "p10",
+      "seed": 7000970,
+      "attempt": 1,
+      "tags": [
+        "joiner",
+        "young",
+        "man"
+      ],
+      "jobId": "job_b7583926724c9493021364146f9f0e8a",
+      "sourceSha256": "46d45a60bd5e21c4e429099046968ee790dc1b4dbc1d5fe4faf2fc2397872991",
+      "cornerLuminance": 82.4,
+      "cornerSaturation": 0.059
+    },
+    {
+      "id": "p11",
+      "seed": 7001067,
+      "attempt": 1,
+      "tags": [
+        "joiner",
+        "elder",
+        "woman"
+      ],
+      "jobId": "job_a33b1f8dc3eec6d899a65371142db917",
+      "sourceSha256": "3a31c68240c3e999459943cee75b78ee7a64cfc4f2489f36ec67aa265a773775",
+      "cornerLuminance": 78.1,
+      "cornerSaturation": 0.077
+    },
+    {
+      "id": "p12",
+      "seed": 7001164,
+      "attempt": 1,
+      "tags": [
+        "joiner",
+        "elder",
+        "man"
+      ],
+      "jobId": "job_44052458ff9cbacc4f3a00a28edba0b3",
+      "sourceSha256": "15a133af60eee73c9dfaaf190407e010400b3af293748a5bb3614326a23b07e7",
+      "cornerLuminance": 85.6,
+      "cornerSaturation": 0.061
+    },
+    {
+      "id": "p13",
+      "seed": 7001261,
+      "attempt": 1,
+      "tags": [
+        "thatcher",
+        "young",
+        "woman"
+      ],
+      "jobId": "job_df18356a0fa77b080908c0d1134a5953",
+      "sourceSha256": "421ed836b03485a55f5fb84ee5cf9c9a492e86e8a9507890aca666daf23cbcd7",
+      "cornerLuminance": 76.5,
+      "cornerSaturation": 0.076
+    },
+    {
+      "id": "p14",
+      "seed": 7001358,
+      "attempt": 1,
+      "tags": [
+        "thatcher",
+        "young",
+        "man"
+      ],
+      "jobId": "job_61b512c24f4bc86fa3e7768867cb11b3",
+      "sourceSha256": "bf724ccbabc0386775e93543d315c899307097a35ac9f0dbfa06fb8b94629109",
+      "cornerLuminance": 78.1,
+      "cornerSaturation": 0.07
+    },
+    {
+      "id": "p15",
+      "seed": 7001455,
+      "attempt": 1,
+      "tags": [
+        "thatcher",
+        "elder",
+        "woman"
+      ],
+      "jobId": "job_fb14d2c4e107129431bf5a1cbd4a4231",
+      "sourceSha256": "f36fc0b833a0f413fc4deb8e4582e1cbf59ade1db94b08c1a42dfa7f1458f7f8",
+      "cornerLuminance": 83.4,
+      "cornerSaturation": 0.06
+    },
+    {
+      "id": "p16",
+      "seed": 7001552,
+      "attempt": 1,
+      "tags": [
+        "thatcher",
+        "elder",
+        "man"
+      ],
+      "jobId": "job_cf36aea01a7e49e76add8c1687478998",
+      "sourceSha256": "c304e910128f5f3f9c697e7ad6c6aa5e49495b3fb24d6c2b96d77a270145560b",
+      "cornerLuminance": 79.5,
+      "cornerSaturation": 0.073
+    },
+    {
+      "id": "p17",
+      "seed": 7001649,
+      "attempt": 1,
+      "tags": [
+        "blacksmith",
+        "young",
+        "woman"
+      ],
+      "jobId": "job_907a90ce7c893444d1fe11ec772d3d19",
+      "sourceSha256": "2dc89ff0355de8c34820098da763697a22dc858ade930965e08635906b2d7b00",
+      "cornerLuminance": 57.2,
+      "cornerSaturation": 0.156
+    },
+    {
+      "id": "p18",
+      "seed": 7001746,
+      "attempt": 1,
+      "tags": [
+        "blacksmith",
+        "young",
+        "man"
+      ],
+      "jobId": "job_11359a170612dd3db6e6171c2d623106",
+      "sourceSha256": "ccd8fa2cf85501a9cc6b9660c7fc016e8ae586244cb3960dd133b1e653c603b7",
+      "cornerLuminance": 68.3,
+      "cornerSaturation": 0.115
+    },
+    {
+      "id": "p19",
+      "seed": 7001843,
+      "attempt": 1,
+      "tags": [
+        "blacksmith",
+        "elder",
+        "woman"
+      ],
+      "jobId": "job_e337a41a4006b84d46935cb526a6abe3",
+      "sourceSha256": "3b21fe5918822a77c93de0528d5c904666797d2a929af7b1507e910f09389d2f",
+      "cornerLuminance": 79.2,
+      "cornerSaturation": 0.101
+    },
+    {
+      "id": "p20",
+      "seed": 7001940,
+      "attempt": 1,
+      "tags": [
+        "blacksmith",
+        "elder",
+        "man"
+      ],
+      "jobId": "job_38d6eb7cdeeb97e517fdd86ee0a8faa4",
+      "sourceSha256": "dff170ae0fc18cfbfd9cac9c92f0388e7cdff8e15baf0de5691331da20bf8585",
+      "cornerLuminance": 82.8,
+      "cornerSaturation": 0.069
+    },
+    {
+      "id": "p21",
+      "seed": 7002037,
+      "attempt": 1,
+      "tags": [
+        "fisher",
+        "young",
+        "woman"
+      ],
+      "jobId": "job_373b62d1b9eb48673ce9cb9db4e8e433",
+      "sourceSha256": "1c13c0541ac6b822c06cfda24eeef260ea548c042519201a0cc1a6b4a0e00a97",
+      "cornerLuminance": 68.6,
+      "cornerSaturation": 0.084
+    },
+    {
+      "id": "p22",
+      "seed": 7002134,
+      "attempt": 1,
+      "tags": [
+        "fisher",
+        "young",
+        "man"
+      ],
+      "jobId": "job_2d9b9068d1373ced58175ee45753f48a",
+      "sourceSha256": "567975ec28cf35e5894ad6421b85946cb9d02b35a823ea4ff63d82a2cd12deb2",
+      "cornerLuminance": 69.9,
+      "cornerSaturation": 0.127
+    },
+    {
+      "id": "p23",
+      "seed": 7002231,
+      "attempt": 1,
+      "tags": [
+        "fisher",
+        "elder",
+        "woman"
+      ],
+      "jobId": "job_be85808d5a52be06a3a9358085aefb2f",
+      "sourceSha256": "e444ce99fe204b3b029b790faec6c1bfe3a8a502d341024b8ede46d0d5721128",
+      "cornerLuminance": 71.1,
+      "cornerSaturation": 0.122
+    },
+    {
+      "id": "p24",
+      "seed": 7002328,
+      "attempt": 1,
+      "tags": [
+        "fisher",
+        "elder",
+        "man"
+      ],
+      "jobId": "job_bb567f11a0071379557b7f1ee7046010",
+      "sourceSha256": "64de12c9b78793c8e9c32e03ec01d4ab3fe83d94e1065048bae6329cff887387",
+      "cornerLuminance": 59.3,
+      "cornerSaturation": 0.075
+    },
+    {
+      "id": "p25",
+      "seed": 7002425,
+      "attempt": 1,
+      "tags": [
+        "farmer",
+        "young",
+        "woman"
+      ],
+      "jobId": "job_b86e4c9f55394eb302e4a42801fbb41c",
+      "sourceSha256": "59971d22aebbcc862c868d6a903071d077f52b763f244b342bfcd609272e6c14",
+      "cornerLuminance": 79.5,
+      "cornerSaturation": 0.08
+    },
+    {
+      "id": "p26",
+      "seed": 7002522,
+      "attempt": 1,
+      "tags": [
+        "farmer",
+        "young",
+        "man"
+      ],
+      "jobId": "job_709f7b3699731b2153a85ca5e7af07a4",
+      "sourceSha256": "2517d58d4e99228eec3c19beb1e43f59948af3eda7991ead3f9e5414c608a740",
+      "cornerLuminance": 85.3,
+      "cornerSaturation": 0.092
+    },
+    {
+      "id": "p27",
+      "seed": 7002619,
+      "attempt": 1,
+      "tags": [
+        "farmer",
+        "elder",
+        "woman"
+      ],
+      "jobId": "job_da96a5c4f8730f8cddce496f862064ae",
+      "sourceSha256": "e71788ea49dda0e852bbc9ef1e4277e2c3b9436fe15c86a2eeece305b7189402",
+      "cornerLuminance": 92.3,
+      "cornerSaturation": 0.066
+    },
+    {
+      "id": "p28",
+      "seed": 7002716,
+      "attempt": 1,
+      "tags": [
+        "farmer",
+        "elder",
+        "man"
+      ],
+      "jobId": "job_757fe8d0b2b855bbcdc4120fe76e6f92",
+      "sourceSha256": "a4cb4f106097f2c1c67587fae8756341696ef2df916f7ba4ece902e66cb34062",
+      "cornerLuminance": 79.3,
+      "cornerSaturation": 0.064
+    },
+    {
+      "id": "p29",
+      "seed": 7002813,
+      "attempt": 1,
+      "tags": [
+        "hunter",
+        "young",
+        "woman"
+      ],
+      "jobId": "job_50f94061e82db8dc1ac20cd056c14b92",
+      "sourceSha256": "5f05ec766b871f91b271df888ed0206d2a2b601d45ad26dc497b61f2411f3112",
+      "cornerLuminance": 81.8,
+      "cornerSaturation": 0.094
+    },
+    {
+      "id": "p30",
+      "seed": 7002910,
+      "attempt": 1,
+      "tags": [
+        "hunter",
+        "young",
+        "man"
+      ],
+      "jobId": "job_37496736d39198b1c2c0cfddcff0e7aa",
+      "sourceSha256": "4e7e85b5bb9fb54df14d6e6d14dd9cced9651710a9f8dc9c07757dcb7d4c43f8",
+      "cornerLuminance": 92.1,
+      "cornerSaturation": 0.083
+    },
+    {
+      "id": "p31",
+      "seed": 7003007,
+      "attempt": 1,
+      "tags": [
+        "hunter",
+        "elder",
+        "woman"
+      ],
+      "jobId": "job_fee868384b42a3cc8ace7022de7335a3",
+      "sourceSha256": "8cec68eb7135b6972d9646846c860a3868bc597d25a7b19a567e1326a9ab4cae",
+      "cornerLuminance": 76.0,
+      "cornerSaturation": 0.105
+    },
+    {
+      "id": "p32",
+      "seed": 7003104,
+      "attempt": 1,
+      "tags": [
+        "hunter",
+        "elder",
+        "man"
+      ],
+      "jobId": "job_507c12c825e54ecd089c9ed3b8e58dab",
+      "sourceSha256": "c04824d7ac55ae8924345eeddbd08bfd71324a1885265b9df00f451c44c839c9",
+      "cornerLuminance": 68.1,
+      "cornerSaturation": 0.115
+    },
+    {
+      "id": "p33",
+      "seed": 7003201,
+      "attempt": 1,
+      "tags": [
+        "beekeeper",
+        "young",
+        "woman"
+      ],
+      "jobId": "job_732f6bc35656a74ce0cebe70ca4504dc",
+      "sourceSha256": "4b3e4b0639d5a8636ae91dfc16f6253be1af0d2a7ef9fc72597901ed528b4e00",
+      "cornerLuminance": 75.5,
+      "cornerSaturation": 0.12
+    },
+    {
+      "id": "p34",
+      "seed": 7003298,
+      "attempt": 1,
+      "tags": [
+        "beekeeper",
+        "young",
+        "man"
+      ],
+      "jobId": "job_1e26349da886076e87cf021352accf0c",
+      "sourceSha256": "082185895973487c42f5411ea6460e2623343bfe08942bf9661698d049db9bef",
+      "cornerLuminance": 80.0,
+      "cornerSaturation": 0.103
+    },
+    {
+      "id": "p35",
+      "seed": 7003395,
+      "attempt": 1,
+      "tags": [
+        "beekeeper",
+        "elder",
+        "woman"
+      ],
+      "jobId": "job_88ae7f71b394f31c2e63057dbf692810",
+      "sourceSha256": "80a3c4dd3b39dd101ef1c8ae2064026c7050a6522c8a53f953b486900b887cfc",
+      "cornerLuminance": 71.0,
+      "cornerSaturation": 0.087
+    },
+    {
+      "id": "p36",
+      "seed": 7003492,
+      "attempt": 1,
+      "tags": [
+        "beekeeper",
+        "elder",
+        "man"
+      ],
+      "jobId": "job_676c79bc6c773d6eb686eb036fb605c5",
+      "sourceSha256": "496882fe63f42d1684aafe57c5d27a6356f7aec852a1987d7f268e17206c00d3",
+      "cornerLuminance": 74.1,
+      "cornerSaturation": 0.091
+    },
+    {
+      "id": "p37",
+      "seed": 7003589,
+      "attempt": 1,
+      "tags": [
+        "brewer",
+        "young",
+        "woman"
+      ],
+      "jobId": "job_7b444d3f1e050aba0b88b5a221896000",
+      "sourceSha256": "22df09acaa43254fad01690f06b6ce3a5bf71940ad58b72b614d0620496d144b",
+      "cornerLuminance": 84.4,
+      "cornerSaturation": 0.042
+    },
+    {
+      "id": "p38",
+      "seed": 7003686,
+      "attempt": 1,
+      "tags": [
+        "brewer",
+        "young",
+        "man"
+      ],
+      "jobId": "job_e69f2fe118d1caabb3a9dd30e7d1dc9a",
+      "sourceSha256": "2b945ba1eadd7f69c3b35528cbca7be8a12a41487a9bf42db7e69844624d784e",
+      "cornerLuminance": 74.8,
+      "cornerSaturation": 0.107
+    },
+    {
+      "id": "p39",
+      "seed": 7003783,
+      "attempt": 1,
+      "tags": [
+        "brewer",
+        "elder",
+        "woman"
+      ],
+      "jobId": "job_d5f800dbafeb5d2202ce06e12805fb7e",
+      "sourceSha256": "6d829f293617f16d97a288ebc83ee0d3eb0068c1abbca1186e239642337c3a6f",
+      "cornerLuminance": 78.6,
+      "cornerSaturation": 0.151
+    },
+    {
+      "id": "p40",
+      "seed": 7003880,
+      "attempt": 1,
+      "tags": [
+        "brewer",
+        "elder",
+        "man"
+      ],
+      "jobId": "job_d33929a7ab81942b9d0b6e8ea1943b6d",
+      "sourceSha256": "42b1dd4a6d673aa479bb9d75d3594c212a64fa5c8d1ec38981a5b8e4f762aa71",
+      "cornerLuminance": 77.8,
+      "cornerSaturation": 0.095
+    },
+    {
+      "id": "p41",
+      "seed": 7003977,
+      "attempt": 1,
+      "tags": [
+        "surveyor",
+        "young",
+        "woman"
+      ],
+      "jobId": "job_5e8a0cfe8a4321bd70c3f0ba7a34a711",
+      "sourceSha256": "64cb70564931ac589b69e179669de44b13e0fc0f3718375e6924dd059b7156b1",
+      "cornerLuminance": 72.3,
+      "cornerSaturation": 0.061
+    },
+    {
+      "id": "p42",
+      "seed": 7004074,
+      "attempt": 1,
+      "tags": [
+        "surveyor",
+        "young",
+        "man"
+      ],
+      "jobId": "job_ee07b928664b8bfcecdf99541f28d66a",
+      "sourceSha256": "53c1ba87acca33f30615894f70e797448f3a8659c9fc47c9e37d93a1653003c7",
+      "cornerLuminance": 68.6,
+      "cornerSaturation": 0.115
+    },
+    {
+      "id": "p43",
+      "seed": 7004171,
+      "attempt": 1,
+      "tags": [
+        "surveyor",
+        "elder",
+        "woman"
+      ],
+      "jobId": "job_a447f936b2a8f2bae8a11efecbb35733",
+      "sourceSha256": "700aa2a82f6bd750372ee7c8ca7c2ccf8a4bbd25b2d815f3914051a30790fe29",
+      "cornerLuminance": 65.7,
+      "cornerSaturation": 0.076
+    },
+    {
+      "id": "p44",
+      "seed": 7004268,
+      "attempt": 1,
+      "tags": [
+        "surveyor",
+        "elder",
+        "man"
+      ],
+      "jobId": "job_979f135cf05e9bbab85c2735a08091b7",
+      "sourceSha256": "1afece918f21d90f4800784dfa8af9986b7be88964beb228bf87dd63c05df2a2",
+      "cornerLuminance": 68.9,
+      "cornerSaturation": 0.093
+    },
+    {
+      "id": "p45",
+      "seed": 7004365,
+      "attempt": 1,
+      "tags": [
+        "hearthkeeper",
+        "young",
+        "woman"
+      ],
+      "jobId": "job_edbc74ed8f33b5f3324d9b38badd68f2",
+      "sourceSha256": "1f725cab22b42bf2c8bc032a9e0ba186d0d506f07bc964f3de54b0e679e47f24",
+      "cornerLuminance": 75.7,
+      "cornerSaturation": 0.106
+    },
+    {
+      "id": "p46",
+      "seed": 7004462,
+      "attempt": 1,
+      "tags": [
+        "hearthkeeper",
+        "young",
+        "man"
+      ],
+      "jobId": "job_d7150037311ec02fe13a49f71342f71a",
+      "sourceSha256": "e0df33c4170d35daa540402f87478c88f1456a18bac51c2fec59492db57019f0",
+      "cornerLuminance": 92.4,
+      "cornerSaturation": 0.067
+    },
+    {
+      "id": "p47",
+      "seed": 7004559,
+      "attempt": 1,
+      "tags": [
+        "hearthkeeper",
+        "elder",
+        "woman"
+      ],
+      "jobId": "job_a14d319aee9970e0b7b29a8c22d3d9f2",
+      "sourceSha256": "3b20dcc560fd339aa2bba56b89af65d06b4978524ed95bd5e62d0bab57d31a62",
+      "cornerLuminance": 64.1,
+      "cornerSaturation": 0.104
+    },
+    {
+      "id": "p48",
+      "seed": 7004656,
+      "attempt": 1,
+      "tags": [
+        "hearthkeeper",
+        "elder",
+        "man"
+      ],
+      "jobId": "job_4cec2c167305d3b850676a08a9890988",
+      "sourceSha256": "15c62a9c1d8d133284d9615b8f8d3e272210a38b72547daa73b6a5614b3270e1",
+      "cornerLuminance": 64.6,
+      "cornerSaturation": 0.1
+    }
+  ],
+  "rejected": [],
+  "missing": []
+}
