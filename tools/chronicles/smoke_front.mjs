@@ -14,7 +14,7 @@ import path from 'node:path';
 
 function parseArgs(argv) {
   const out = {base: 'https://fx99.tail8e749c.ts.net/', out: 'smoke-front', name: 'Tug',
-    key: '5897d38e2a065e36a6895e70a2194738', portrait: '46', width: 1440, height: 900};
+    key: '5897d38e2a065e36a6895e70a2194738', portrait: '46', multi: 'tu', width: 1440, height: 900};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith('--')) {out[a.slice(2)] = argv[i + 1]; i++;}
@@ -96,6 +96,7 @@ async function shot(name) {
   const s = await cdp('Page.captureScreenshot', {format: 'png'});
   await writeFile(path.join(args.out, name + '.png'), Buffer.from(s.data, 'base64'));
 }
+class FrontOnly extends Error {}
 const results = [];
 async function check(label, fn) {
   try {
@@ -110,6 +111,8 @@ async function check(label, fn) {
 const Q = "document.querySelector('#q')";
 const ROWS = "document.querySelectorAll('#suggestions li.suggestion')";
 const nameLit = JSON.stringify(args.name);
+// tiles are 1-based ids (p01..p48); portraitIndex(key) % count picks tiles[index], i.e. p<index+1>
+const tileId = 'p' + String(Number(args.portrait) + 1).padStart(2, '0');
 try {
   await go('chronicles/');
   await check('front page has the combobox and the button',
@@ -123,15 +126,18 @@ try {
     () => evaluate(`${ROWS}[0].textContent.trim().startsWith(${nameLit})`));
   await until(`(()=>{const i=${ROWS}[0].querySelector('img.portrait');return !!(i&&i.complete&&i.naturalWidth>0)})()`, 'portrait tile loaded');
   await check('first row portrait tile comes from the expected slot',
-    () => evaluate(`${ROWS}[0].querySelector('img.portrait').getAttribute('src').includes('/p${args.portrait}.')`));
+    () => evaluate(`${ROWS}[0].querySelector('img.portrait').getAttribute('src').includes('/${tileId}.')`));
   await shot('front-suggestions');
+  await typeInto('#q', args.multi);
+  await until(`${ROWS}.length>1`, 'several rows for ' + args.multi);
   await key('ArrowDown', 'ArrowDown', 40);
   await key('ArrowDown', 'ArrowDown', 40);
   await check('ArrowDown twice activates the second row',
     () => evaluate(`${Q}.getAttribute('aria-activedescendant')==='suggestion-1' && ${ROWS}[1].classList.contains('active')`));
   await key('Escape', 'Escape', 27);
+  await until(`document.querySelector('#suggestions').hidden`, 'list hidden after Escape');
   await check('Escape closes the list and keeps the text',
-    () => evaluate(`document.querySelector('#suggestions').hidden && ${Q}.value===${nameLit}`));
+    () => evaluate(`document.querySelector('#suggestions').hidden && ${Q}.value===${JSON.stringify(args.multi)}`));
   await typeInto('#q', 'zzqxv');
   await until(`!!document.querySelector('#suggestions .suggestion-empty')`, 'empty row');
   await check('nonsense shows the browse-instead row linking the gallery',
@@ -140,6 +146,7 @@ try {
   await until(`${ROWS}.length>0`, 'rows again');
   await key('Enter', 'Enter', 13);
   await until(`location.pathname.startsWith('/valheim/creators/')`, 'navigation to a builder page');
+  if (args['front-only']) throw new FrontOnly();
   await check('Enter on a prefix match lands on the profile',
     () => evaluate(`location.pathname===${JSON.stringify('/valheim/creators/' + args.key + '/')}`));
   await until(`!!document.querySelector('#builder-hero:not([hidden])')`, 'profile hero');
@@ -155,6 +162,8 @@ try {
   await check('?q= deep link pre-fills and opens',
     () => evaluate(`${Q}.value===${nameLit} && !document.querySelector('#suggestions').hidden`));
   await check('no page exceptions', () => exceptions.length === 0 ? true : 'exceptions: ' + exceptions.slice(0, 3).join(' | '));
+} catch (e) {
+  if (!(e instanceof FrontOnly)) results.push({label: 'run aborted', ok: false, error: String(e.message || e)});
 } finally {
   const failed = results.filter(r => !r.ok);
   await writeFile(path.join(args.out, 'report.json'), JSON.stringify({base: args.base, results, exceptions}, null, 2));
