@@ -57,6 +57,7 @@ class ChroniclerStyleTests(unittest.TestCase):
         self.css = (WEB / "creators.css").read_text(encoding="utf-8")
         self.index = (WEB / "index.html").read_text(encoding="utf-8")
         self.stats = (WEB / "stats.html").read_text(encoding="utf-8")
+        self.kinship = (WEB / "kinship.html").read_text(encoding="utf-8")
 
     def test_self_hosted_faces_and_tokens_lead_the_stylesheet(self):
         self.assertEqual(8, self.css.count("@font-face"))
@@ -90,22 +91,40 @@ class ChroniclerStyleTests(unittest.TestCase):
         self.assertIn("@media (prefers-reduced-motion: reduce)", self.css)
 
     def test_both_shells_carry_the_brand_lockup_and_nav(self):
-        for name, content in (("index.html", self.index), ("stats.html", self.stats)):
+        shells = (("index.html", self.index), ("stats.html", self.stats),
+                  ("kinship.html", self.kinship))
+        for name, content in shells:
             self.assertIn('<a class="brand" href="/chronicles/">', content, name)
             self.assertIn('class="brand-emblem"', content, name)
             self.assertIn('<span class="brand-eyebrow">THE COMFY COMMUNITY</span>', content, name)
             self.assertIn('<span class="brand-name">Valheim Chronicles</span>', content, name)
             for href in ('href="/valheim/"', 'href="/valheim/creators/"',
-                         'href="/valheim/creators/stats/"', 'href="/chronicles/guide/"'):
+                         'href="/valheim/creators/stats/"', 'href="/valheim/creators/kinship/"',
+                         'href="/chronicles/guide/"'):
                 self.assertIn(href, content, f"{name} lost {href}")
+            self.assertIn('id="kinship-link"', content, name)
         self.assertIn('href="#participation-details"', self.index)
-        self.assertNotIn('href="#participation-details"', self.stats,
-                         "the participation deep link belongs to the directory only")
+        for name, content in (("stats.html", self.stats), ("kinship.html", self.kinship)):
+            self.assertNotIn('href="#participation-details"', content,
+                             "the participation deep link belongs to the directory only")
 
     def test_stylesheet_href_is_cache_busted_and_still_rewritable(self):
         for name, content in (("index.html", self.index), ("stats.html", self.stats)):
-            self.assertIn('href="./creators.css?v=3"', content, name)
+            self.assertIn('href="./creators.css?v=4"', content, name)
         self.assertIn('src="./creators.js"', self.index)
+
+    def test_route_guard_keeps_creators_inert_on_the_kinship_page(self):
+        # kinship.html loads creators.js for its model and its participation store, then
+        # kinship.js for the page. creators.js's own bootstrap reaches for #copy-activity
+        # and #participant-handle, which the kinship shell does not have, so it has to
+        # stand down here rather than throw on the first missing node.
+        js = (WEB / "creators.js").read_text(encoding="utf-8")
+        self.assertIn("dataset.stewardPage !== 'kinship'", js)
+        self.assertIn('<html lang="en" data-steward-page="kinship">', self.kinship)
+        self.assertIn('src="./creators.js?v=4"', self.kinship)
+        self.assertIn('src="./kinship.js"', self.kinship)
+        self.assertNotIn("data-steward-page", self.index,
+                         "the directory shell is the default route, not a named one")
 
     def test_projected_thread_page_keeps_the_rewritten_asset_paths(self):
         key = "a" * 32
@@ -124,10 +143,10 @@ class ChroniclerStyleTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             project(document, dest, "https://example.invalid/world")
             thread = (dest / key / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=3"', thread)
+            self.assertIn('href="../creators.css?v=4"', thread)
             self.assertIn('src="../creators.js"', thread)
             stats = (dest / "stats" / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=3"', stats)
+            self.assertIn('href="../creators.css?v=4"', stats)
 
 
 if __name__ == "__main__":

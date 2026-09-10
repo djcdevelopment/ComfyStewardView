@@ -14,7 +14,7 @@
     <meta property="og:description" content="Search the community archive for your own builds across every era.">
     <meta name="twitter:card" content="summary">
     <!-- /per-thread head -->
-    <link rel="stylesheet" href="./creators.css?v=3">
+    <link rel="stylesheet" href="./creators.css?v=4">
     <script src="./creators.js" defer></script>
   </head>
   <body>
@@ -30,6 +30,7 @@
         <a href="/valheim/">Gallery</a>
         <a id="directory-link" href="/valheim/creators/">All builders</a>
         <a id="stats-link" href="/valheim/creators/stats/">Statistics</a>
+        <a id="kinship-link" href="/valheim/creators/kinship/">Kinship</a>
         <a id="participation-link" href="#participation-details">Your participation</a>
         <a href="/chronicles/guide/">Guide</a>
       </div>
@@ -49,6 +50,8 @@
           <p id="hero-aliases" class="hero-aliases" hidden></p>
           <dl id="hero-facts" class="hero-facts"></dl>
           <div id="hero-signature" class="signature-creations" hidden><span class="signature-creations-label">Signature creations</span></div>
+          <!-- Thread mode only: renderHeroCard() points this at the builder's own key. -->
+          <p id="hero-kinship" class="muted" hidden><a id="hero-kinship-link" class="kin-open" href="/valheim/creators/kinship/">Open the kinship tree</a></p>
         </div>
       </section>
 

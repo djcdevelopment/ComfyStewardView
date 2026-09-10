@@ -149,7 +149,7 @@ class HeroProjectionTests(unittest.TestCase):
             destination = Path(temp) / "projection"
             project(document, destination, "https://example.invalid/world")
             thread = (destination / key / "index.html").read_text(encoding="utf-8")
-        self.assertIn('href="../creators.css?v=3"', thread)
+        self.assertIn('href="../creators.css?v=4"', thread)
         self.assertIn('src="../creators.js"', thread)
         self.assertIn('<section id="builder-hero" class="builder-hero" hidden', thread)
         self.assertIn('<nav id="look-out" class="paths" hidden', thread)
