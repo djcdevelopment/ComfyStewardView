@@ -49,8 +49,11 @@ RELEASE = re.compile(r"\d{8}T\d{6}Z-[0-9a-f]{12}")
 HASHED = re.compile(r"^(chronicles\.[0-9a-z]+\.css|gateway\.[0-9a-z]+\.js)$")
 
 REMOTE = r'''
-import hashlib, json, os, shutil, tarfile
+import hashlib, json, os, re, shutil, tarfile
 from pathlib import Path
+# Mirrors the local HASHED constant: names that carry their own content hash may overlap
+# across two releases, which is what makes the one-generation hold safe.
+HASHED = re.compile(r"^(chronicles\.[0-9a-z]+\.css|gateway\.[0-9a-z]+\.js)$")
 
 root = Path(settings['root'])
 releases = root / '.releases'
