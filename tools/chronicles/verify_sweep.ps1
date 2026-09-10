@@ -1,5 +1,5 @@
 # Post-deploy verification sweep for the Chronicles go-live (plain HTTP; never the in-app browser pane).
-#   powershell -File E:\wt\verify_sweep.ps1 [-SkipChronicles] [-SkipCreators] [-SkipViewer]
+#   powershell -File tools\chronicles\verify_sweep.ps1 [-SkipChronicles] [-SkipCreators] [-SkipViewer]
 param([switch]$SkipChronicles, [switch]$SkipCreators, [switch]$SkipViewer)
 $ErrorActionPreference = 'Continue'
 $base = 'https://fx99.tail8e749c.ts.net'
