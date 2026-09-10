@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en" data-steward-page="kinship">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="creator-participation-endpoint" content="">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23121820'/%3E%3Cpath d='M32 10L48 24V40L32 54L16 40V24L32 10Z' fill='%231a232e' stroke='%23f59e0b' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%23f59e0b'/%3E%3C/svg%3E">
+    <title>Kinship · Comfy builders</title>
+    <meta name="description" content="Who a builder built beside, era by era, drawn from the pieces they placed side by side in the saved world.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Comfy builders">
+    <meta property="og:title" content="Kinship · Comfy builders">
+    <meta property="og:description" content="Who a builder built beside, era by era.">
+    <meta name="twitter:card" content="summary">
+    <link rel="stylesheet" href="./creators.css?v=4">
+    <script src="./creators.js?v=4" defer></script>
+    <script src="./kinship.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/chronicles/">
+        <svg class="brand-emblem" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28" fill="none" aria-hidden="true" focusable="false"><rect width="64" height="64" rx="14" fill="#121820" stroke="#F59E0B" stroke-width="2" stroke-opacity="0.6"/><path d="M32 10L48 24V40L32 54L16 40V24L32 10Z" stroke="#F59E0B" stroke-width="2.5" stroke-linejoin="round" fill="#1A232E"/><path d="M32 16V48M22 28L42 36M42 28L22 36" stroke="#FBBF24" stroke-width="2" stroke-linecap="round"/><circle cx="32" cy="32" r="4" fill="#F59E0B"/></svg>
+        <span class="brand-lockup">
+          <span class="brand-eyebrow">THE COMFY COMMUNITY</span>
+          <span class="brand-name">Valheim Chronicles</span>
+        </span>
+      </a>
+      <div class="nav-links">
+        <a href="/valheim/">Gallery</a>
+        <a id="directory-link" href="/valheim/creators/">All builders</a>
+        <a id="stats-link" href="/valheim/creators/stats/">Statistics</a>
+        <a id="kinship-link" class="active" href="/valheim/creators/kinship/">Kinship</a>
+        <a id="participation-link" href="/valheim/creators/#participation-details">Your participation</a>
+        <a href="/chronicles/guide/">Guide</a>
+      </div>
+    </header>
+    <main id="kinship">
+      <p class="eyebrow">THE COMFY COMMUNITY · KINSHIP</p>
+      <h1 id="title">Who you built beside</h1>
+      <p id="intro" class="muted">Every branch is a builder who placed pieces on the same builds as the anchor, era by era, read from the saved world. Tags are what the build's majority owner adds on top.</p>
+      <p id="status" role="status" aria-live="polite"></p>
+
+      <section id="kin-anchor" class="kin-anchor" aria-label="Anchor builder">
+        <label class="hero-label" for="kin-search">Pick a builder</label>
+        <div class="search-wrap">
+          <input id="kin-search" type="search" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="kin-suggestions" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Your Valheim name, or any name you have built under">
+          <ul id="kin-suggestions" role="listbox" hidden></ul>
+        </div>
+        <div id="kin-anchor-pill" class="kin-anchor-pill" hidden>
+          <span id="kin-anchor-portrait" class="kin-portrait"></span>
+          <a id="kin-anchor-name" class="credit" href="#"></a>
+          <span id="kin-anchor-meta" class="muted"></span>
+          <button type="button" id="kin-copy-invite">Copy invite link</button>
+        </div>
+      </section>
+
+      <div id="kin-tabs" class="kin-tabs" role="tablist" aria-label="View">
+        <button type="button" role="tab" id="kin-tab-tree" aria-selected="true" aria-controls="kin-tree-panel">Tree</button>
+        <button type="button" role="tab" id="kin-tab-ledger" aria-selected="false" aria-controls="kin-ledger-panel">Ledger</button>
+      </div>
+      <div id="kin-filters" class="kin-filters" role="group" aria-label="Filter builds">
+        <button type="button" class="era-chip active" data-kin-filter="all">All builds</button>
+        <button type="button" class="era-chip" data-kin-filter="majority">Majority-owned</button>
+        <button type="button" class="era-chip" data-kin-filter="photographed">Photographed</button>
+      </div>
+
+      <div class="kin-layout">
+        <div class="kin-main">
+          <section id="kin-tree-panel" role="tabpanel" aria-labelledby="kin-tab-tree">
+            <div class="kin-scroll">
+              <div id="kin-tree" class="kin-canvas">
+                <svg id="kin-tree-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" role="img" aria-label="Kinship tree"></svg>
+                <div id="kin-nodes"></div>
+              </div>
+            </div>
+            <div id="kin-tip" role="tooltip" hidden></div>
+            <p id="kin-legend" class="muted">Solid branches carry the pieces you placed side by side in that era. Dashed branches are eras kept only as photographs, where shares are unknown. A hairline is an era apart; the branch resumes when you built together again.</p>
+          </section>
+          <section id="kin-ledger-panel" role="tabpanel" aria-labelledby="kin-tab-ledger" hidden>
+            <div class="stats-table-wrap">
+              <table class="stats-table" id="kin-ledger">
+                <thead>
+                  <tr>
+                    <th scope="col">Co-builder</th>
+                    <th scope="col">Eras together</th>
+                    <th scope="col">Shared builds</th>
+                    <th scope="col">Shared pieces</th>
+                    <th scope="col">Anchor's share</th>
+                    <th scope="col">Majority-owned</th>
+                    <th scope="col">Tags</th>
+                    <th scope="col"><span class="visually-hidden">Action</span></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <button type="button" id="kin-ledger-more" hidden>Show more co-builders</button>
+          </section>
+        </div>
+        <aside id="kin-aside" class="kin-aside">
+          <section class="kin-card" id="kin-builds" aria-labelledby="kin-builds-h2">
+            <h2 id="kin-builds-h2">Builds you hold</h2>
+            <p class="muted" id="kin-builds-note">Only the majority owner of a build can tag its co-builders. Claim a build first, then tag.</p>
+            <div id="kin-build-list"></div>
+          </section>
+          <section class="kin-card" id="kin-cohabs" aria-labelledby="kin-cohabs-h2">
+            <h2 id="kin-cohabs-h2">Cohabitants</h2>
+            <div id="kin-cohab-list"></div>
+          </section>
+        </aside>
+      </div>
+
+      <footer>
+        <div class="codex">
+          <section>
+            <h3>Piece attribution</h3>
+            <p>Credits follow the creators recorded on saved construction pieces. Shared albums can appear in several builders' threads.</p>
+          </section>
+          <section>
+            <h3>Independent identities</h3>
+            <p>Matching names alone never join builders. The key is the identity; names are display text.</p>
+          </section>
+          <section>
+            <h3>What a tag is</h3>
+            <p>A kinship tag is self-reported. It is recorded on this device and needs sending; credited builders come from the saved world and a tag never changes them. Coordinator-confirmed tags are published from participation.json.</p>
+          </section>
+        </div>
+      </footer>
+    </main>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <section id="claim-modal" class="modal" hidden>
+      <div class="sheet">
+        <h2 id="claim-title">Claim build</h2>
+        <p id="claim-build-label" class="muted"></p>
+        <label>Volunteer handle
+          <input id="claim-handle" type="text" maxlength="80" required>
+        </label>
+        <label>Your claim note (optional)
+          <textarea id="claim-note" maxlength="500" rows="4" placeholder="What you built, where to spot your work, and any co-builders you remember."></textarea>
+        </label>
+        <p class="muted">A self-reported marker, not verified ownership — credited builders
+          are derived from the saved world, and claiming does not change them.</p>
+        <p class="muted">Confirming copies a payload to your clipboard. <strong>Send it on to
+          finish the claim</strong> — nothing reaches the archive on its own.</p>
+        <div class="actions-row">
+          <button type="button" id="claim-cancel">Cancel</button>
+          <button type="button" id="claim-confirm" class="primary">I built this</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="kin-tag-modal" class="modal" hidden>
+      <div class="sheet">
+        <h2 id="kin-tag-title">Tag a co-builder</h2>
+        <p id="kin-tag-build-label" class="muted"></p>
+        <p id="kin-tag-contributor" class="muted"></p>
+        <label>Build
+          <select id="kin-tag-build"></select>
+        </label>
+        <fieldset>
+          <legend>Relationship</legend>
+          <label><input name="kin-tag" type="checkbox" value="basemate"> Basemate</label>
+          <label><input name="kin-tag" type="checkbox" value="collab"> Collabing</label>
+          <label><input name="kin-tag" type="checkbox" value="helping-hand"> Helping hand</label>
+          <label><input name="kin-tag" type="checkbox" value="visitor"> Visitor</label>
+        </fieldset>
+        <fieldset>
+          <legend>Role on this build</legend>
+          <label><input name="kin-tag" type="checkbox" value="mason"> Mason</label>
+          <label><input name="kin-tag" type="checkbox" value="roof"> Roof</label>
+          <label><input name="kin-tag" type="checkbox" value="fields"> Fields</label>
+          <label><input name="kin-tag" type="checkbox" value="portal"> Portal</label>
+          <label><input name="kin-tag" type="checkbox" value="defense"> Defense</label>
+          <label><input name="kin-tag" type="checkbox" value="interior"> Interior</label>
+        </fieldset>
+        <label>Note (optional)
+          <textarea id="kin-tag-note" maxlength="200" rows="3" placeholder="How you built together, in a sentence."></textarea>
+        </label>
+        <p class="muted">A self-reported tag, not verified — credited builders are derived from the
+          saved world, and tagging does not change them.</p>
+        <p class="muted">Confirming records the tag on this device and copies a payload to your
+          clipboard. <strong>Send it on to finish</strong> — nothing reaches the archive on its own.</p>
+        <p class="muted" id="kin-tag-inline"></p>
+        <div class="actions-row">
+          <button type="button" id="kin-tag-cancel">Cancel</button>
+          <button type="button" id="kin-tag-confirm" class="primary">Record tag</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="activity-modal" class="modal" hidden>
+      <div class="sheet">
+        <h2>Submission payload</h2>
+        <p class="muted">Send this payload to the operations lead or archive it with a coordinator.</p>
+        <textarea id="activity-payload" rows="14" readonly></textarea>
+        <div class="actions-row">
+          <button type="button" id="activity-copy">Copy JSON</button>
+          <button type="button" id="activity-close">Close</button>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>
