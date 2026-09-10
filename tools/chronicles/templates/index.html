@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Valheim Chronicles</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="{{meta_description}}">
+<meta name="theme-color" content="#0e141c">
+<link rel="icon" href="{{icon_href}}" type="image/svg+xml">
+<link rel="stylesheet" href="{{css_href}}">
+</head>
+<body>
+{{header}}
+<main id="main">
+
+  <section class="hero">
+    <h1>{{h1}}</h1>
+    <p class="lede">{{lede}}</p>
+  </section>
+
+  <nav class="paths" aria-label="Paths through the archive">
+{{path_cards}}
+  </nav>
+  <div class="runic-rule" aria-hidden="true"></div>
+
+  <form class="finder" action="/valheim/creators/" method="get" role="search">
+    <label class="eyebrow" for="q">{{search_label}}</label>
+    <div class="finder-row">
+      <input id="q" name="q" type="search" maxlength="80" placeholder="{{search_placeholder}}" autocomplete="off">
+      <button class="button" type="submit">Find</button>
+    </div>
+    <p class="finder-foot">
+      <span class="hint">{{search_hint}}</span>
+      <a class="quiet" href="/chronicles/guide/#claims">{{claim_hint}}</a>
+    </p>
+  </form>
+
+  <p class="cta-row"><a class="button forged" href="/valheim/">{{cta}}</a></p>
+
+  <section class="glance" aria-labelledby="glance-h2">
+    <h2 class="section-h2" id="glance-h2">{{glance_h2}}</h2>
+    <div class="stats">
+{{stat_builders}}
+{{stat_photos}}
+{{stat_eras}}
+    </div>
+    <div class="chips">
+{{era_chips}}
+    </div>
+  </section>
+
+  <section class="manual" aria-labelledby="manual-h2">
+    <h2 class="section-h2" id="manual-h2">{{manual_h2}}</h2>
+    <p class="lede">{{manual_lede}}</p>
+    <div class="manual-grid">
+{{manual_cards}}
+    </div>
+  </section>
+
+</main>
+{{footer}}
+<script src="{{js_href}}" defer></script>
+</body>
+</html>

@@ -1,0 +1,921 @@
+{
+ "schema": "steward-creator-directory/v1",
+ "generatedAt": "2026-09-10T10:16:44.784076+00:00",
+ "builders": [
+  {
+   "builderKey": "0020acb3fb135facb04118290991f2ed",
+   "displayName": "Builder 0020acb3",
+   "aliases": [],
+   "nameStatus": "unresolved",
+   "eras": [
+    14,
+    11,
+    10,
+    8,
+    7
+   ],
+   "albums": 5,
+   "photos": 16,
+   "pieces": 677,
+   "tier": "Established Builder"
+  },
+  {
+   "builderKey": "0020d9b7abc75dada32b0528f9f3027e",
+   "displayName": "Tonkx",
+   "aliases": [
+    "Tonkx"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    11
+   ],
+   "albums": 1,
+   "photos": 0,
+   "pieces": 147,
+   "tier": "Homesteader"
+  },
+  {
+   "builderKey": "0027a5f99e91599d9e38b1f8de627c87",
+   "displayName": "Builder 0027a5f9",
+   "aliases": [],
+   "nameStatus": "unresolved",
+   "eras": [
+    14,
+    12
+   ],
+   "albums": 6,
+   "photos": 7,
+   "pieces": 10,
+   "tier": "Explorer"
+  },
+  {
+   "builderKey": "004073a254cf579994f239da48a814c1",
+   "displayName": "Grug",
+   "aliases": [
+    "Grug"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    7
+   ],
+   "albums": 1,
+   "photos": 0,
+   "pieces": 201,
+   "tier": "Homesteader"
+  },
+  {
+   "builderKey": "0047956c7bf551d5898890975aa6d8a3",
+   "displayName": "Tyr",
+   "aliases": [
+    "Tyr"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    10
+   ],
+   "albums": 1,
+   "photos": 4,
+   "pieces": 6,
+   "tier": "Explorer"
+  },
+  {
+   "builderKey": "0050a6f6c233562eb5e8d12492a097c1",
+   "displayName": "Xixvikingxix",
+   "aliases": [
+    "Xixvikingxix"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    11,
+    10
+   ],
+   "albums": 3,
+   "photos": 4,
+   "pieces": 1115,
+   "tier": "Established Builder"
+  },
+  {
+   "builderKey": "005f1f4657ee57869c3c21b1b5032add",
+   "displayName": "Shadow",
+   "aliases": [
+    "Shadow"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    12,
+    11,
+    10,
+    9
+   ],
+   "albums": 24,
+   "photos": 16,
+   "pieces": 16525,
+   "tier": "Megabuilder"
+  },
+  {
+   "builderKey": "00dcadef4efd5cb5b10cd406554b8e92",
+   "displayName": "Builder 00dcadef",
+   "aliases": [],
+   "nameStatus": "unresolved",
+   "eras": [
+    12
+   ],
+   "albums": 1,
+   "photos": 4,
+   "pieces": 1,
+   "tier": "Explorer"
+  },
+  {
+   "builderKey": "00ea8155a24e5b6884d52310e243c53e",
+   "displayName": "Kacke",
+   "aliases": [
+    "Kacke"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    7
+   ],
+   "albums": 2,
+   "photos": 4,
+   "pieces": 50,
+   "tier": "Homesteader"
+  },
+  {
+   "builderKey": "00ee74bef35a5e778506e0531df6dacb",
+   "displayName": "Thelofttroll",
+   "aliases": [
+    "Thelofttroll"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    14
+   ],
+   "albums": 12,
+   "photos": 8,
+   "pieces": 3007,
+   "tier": "Major Architect"
+  },
+  {
+   "builderKey": "00fd5466a3ad55c6a56d4fd0d4cb15e7",
+   "displayName": "Codeziefer",
+   "aliases": [
+    "Codeziefer"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    7
+   ],
+   "albums": 12,
+   "photos": 8,
+   "pieces": 1099,
+   "tier": "Established Builder"
+  },
+  {
+   "builderKey": "0103efb172fd5ebeb773b263bb33475a",
+   "displayName": "Oathkeeper",
+   "aliases": [
+    "Oathkeeper"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    14
+   ],
+   "albums": 2,
+   "photos": 4,
+   "pieces": 1019,
+   "tier": "Established Builder"
+  },
+  {
+   "builderKey": "011ad2deb6265b5fbd56b998ec698767",
+   "displayName": "Maxilus",
+   "aliases": [
+    "Maxilus"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    14,
+    12,
+    11
+   ],
+   "albums": 41,
+   "photos": 8,
+   "pieces": 11827,
+   "tier": "Megabuilder"
+  },
+  {
+   "builderKey": "012697d6bd1c55569cbfd8c0c3bf01c5",
+   "displayName": "Cabbage",
+   "aliases": [
+    "Cabbage"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    8
+   ],
+   "albums": 4,
+   "photos": 4,
+   "pieces": 1295,
+   "tier": "Established Builder"
+  },
+  {
+   "builderKey": "0143a025653452f8b03fc24d3016a78d",
+   "displayName": "Grubbs",
+   "aliases": [
+    "Grubbs"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    9,
+    8
+   ],
+   "albums": 6,
+   "photos": 8,
+   "pieces": 789,
+   "tier": "Established Builder"
+  },
+  {
+   "builderKey": "014ab8cbc4fe523abc7bee14ac26968f",
+   "displayName": "Driptwohard",
+   "aliases": [
+    "Driptwohard"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    10
+   ],
+   "albums": 1,
+   "photos": 4,
+   "pieces": 53,
+   "tier": "Homesteader"
+  },
+  {
+   "builderKey": "015ad5d2b71f5194a1e85c0c0fc37df0",
+   "displayName": "Parallelephant",
+   "aliases": [
+    "Parallelephant"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    14
+   ],
+   "albums": 1,
+   "photos": 4,
+   "pieces": 32,
+   "tier": "Explorer"
+  },
+  {
+   "builderKey": "018ff6194038576d83d9fe31e5db027d",
+   "displayName": "Whimsy",
+   "aliases": [
+    "Whimsy"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    12
+   ],
+   "albums": 6,
+   "photos": 8,
+   "pieces": 4637,
+   "tier": "Major Architect"
+  },
+  {
+   "builderKey": "01bcdf9dd77d5613ac9f68228da38434",
+   "displayName": "Whitebeard",
+   "aliases": [
+    "Whitebeard"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    11
+   ],
+   "albums": 1,
+   "photos": 0,
+   "pieces": 61,
+   "tier": "Homesteader"
+  },
+  {
+   "builderKey": "01c2b7db25515026a703d3b09f6ae201",
+   "displayName": "Balthazar",
+   "aliases": [
+    "Balthazar"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    14
+   ],
+   "albums": 5,
+   "photos": 4,
+   "pieces": 1135,
+   "tier": "Established Builder"
+  },
+  {
+   "builderKey": "01cadc0b074d508f9c2348c4d6e7ca90",
+   "displayName": "Arrow",
+   "aliases": [
+    "Arrow"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    9
+   ],
+   "albums": 1,
+   "photos": 4,
+   "pieces": 254,
+   "tier": "Homesteader"
+  },
+  {
+   "builderKey": "01e596b404e85aadb468d649b7ab9a14",
+   "displayName": "Ulf The Hermit",
+   "aliases": [
+    "Ulf The Hermit"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    14,
+    12,
+    11,
+    10,
+    9,
+    8,
+    7
+   ],
+   "albums": 98,
+   "photos": 32,
+   "pieces": 64259,
+   "tier": "Megabuilder"
+  },
+  {
+   "builderKey": "0204fa0b4f765bf3bcaea9f9cc3db805",
+   "displayName": "Drekarys",
+   "aliases": [
+    "Drekarys"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    8
+   ],
+   "albums": 2,
+   "photos": 4,
+   "pieces": 154,
+   "tier": "Homesteader"
+  },
+  {
+   "builderKey": "020983c4ceb9588aa2eedafd0d7f8623",
+   "displayName": "Evil Judith",
+   "aliases": [
+    "Evil Judith"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    11
+   ],
+   "albums": 1,
+   "photos": 0,
+   "pieces": 391,
+   "tier": "Homesteader"
+  },
+  {
+   "builderKey": "020a432199b95dadb0271000dafad4fa",
+   "displayName": "Azaeda",
+   "aliases": [
+    "Azaeda"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    10,
+    9
+   ],
+   "albums": 47,
+   "photos": 16,
+   "pieces": 10365,
+   "tier": "Megabuilder"
+  },
+  {
+   "builderKey": "0234012903c25f2eaf36d9ee2b892324",
+   "displayName": "TheCheatah",
+   "aliases": [
+    "TheCheatah"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    14
+   ],
+   "albums": 1,
+   "photos": 4,
+   "pieces": 2,
+   "tier": "Explorer"
+  },
+  {
+   "builderKey": "02591b7b9cf85b54b6c871e461e30367",
+   "displayName": "Deyou",
+   "aliases": [
+    "Deyou"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    12
+   ],
+   "albums": 2,
+   "photos": 4,
+   "pieces": 313,
+   "tier": "Homesteader"
+  },
+  {
+   "builderKey": "026aff5a5d5a5291962a25e30d95c199",
+   "displayName": "Anatma",
+   "aliases": [
+    "Anatma"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    12
+   ],
+   "albums": 8,
+   "photos": 4,
+   "pieces": 5342,
+   "tier": "Major Architect"
+  },
+  {
+   "builderKey": "026e804afaf55d658e4faa2f9b6db9c9",
+   "displayName": "Chris",
+   "aliases": [
+    "Chris"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    14,
+    12,
+    11,
+    10,
+    9,
+    8
+   ],
+   "albums": 39,
+   "photos": 28,
+   "pieces": 27067,
+   "tier": "Megabuilder"
+  },
+  {
+   "builderKey": "02aa7953b2a15ad7993e7cc1ae626e14",
+   "displayName": "Brik",
+   "aliases": [
+    "Brik"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    16,
+    14
+   ],
+   "albums": 3,
+   "photos": 16,
+   "pieces": 4,
+   "tier": "Explorer"
+  },
+  {
+   "builderKey": "02c5530ef261504baf9d11d5e80e9aaf",
+   "displayName": "Jemmeh",
+   "aliases": [
+    "Jemmeh"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    11,
+    10,
+    9,
+    7
+   ],
+   "albums": 51,
+   "photos": 16,
+   "pieces": 10916,
+   "tier": "Megabuilder"
+  },
+  {
+   "builderKey": "02fc634aaf715a1091fad8c92976ba3b",
+   "displayName": "MamaHelinaʳᵉᵖ",
+   "aliases": [
+    "Builders Guild Era 8",
+    "Mama Helina ʳᵉᵖ",
+    "Mama Helina ᵇᵘⁱˡᵈᵉʳ ᵍᵐ/ʳᵉᵖ",
+    "MamaHelinaʳᵉᵖ"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    14,
+    12,
+    11,
+    10,
+    9,
+    8,
+    7
+   ],
+   "albums": 49,
+   "photos": 86,
+   "pieces": 1726,
+   "tier": "Established Builder"
+  },
+  {
+   "builderKey": "0313669b89cf5a58a5950c60b493cadc",
+   "displayName": "Builder 0313669b",
+   "aliases": [
+    "Cuspelii BW Rep",
+    "ፈc̷ยꜱ℘ɛℓᵢᵢᴮᵂᴿᵉᵖ"
+   ],
+   "nameStatus": "ambiguous",
+   "eras": [
+    14,
+    12,
+    10,
+    9,
+    8,
+    7
+   ],
+   "albums": 9,
+   "photos": 28,
+   "pieces": 62,
+   "tier": "Homesteader"
+  },
+  {
+   "builderKey": "03f105aebbf152a29ae1b82ab3020575",
+   "displayName": "Builder 03f105ae",
+   "aliases": [],
+   "nameStatus": "unresolved",
+   "eras": [
+    17
+   ],
+   "albums": 1,
+   "photos": 5,
+   "pieces": 0,
+   "tier": "Explorer"
+  },
+  {
+   "builderKey": "03fed507b3af5912a87ca775a3b59b1f",
+   "displayName": "Zpitey ᴿᵃⁿᵍᵉʳ ᴳᴹ",
+   "aliases": [
+    "Zpitey ᴿᵃⁿᵍᵉʳ ᴳᴹ",
+    "Zpiteyᴿᵃⁿᵍᵉʳ ᴳᴹ"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    14,
+    12,
+    11,
+    10,
+    9,
+    8,
+    7
+   ],
+   "albums": 87,
+   "photos": 42,
+   "pieces": 16215,
+   "tier": "Megabuilder"
+  },
+  {
+   "builderKey": "04c426e74b4d52e7a81f01faf8535e50",
+   "displayName": "Builder 04c426e7",
+   "aliases": [],
+   "nameStatus": "unresolved",
+   "eras": [
+    7
+   ],
+   "albums": 1,
+   "photos": 4,
+   "pieces": 3,
+   "tier": "Explorer"
+  },
+  {
+   "builderKey": "04e00eaa627c52e4b99dd36dd88c3351",
+   "displayName": "Builder 04e00eaa",
+   "aliases": [],
+   "nameStatus": "unresolved",
+   "eras": [
+    14
+   ],
+   "albums": 2,
+   "photos": 8,
+   "pieces": 2,
+   "tier": "Explorer"
+  },
+  {
+   "builderKey": "073244d226eb5607ba74657a0d31c244",
+   "displayName": "Yogi",
+   "aliases": [
+    "Yogi"
+   ],
+   "nameStatus": "recorded",
+   "eras": [
+    17,
+    16,
+    14,
+    12,
+    11,
+    10
+   ],
+   "albums": 91,
+   "photos": 60,
+   "pieces": 30789,
+   "tier": "Megabuilder"
+  },
+  {
+   "builderKey": "07bfaaf67f95592793b9b9e77540e3ac",
+   "displayName": "Builder 07bfaaf6",
+   "aliases": [],
+   "nameStatus": "unresolved",
+   "eras": [
+    17
+   ],
+   "albums": 1,
+   "photos": 5,
+   "pieces": 0,
+   "tier": "Explorer"
+  },
+  {
+   "builderKey": "0814a9b956f15a58bbe9dbb8ee8fad03",
+   "displayName": "Builder 0814a9b9",
+   "aliases": [
+    "ɢūɖɮʀǟռɖ ᵉˣᵖˡᵒʳᵉʳ ˣ ˢˡᵃʸᵉʳ ʳᵉᵖ",
+    "Ｇｕｄｂｒａｎｄ ᵉˣᵖˡᵒʳᵉʳ ʳᵉᵖ"
+   ],
+   "nameStatus": "ambiguous",
+   "eras": [
+    14,
+    12,
+    10,
+    9,
+    8
+   ],
+   "albums": 11,
+   "photos": 41,
+   "pieces": 17,
+   "tier": "Explorer"
+  }
+ ],
+ "eras": [
+  {
+   "era": 7,
+   "slug": "era7",
+   "constructionPieces": 2746682,
+   "builds": 39154,
+   "unknownNamePieces": 46013,
+   "unknownNameFraction": 0.016752212305610914,
+   "runtimeMissingFraction": null,
+   "runtimeStatus": "unidentified",
+   "priorityInvestigation": false,
+   "quarantinedConstructionPieces": 0,
+   "census": {
+    "NATURE": 543013,
+    "CREATURE": 90636,
+    "UNKNOWN": 3153792,
+    "ITEM_STAND": 45323,
+    "BALLISTA": 31,
+    "BED": 2567,
+    "STRUCTURE": 97,
+    "BUILDING": 2746682,
+    "CONTAINER": 60051,
+    "SIGN": 36749,
+    "TOMBSTONE": 768,
+    "INTERIOR": 358561,
+    "PORTAL": 11714
+   }
+  },
+  {
+   "era": 8,
+   "slug": "era8",
+   "constructionPieces": 3092090,
+   "builds": 42554,
+   "unknownNamePieces": 60794,
+   "unknownNameFraction": 0.019661135348583,
+   "runtimeMissingFraction": null,
+   "runtimeStatus": "unidentified",
+   "priorityInvestigation": false,
+   "quarantinedConstructionPieces": 0,
+   "census": {
+    "BUILDING": 3092090,
+    "CONTAINER": 64333,
+    "TOMBSTONE": 830,
+    "SIGN": 51583,
+    "INTERIOR": 290124,
+    "NATURE": 460593,
+    "CREATURE": 91629,
+    "UNKNOWN": 2712933,
+    "ITEM_STAND": 60068,
+    "BALLISTA": 165,
+    "PORTAL": 13167,
+    "BED": 2675,
+    "STRUCTURE": 91
+   }
+  },
+  {
+   "era": 9,
+   "slug": "era9",
+   "constructionPieces": 3153849,
+   "builds": 45044,
+   "unknownNamePieces": 55504,
+   "unknownNameFraction": 0.0175988133864367,
+   "runtimeMissingFraction": null,
+   "runtimeStatus": "unidentified",
+   "priorityInvestigation": false,
+   "quarantinedConstructionPieces": 0,
+   "census": {
+    "CREATURE": 96756,
+    "UNKNOWN": 3234937,
+    "ITEM_STAND": 53542,
+    "BALLISTA": 288,
+    "BUILDING": 3153849,
+    "CONTAINER": 63526,
+    "SIGN": 50905,
+    "INTERIOR": 342912,
+    "TOMBSTONE": 604,
+    "DROPPED_ITEM": 11488,
+    "BED": 2428,
+    "STRUCTURE": 82,
+    "PORTAL": 13268
+   }
+  },
+  {
+   "era": 10,
+   "slug": "era10",
+   "constructionPieces": 3291917,
+   "builds": 46506,
+   "unknownNamePieces": 57091,
+   "unknownNameFraction": 0.017342782336249668,
+   "runtimeMissingFraction": null,
+   "runtimeStatus": "unidentified",
+   "priorityInvestigation": false,
+   "quarantinedConstructionPieces": 8,
+   "census": {
+    "BUILDING": 3291917,
+    "SIGN": 62998,
+    "CONTAINER": 71804,
+    "INTERIOR": 419451,
+    "TOMBSTONE": 699,
+    "BED": 2867,
+    "DROPPED_ITEM": 6844,
+    "STRUCTURE": 84,
+    "ITEM_STAND": 62738,
+    "UNKNOWN": 3308076,
+    "CREATURE": 100980,
+    "BALLISTA": 260,
+    "NATURE": 16,
+    "PORTAL": 13672
+   }
+  },
+  {
+   "era": 11,
+   "slug": "era11",
+   "constructionPieces": 3008433,
+   "builds": 47758,
+   "unknownNamePieces": 49541,
+   "unknownNameFraction": 0.0164673768702843,
+   "runtimeMissingFraction": null,
+   "runtimeStatus": "unidentified",
+   "priorityInvestigation": false,
+   "quarantinedConstructionPieces": 0,
+   "census": {
+    "DROPPED_ITEM": 223444,
+    "BED": 2516,
+    "STRUCTURE": 90,
+    "INTERIOR": 361486,
+    "CONTAINER": 80564,
+    "BUILDING": 3008433,
+    "TOMBSTONE": 711,
+    "SIGN": 72956,
+    "UNKNOWN": 3294163,
+    "CREATURE": 92360,
+    "ITEM_STAND": 61693,
+    "BALLISTA": 355,
+    "PORTAL": 11189
+   }
+  },
+  {
+   "era": 12,
+   "slug": "era12",
+   "constructionPieces": 3105792,
+   "builds": 48986,
+   "unknownNamePieces": 44055,
+   "unknownNameFraction": 0.014184787648367952,
+   "runtimeMissingFraction": null,
+   "runtimeStatus": "unidentified",
+   "priorityInvestigation": false,
+   "quarantinedConstructionPieces": 0,
+   "census": {
+    "DROPPED_ITEM": 328694,
+    "BED": 2260,
+    "STRUCTURE": 132,
+    "UNKNOWN": 3290141,
+    "CREATURE": 87385,
+    "ITEM_STAND": 57730,
+    "BALLISTA": 390,
+    "BUILDING": 3105792,
+    "CONTAINER": 70844,
+    "TOMBSTONE": 753,
+    "INTERIOR": 358947,
+    "SIGN": 59516,
+    "PORTAL": 10461
+   }
+  },
+  {
+   "era": 14,
+   "slug": "era14",
+   "constructionPieces": 3652409,
+   "builds": 47782,
+   "unknownNamePieces": 43305,
+   "unknownNameFraction": 0.011856558233209916,
+   "runtimeMissingFraction": null,
+   "runtimeStatus": "unidentified",
+   "priorityInvestigation": false,
+   "quarantinedConstructionPieces": 0,
+   "census": {
+    "BUILDING": 3652409,
+    "INTERIOR": 365323,
+    "CONTAINER": 65646,
+    "TOMBSTONE": 613,
+    "SIGN": 103594,
+    "DROPPED_ITEM": 302949,
+    "BED": 1968,
+    "STRUCTURE": 122,
+    "UNKNOWN": 3332862,
+    "CREATURE": 89846,
+    "ITEM_STAND": 91658,
+    "BALLISTA": 387,
+    "PORTAL": 9135
+   }
+  }
+ ],
+ "photography": {
+  "eras": [
+   {
+    "era": 7,
+    "albums": 3719,
+    "albumsWithPhotos": 381,
+    "photos": 1513
+   },
+   {
+    "era": 8,
+    "albums": 3900,
+    "albumsWithPhotos": 340,
+    "photos": 1350
+   },
+   {
+    "era": 9,
+    "albums": 3696,
+    "albumsWithPhotos": 293,
+    "photos": 1156
+   },
+   {
+    "era": 10,
+    "albums": 3916,
+    "albumsWithPhotos": 313,
+    "photos": 1221
+   },
+   {
+    "era": 11,
+    "albums": 3695,
+    "albumsWithPhotos": 0,
+    "photos": 0
+   },
+   {
+    "era": 12,
+    "albums": 3799,
+    "albumsWithPhotos": 277,
+    "photos": 1087
+   },
+   {
+    "era": 14,
+    "albums": 4062,
+    "albumsWithPhotos": 493,
+    "photos": 1820
+   },
+   {
+    "era": 16,
+    "albums": 162,
+    "albumsWithPhotos": 162,
+    "photos": 1859
+   },
+   {
+    "era": 17,
+    "albums": 373,
+    "albumsWithPhotos": 373,
+    "photos": 3317
+   }
+  ],
+  "photos": 13323,
+  "albumsWithPhotos": 2632,
+  "buildersWithPhotos": 2514
+ },
+ "unattributedAlbums": 19301,
+ "legacyImports": [
+  {
+   "slug": "era16",
+   "images": 1859,
+   "albums": 162,
+   "unresolvedImages": 0
+  },
+  {
+   "slug": "era17",
+   "images": 3341,
+   "albums": 373,
+   "unresolvedImages": 24
+  }
+ ],
+ "_fixture": "Trimmed from the live directory (2662 builders) for tools/chronicles tests. builders[] is a spanning sample; photography, eras, unattributedAlbums and legacyImports are the live aggregates, kept intact."
+}
