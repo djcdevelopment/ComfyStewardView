@@ -10,6 +10,7 @@ param(
     [string]$WorldPath = '',
     [string]$ContextImage = '',
     [string]$ContextManifest = '',
+    [string]$StaticDir = '',
     [int]$Port = 8091,
     [string]$LabUrl = 'http://127.0.0.1:8091',
     [ValidateRange(1, 300)]
@@ -127,6 +128,10 @@ if (-not (Test-Path -LiteralPath $jar)) {
 $arguments = @('-Xmx2g', '-jar', $jar, $Command, '--cache', $CachePath, '--artifacts', $ArtifactsPath)
 if ($Command -eq 'serve') {
     $arguments += @('--port', [string]$Port)
+    # Serve the UI from the working copy so a CSS or JS edit is a refresh, not a repackage. The jar
+    # copy stays the fallback for anything the working copy does not have.
+    if (-not $StaticDir) { $StaticDir = Join-Path $repo 'src\main\resources\static' }
+    $arguments += @('--static-dir', $StaticDir)
     if ($ContextImage) { $arguments += @('--context-image', $ContextImage) }
     if ($ContextManifest) { $arguments += @('--context-manifest', $ContextManifest) }
     if ($NoBrowser) { $arguments += '--no-browser' }
