@@ -71,9 +71,11 @@
               <div id="kin-tree" class="kin-canvas">
                 <svg id="kin-tree-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" role="img" aria-label="Kinship tree"></svg>
                 <div id="kin-nodes"></div>
+                <!-- Inside the canvas on purpose: the nodes are positioned against it, so
+                     the tooltip can be clamped to the same box with plain offsets. -->
+                <div id="kin-tip" role="tooltip" hidden></div>
               </div>
             </div>
-            <div id="kin-tip" role="tooltip" hidden></div>
             <p id="kin-legend" class="muted">Solid branches carry the pieces you placed side by side in that era. Dashed branches are eras kept only as photographs, where shares are unknown. A hairline is an era apart; the branch resumes when you built together again.</p>
           </section>
           <section id="kin-ledger-panel" role="tabpanel" aria-labelledby="kin-tab-ledger" hidden>
