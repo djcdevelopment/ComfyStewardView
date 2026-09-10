@@ -83,7 +83,9 @@ async function go(route) {
   return url;
 }
 async function key(k, code, keyCode) {
-  await cdp('Input.dispatchKeyEvent', {type: 'keyDown', key: k, code, windowsVirtualKeyCode: keyCode});
+  // Enter needs the '' text on the keyDown or Chrome never runs implicit form submission.
+  const text = k === 'Enter' ? '' : undefined;
+  await cdp('Input.dispatchKeyEvent', {type: 'keyDown', key: k, code, windowsVirtualKeyCode: keyCode, text, unmodifiedText: text});
   await cdp('Input.dispatchKeyEvent', {type: 'keyUp', key: k, code, windowsVirtualKeyCode: keyCode});
 }
 async function typeInto(selector, text) {
@@ -143,7 +145,7 @@ try {
   await check('nonsense shows the browse-instead row linking the gallery',
     () => evaluate(`document.querySelector('#suggestions .suggestion-empty a').getAttribute('href')==='/valheim/'`));
   await typeInto('#q', args.name);
-  await until(`${ROWS}.length>0`, 'rows again');
+  await until(`${ROWS}.length>0 && ${ROWS}[0].textContent.trim().startsWith(${nameLit})`, 'rows for ' + args.name);
   await key('Enter', 'Enter', 13);
   await until(`location.pathname.startsWith('/valheim/creators/')`, 'navigation to a builder page');
   if (args['front-only']) throw new FrontOnly();
