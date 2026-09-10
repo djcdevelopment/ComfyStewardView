@@ -8,6 +8,8 @@ import io.javalin.http.Context;
 import io.javalin.http.Header;
 import io.javalin.http.HttpStatus;
 import io.javalin.http.staticfiles.Location;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -24,6 +26,8 @@ import java.util.Set;
 import java.util.concurrent.Semaphore;
 
 public final class LabServer {
+    private static final Logger log = LoggerFactory.getLogger(LabServer.class);
+
     private final LabConfig config;
     private final SnapshotRepository snapshots;
     private final ArtifactStore artifacts;
@@ -56,7 +60,28 @@ public final class LabServer {
         this.scenes = new ScenePackage(snapshots, mapper,
             config.publicMode() ? null : config.fidelityCandidates());
         this.fidelity = config.publicMode() ? null : new FidelityWorkbench(config, mapper);
+        Path staticOverride = config.staticDir();
+        // A path that does not resolve is a misconfiguration, not a reason to serve nothing.
+        boolean useExternal = staticOverride != null && Files.isDirectory(staticOverride);
+        if (staticOverride != null && !useExternal) {
+            log.warn("--static-dir {} is not a directory; serving the UI baked into the jar", staticOverride);
+        }
         this.app = Javalin.create(javalin -> {
+            // Registered ahead of the classpath handler so a pushed file shadows the baked copy.
+            // The classpath handler stays registered as the fallback: the override directory starts
+            // empty on every release and only holds the files someone has pushed, so anything not
+            // pushed - and every file at all, on a fresh release - must still come from the jar.
+            if (useExternal) {
+                javalin.staticFiles.add(files -> {
+                    files.directory = staticOverride.toString();
+                    files.location = Location.EXTERNAL;
+                    files.hostedPath = "/";
+                    // The whole point of this path is that a push lands without a restart, so
+                    // nothing downstream may hold a stale copy. Javalin's default here is
+                    // max-age=0, which still permits revalidated caching.
+                    files.headers = Map.of(Header.CACHE_CONTROL, "no-store");
+                });
+            }
             javalin.staticFiles.add("/static");
             javalin.staticFiles.add(files -> {
                 files.hostedPath = "/vendor/leaflet";
@@ -69,6 +94,9 @@ public final class LabServer {
             }
         });
         routes();
+        if (useExternal) {
+            log.info("Serving UI from {} (jar copy is the fallback)", staticOverride);
+        }
     }
 
     public void start() {

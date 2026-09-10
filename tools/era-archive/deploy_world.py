@@ -63,6 +63,12 @@ environment={line.split('=',1)[0]:line.split('=',1)[1] for line in old['Config']
 environment['STEWARD_RELEASE_VERSION']=settings['release'];environment['STEWARD_SOURCE_REVISION']=settings['revision']
 envfile=dest/'runtime.env';envfile.write_text(''.join(k+'='+v+'\n' for k,v in environment.items()));envfile.chmod(0o600)
 dockerfile=dest/'Dockerfile';dockerfile.write_text('FROM '+base+'\nCOPY steward-spatial-lab.jar /app/steward-spatial-lab.jar\n')
+# Per-release override directory for the UI, mounted read-only and served ahead of the copy baked
+# into the jar. Push-StewardWorldUi.ps1 writes here, so a stylesheet change costs a file copy rather
+# than another 640 MB bundle transfer and image rebuild. It is created empty inside a release
+# directory this run just proved absent, so a release always starts on the UI its own jar shipped
+# and a stale override cannot outlive the code it was tuned against.
+ui=dest/'ui';ui.mkdir()
 image='steward-world:'+settings['release'];run('docker','build','-q','-t',image,str(dest))
 catalog=json.loads((dest/'catalog/catalog.json').read_text());default=next(e for e in catalog['eras'] if e['slug']==catalog['defaultEra'])
 assert default['status']=='ready'
@@ -71,12 +77,12 @@ with socket.socket() as probe:probe.bind(('127.0.0.1',7083))
 def start(name,port):
     return run('docker','run','-d','--name',name,'--restart','unless-stopped','--read-only','--memory','3g','--cpus','2',
         '--cap-drop','ALL','--security-opt','no-new-privileges:true','--tmpfs','/tmp:rw,exec,nosuid,size=512m',
-        '--env-file',str(envfile),'-v',str(dest/'catalog')+':/catalog:ro','-p','127.0.0.1:'+str(port)+':8091','--entrypoint','java',image,
+        '--env-file',str(envfile),'-v',str(dest/'catalog')+':/catalog:ro','-v',str(ui)+':/ui:ro','-p','127.0.0.1:'+str(port)+':8091','--entrypoint','java',image,
         '-Xms256m','-Xmx1g','-Djava.awt.headless=true','-jar','/app/steward-spatial-lab.jar','serve','--public','--bind','0.0.0.0',
         '--port','8091','--cache','/catalog/'+default['cache'],'--artifacts','/catalog/'+default['artifacts'],
         *(['--context-manifest','/catalog/'+default['contextManifest']] if default.get('contextManifest') else []),'--era-catalog','/catalog/catalog.json',
         '--snapshot',str(default['snapshotId']),'--public-url',environment.get('PUBLIC_URL','https://am4.tail8e749c.ts.net/world/'),
-        '--release-version',settings['release'],'--no-browser')
+        '--release-version',settings['release'],'--static-dir','/ui','--no-browser')
 def get(port,path):
     with urllib.request.urlopen('http://127.0.0.1:'+str(port)+path,timeout=10) as response:return json.load(response)
 def healthy(port):
@@ -115,7 +121,7 @@ except Exception:
     run('docker','rename',backup,'steward-world');run('docker','start','steward-world');raise
 result={'release':settings['release'],'directory':str(dest),'container':container,'previousContainer':backup,
         'baseImageId':old['Image'],'imageId':run('docker','image','inspect','-f','{{.Id}}',image),'eras':eras,
-        'publicSnapshot':default['snapshotId'],'candidateVerified':True,'activeVerified':True,'port':7081}
+        'publicSnapshot':default['snapshotId'],'candidateVerified':True,'activeVerified':True,'port':7081,'uiOverride':str(ui)}
 (dest/'deployment.json').write_text(json.dumps(result,indent=2))
 print(json.dumps(result))
 '''
