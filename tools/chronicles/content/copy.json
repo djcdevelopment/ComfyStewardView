@@ -1,16 +1,16 @@
 {
   "_note": "Visible copy for the gateway and guide. Drafted on gcp-gemini-pro (HEARTH task cc-d556e077), then hand-corrected: no drones, no cryptography, no visitor counters, no 3D — only controls that exist on the live pages. Never use the words character or archetype. Era facts are never hard-coded here: the guide's era table is generated at build time. {{builders}}, {{photos}}, {{eras_with_photos}} are baked by build.py.",
   "gateway": {
-    "h1": "Choose Your Path",
+    "h1": "Find your builds",
     "lede": "Photographs of what people built on the Comfy Valheim server, era by era, credited from the saved world itself.",
-    "cta": "Enter Gallery",
+    "cta": "Browse the builds",
     "search_label": "Search for your builds",
     "search_placeholder": "Your Valheim name, or any name you have built under",
     "search_hint": "Any name you ever built under. Matching names alone never join two builders.",
     "claim_hint": "Claim a build",
-    "glance_h2": "Archive at a Glance",
-    "manual_h2": "Field Manual",
-    "manual_lede": "Five short paths through the archive. Each one names the real controls you will use."
+    "loading": "Loading the builders…",
+    "load_failed": "The builders could not be loaded. Press Enter to search the index instead.",
+    "no_match": "No builder by that name. Browse the builds instead."
   },
   "paths": {
     "find": {
@@ -134,6 +134,7 @@
   "guide": {
     "h1": "Field Manual",
     "lede": "Five paths through the archive, the honest version of how claims and requests work, and where the data lives.",
+    "glance_h2": "Archive at a Glance",
     "toc_label": "Contents",
     "claims": {
       "h2": "Claims stay in your browser",

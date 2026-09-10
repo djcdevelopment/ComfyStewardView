@@ -7,10 +7,16 @@ photograph of your own. It ships as static files behind Caddy on FX99 and is ser
 The static front door of the Comfy Community's Valheim archive: a gateway at
 `/chronicles/` and a field manual at `/chronicles/guide/`.
 
-Everything a visitor reads is decided at build time. The two pages make no network
-request of their own -- no fonts, no CDN, no analytics, no runtime fetch of the archive's
-JSON. The only absolute URLs on either page are the world viewer link and the SVG
-namespace.
+Everything a visitor reads is decided at build time, and nothing third-party is ever
+fetched -- no fonts, no CDN, no analytics. The only absolute URLs on either page are the
+world viewer link and the SVG namespace.
+
+The one request either page makes of its own is on the gateway: `gateway.js` prefetches
+this archive's `/valheim/creators/directory.json` so the name box can answer a typed name
+without a page load. That is a same-origin file the builders index already reads, it is
+requested on idle rather than on load, and if it never arrives the box is still a plain GET
+form pointing at the builders index. The portrait manifest the suggestions draw from is not
+fetched at all -- it is inlined into the page at build time.
 
 ## Build
 
@@ -24,6 +30,7 @@ python tools/chronicles/build.py --source-base https://fx99.tail8e749c.ts.net --
 | `--out` | output directory. **Must not exist** -- same immutable-projection rule as `tools/era-archive/gallery.py` |
 | `--offline DIR` | read both JSON files from `DIR` instead of fetching. Used by the tests |
 | `--shots DIR` | tutorial crops, named `<path-id>[-2].<png\|jpg\|webp>`; optional |
+| `--portraits DIR` | drawn portrait tiles with a `manifest.json`; defaults to `assets/portraits`, and a tree that is not there yet builds a page with no tiles |
 
 Requires Python 3 and Pillow, nothing else.
 
@@ -64,22 +71,33 @@ index.html                      guide/index.html
 chronicles.<hash>.css           gateway.<hash>.js
 img/cutouts/<id>.<hash>.webp    512 square, alpha kept
 img/cutouts/<id>.256.<hash>.webp
+img/cutouts/<id>.webp           stable name, same bytes as the hashed copy
+img/cutouts/<id>.256.webp
 img/cutouts/guide.<hash>.svg    the drawn sixth figure
+img/portraits/pNN.webp          the drawn tiles, copied unchanged from --portraits
+img/portraits/pNN.128.webp      derived thumbnail, the size the suggestions draw
 img/emblem.<hash>.svg
 img/fonts/<name>.woff2          stable names, no hash
 img/shots/<name>.<hash>.webp    720x450, only if --shots supplied
 build.json                      counts, era rows, source hashes, HEAD, asset map
+portraits.json                  tiles, cutouts and path lines with their cache busters
 receipt.json                    every built file with its size and sha256
 ```
 
 Caddy serves `/chronicles/img/**` with a 7-day immutable cache header, so every asset
 carries a content hash in its name -- except the fonts, which keep stable names because
 the other archive pages reference them by the exact paths written into
-`assets/fonts/fonts.css`.
+`assets/fonts/fonts.css`, and except the portraits and the stable cutout copies, which
+carry a `v` in `portraits.json` instead. A consumer appends `?v=<stamp>` to those, which
+busts the same cache without needing to have read this build's manifest to name the file
+in the first place. `portraits.json` sits at the output root beside `build.json`, and the
+same object is inlined into the gateway page so the search suggestions can draw a portrait
+without a second request.
 
-The tutorial crops are optional and normally absent. The manual and the guide render
-complete pages without them; when a crop appears in `--shots` the matching card picks it
-up on the next build.
+The tutorial crops are optional and normally absent, and so are the portrait tiles: both
+arrive from another lane. The guide renders complete walkthroughs without a crop, and the
+gateway draws the archive emblem in place of a tile whenever `portraits.json` says
+`count: 0`. When either appears the next build picks it up.
 
 ### Sources of the page itself
 
@@ -89,8 +107,8 @@ up on the next build.
 | `templates/shell.html` | the header and footer both pages share |
 | `templates/index.html`, `templates/guide.html` | page skeletons with `{{tokens}}` |
 | `src/chronicles.css` | the whole stylesheet, hand-written, starting with the `@font-face` block |
-| `src/gateway.js` | the gateway's only script: it stops an empty search submitting |
-| `assets/` | cutouts, emblem, fonts |
+| `src/gateway.js` | the gateway's only script: the name box, its suggestions, and the empty-submit guard |
+| `assets/` | cutouts, emblem, fonts, and the portrait tiles once that lane lands them |
 
 ### Tests
 
@@ -98,13 +116,27 @@ up on the next build.
 python -m unittest discover -s tools/chronicles/tests -v
 ```
 
-Offline, fixture-driven, and green with the archive host unreachable. Besides the counts
-parity they hold the lines the design depends on: neither page may contain the words this
-archive does not use about people; every `<a href>` is on an allowlist; every `src`,
-`srcset`, `<link href>` and CSS `url()` resolves to a file in the output; `receipt.json`
-lists every built file; the six gateway cards carry no visible text, no `title` attribute
-and an `aria-label` each; and an era with no photographs says so in words rather than
-with a dash.
+Offline, fixture-driven, and green with the archive host unreachable -- the portrait tiles
+are synthesized the way the tutorial crops are, so the suite says the same thing before and
+after the portrait lane lands its first file. Besides the counts parity they hold the lines
+the design depends on: neither page, nor the shipped script, nor `portraits.json` may
+contain the words this archive does not use about people; every `<a href>` is on an
+allowlist; every `src`, `srcset`, `<link href>` and CSS `url()` resolves to a file in the
+output; `receipt.json` lists every built file; the front page is a line, a combobox and one
+forged button with nothing else on it; every tile named in the inlined manifest is on disk
+under the `v` it claims; and an era with no photographs says so in words rather than with a
+dash.
+
+Two suites run beside them:
+
+* `tests/test_matcher_parity.py` lifts each declaration of the matcher out of
+  `src/gateway.js` and out of `tools/era-archive/web/creators.js` by its own declaration
+  line and compares them. The gateway's ranking is a copy, not a reimplementation, and this
+  is what keeps it one.
+* `tests/gateway.logic.test.js` runs the ranking itself under `node --test`, asserting that
+  `rankBuilders` returns exactly what `filterBuilders` + `compareBuilders` + the eight-row
+  cap return on the live side, for six different typings of the fixture. The Python gate
+  shells out to it, so a broken ranking cannot pass a green `unittest` run.
 
 ## The lane
 
