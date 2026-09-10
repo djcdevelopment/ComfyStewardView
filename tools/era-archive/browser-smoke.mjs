@@ -24,7 +24,15 @@ try{
   await cdp('Page.navigate',{url:gallery});await wait("document.querySelectorAll('.builder').length>0");
   results.directory=await evaluate("({title:document.title,cards:document.querySelectorAll('.builder').length,status:document.getElementById('status').textContent,note:document.getElementById('capture-note').textContent})");await screenshot('creators');
   if(!results.directory.note)throw Error('Landing page never said which eras are photographed');
-  if(await evaluate("document.querySelector('.builder p:nth-of-type(2)').textContent.endsWith('0 photos')"))throw Error('Directory still opens on a thread with no photographs');
+  // Parse the number, do not pattern-match the tail of the string. The previous check
+  // was `.endsWith('0 photos')`, which is true of "270 photos" -- it passed for months
+  // only because no lead card's count happened to end in a zero, then failed on a
+  // thread with 270 photographs, which is the opposite of what it claims to detect.
+  // Positional selectors are avoided too: this card markup has been redesigned once.
+  const leadPhotos=await evaluate("(()=>{const m=document.querySelector('.builder').innerText.match(/([0-9,]+) photos/);return m?Number(m[1].replace(/,/g,'')):null;})()");
+  if(leadPhotos===null)throw Error('Could not read a photo count from the first builder card');
+  if(leadPhotos===0)throw Error('Directory still opens on a thread with no photographs');
+  results.directory.leadPhotos=leadPhotos;
   const directory=await fetch(new URL('directory.json',gallery)).then(r=>r.json());
   // Chronicler Archive redesign: hero stat mosaic, era ribbon, sort modes, card shortcut, Ctrl+K.
   results.heroStats=await evaluate("({builders:document.getElementById('stat-builders').textContent,captures:document.getElementById('stat-captures').textContent,eras:document.getElementById('stat-eras').textContent})");
