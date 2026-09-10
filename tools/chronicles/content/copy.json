@@ -1,0 +1,168 @@
+{
+  "_note": "Visible copy for the gateway and guide. Drafted on gcp-gemini-pro (HEARTH task cc-d556e077), then hand-corrected: no drones, no cryptography, no visitor counters, no 3D — only controls that exist on the live pages. Never use the words character or archetype. {{builders}}, {{photos}}, {{eras_with_photos}} are baked by build.py.",
+  "gateway": {
+    "h1": "Choose Your Path",
+    "lede": "Photographs of what people built on the Comfy Valheim server, era by era, credited from the saved world itself.",
+    "cta": "Enter Gallery",
+    "search_label": "Search for your builds",
+    "search_placeholder": "Your Valheim name, or any name you have built under",
+    "search_hint": "Any name you ever built under. Matching names alone never join two builders.",
+    "claim_hint": "Claim a build",
+    "glance_h2": "Archive at a Glance",
+    "manual_h2": "Field Manual",
+    "manual_lede": "Five short paths through the archive. Each one names the real controls you will use."
+  },
+  "paths": {
+    "find": {
+      "aria_label": "Find the builds you made",
+      "card_h3": "Find your builds",
+      "steps": [
+        "Type any name you have built under into the search box.",
+        "Pick your builder from the list to open your page.",
+        "Read the albums credited to you, era by era."
+      ],
+      "href": "/valheim/creators/",
+      "guide": {
+        "h2": "Find the builds you made",
+        "lede": "Every builder recorded on a saved construction piece has a page. Credits come from the world file, not from claims, so the list is complete even where no photograph exists yet.",
+        "walkthrough": [
+          "Open the builders index and press Ctrl K, or click the search box, then type any name you have built under. Aliases count.",
+          "Suggestions appear as you type. Pick one to open that builder's page.",
+          "Use Sort and the era chips to narrow the index, or tick With albums to see only builders with photographed work.",
+          "On your page, each era lists the albums credited to you with piece counts, and the photographs taken of them.",
+          "Your page keeps a Top 8 of the people you built with most, worked out from the pieces you placed side by side.",
+          "If an album is yours, open it and choose I built this. The claim is written to this browser only.",
+          "Nothing leaves the browser until you copy the participation payload and pass it to a coordinator."
+        ],
+        "open_label": "Open the builders index"
+      }
+    },
+    "study": {
+      "aria_label": "Study how the builds were made",
+      "card_h3": "Study the builds",
+      "steps": [
+        "Open the gallery and press Filters.",
+        "Narrow by kind of place, perspective, weather or structure.",
+        "Open a photograph and step through every shot of that build."
+      ],
+      "href": "/valheim/",
+      "guide": {
+        "h2": "Study how the builds were made",
+        "lede": "The gallery is a grid of photographs with a filter panel. It is built for looking closely, one structure at a time.",
+        "walkthrough": [
+          "Press Filters at the top left to open the panel. Facets cover era, region, perspective, kind of place, weather, area and structure.",
+          "Choose a perspective such as eye level or detail to see joinery and proportion rather than silhouettes.",
+          "Sort with the chips at the bottom of the panel: biggest build, tallest, by rank, newest, or starred first.",
+          "Set Page size to load more frames at once.",
+          "Click a photograph to open it. The Where you are breadcrumbs show the era, the area and the build.",
+          "Below the photograph, every shot of this build lets you orbit the same structure from each captured angle."
+        ],
+        "open_label": "Open the gallery"
+      }
+    },
+    "walk": {
+      "aria_label": "Walk the eras, one photograph at a time",
+      "card_h3": "Walk the eras",
+      "steps": [
+        "Start in the earliest era with photographs.",
+        "Use the era chips in the Filters panel to move forward in time.",
+        "Follow the breadcrumbs from a photograph back to its builder."
+      ],
+      "href": "/valheim/era7/",
+      "guide": {
+        "h2": "Walk the eras",
+        "lede": "Each era is a world that was later wiped. The photographs are what remains. Start early and move forward to watch the server's building style change.",
+        "walkthrough": [
+          "Begin in era 7, the earliest era with photographs.",
+          "Open Filters. The era chips at the top switch to any other era that has been photographed.",
+          "Eras 10 and 11 are still being photographed. Their builders are already in the index, and their albums fill in as captures land.",
+          "Open a photograph and use the Where you are breadcrumbs to jump to the surrounding area.",
+          "The builder named on a photograph links to their page, where the same album sits beside their work from other eras."
+        ],
+        "open_label": "Start in era 7"
+      }
+    },
+    "request": {
+      "aria_label": "Ask for new photographs of a build",
+      "card_h3": "Ask for photographs",
+      "steps": [
+        "Open a builder's page and choose Request photo on an album.",
+        "Pick preset styles and add instructions.",
+        "Copy the payload and send it to a coordinator."
+      ],
+      "href": "/valheim/creators/#participation-details",
+      "guide": {
+        "h2": "Ask for new photographs of a build",
+        "lede": "Capture sessions follow requests. A request is a small text payload that you copy and pass on. It is never sent on its own.",
+        "walkthrough": [
+          "Find the builder in the index and open their page.",
+          "Choose Request photo on the album you have in mind. The Request additional photographs dialog opens.",
+          "Tick any of the five preset styles: wide overview, entry-level detail, interior signature shot, height variation, or evening tone study.",
+          "Add photograph instructions, an optional contact preference, and mark it urgent if it is.",
+          "Submit request writes it to Your participation on this device in this browser only.",
+          "Choose Copy participation payload and send the text to a coordinator. Forget my participation clears the browser record."
+        ],
+        "open_label": "Open your participation"
+      }
+    },
+    "data": {
+      "aria_label": "Open the statistics and the raw data",
+      "card_h3": "Read the data",
+      "steps": [
+        "Open the statistics page.",
+        "Fetch the same JSON files the pages read.",
+        "Explore the world itself in the world viewer."
+      ],
+      "href": "/valheim/creators/stats/",
+      "guide": {
+        "h2": "Open the statistics and the raw data",
+        "lede": "Every page here is static. What the pages read, you can read. The files are plain JSON behind the same URLs.",
+        "walkthrough": [
+          "The statistics page summarises builders, albums, photographs and eras across the archive.",
+          "The builders index reads directory.json; each builder page reads its own thread file.",
+          "Each era's gallery reads its own index.json, plus depth.json and judge.json where they exist.",
+          "Builder keys are opaque identifiers. Names are display text; the key is the identity.",
+          "The world viewer opens the saved worlds themselves, with the builds in place."
+        ],
+        "open_label": "Open the statistics"
+      }
+    },
+    "guide": {
+      "aria_label": "Not sure? Learn what each path is for"
+    }
+  },
+  "guide": {
+    "h1": "Field Manual",
+    "lede": "Five paths through the archive, the honest version of how claims and requests work, and where the data lives.",
+    "toc_label": "Contents",
+    "claims": {
+      "h2": "Claims stay in your browser",
+      "paragraphs": [
+        "Credits on this site are derived from the saved world. A claim is a self-reported marker beside those credits, not a change to them.",
+        "When you choose I built this, or submit a photograph request, the record is written to this browser under Your participation on this device. Nothing is transmitted.",
+        "To finish, choose Copy participation payload and send the text to a coordinator. Forget my participation removes the record from this browser."
+      ]
+    },
+    "data": {
+      "h2": "The raw files",
+      "lede": "The same JSON the pages fetch, at stable URLs.",
+      "files": [
+        { "path": "/valheim/creators/directory.json", "what": "Every builder: key, display name, aliases, eras, album, photo and piece counts, tier." },
+        { "path": "/valheim/creators/threads/<builderKey>.json", "what": "One builder's albums per era, with contributors and their piece shares, and the photographs of each album." },
+        { "path": "/valheim/eras.json", "what": "The current era and the list of era galleries." },
+        { "path": "/valheim/<era>/index.json", "what": "One era's photographs with their facets. The current era lives at /valheim/." },
+        { "path": "/valheim/<era>/depth.json", "what": "Optional per-photograph depth measurements." },
+        { "path": "/valheim/<era>/judge.json", "what": "Optional aesthetic scores used by the auto scored sort." }
+      ],
+      "world_viewer": "The world viewer opens the saved worlds with the builds in place."
+    },
+    "eras": {
+      "h2": "Eras",
+      "lede": "Eras 7 through 17. Photographs exist for eras 7, 8, 9, 12, 14, 16 and 17. Eras 10 and 11 are still being photographed."
+    }
+  },
+  "footer": {
+    "tagline": "The Comfy Community archive",
+    "preserved": "Preserved for eternity."
+  }
+}

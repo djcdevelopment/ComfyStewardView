@@ -1,0 +1,2 @@
+Bodoni Moda (Indestructible Type*), Plus Jakarta Sans (Tokotype), JetBrains Mono (JetBrains) are licensed under the SIL Open Font License 1.1.
+https://openfontlicense.org/ — fonts are self-hosted here unmodified as latin/latin-ext woff2 subsets served by Google Fonts.
