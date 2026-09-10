@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const {
   SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, compareBuilders, matchScore,
+  computeTopEight,
 } = require(path.join(__dirname, '..', 'web', 'creators.js'));
 
 function builder(overrides) {
@@ -113,4 +114,89 @@ test('existing matchScore ranks exact match above prefix above substring', () =>
   assert.equal(matchScore(builder({displayName: 'ast'}), q), 0);
   assert.equal(matchScore(builder({displayName: 'astrid'}), q), 1);
   assert.equal(matchScore(builder({displayName: 'vaast'}), q), 2);
+});
+
+// --- Top 8 -----------------------------------------------------------------------
+// The MySpace panel on a builder page: who this builder actually built beside.
+
+function album(buildKey, contributors) {
+  return {buildKey, era: 7, slug: 'era7', label: 'Build ' + buildKey, pieces: 100, contributors, photos: []};
+}
+
+const SELF = 'a'.repeat(32);
+const BIG = 'b'.repeat(32);
+const MID = 'c'.repeat(32);
+const SMALL = 'd'.repeat(32);
+
+test('computeTopEight ranks co-builders by shared pieces, then shared albums', () => {
+  const thread = {
+    builderKey: SELF,
+    eras: [
+      {era: 7, albums: [
+        album('1', [{builderKey: SELF, pieces: 500}, {builderKey: BIG, pieces: 9000}, {builderKey: MID, pieces: 40}]),
+        album('2', [{builderKey: SELF, pieces: 300}, {builderKey: MID, pieces: 30}]),
+      ]},
+      {era: 8, albums: [
+        album('3', [{builderKey: SELF, pieces: 20}, {builderKey: SMALL, pieces: 20}]),
+      ]},
+    ],
+  };
+  const top = computeTopEight(thread);
+  // BIG: min(500, 9000) = 500 over one album. MID: min(500,40) + min(300,30) = 70 over two.
+  // SMALL: min(20, 20) = 20 over one.
+  assert.deepEqual(top, [
+    {builderKey: BIG, sharedAlbums: 1, sharedPieces: 500},
+    {builderKey: MID, sharedAlbums: 2, sharedPieces: 70},
+    {builderKey: SMALL, sharedAlbums: 1, sharedPieces: 20},
+  ]);
+});
+
+test('computeTopEight caps the panel at eight and never lists the builder themselves', () => {
+  const others = Array.from({length: 12}, (_, i) => String(i).padStart(32, 'e'));
+  const thread = {
+    builderKey: SELF,
+    eras: [{era: 7, albums: others.map((key, i) => album('k' + i, [
+      {builderKey: SELF, pieces: 1000},
+      {builderKey: key, pieces: (i + 1) * 10},
+    ]))}],
+  };
+  const top = computeTopEight(thread);
+  assert.equal(top.length, 8);
+  assert.equal(top[0].sharedPieces, 120, 'highest co-contribution leads');
+  assert.ok(!top.some((t) => t.builderKey === SELF), 'the builder is never their own co-builder');
+});
+
+test('computeTopEight counts a legacy contributor (pieces: null) as a shared album worth zero pieces', () => {
+  const thread = {
+    builderKey: SELF,
+    eras: [{era: 16, albums: [
+      {buildKey: 'legacy', era: 16, label: 'Import', pieces: null, photos: [], contributors: [
+        {builderKey: SELF, pieces: null, evidence: 'legacy-leading-contributor'},
+        {builderKey: BIG, pieces: null, evidence: 'legacy-leading-contributor'},
+      ]},
+    ]}],
+  };
+  assert.deepEqual(computeTopEight(thread), [{builderKey: BIG, sharedAlbums: 1, sharedPieces: 0}]);
+});
+
+test('computeTopEight breaks a full tie on builderKey so the panel does not reshuffle', () => {
+  const thread = {
+    builderKey: SELF,
+    eras: [{era: 7, albums: [
+      album('1', [{builderKey: SELF, pieces: 50}, {builderKey: MID, pieces: 50}, {builderKey: BIG, pieces: 50}]),
+    ]}],
+  };
+  assert.deepEqual(computeTopEight(thread).map((t) => t.builderKey), [BIG, MID]);
+});
+
+test('computeTopEight returns nothing for a solo builder, so the panel can hide itself', () => {
+  const solo = {builderKey: SELF, eras: [{era: 7, albums: [album('1', [{builderKey: SELF, pieces: 724}])]}]};
+  assert.deepEqual(computeTopEight(solo), []);
+  assert.deepEqual(computeTopEight(null), []);
+  assert.deepEqual(computeTopEight({builderKey: SELF, eras: []}), []);
+});
+
+test('computeTopEight survives an album with no contributors array', () => {
+  const thread = {builderKey: SELF, eras: [{era: 7, albums: [{buildKey: 'x', label: 'x', pieces: 1, photos: []}]}]};
+  assert.deepEqual(computeTopEight(thread), []);
 });
