@@ -228,22 +228,68 @@ distinct normalised handles, `claims` is built claims, `disavowals` is disavow c
 and every write goes through `archive.save`. `status` prints the counts, the open requests,
 the pending tags and the three commands that publish what has been confirmed.
 
-### Phase 2: bed evidence
+### Bed evidence
 
-Bed ownership is parsed today for one purpose only — names. `community.py` reads it into
-`name_observations` so a recorded owner can be matched against the creators saved on
-construction pieces. It is never joined to a build, and no bed influences who is credited
-for anything. That is the standing invariant: **identity is never derived from nearby
-structures.** A bed inside a footprint proves somebody slept there, not that they laid a
-single piece of the roof over it.
+The standing invariant first, because everything below is shaped by it: **identity is never
+derived from nearby structures.** A bed inside a footprint proves somebody slept there, not
+that they laid a single piece of the roof over it. So bed ownership lands as its own
+evidence type, `bed-owner-in-footprint`, in its own key beside `contributors[]` and never
+inside it — a reader has to be able to see which claim rests on a piece and which rests on
+a bed, and to reject the second without losing the first.
 
-Joining bed ownership to builds is therefore a schema change, not a query. It would need
-`analyze_era` to emit the join and a `RECIPE_HASH` bump so every era re-derives, a table in
-`community_store.py` to hold it, an entry in `archive.py`'s allowlist, and an entry in
-`gallery.py`'s album allowlist before any of it could reach a page. It must land as its own
-evidence type, `bed-owner-in-footprint`, alongside `saved-piece-creator` rather than folded
-into it — a reader has to be able to see which claim rests on a piece and which rests on a
-bed, and be able to reject the second without losing the first.
+`community.py`'s `bed_residency()` joins every BED with a nonzero `owner_id` and a finite
+position against each build's bounding box, expanded by `marginXZ` 4 m and `marginY` 3 m.
+The margins differ on purpose: sideways, a bed pushed against the inside of a wall sits
+outside the bounding box of the pieces enclosing it, while three metres up is the next
+storey of the same house and a taller vertical margin would hand a ground floor its
+neighbour's sleeper. A bed inside two boxes — a longhouse standing in a walled compound,
+which clusters as its own build — belongs to the **smallest XZ footprint**: the compound
+contains the bed only by containing the house. Ties break on `buildKey`, so the answer is
+stable. Only `build_key`, the owning character and a count leave the function; coordinates
+and `zdo_index` never do.
+
+**It does not ride `RECIPE_HASH`.** That hash is baked into every `buildKey`
+(`sha256(sourceKey + RECIPE_HASH + membership_hash)`) and into the analysis cache directory
+name, so bumping it would rotate all 318,319 keys and break every published album URL,
+capture manifest and volunteer claim. `BED_RECIPE` is hashed separately as
+`BED_RECIPE_HASH`. When `analyze_era` finds a cached receipt whose `bedRecipeSha256` does
+not match, it re-derives residents in place over the same verified package — reading only
+`zdo` — stamps `bedRecipe`, `bedRecipeSha256` and `bedResidencyGeneratedAt`, saves, and
+prints `residents re-derived (bed recipe …), build keys unchanged`. Clustering never runs
+again, `membership.parquet` is not rewritten, and no key moves. There is no new flag and
+`Invoke-EraArchive.ps1` is unchanged.
+
+`project()` maps each resident's character through `builder_key()` **directly, never through
+`ensure()`**. `ensure()` appends the buildKey to `builder["builds"]`, and `gallery.py` turns
+every key there into an album on that builder's thread with a fallback full credit of
+`{pieces: <every piece>, share: 1.0}` — crediting somebody with an entire house because
+their bed is in it is exactly the inference this archive refuses to make. The merged list is
+always reassigned, never inherited from the analysis receipt: that copy holds raw character
+IDs, and the build is a shallow copy. Public albums carry
+
+```json
+"residents": [{"builderKey": "<32 hex>", "beds": 2, "evidence": "bed-owner-in-footprint"}]
+```
+
+whitelisted field by field in `gallery.py`, the way `sanitize_confirmed_tags()` whitelists a
+tag. Legacy imports never carry the key at all.
+
+**Known limitation — "Recorded builder".** A resident usually has no public name. A builder
+record exists because a saved piece creator or a recorded `ownerName` put one there; a bed
+whose ZDO carries neither gives no record at all, and even a resident who does have one is
+skipped by the directory when they hold no builds (`gallery.py` requires `builder["builds"]`).
+The album shows those sleepers as "Recorded builder" and leaves it there. Publishing a name
+the archive has never published would be the worse answer. This is also why `verify.py`
+reconciles `build_resident` **to the build only** — a residency pointing at a build that is
+not in the table is a lost join and still fails, but a residency whose builder has no row is
+the normal case, counted as `build_resident_without_builder` rather than raised.
+
+The rest of the plumbing: `community_store.py` writes a `build_resident` table
+(`build_key`, `builder_key`, `beds`, `evidence_type`) — its own table, not extra columns on
+`build_contributor`, so the two evidence types stay separable; `archive.py`'s community table
+allowlist admits it; `verify.py` counts it only after finding it in `information_schema`,
+because `write()` skips a table with no rows and the view is genuinely absent on an archive
+that has none. `analysis/catalog.json` records `bedRecipe` beside `recipe`.
 
 `world_bundle.py` accepts an explicit `ready-inputs.json`: `defaultEra`, and an `eras`
 list containing `slug`, `snapshotId`, `cache`, optional `context` (the directory containing its
