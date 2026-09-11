@@ -384,6 +384,15 @@ def cmd_status(args):
 
 
 def main():
+    # A Windows console still defaults to a legacy code page, and everything this prints
+    # is either a separator or a handle somebody typed -- printing one must not be able to
+    # kill the command that has already written the file. Reconfigure rather than strip:
+    # the output stays readable wherever UTF-8 works, and degrades instead of raising.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output-root", type=Path, required=True,
                         help="the archive output root; the file lives at <output-root>/analysis/participation.json")

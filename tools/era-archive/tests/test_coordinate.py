@@ -326,6 +326,18 @@ class ConfirmAndForgetTests(CoordinateTestCase):
         for private in (HANDLE, NOTE, CONTACT):
             self.assertNotIn(private, raw, f"forget left '{private}' behind")
 
+    def test_a_handle_the_console_cannot_spell_does_not_kill_the_command(self):
+        # Real handles in this archive include "Talᵀʳᵒˡˡᵖᵘⁿᶜʰᵉʳ". A legacy Windows console
+        # cannot encode that, and the write has already happened by the time it prints.
+        exotic = "Talᵀʳᵒˡˡᵖᵘⁿᶜʰᵉʳ"
+        self.ingest({"schema": coordinate.EXPORT_SCHEMA, "participant": exotic,
+                     "claims": [claim("claim-x", build_key=OTHER_BUILD, participant=exotic)]},
+                    "exotic.json")
+        printed = run("--output-root", self.root, "status")
+        self.assertIn("participants   2", printed)
+        run("--output-root", self.root, "forget", exotic)
+        self.assertEqual(1, read_file(self.root)["participants"])
+
     def test_status_names_the_next_three_commands_with_this_roots_paths(self):
         printed = run("--output-root", self.root, "status")
         self.assertIn("1 built · 0 disavowed", printed)
