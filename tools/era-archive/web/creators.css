@@ -1254,6 +1254,21 @@ textarea:focus-visible,
   object-fit: cover;
 }
 
+/* No tile for this key (manifest missing, or the file 404ed): the ribbon parks the brand
+   emblem on the slate the way the hero avatar does, one level down inside the tile. */
+.top8-chip .top8-portrait > .top8-emblem {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.top8-chip .top8-portrait > .top8-emblem > svg {
+  width: 56%;
+  height: auto;
+  display: block;
+}
+
 /* One line, clipped: a long recorded name must not push the tier off the chip. */
 .top8-name {
   display: block;
