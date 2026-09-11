@@ -165,6 +165,23 @@ written before disavowal existed carries no `kind` and reads as `built`. Standin
 the built claim only: a disavowed build offers no photo request and rides in no kinship
 export, and the card says "Disavowed by …" rather than "Claimed by …".
 
+**Pair view.** Picking a name off the Top 8 ribbon opens `section#pair-view` under it:
+the builder whose page this is, that one co-builder, the builds the two of them placed
+pieces on, and how those pieces divide. `web/pair.js` derives all of it in the browser
+from the thread, `directory.json` and `participation.json` — there is no pair file and no
+endpoint, and `buildKinshipPair()` publishes nothing the thread does not already state.
+Kinship affinity is `Σ min(shareA, shareB) × max(0, log10(pieces))` over the shared
+builds: the smaller share, because the overlap two people can claim on one structure is
+bounded by the smaller contribution, and the log because a 40,000-piece keep is a bigger
+shared work than a 400-piece hut but not a hundred times bigger. A legacy import, which
+knows no shares, scores zero rather than a guess, and so does a one-piece build. Tiers
+band the Top 8 ranking — I for 1–2, II for 3–5, III for 6–8 — and a co-builder outside
+the first eight still gets a pair view, just no tier. A pair is **confirmed kin** once a
+coordinator has confirmed a tag naming both of them on a build they share, in either
+direction, and **recorded kin** otherwise: the saved world shows they built together,
+which is a real thing to say and is nobody's claim about anybody. The ally, the active
+build and the mode ride in the URL as `?kin=&build=&view=`, so a pair is a link.
+
 `gallery.py` publishes `participation.json` beside the directory: schema
 `steward-creator-participation-public/v1`, carrying the counts (`participants`, `claims`,
 `disavowals`, `requests`, `openRequests`) plus `confirmedTags`. It is projected from the

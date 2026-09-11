@@ -625,6 +625,22 @@ const initCreatorsPage = async () => {
   const builderKey = segments.find((s) => /^[a-f0-9]{32}$/.test(s));
   const isThread = Boolean(builderKey);
   const base = new URL(isThread ? '../' : './', location.href);
+
+  // A shared pair link: ?kin=<co-builder>&build=<one of the builds they share>&view=…
+  // Validated here, once, against the same hex shapes the rest of the page uses, so a
+  // hand-edited or truncated key never reaches a selector or a fetch. Anything that does
+  // not match is dropped rather than corrected -- a half-read link should open the plain
+  // profile, not somebody else's pairing. pair.js owns the URL from mount onwards.
+  const pairQuery = new URLSearchParams(location.search);
+  const hexParam = (name, pattern) => {
+    const value = String(pairQuery.get(name) || '');
+    return pattern.test(value) ? value : null;
+  };
+  const initialPair = {
+    kin: hexParam('kin', /^[a-f0-9]{32}$/),
+    build: hexParam('build', /^[a-f0-9]{64}$/),
+    view: ['photos', 'viewer'].includes(pairQuery.get('view')) ? pairQuery.get('view') : null,
+  };
   const endpoint = document.querySelector('meta[name="creator-participation-endpoint"]')?.content?.trim() || '';
   const state = StewardParticipation.load();
   let directory = null;
@@ -662,6 +678,28 @@ const initCreatorsPage = async () => {
       return null;
     }
   };
+
+  // Set once the pair view has actually been mounted. A thread whose every album is solo
+  // renders no ribbon and no host, and an arrival (names, tags, portraits) must not be
+  // announced to a view that was never put on the page.
+  let pairMounted = false;
+
+  // The portrait manifest is wanted in three places on a thread page -- the hero avatar,
+  // every Top 8 chip, and the pair view -- and it is one small optional file. One promise,
+  // read once and shared, instead of ten fetches racing each other on a phone. The
+  // resolved manifest is kept so a caller that arrives after the read (the pair context)
+  // can have it synchronously.
+  let portraitManifest = null;
+  let portraitsPromise = null;
+  function readPortraits() {
+    if (!portraitsPromise) {
+      portraitsPromise = readOptional('/chronicles/portraits.json').then((manifest) => {
+        portraitManifest = manifest || null;
+        return portraitManifest;
+      });
+    }
+    return portraitsPromise;
+  }
 
   // Cards used to render "Era 17 · Era 16 · Era 14 · ...", which wraps to four lines on a
   // phone and pushes the photo count out of view. Runs of consecutive eras collapse.
@@ -1240,8 +1278,13 @@ const initCreatorsPage = async () => {
   // whichever order the network hands them over, and whichever arrives second is the one
   // that can actually draw. Clearing first makes the second call a redraw, not a
   // duplicate, and makes a re-rendered thread (forget-participation) safe too.
+  //
+  // The sweep is scoped to the album cards this function actually draws into. It used to
+  // clear every `.kin-chip` on the page, which was harmless while the album cards were
+  // the only thing wearing one -- and destructive the moment the pair view started
+  // drawing laurel chips of its own, because participation.json lands after the mount.
   function renderConfirmedTagChips(doc) {
-    for (const stale of document.querySelectorAll('.kin-chip')) stale.remove();
+    for (const stale of document.querySelectorAll('article.album .kin-chip')) stale.remove();
     const tags = doc?.confirmedTags;
     if (!Array.isArray(tags) || !tags.length) return;
     const labels = new Map([...KINSHIP_TAGS.relationship, ...KINSHIP_TAGS.role]);
@@ -1261,11 +1304,13 @@ const initCreatorsPage = async () => {
     }
   }
 
-  // Resident anchors hydrate through the same hook and for the same reason -- the thread
-  // paints before 818 KB of directory.json lands -- even though most of them will never
-  // find a name: a sleeper with no saved pieces has no directory record to fill in from.
+  // Every hook is `[data-builder-key]` and every one holds a name: the album credit anchors,
+  // the resident anchors ("slept here"), and the Top 8 chips' name spans (a chip is a
+  // <button>, so its name cannot be an <a>). Residents ride the same hook for the same
+  // reason -- the thread paints before 818 KB of directory.json lands -- even though most of
+  // them never find a name: a sleeper with no saved pieces has no directory record.
   function hydrateCredits() {
-    for (const anchor of document.querySelectorAll('a.credit[data-builder-key], a.resident[data-builder-key]')) {
+    for (const anchor of document.querySelectorAll('a.credit[data-builder-key], a.resident[data-builder-key], .top8-chip .top8-name[data-builder-key]')) {
       const name = buildersByKey.get(anchor.dataset.builderKey)?.displayName;
       if (name) anchor.textContent = name;
     }
@@ -1278,14 +1323,71 @@ const initCreatorsPage = async () => {
     return `Builder ${key.slice(0, 8)}`;
   }
 
-  // The panel every profile page has had since 2005. Names ride the same
-  // `a.credit[data-builder-key]` hook the album credit lines use, so hydrateCredits()
-  // fills them in when directory.json arrives -- no second fetch for this.
+  // Tier I is the shield-wall pair either side of you, Tier II the rest of the front rank,
+  // Tier III the ones behind it. Three bands rather than eight ranks because "rank 6" and
+  // "rank 7" is a distinction nobody reads; the exact rank stays in the tier's title.
+  function tierFor(rank) {
+    if (rank <= 2) return 'Tier I';
+    if (rank <= 5) return 'Tier II';
+    return 'Tier III';
+  }
+
+  // One tile in the ribbon. It starts on the archive's own emblem and swaps to this
+  // builder's face if the portrait manifest names one -- the same rule, and the same
+  // slot, the hero avatar uses.
+  function ribbonPortrait(key) {
+    const holder = node('span', null, 'top8-portrait');
+    holder.dataset.pairPortraitKey = key;
+    holder.setAttribute('aria-hidden', 'true');
+    holder.append(emblemSpan());
+    readPortraits().then((manifest) => paintPortrait(holder, key, manifest, {
+      sizes: '64px',
+      fallback: emblemSpan,
+    }));
+    return holder;
+  }
+
+  // A ribbon entry is a button, not a link: clicking it opens the pair view in place
+  // rather than navigating away, so the name inside is a <span> (an <a> inside a
+  // <button> is not a thing) carrying the same data-builder-key hydrateCredits() reads.
+  // `rank` is null for the ninth chip a deep link can add, which has no rank to state.
+  function top8Chip(entry, rank) {
+    const chip = node('button', null, rank == null ? 'top8-chip is-extra' : 'top8-chip');
+    chip.type = 'button';
+    chip.dataset.builderKey = entry.builderKey;
+    if (rank != null) chip.dataset.rank = String(rank);
+    chip.setAttribute('aria-pressed', 'false');
+    chip.title = `${entry.sharedAlbums.toLocaleString()} shared albums · ${entry.sharedPieces.toLocaleString()} shared pieces`;
+    chip.append(ribbonPortrait(entry.builderKey));
+    const name = node('span',
+      buildersByKey.get(entry.builderKey)?.displayName || placeholderName(entry.builderKey),
+      'top8-name');
+    name.dataset.builderKey = entry.builderKey;
+    chip.append(name);
+    if (rank != null) {
+      const tier = node('span', tierFor(rank), 'top8-tier');
+      tier.title = `Rank ${rank} of this builder's Top 8`;
+      chip.append(tier);
+    }
+    chip.onclick = () => {
+      if (typeof StewardPair === 'undefined') return;
+      const active = StewardPair.select(entry.builderKey);
+      // The pressed state is never set here: it is drawn from the `pair:change` the view
+      // announces, so a select that lands somewhere else cannot leave the ribbon lying.
+      // The panel sits below the ribbon and is off-screen on a phone, so bring it up.
+      if (active && $('pair-view')) $('pair-view').scrollIntoView({block: 'nearest'});
+    };
+    return chip;
+  }
+
+  // The panel every profile page has had since 2005, as the selector for the pair view
+  // below it. Names ride the same `data-builder-key` hook the album credit lines use, so
+  // hydrateCredits() fills them in when directory.json arrives -- no second fetch for this.
   function renderTopEight() {
     const ranked = computeTopEight(thread);
     if (!ranked.length) return null;
     const panel = node('section', null, 'top8');
-    panel.append(node('h2', 'Top 8'));
+    panel.append(node('h2', 'Top 8 · Shield-wall fellows'));
     // Top 8 is the first eight names; the kinship tree is all of them, era by era.
     const kinshipLink = link('Open the kinship tree', new URL(`kinship/?builder=${thread.builderKey}`, base));
     kinshipLink.id = 'top8-kinship-link';
@@ -1293,17 +1395,13 @@ const initCreatorsPage = async () => {
     panel.append(kinshipLink);
     panel.append(node('p', 'The builders this builder placed the most pieces beside', 'top8-sub'));
     const grid = node('div', null, 'top8-grid');
-    for (const entry of ranked) {
-      const card = node('article', null, 'top8-card');
-      const name = buildersByKey.get(entry.builderKey)?.displayName || placeholderName(entry.builderKey);
-      const anchor = link(name, new URL(`${entry.builderKey}/`, base));
-      anchor.className = 'credit';
-      anchor.dataset.builderKey = entry.builderKey;
-      card.append(anchor);
-      card.append(node('p',
-        `${entry.sharedAlbums.toLocaleString()} shared albums · ${entry.sharedPieces.toLocaleString()} shared pieces`,
-        'top8-meta'));
-      grid.append(card);
+    ranked.forEach((entry, index) => grid.append(top8Chip(entry, index + 1)));
+    // A shared link can name a co-builder who is real but outside the first eight -- the
+    // kinship ledger lists every one of them. Rather than open on a selection the ribbon
+    // cannot show, that builder gets a ninth chip of their own, ranked nowhere.
+    if (initialPair.kin && !ranked.some((entry) => entry.builderKey === initialPair.kin)) {
+      const extra = computeTopEight(thread, Infinity).find((entry) => entry.builderKey === initialPair.kin);
+      if (extra) grid.append(top8Chip(extra, null));
     }
     panel.append(grid);
     return panel;
@@ -1539,35 +1637,66 @@ const initCreatorsPage = async () => {
     return holder;
   }
 
+  // The emblem again, as phrasing content. The hero's fallback is a <div>, which cannot
+  // be nested inside the Top 8 chip's <span> tile; the drawing is identical.
+  function emblemSpan() {
+    const holder = node('span', null, 'top8-emblem');
+    const emblem = document.querySelector('.brand-emblem');
+    if (emblem) {
+      const copy = emblem.cloneNode(true);
+      copy.removeAttribute('class');
+      copy.removeAttribute('width');
+      copy.removeAttribute('height');
+      holder.append(copy);
+    }
+    return holder;
+  }
+
+  // Which face a builder wears, resolved against the manifest. The hero and the ribbon
+  // must agree, so the slot rule (portraitIndex over the manifest's own tile count) and
+  // the URL shapes are written once here instead of twice.
+  function portraitSources(manifest, key) {
+    const tiles = Array.isArray(manifest?.tiles) ? manifest.tiles : [];
+    const count = Number(manifest?.count) || 0;
+    if (!count || !tiles.length) return null;
+    const tile = tiles[portraitIndex(key, count)];
+    if (!tile || !tile.file) return null;
+    const prefix = manifest.base || '/chronicles/img/portraits/';
+    const version = tile.v ? `?v=${tile.v}` : '';
+    return {
+      src: `${prefix}${tile.file}${version}`,
+      srcset: tile.thumb ? `${prefix}${tile.thumb}${version} 128w, ${prefix}${tile.file}${version} 512w` : '',
+    };
+  }
+
+  // Swap on load, not on assignment: a manifest that names a tile this server does not
+  // hold would otherwise replace the emblem with a broken-image glyph. `fallback` redraws
+  // whatever the holder was showing before the attempt.
+  function paintPortrait(holder, key, manifest, {sizes, fallback}) {
+    const sources = portraitSources(manifest, key);
+    if (!sources) return;
+    const img = document.createElement('img');
+    img.alt = '';
+    img.width = 512;
+    img.height = 512;
+    img.decoding = 'async';
+    if (sizes) img.sizes = sizes;
+    if (sources.srcset) img.srcset = sources.srcset;
+    img.onload = () => holder.replaceChildren(img);
+    img.onerror = () => holder.replaceChildren(fallback());
+    img.src = sources.src;
+  }
+
   function renderHeroAvatar() {
     const holder = $('hero-avatar');
     if (!holder) return;
     holder.replaceChildren(emblemFallback());
     // Optional read: the portrait lane deploys separately, and a builder page must open
     // whether or not it has. Same semantics the directory's optional data already uses.
-    readOptional('/chronicles/portraits.json').then((manifest) => {
-      const tiles = Array.isArray(manifest?.tiles) ? manifest.tiles : [];
-      const count = Number(manifest?.count) || 0;
-      if (!count || !tiles.length) return;
-      const tile = tiles[portraitIndex(thread.builderKey, count)];
-      if (!tile || !tile.file) return;
-      const prefix = manifest.base || '/chronicles/img/portraits/';
-      const version = tile.v ? `?v=${tile.v}` : '';
-      const img = document.createElement('img');
-      img.alt = '';
-      img.width = 512;
-      img.height = 512;
-      img.decoding = 'async';
-      img.sizes = '(max-width:680px) 96px, 160px';
-      if (tile.thumb) {
-        img.srcset = `${prefix}${tile.thumb}${version} 128w, ${prefix}${tile.file}${version} 512w`;
-      }
-      // Swap on load, not on assignment: a manifest that names a tile this server does
-      // not hold would otherwise replace the emblem with a broken-image glyph.
-      img.onload = () => holder.replaceChildren(img);
-      img.onerror = () => holder.replaceChildren(emblemFallback());
-      img.src = `${prefix}${tile.file}${version}`;
-    });
+    readPortraits().then((manifest) => paintPortrait(holder, thread.builderKey, manifest, {
+      sizes: '(max-width:680px) 96px, 160px',
+      fallback: emblemFallback,
+    }));
   }
 
   function renderHeroAliases() {
@@ -1660,6 +1789,60 @@ const initCreatorsPage = async () => {
     if ($('look-out')) $('look-out').hidden = false;
   }
 
+  // Where the pair view sends a visitor who picks one of the builds a pairing shares.
+  // The card may be several "Show more albums" pages down inside its era, so open that
+  // era and page until it exists. The loop is capped and stops the moment there is no
+  // more paging to do: a buildKey that belongs to no album on this thread must not spin.
+  function revealAlbum(buildKey) {
+    if (!/^[a-f0-9]{64}$/.test(String(buildKey || ''))) return null;
+    const find = () => document.querySelector(`article.album[data-build-key="${buildKey}"]`);
+    let card = find();
+    if (!card) {
+      const era = (thread?.eras || []).find((e) => (e.albums || []).some((a) => a.buildKey === buildKey));
+      if (!era) return null;
+      const section = $('content').querySelector(`details[data-era="${era.era}"]`);
+      if (!section) return null;
+      section.open = true;
+      const more = section.querySelector('button.more-albums');
+      // One page per click. The cap is generous enough for the richest thread in the
+      // archive (1,563 albums, forty to a page) and finite either way.
+      for (let guard = 0; guard < 200 && !find(); guard += 1) {
+        if (!more || more.hidden) break;
+        more.click();
+      }
+      card = find();
+    }
+    if (!card) return null;
+    card.scrollIntoView({block: 'start'});
+    // The heading is the card's own name and is not focusable on its own; a programmatic
+    // -1 makes it a focus target without putting it in the tab order.
+    const heading = card.querySelector('h3');
+    if (heading) {
+      if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+      heading.focus();
+    }
+    return card;
+  }
+
+  // Everything pair.js is allowed to know, and nothing it would have to reach into the
+  // page for. `builderFor` is a function rather than the Map itself because buildersByKey
+  // is REPLACED when directory.json lands -- a Map captured at mount time would stay
+  // empty for the life of the page.
+  function pairContext() {
+    return {
+      thread,
+      builderFor: (key) => buildersByKey.get(key) || null,
+      participation: state,
+      confirmedTags: externalParticipation?.confirmedTags || [],
+      portraits: portraitManifest,
+      initial: {kin: initialPair.kin, build: initialPair.build, view: initialPair.view},
+      openPhoto: openPhotoViewer,
+      revealAlbum,
+      base,
+      kinshipHref: (key) => new URL(`kinship/?builder=${key}`, base),
+    };
+  }
+
   function renderThread() {
     $('filters').hidden = true;
     if ($('search-hero')) $('search-hero').hidden = true;
@@ -1679,6 +1862,13 @@ const initCreatorsPage = async () => {
 
     const h = node('p', null, 'muted');
     h.id = 'thread-participation-line';
+    // A second render (forget-participation redraws the thread) wipes #content, and with
+    // it the node the pair view drew into. Say so before the node disappears, rather than
+    // leaving a mounted view holding an element that is no longer on the page.
+    if (pairMounted) {
+      StewardPair.unmount();
+      pairMounted = false;
+    }
     $('content').className = '';
     $('content').replaceChildren(h);
     refreshThreadParticipationLine();
@@ -1688,18 +1878,46 @@ const initCreatorsPage = async () => {
 
     // Above the era sections: who this builder worked beside, before the 1,562 albums.
     const topEight = renderTopEight();
-    if (topEight) $('content').append(topEight);
+    if (topEight) {
+      $('content').append(topEight);
+      // The pair view's canvas. This page owns where it sits and what context it gets;
+      // everything inside it is pair.js's, which is why nothing here ever writes to it.
+      // It only exists where the ribbon does -- with no co-builder there is no pair.
+      const host = node('section');
+      host.id = 'pair-view';
+      host.className = 'pair-view';
+      host.hidden = true;
+      $('content').append(host);
+      if (typeof StewardPair !== 'undefined') {
+        StewardPair.mount(host, pairContext());
+        pairMounted = true;
+        // Both optional reads usually land after the thread -- directory.json is 818 KB
+        // against a few KB -- but not always, and an arrival that beat the mount would
+        // otherwise never be announced at all.
+        if (directory) StewardPair.update({names: true});
+        if (externalParticipation) StewardPair.update({confirmedTags: externalParticipation.confirmedTags || []});
+        // The manifest is an optional file that usually lands after the mount.
+        readPortraits().then((manifest) => {
+          if (manifest && pairMounted) StewardPair.update({portraits: manifest});
+        });
+      }
+    }
 
     const allEraBlocks = thread.eras.slice().sort((a, b) => b.era - a.era);
     for (const era of allEraBlocks) {
       const section = node('details');
+      // revealAlbum() has to find the era that holds one build without walking the DOM
+      // for it, and a deep-linked build can be on any of them.
+      section.dataset.era = String(era.era);
       section.open = true;
       const photographed = era.albums.filter((a) => a.photos?.length).length;
       section.append(node('summary',
         `Era ${era.era} · ${era.albums.length.toLocaleString()} albums · ${photographed.toLocaleString()} photographed`));
 
       let shown = 0;
-      const more = node('button', 'Show more albums');
+      // Classed, not found by position: the album cards inside this section carry buttons
+      // of their own and they are inserted BEFORE this one.
+      const more = node('button', 'Show more albums', 'more-albums');
       const appendAlbums = () => {
         for (const album of era.albums.slice(shown, shown + PAGE_SIZE_ALBUMS)) {
           section.insertBefore(buildAlbumCard(album, thread.builderKey), more);
@@ -1908,6 +2126,19 @@ const initCreatorsPage = async () => {
     };
     openParticipationIfLinked();
     addEventListener('hashchange', openParticipationIfLinked);
+    // The pair view announces which co-builder it settled on -- from a ribbon click, from
+    // its own internal navigation, or from the deep link it resolved at mount. The ribbon
+    // reads its pressed state from that announcement and never from the click that caused
+    // it, so the two cannot disagree. Delegated on #content, which outlives every render.
+    if ($('content')) {
+      $('content').addEventListener('pair:change', (event) => {
+        const chosen = event.detail?.ally;
+        const ally = typeof chosen === 'string' ? chosen : (chosen?.builderKey || null);
+        for (const chip of document.querySelectorAll('.top8-chip')) {
+          chip.setAttribute('aria-pressed', String(Boolean(ally) && chip.dataset.builderKey === ally));
+        }
+      });
+    }
     setSearchHotkeyLabel();
     wireGlobalHotkey();
   }
@@ -1934,11 +2165,15 @@ const initCreatorsPage = async () => {
         directory = doc;
         buildersByKey = new Map(directory.builders.map((b) => [b.builderKey, b]));
         hydrateCredits();
+        // Same arrival, second surface: the pair view holds names of its own and reads
+        // them through ctx.builderFor, which now answers.
+        if (pairMounted) StewardPair.update({names: true});
       });
       readOptional('participation.json').then((doc) => {
         externalParticipation = doc;
         updateParticipantSnapshot();
         renderConfirmedTagChips(doc);
+        if (pairMounted) StewardPair.update({confirmedTags: doc?.confirmedTags || []});
       });
       return;
     }

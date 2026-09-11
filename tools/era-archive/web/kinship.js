@@ -205,6 +205,12 @@ const initKinshipPage = async () => {
   const kinPercent = (share) => `${Math.round(share * 100)}%`;
   const builderHref = (key) => new URL(`${key}/`, base).href;
   const kinshipHref = (key) => new URL(`kinship/?builder=${key}`, base).href;
+  // The pair view lives on the anchor's own profile page, so a link into it is that page
+  // plus the co-builder it should open on -- and, where the row knows one, the build the
+  // two of them share. The anchor's own node never gets one: a pairing of somebody with
+  // themselves is not a thing this page can draw.
+  const pairHref = (key, buildKey) => new URL(
+    `${anchor}/?kin=${key}${buildKey ? `&build=${buildKey}` : ''}`, base).href;
 
   const svgEl = (tag, attrs = {}) => {
     const el = document.createElementNS(SVG_NS, tag);
@@ -522,7 +528,10 @@ const initKinshipPage = async () => {
   }
 
   function nodeElement(key, {isAnchor = false, meta = '', rank = 0} = {}) {
-    const a = kinLink('', builderHref(key));
+    // A co-builder's portrait opens the two of them together rather than dropping the
+    // reader on a cold profile: the tree is a picture of pairings, so its nodes lead to
+    // the pairing. The anchor keeps its own page.
+    const a = kinLink('', isAnchor ? builderHref(key) : pairHref(key));
     // Every second lane on a side carries its label a row lower: at twelve lanes the
     // neighbours are close enough that two labels at the same height overprint.
     const alt = !isAnchor && Math.floor(rank / 2) % 2 === 1;
@@ -693,6 +702,11 @@ const initKinshipPage = async () => {
     const action = kinNode('td');
     const eligible = eligibleBuildsFor(branch.builderKey);
     action.append(tagButton(eligible[0] || null, branch.builderKey, 'Tag'));
+    // The ledger row knows the pairing but not which of its builds to open on, so this
+    // link names only the co-builder and lets the pair view pick.
+    const pair = kinLink('Pair view', pairHref(branch.builderKey));
+    pair.className = 'kin-open kin-pair-link';
+    action.append(pair);
     tr.append(action);
     return tr;
   }
@@ -787,6 +801,11 @@ const initKinshipPage = async () => {
     // A build this browser has disavowed carries no Tag control at all, not an inert one:
     // "claim this first" is the wrong nudge for a build you have just said is not yours.
     if (!disavowalFor(build.buildKey)) side.append(tagButton(build, contributorKey, label));
+    // Unlike the ledger row, this one is already standing on one build -- so the pair
+    // view opens on that build rather than on whichever the pairing leads with.
+    const pair = kinLink('Pair view', pairHref(contributorKey, build.buildKey));
+    pair.className = 'kin-open kin-pair-link';
+    side.append(pair);
     row.append(side);
     return row;
   }
