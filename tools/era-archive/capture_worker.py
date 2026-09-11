@@ -206,6 +206,19 @@ class Worker:
             verify(Path(spec['path']),spec)
             cache_copy=worlds/Path(spec['path']).name
             shutil.copy2(spec['path'],cache_copy);cache_copy.chmod(0o600)
+        # Unity writes PlayerPrefs -- every graphics setting -- under XDG_CONFIG_HOME,
+        # which is this scratch tree. Without a seed every launch is a first launch on
+        # Unity defaults, whatever the operator set. And the path moved: the pinned
+        # client keeps prefs at unity3d/IronGate/Valheim/prefs, while the 1.0 Linux
+        # build (25185596) lost its company/product name and Unity fell back to
+        # unity3d/unknown/unknown/prefs. Measured 2026-09-11: a seed at the old path
+        # was never read by 1.0. Seed both so the build cannot choose wrong.
+        prefs=self.runtime.get('prefs')
+        if prefs:
+            verify(Path(prefs['path']),prefs)
+            for pdir in (saves, dest/'xdg/unity3d/unknown/unknown'):
+                pdir.mkdir(parents=True,exist_ok=True)
+                prefs_copy=pdir/'prefs';shutil.copy2(prefs['path'],prefs_copy);prefs_copy.chmod(0o600)
         reason='operator-stop' if self.stopped() else self.limit()
         if reason:
             write(dest/'result.json',{'success':False,'reason':reason,'launched':False})
