@@ -679,15 +679,16 @@ const initCreatorsPage = async () => {
     }
   };
 
+  // Set once the pair view has actually been mounted. A thread whose every album is solo
+  // renders no ribbon and no host, and an arrival (names, tags, portraits) must not be
+  // announced to a view that was never put on the page.
+  let pairMounted = false;
+
   // The portrait manifest is wanted in three places on a thread page -- the hero avatar,
   // every Top 8 chip, and the pair view -- and it is one small optional file. One promise,
   // read once and shared, instead of ten fetches racing each other on a phone. The
   // resolved manifest is kept so a caller that arrives after the read (the pair context)
   // can have it synchronously.
-  // Set once the pair view has actually been mounted. A thread whose every album is solo
-  // renders no ribbon and no host, and an arrival (names, tags, portraits) must not be
-  // announced to a view that was never put on the page.
-  let pairMounted = false;
   let portraitManifest = null;
   let portraitsPromise = null;
   function readPortraits() {
