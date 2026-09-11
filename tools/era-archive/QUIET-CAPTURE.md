@@ -192,6 +192,34 @@ python3 retire_builds.py --root <campaign root> --retire-file retire-<era>.json 
 The 2026-09-09 Era 14 application is recorded in
 [the template retirement receipt](../../docs/era14-template-retirement-2026-09-09.md).
 
+## Pruning world copies from finished attempts
+
+Every attempt copies the era's world into its own `xdg/` tree, and the supervisor removes
+that copy again only when the attempt succeeds. A campaign that stopped, failed or was
+re-launched a few times is therefore carrying the same gigabyte save several times over
+(Era 10 held 21 such files, 19.9 GB). `prune_run_worlds.py` removes exactly those files
+and nothing else: only `worlds_local/<world>.db`, `.db.old` and `_backup_*.db` under
+`runs/<attempt>/xdg/` (or an explicit `--extra-root` such as a smoke run's `saves/`), only in
+campaigns named on the command line, and only when the campaign is idle -- `status.json`
+and `state.json` in an idle state, no `gamePid`, `worker.lock` free, no process whose
+command line or `XDG_CONFIG_HOME` names the campaign. Attempt directories, `dispatch.json`,
+`result.json`, the logs, `.fwl` files, texture caches, characters, `source/`, `images/` and
+`staged-worlds/` are never touched, so the rule above -- never delete an attempt directory
+-- holds. Campaigns whose name starts with `era11-detail` are refused outright.
+
+It runs from OMEN and ships itself to the capture host over `bash -s` (the
+`shuttle_masters.py` rule: nothing in argv that Git-Bash could rewrite). The inventory --
+bytes, mtime, sha256, and whether the copy is byte-identical to a world in `source/` -- is
+written on the host as `world-prune-inventory-<stamp>.json` before the first unlink, the
+receipt (`steward-run-world-prune/v1`) after; both are copied under `--receipt-dir`.
+
+```sh
+MSYS_NO_PATHCONV=1 python prune_run_worlds.py --ssh-target am4     --campaign era10-quiet-20260909 --campaign era14-smoke-20260909T0336Z     --extra-root era14-smoke-20260909T0336Z/saves     --receipt-dir E:/omen/steward-multi-era/am4-space-20260911 --reason '...' --dry-run
+```
+
+The 2026-09-11 application is recorded in
+[the disk recovery receipt](../../docs/am4-disk-recovery-2026-09-11.md).
+
 ## Stage additional worlds when network use is authorized
 
 `stage_worlds.py` takes an explicit catalog, era list, SSH target, remote root,
