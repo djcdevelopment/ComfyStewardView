@@ -396,6 +396,13 @@ function pairAffinityText(affinity) {
   return (Number(affinity) || 0).toFixed(2);
 }
 
+// Floored, never rounded: ten segments each rounded up to two places sum to 100.01 %,
+// and a stacked bar whose parts add up to more than the whole is wrong however small the
+// overflow is. The lost hundredths land in the unattributed gap, where they belong.
+function pairSegWidth(share) {
+  return `${Math.max(0, Math.floor(10000 * (Number(share) || 0)) / 100)}%`;
+}
+
 function pairTerrainWords(status) {
   return PAIR_TERRAIN_WORDS[status] || 'Its terrain is not recorded';
 }
@@ -621,7 +628,8 @@ function pairHeroEl() {
     const img = document.createElement('img');
     img.src = photo.large || photo.thumb;
     img.alt = photo.label || build.label;
-    img.loading = 'lazy';
+    // Not lazy: there is exactly one of these per pair and it is the thing the panel is
+    // for. The album grids below stay lazy -- forty thumbnails is a different question.
     img.decoding = 'async';
     btn.append(img);
     frame.append(btn);
@@ -632,12 +640,16 @@ function pairHeroEl() {
   if (build.era != null) badges.append(pairNode('span', `Era ${build.era}`, 'chip pair-badge'));
   badges.append(pairNode('span', pairPlural(build.photoCount, 'photograph'), 'chip pair-badge'));
   frame.append(badges);
-  hero.append(frame);
 
-  const caption = pairNode('div', null, 'pair-caption');
+  // The name belongs on the photograph, under its own gradient. With nothing to lay it
+  // over it drops below the frame instead -- an unlit gradient band across a slab that
+  // already says why there is no picture is just a black stripe.
+  const caption = pairNode('div', null, `pair-caption ${photo ? 'is-over' : 'is-below'}`);
   caption.append(pairNode('h4', build.label, 'pair-build-name'));
   caption.append(pairNode('p', `${build.pieces.toLocaleString()} construction pieces`, 'pair-build-pieces'));
-  hero.append(caption);
+  if (photo) frame.append(caption);
+  hero.append(frame);
+  if (!photo) hero.append(caption);
   return hero;
 }
 
@@ -777,7 +789,7 @@ function pairSegEl(segment) {
   const classes = ['pair-seg', segment.pair ? 'is-pair' : 'is-other'];
   if (segment.pair) classes.push(segment.builderKey === model.anchor.builderKey ? 'is-anchor' : 'is-ally');
   const el = pairNode('span', null, classes.join(' '));
-  el.style.width = `${(100 * (Number(segment.share) || 0)).toFixed(2)}%`;
+  el.style.width = pairSegWidth(segment.share);
   el.dataset.pairNameKey = segment.builderKey;
   el.dataset.pairNameSlot = 'title';
   el.dataset.pairNameRest = `${segment.pieces.toLocaleString()} pieces · ${pairPercent(segment.share)}`;
@@ -807,7 +819,7 @@ function pairAllotmentEl() {
   for (const segment of segments) bar.append(pairSegEl(segment));
   if (unattributed.pieces > 0) {
     const rest = pairNode('span', null, 'pair-seg is-unattributed');
-    rest.style.width = `${(100 * unattributed.share).toFixed(2)}%`;
+    rest.style.width = pairSegWidth(unattributed.share);
     rest.title = `Unattributed · ${unattributed.pieces.toLocaleString()} pieces · ${pairPercent(unattributed.share)}`;
     bar.append(rest);
   }
@@ -1260,6 +1272,11 @@ function pairUpdate(patch) {
     if (!pairRebuildModel(pairState.buildKey)) return;
     const standing = pairQuery('#pair-standing');
     if (standing) pairPaintStanding(standing);
+    // The status line ends on the same word the badge carries. Repainting one and not the
+    // other left the sentence saying "Recorded kin" beside a badge reading "Confirmed
+    // kin" -- and this is the one region a screen reader is listening to.
+    const status = pairQuery('#pair-status');
+    if (status) status.textContent = pairStatusText();
     pairSwap('pair-laurels', pairLaurelsEl());
     pairPaintLedgerRows();
     const tags = pairQuery('#pair-metric-tags');

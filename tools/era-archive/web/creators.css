@@ -1719,12 +1719,19 @@ textarea:focus-visible,
 }
 
 /* The caption is lifted off the photograph by a gradient rather than a bar, so the
-   bottom of the frame stays part of the image. */
-#pair-view .pair-caption {
-  margin-top: -58px;
-  position: relative;
-  padding: 42px 16px 12px;
+   bottom of the frame stays part of the image. With no photograph under it, it drops
+   out of the frame and loses the gradient with it. */
+#pair-view .pair-caption.is-over {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 48px 16px 12px;
   background: linear-gradient(to top, rgba(9, 15, 22, 0.94), rgba(9, 15, 22, 0));
+}
+
+#pair-view .pair-caption.is-below {
+  padding: 12px 2px 0;
 }
 
 #pair-view .pair-build-name {
@@ -2059,6 +2066,20 @@ textarea:focus-visible,
 
 #pair-view .pair-ledger-wrap {
   margin: 0;
+}
+
+/* The museum ledger sets `white-space: nowrap`, which is right for a full-width stats
+   page and wrong inside a 340px aside: five columns pushed Status off the edge, so the
+   one word saying which build is being viewed could only be reached by scrolling
+   sideways. Cells wrap here instead. */
+#pair-view #pair-ledger {
+  white-space: normal;
+  font-size: 0.72rem;
+}
+
+#pair-view #pair-ledger th,
+#pair-view #pair-ledger td {
+  padding: 6px 8px;
 }
 
 #pair-view .pair-ledger-caption {
