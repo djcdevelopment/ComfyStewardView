@@ -1903,6 +1903,39 @@ textarea:focus-visible,
   gap: 4px;
 }
 
+/* A builder the saved world never named. Smaller and quieter than a tag chip, in the
+   outline hairline rather than bronze, so it reads as a state of the record standing
+   beside the name and is never mistaken for a name, an alias or a tag. */
+#kinship .kin-unnamed {
+  flex: none;
+  padding: 2px 6px;
+  font-size: 0.62rem;
+  text-transform: lowercase;
+  color: var(--outline);
+  border-color: var(--outline-variant);
+  box-shadow: none;
+}
+
+#kinship .kin-unnamed[hidden] {
+  display: none;
+}
+
+/* The name and its chip share one baseline row; the name may still ellipsize under it. */
+#kinship .kin-cohab-name,
+#kinship .kin-tip-name {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The tree labels carry no chip -- twelve lanes are crowded enough -- so a placeholder
+   name is dimmed instead, which is as much as a 96px label can honestly say. */
+#kinship .kin-node-name[data-kin-unnamed] {
+  color: var(--outline);
+}
+
 #kinship button.kin-tag-btn {
   margin: 0;
   padding: 4px 9px;

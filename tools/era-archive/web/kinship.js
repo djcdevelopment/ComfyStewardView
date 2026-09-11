@@ -113,8 +113,21 @@ function kinBranchCap(mm = globalThis.matchMedia) {
   return mm && mm('(max-width: 720px)').matches ? 8 : 12;
 }
 
+// "unresolved" and "ambiguous" are what community.py records when no single recorded name
+// won; "Builder 8014fa60" is the stand-in it then publishes as the display name.
+const KIN_UNNAMED_STATUSES = new Set(['unresolved', 'ambiguous']);
+
+// Deliberately false for a missing record: before directory.json lands, every builder on
+// the page is nameless in exactly the same way, and marking them all "unnamed" for that
+// half-second would be the page reporting its own load state as a fact about a person.
+function isUnnamed(record, placeholder) {
+  if (!record) return false;
+  if (KIN_UNNAMED_STATUSES.has(record.nameStatus)) return true;
+  return Boolean(placeholder && placeholder.test(String(record.displayName || '')));
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = {KIN_LAYOUT, strokeWidthFor, kinRound, layoutKinshipTree, kinBranchCap};
+  module.exports = {KIN_LAYOUT, strokeWidthFor, kinRound, layoutKinshipTree, kinBranchCap, isUnnamed};
 }
 
 const initKinshipPage = async () => {
@@ -147,6 +160,9 @@ const initKinshipPage = async () => {
   const claimModal = $('claim-modal');
   const tagModal = $('kin-tag-modal');
   const activityModal = $('activity-modal');
+  // Read off the shell rather than repeated here, so the default the sheet ships with is
+  // the default it is put back to.
+  const TAG_NOTE_PLACEHOLDER = $('kin-tag-note')?.getAttribute('placeholder') || '';
 
   let directory = null;
   let buildersByKey = new Map();
@@ -258,9 +274,40 @@ const initKinshipPage = async () => {
 
   const nameFor = (key) => buildersByKey.get(key)?.displayName || `Builder ${String(key || '').slice(0, 8)}`;
 
+  // nameFor() cannot tell a directory that has not loaded from a builder the saved world
+  // never named -- both come back as "Builder edb04052". This reads the status the
+  // directory publishes, so the two cases stay distinguishable.
+  const nameStatusFor = (key) => buildersByKey.get(key)?.nameStatus || null;
+
+  const unnamedKey = (key) => isUnnamed(
+    buildersByKey.has(key) ? {nameStatus: nameStatusFor(key), displayName: nameFor(key)} : null,
+    typeof PLACEHOLDER_NAME === 'undefined' ? null : PLACEHOLDER_NAME,
+  );
+
+  // Never a promise that the name will be published: a volunteer who tells the coordinator
+  // who this is has told the coordinator, and nothing more happens on its own.
+  const UNNAMED_TITLE = 'No name was found on a bed, tombstone or crafted item in the saved world.';
+
+  // Rendered up front and toggled by hydrateNames rather than created on demand: the
+  // ledger and the build cards draw before directory.json has necessarily landed, and a
+  // chip that could only be added on the first render would then never appear at all.
+  function unnamedChip(key) {
+    const chip = kinNode('span', 'unnamed', 'chip kin-unnamed');
+    chip.title = UNNAMED_TITLE;
+    chip.dataset.kinUnnamedFor = key;
+    chip.hidden = !unnamedKey(key);
+    return chip;
+  }
+
   function hydrateNames(root = document) {
     for (const el of root.querySelectorAll('[data-kin-name-key]')) {
-      el.textContent = nameFor(el.dataset.kinNameKey);
+      const key = el.dataset.kinNameKey;
+      el.textContent = nameFor(key);
+      if (unnamedKey(key)) el.dataset.kinUnnamed = '1';
+      else delete el.dataset.kinUnnamed;
+    }
+    for (const chip of root.querySelectorAll('[data-kin-unnamed-for]')) {
+      chip.hidden = !unnamedKey(chip.dataset.kinUnnamedFor);
     }
   }
 
@@ -519,7 +566,9 @@ const initKinshipPage = async () => {
   function branchTip(branch) {
     const frag = document.createDocumentFragment();
     if (!branch) return frag;
-    frag.append(nameSpan(branch.builderKey, 'p', 'kin-tip-name'));
+    const heading = kinNode('p', null, 'kin-tip-name');
+    heading.append(nameSpan(branch.builderKey), unnamedChip(branch.builderKey));
+    frag.append(heading);
     const list = kinNode('ul', null, 'kin-tip-eras');
     for (const span of branch.spans || []) list.append(spanLine(span));
     frag.append(list);
@@ -596,7 +645,7 @@ const initKinshipPage = async () => {
     const builds = branchBuilds(branch);
 
     const who = kinNode('td', null, 'kin-ledger-who');
-    who.append(kinPortrait(branch.builderKey), creditLink(branch.builderKey));
+    who.append(kinPortrait(branch.builderKey), creditLink(branch.builderKey), unnamedChip(branch.builderKey));
     tr.append(who);
 
     const eras = kinNode('td');
@@ -693,7 +742,9 @@ const initKinshipPage = async () => {
     const row = kinNode('div', null, 'kin-cohab');
     row.append(kinPortrait(contributorKey));
     const main = kinNode('div', null, 'kin-cohab-main');
-    main.append(creditLink(contributorKey));
+    const line = kinNode('span', null, 'kin-cohab-name');
+    line.append(creditLink(contributorKey), unnamedChip(contributorKey));
+    main.append(line);
     main.append(tagChips(mergedTags(build.buildKey, contributorKey)));
     row.append(main);
     const side = kinNode('div', null, 'kin-cohab-side');
@@ -810,7 +861,9 @@ const initKinshipPage = async () => {
       const row = kinNode('div', null, 'kin-cohab');
       row.append(kinPortrait(entry.builderKey));
       const main = kinNode('div', null, 'kin-cohab-main');
-      main.append(creditLink(entry.builderKey));
+      const line = kinNode('span', null, 'kin-cohab-name');
+      line.append(creditLink(entry.builderKey), unnamedChip(entry.builderKey));
+      main.append(line);
       // The largest shared build is the one a tag is likeliest to be about, and it is
       // also the one whose claim the anchor most likely already holds.
       const eligible = entry.builds
@@ -889,6 +942,12 @@ const initKinshipPage = async () => {
     select.value = build.buildKey;
     $('kin-tag-contributor').textContent = `Tagging ${nameFor(contributorKey)} — a self-reported note about how you built together.`;
     $('kin-tag-inline').textContent = '';
+    // The note is the only field on the page that can carry a name the saved world never
+    // recorded, so for an unnamed contributor it asks for one -- and promises nothing
+    // about publishing it, because nothing is published without a coordinator.
+    $('kin-tag-note').placeholder = unnamedKey(contributorKey)
+      ? 'Know who this is? Put the name here for the coordinator.'
+      : TAG_NOTE_PLACEHOLDER;
 
     const syncToBuild = () => {
       const current = byKey.get(select.value) || build;
