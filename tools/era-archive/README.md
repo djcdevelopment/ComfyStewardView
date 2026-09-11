@@ -158,24 +158,75 @@ strictly largest known share still counts from 0.25 up as `largest`. A tie, a sh
 a quarter, and a legacy import (which carries no share at all) own nothing. A tag never
 edits the credited contributors — those come from the pieces and nothing else moves them.
 
+A claim carries `kind`: `built` ("I built this") or `disavow` ("Not mine"). One record per
+build either way — a disavowal replaces a claim and a claim replaces a disavowal — because
+both are the same person saying the same kind of thing about the same build. A ledger
+written before disavowal existed carries no `kind` and reads as `built`. Standing follows
+the built claim only: a disavowed build offers no photo request and rides in no kinship
+export, and the card says "Disavowed by …" rather than "Claimed by …".
+
 `gallery.py` publishes `participation.json` beside the directory: schema
-`steward-creator-participation-public/v1`, carrying the four counts (`participants`,
-`claims`, `requests`, `openRequests`) plus `confirmedTags`. It is projected from the
+`steward-creator-participation-public/v1`, carrying the counts (`participants`, `claims`,
+`disavowals`, `requests`, `openRequests`) plus `confirmedTags`. It is projected from the
 coordinator's own file at `analysis/participation.json`:
 
 ```json
 {"schema": "steward-creator-participation/v1", "generatedAt": "…", "updatedAt": "…",
- "participants": 0, "claims": 0, "requests": 0, "openRequests": 0,
+ "participants": 0, "claims": 0, "disavowals": 0, "requests": 0, "openRequests": 0,
  "confirmedTags": [{"buildKey": "<64 hex>", "contributorKey": "<32 hex>",
                     "builderKey": "<32 hex>", "tags": ["basemate", "mason"],
-                    "confirmedAt": "…"}]}
+                    "confirmedAt": "…"}],
+ "claimRecords": [], "requestRecords": [], "tagRecords": []}
 ```
 
 `sanitize_confirmed_tags()` keeps exactly those five keys, drops any entry whose keys are
 not hex of the right length and any tag id outside the closed vocabulary
 (`basemate`, `collab`, `helping-hand`, `visitor`, `mason`, `roof`, `fields`, `portal`,
 `defense`, `interior`), and never copies the participant handle, note, contact or claim id
-that the coordinator's file may hold beside them.
+that the coordinator's file may hold beside them. `disavowals` is additive: an older
+coordinator file has no such key and reads as zero, and the public schema string does not
+move for a new count.
+
+#### coordinate.py — the coordinator's end of the lane
+
+`coordinate.py` owns that file. It is the receiving half of a flow that has no endpoint:
+a volunteer copies a payload out of their own browser and sends it on through Discord, and
+this is what happens next.
+
+Beside the counts and the confirmed tags it keeps **the full records as received** —
+`claimRecords`, `requestRecords`, `tagRecords`, with the volunteer's handle, their
+free-text note and any contact address they offered. That is personal data, and it lives on
+the coordinator's own disk and nowhere else: `export_participation()` reads only the counts
+and `confirmedTags`, and `sanitize_confirmed_tags()` whitelists five keys out of each of
+those, so a handle, a note, a contact or a claim id has no path to a public page.
+
+```powershell
+python tools/era-archive/coordinate.py --output-root <root> seed
+python tools/era-archive/coordinate.py --output-root <root> ingest <payload.json | ->
+python tools/era-archive/coordinate.py --output-root <root> confirm-tag <buildKey>:<contributorKey>
+python tools/era-archive/coordinate.py --output-root <root> revoke-tag <buildKey>:<contributorKey>
+python tools/era-archive/coordinate.py --output-root <root> forget "<handle>"
+python tools/era-archive/coordinate.py --output-root <root> status
+```
+
+`seed` refuses to overwrite an existing file. `ingest` reads all three shapes a browser can
+hand over — `steward-creator-participation-export/v1` (the whole ledger),
+`steward-creator-build-participation/v1` (one card) and
+`steward-creator-participation-event/v1` (`claim`, `photoRequest`, `kinshipTag`) — upserts
+by `claimId` / `requestId` / `tagId` so a re-sent record replaces its earlier copy rather
+than doubling it, stamps `receivedAt`, drops anything whose keys are not the hex they claim
+to be, and drops tag ids outside the closed vocabulary along with any record left holding
+none. `confirm-tag` copies one ingested tag's public fields into `confirmedTags` with a
+`confirmedAt` stamp and the source `tagId` as its receipt; `revoke-tag` unpublishes it
+without forgetting the record.
+
+`forget <handle>` is the retention answer the design note left open: every record that
+handle sent, and every confirmed tag that arrived on one of them, removed in one command,
+matched case-insensitively. Counts are recomputed on every write — `participants` is
+distinct normalised handles, `claims` is built claims, `disavowals` is disavow claims,
+`openRequests` is requests with no `closedAt`. Every mutating command takes `--dry-run`,
+and every write goes through `archive.save`. `status` prints the counts, the open requests,
+the pending tags and the three commands that publish what has been confirmed.
 
 ### Phase 2: bed evidence
 

@@ -189,6 +189,10 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
             "source": source.get("schema", "steward-creator-participation/v1"),
             "participants": normalize_int(source.get("participants", source.get("totalParticipants", source.get("total")))),
             "claims": normalize_int(source.get("claims")),
+            # A build someone said is not theirs is participation too, and the page counts
+            # it separately. Additive: an older coordinator file carries no `disavowals`
+            # and reads as zero, and the public schema string does not move for a new count.
+            "disavowals": normalize_int(source.get("disavowals")),
             "requests": normalize_int(source.get("requests")),
             "openRequests": normalize_int(source.get("openRequests", source.get("pendingRequests"))),
             "confirmedTags": sanitize_confirmed_tags(source.get("confirmedTags")),
