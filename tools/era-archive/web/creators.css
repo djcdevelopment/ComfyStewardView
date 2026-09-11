@@ -1192,35 +1192,92 @@ textarea:focus-visible,
   font-size: 0.86rem;
 }
 
+/* Eight across on a wide page: the ribbon is a row of names to pick from, not eight
+   cards to read. Each one is a pressable chip, because clicking it opens the pair view
+   below rather than leaving for another page. */
 .top8-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.top8-card {
+.top8-chip {
   display: grid;
-  align-content: start;
-  gap: 6px;
-  padding: 12px 14px;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 8px;
+  text-align: left;
   border: 1px solid var(--outline-variant);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--surface-container);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  transition: transform 0.14s ease, border-color 0.14s ease;
+  transition: border-color 0.14s ease, background 0.14s ease;
 }
 
-.top8-card:hover {
-  transform: translateY(-2px);
+.top8-chip:hover {
   border-color: var(--bronze);
+  background: var(--surface-high);
 }
 
-.top8-card a {
+/* The open pair wears the ember edge the era tablets use for "active", so one glance
+   over the ribbon says which pair the panel below is drawing. */
+.top8-chip[aria-pressed="true"] {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: var(--surface-high);
+}
+
+/* A co-builder the ranking did not put in the first eight, offered anyway. */
+.top8-chip.is-extra {
+  border-style: dashed;
+}
+
+.top8-chip .top8-portrait,
+.top8-chip img {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--ember);
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--surface-low);
+}
+
+.top8-chip .top8-portrait > svg,
+.top8-chip .top8-portrait > img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+/* One line, clipped: a long recorded name must not push the tier off the chip. */
+.top8-name {
+  display: block;
+  min-width: 0;
   font-family: var(--font-display);
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.top8-tier {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--outline);
+}
+
+.top8-chip[aria-pressed="true"] .top8-tier {
+  color: var(--primary);
 }
 
 .top8-meta {
@@ -1234,7 +1291,7 @@ textarea:focus-visible,
 
 @media (max-width: 980px) {
   .top8-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -1256,7 +1313,7 @@ textarea:focus-visible,
   }
 
   .top8-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
   }
 }
@@ -1494,6 +1551,630 @@ textarea:focus-visible,
 
 .kin-open:hover {
   border-bottom-color: var(--flame);
+}
+
+/* --------------------------------------------------------------------------
+   Pair view (#pair-view): the builder whose page this is, one co-builder, and
+   the build they share. It sits directly under the Top 8 ribbon and is drawn
+   entirely from data the thread already carries, so it wears the same stone
+   the rest of the page does -- a recessed slab, a chisel edge, no soft shadow.
+   -------------------------------------------------------------------------- */
+#pair-view {
+  margin: 0 0 34px;
+  padding: 18px 20px 20px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-container-low);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* The page's own buttons carry a 20px vertical margin for the album cards. In here
+   every control sits in a row or a grid that owns its own spacing. */
+#pair-view button {
+  margin: 0;
+  width: auto;
+}
+
+#pair-view .pair-title {
+  font-size: 1.5rem;
+  margin: 0 0 4px;
+}
+
+#pair-view .pair-status {
+  margin: 0 0 8px;
+  color: var(--parchment);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* Underlined tabs, the same pair the kinship page wears. */
+#pair-view .pair-modes {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 14px 0 12px;
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+#pair-view .pair-tab {
+  padding: 9px 4px;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--parchment);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+#pair-view .pair-tab[aria-selected="true"] {
+  color: var(--primary);
+  border-bottom-color: var(--flame);
+}
+
+/* The standing badge ends the tab row rather than joining it: it is a statement about
+   the pair, not a third thing to press. */
+#pair-view .pair-standing {
+  margin-left: auto;
+  align-self: center;
+}
+
+#pair-view .pair-standing[data-standing="confirmed"] {
+  border-color: var(--flame);
+  color: var(--primary);
+  background: var(--ember);
+}
+
+#pair-view .pair-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 18px;
+}
+
+/* Era tablets, in the shape a build label needs. */
+#pair-view .pair-pill {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--parchment);
+  background: var(--surface-container-low);
+  border: 1px solid var(--ember);
+  border-radius: 4px;
+  padding: 6px 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+#pair-view .pair-pill:hover {
+  border-color: var(--bronze);
+  background: var(--surface-high);
+}
+
+#pair-view .pair-pill[aria-pressed="true"] {
+  background: var(--ember);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: var(--primary);
+}
+
+#pair-view .pair-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: start;
+}
+
+#pair-view .pair-h {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  margin: 0 0 8px;
+}
+
+/* ---- the photograph ---- */
+
+#pair-view .pair-frame {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-low);
+}
+
+#pair-view .pair-photo {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+#pair-view .pair-photo img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+#pair-view .pair-badges {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  gap: 6px;
+  pointer-events: none;
+}
+
+#pair-view .pair-badge {
+  background: var(--surface-low);
+  border-color: var(--ember);
+  color: var(--primary);
+}
+
+/* The caption is lifted off the photograph by a gradient rather than a bar, so the
+   bottom of the frame stays part of the image. With no photograph under it, it drops
+   out of the frame and loses the gradient with it. */
+#pair-view .pair-caption.is-over {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 48px 16px 12px;
+  background: linear-gradient(to top, rgba(9, 15, 22, 0.94), rgba(9, 15, 22, 0));
+}
+
+#pair-view .pair-caption.is-below {
+  padding: 12px 2px 0;
+}
+
+#pair-view .pair-build-name {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+#pair-view .pair-build-pieces {
+  margin: 2px 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--outline);
+}
+
+#pair-view .pair-slab {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 6px;
+  min-height: 200px;
+  padding: 18px;
+}
+
+#pair-view .pair-slab-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+}
+
+#pair-view .pair-slab .muted {
+  margin: 0;
+  max-width: 46ch;
+}
+
+#pair-view .pair-find {
+  margin-top: 6px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+}
+
+/* ---- laurels, hearth, affinity, facts ---- */
+
+#pair-view .pair-laurels,
+#pair-view .pair-hearth,
+#pair-view .pair-affinity,
+#pair-view .pair-allotment {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--outline-variant);
+}
+
+#pair-view .pair-chip-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+#pair-view .pair-chip-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--outline);
+  margin-right: 2px;
+}
+
+#pair-view .pair-hearth-line {
+  margin: 0 0 4px;
+  color: var(--parchment);
+  font-size: 0.88rem;
+}
+
+#pair-view .pair-affinity {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+#pair-view .pair-affinity .counter {
+  font-size: 1.3rem;
+}
+
+#pair-view .pair-affinity-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--outline);
+}
+
+#pair-view .pair-tier {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--primary);
+}
+
+#pair-view .pair-facts {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 0;
+  margin: 20px 0 0;
+  border-top: 1px solid var(--outline-variant);
+}
+
+#pair-view .pair-facts dt {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--chisel);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--outline);
+}
+
+#pair-view .pair-facts dd {
+  margin: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--chisel);
+  color: var(--parchment);
+  font-size: 0.86rem;
+}
+
+/* ---- world viewer panel ---- */
+
+#pair-view .pair-viewer-note {
+  margin: 0 0 14px;
+  color: var(--parchment);
+  max-width: 62ch;
+}
+
+/* The forged button, as a link: `button.primary` is an element selector and a world
+   viewer that opens in a new tab has to be an anchor. */
+#pair-view a.button {
+  display: inline-block;
+  padding: 11px 14px;
+  border: 1px solid rgba(217, 119, 6, 0.5);
+  border-radius: 4px;
+  background: var(--surface-container);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  text-decoration: none;
+}
+
+#pair-view a.button.primary {
+  background: var(--flame);
+  border-color: var(--flame);
+  color: var(--surface-low);
+  font-weight: 700;
+}
+
+#pair-view a.button.primary:hover {
+  background: var(--tertiary);
+  border-color: var(--tertiary);
+  text-decoration: none;
+}
+
+#pair-view .pair-bar {
+  display: flex;
+  gap: 1px;
+  height: 14px;
+  margin: 10px 0 12px;
+  background: var(--surface-low);
+  border-radius: 4px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9);
+  overflow: hidden;
+}
+
+/* Widths are inline: they are data, not design. */
+#pair-view .pair-seg {
+  display: block;
+  height: 100%;
+  background: var(--surface-highest);
+  transition: width 0.2s ease;
+}
+
+#pair-view .pair-seg.is-pair.is-anchor {
+  background: var(--flame);
+}
+
+#pair-view .pair-seg.is-pair.is-ally {
+  background: var(--bronze);
+}
+
+#pair-view .pair-seg.is-other {
+  background: var(--outline-variant);
+}
+
+#pair-view .pair-seg.is-unattributed {
+  background: repeating-linear-gradient(135deg,
+    var(--surface-high) 0 4px,
+    var(--surface-container) 4px 8px);
+}
+
+#pair-view .pair-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}
+
+#pair-view .pair-legend-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--chisel);
+  color: var(--parchment);
+}
+
+#pair-view .pair-legend-row.is-pair {
+  color: var(--on-surface);
+}
+
+#pair-view .pair-legend-row.is-unattributed {
+  color: var(--outline);
+}
+
+#pair-view .pair-legend-share {
+  color: var(--tertiary);
+}
+
+/* ---- sidebar ---- */
+
+#pair-view .pair-side {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+#pair-view .pair-ally {
+  padding: 16px 18px 18px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-container);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+#pair-view .pair-ally-head {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+#pair-view .pair-portrait {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--ember);
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--surface-low);
+}
+
+#pair-view .pair-portrait > svg,
+#pair-view .pair-portrait > img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+#pair-view .pair-ally-name {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+#pair-view .pair-ally-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+#pair-view .pair-unnamed {
+  border-style: dashed;
+  color: var(--outline);
+}
+
+#pair-view .pair-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+#pair-view .pair-metric {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  padding: 8px 10px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 4px;
+  background: var(--surface-container-low);
+}
+
+#pair-view .pair-metric-label {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--outline);
+}
+
+#pair-view .pair-metric-value {
+  font-size: 0.94rem;
+}
+
+#pair-view .pair-metric-note {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--parchment);
+}
+
+#pair-view .pair-switch {
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  justify-self: start;
+}
+
+#pair-view .pair-ledger-wrap {
+  margin: 0;
+}
+
+/* The museum ledger sets `white-space: nowrap`, which is right for a full-width stats
+   page and wrong inside a 340px aside: five columns pushed Status off the edge, so the
+   one word saying which build is being viewed could only be reached by scrolling
+   sideways. Cells wrap here instead. */
+#pair-view #pair-ledger {
+  white-space: normal;
+  font-size: 0.72rem;
+}
+
+#pair-view #pair-ledger th,
+#pair-view #pair-ledger td {
+  padding: 6px 8px;
+}
+
+#pair-view .pair-ledger-caption {
+  padding: 9px 12px;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--outline);
+  background: var(--surface-container);
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+#pair-view .pair-ledger-pick {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--primary);
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
+  white-space: normal;
+}
+
+#pair-view .pair-ledger-pick:hover {
+  text-decoration: underline;
+}
+
+#pair-view #pair-ledger tbody tr[aria-selected="true"] {
+  background: var(--ember);
+}
+
+#pair-view .pair-ledger-split,
+#pair-view .pair-ledger-status {
+  color: var(--parchment);
+}
+
+#pair-view .pair-download {
+  justify-self: start;
+}
+
+@media (max-width: 980px) {
+  #pair-view .pair-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #pair-view .pair-facts {
+    grid-template-columns: 140px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  #pair-view {
+    padding: 14px 14px 16px;
+  }
+
+  #pair-view .pair-modes {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  #pair-view .pair-standing {
+    margin-left: 0;
+  }
+
+  #pair-view .pair-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #pair-view .pair-facts dt {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  #pair-view .pair-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* The allotment bar animates its widths when another build is picked. That motion is
+   the one thing in here anybody could be bothered by, so it is dropped outright rather
+   than merely shortened. */
+@media (prefers-reduced-motion: reduce) {
+  #pair-view .pair-seg {
+    transition: none;
+  }
+}
+
+/* Last in the block on purpose: every rule above sets a display, and an element the
+   view has hidden -- a panel, the hearth, the unnamed chip -- has to stay hidden. */
+#pair-view [hidden] {
+  display: none;
 }
 
 .visually-hidden {
