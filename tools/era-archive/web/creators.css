@@ -541,6 +541,16 @@ fieldset input {
   color: var(--parchment);
 }
 
+/* A resident is not a contributor, and the credit line has to say so without a caption.
+   Same parchment as the line it sits in rather than the credit link's own colour, and a
+   dotted rule instead of the solid underline a credit wears: a softer claim, drawn softer.
+   It is still a link -- a sleeper who also built somewhere has a thread worth reaching. */
+.album .credits a.resident {
+  color: var(--parchment);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
 .album p + p {
   margin-top: 7px;
 }
@@ -2617,6 +2627,15 @@ textarea:focus-visible,
 }
 
 #kinship .kin-cohab-share {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--outline);
+}
+
+/* Stacked above the share in the same mono hairline, because it answers a different
+   question and must not read as part of the percentage: the share is pieces over pieces,
+   and a bed adds to neither side of it. */
+#kinship .kin-cohab-beds {
   font-family: var(--font-mono);
   font-size: 0.7rem;
   color: var(--outline);

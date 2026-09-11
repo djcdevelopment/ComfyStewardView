@@ -228,6 +228,13 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
             # "rejected" means photographed and withheld, which the thread must not show as
             # though nobody had visited yet.
             if b.get("photoStatus"):public["photoStatus"]=b["photoStatus"]
+            # Bed residency travels as its own key, whitelisted field by field the way
+            # sanitize_confirmed_tags() whitelists a tag: the private receipt's residents
+            # carry a raw character ID, and a dict copied wholesale is how that reaches a
+            # page. Never appended to `contributors` -- a bed is not a credit, and the album
+            # above says so in the very next line.
+            if b.get("residents"):
+                public["residents"]=[{k:r[k] for k in ("builderKey","beds","evidence")} for r in b["residents"]]
             public["attribution"]=b.get("attribution","Every saved construction contributor is credited; nearby ownership is not inferred.")
             public["worldUrl"]=None if b.get("legacyClusterId") is not None else world_url.rstrip("/")+"/?era="+b["slug"]+"&build="+key
             public["terrainStatus"]="historical-gallery" if public["worldUrl"] is None else "awaiting-runtime"
@@ -309,6 +316,8 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
     write_participation_snapshot()
     # Whitelist above deliberately excludes raw character IDs, names from signs, coordinates,
     # source paths, inventories, world seed, snapshot hashes and private identity-review evidence.
+    # An album's `residents` is whitelisted the same way and to the same end: an opaque builder
+    # key, a bed count and the evidence type, never the owning character or where the bed stood.
     # creators.js, creators.css, kinship.js, pair.js and the kinship shell are presentation only: they
     # carry no archive data, they read the same public JSON any visitor can fetch, and the
     # only participation they ever see is what that visitor typed into their own browser.

@@ -121,8 +121,13 @@ test('existing matchScore ranks exact match above prefix above substring', () =>
 // --- Top 8 -----------------------------------------------------------------------
 // The MySpace panel on a builder page: who this builder actually built beside.
 
-function album(buildKey, contributors) {
-  return {buildKey, era: 7, slug: 'era7', label: 'Build ' + buildKey, pieces: 100, contributors, photos: []};
+// `residents` is optional and defaults to absent, exactly as gallery.py leaves it on an
+// album with none -- so every test above this line keeps asserting against the shape a
+// pre-residency projection produces.
+function album(buildKey, contributors, residents) {
+  const record = {buildKey, era: 7, slug: 'era7', label: 'Build ' + buildKey, pieces: 100, contributors, photos: []};
+  if (residents) record.residents = residents;
+  return record;
 }
 
 const SELF = 'a'.repeat(32);
@@ -428,6 +433,66 @@ test('buildKinshipTree returns an empty tree rather than throwing on a missing t
   assert.deepEqual(buildKinshipTree(null),
     {anchor: null, eras: [], branches: [], majorityBuilds: [], coBuilderCount: 0});
   assert.deepEqual(buildKinshipTree(undefined).branches, []);
+});
+
+// --- Bed residency is not credit -------------------------------------------------
+// A resident is somebody whose bed stands inside a build's footprint. That is evidence of
+// sleeping there and nothing else -- so it must not reach anything that ranks a
+// co-builder, draws a branch, or decides who may speak for a build. These assert the
+// negative, because the failure mode is silent: a resident folded into contributors would
+// simply look like a co-builder nobody could explain.
+
+// A sleeper with one bed in the pair build and three in the crowd build, who never placed
+// a piece anywhere and appears in no contributors list.
+const SLEEPER = 'f'.repeat(32);
+
+function threadWithResidents() {
+  const thread = kinshipThread();
+  const bed = (n) => [{builderKey: SLEEPER, beds: n, evidence: 'bed-owner-in-footprint'}];
+  for (const block of thread.eras) {
+    for (const album of block.albums) {
+      if (album.buildKey === BUILD_E7_PAIR) album.residents = bed(1);
+      if (album.buildKey === BUILD_E7_CROWD) album.residents = bed(3);
+    }
+  }
+  return thread;
+}
+
+test('a resident who placed no pieces is never a Top 8 co-builder', () => {
+  const thread = threadWithResidents();
+  const top = computeTopEight(thread);
+  assert.ok(!top.some((t) => t.builderKey === SLEEPER), 'sleeping beside someone is not building beside them');
+  // And the panel is otherwise byte-for-byte the one the same thread produced without beds.
+  assert.deepEqual(top, computeTopEight(kinshipThread()));
+});
+
+test('a resident draws no kinship branch and does not raise the co-builder count', () => {
+  const tree = buildKinshipTree(threadWithResidents());
+  assert.equal(branchFor(tree, SLEEPER), undefined, 'no branch for a bed');
+  assert.equal(tree.coBuilderCount, buildKinshipTree(kinshipThread()).coBuilderCount);
+  assert.deepEqual(tree.branches.map((b) => b.builderKey),
+    buildKinshipTree(kinshipThread()).branches.map((b) => b.builderKey));
+});
+
+test('residents never move ownership: beds are not a share', () => {
+  const withBeds = threadWithResidents();
+  const pair = withBeds.eras.flatMap((e) => e.albums).find((a) => a.buildKey === BUILD_E7_PAIR);
+  const crowd = withBeds.eras.flatMap((e) => e.albums).find((a) => a.buildKey === BUILD_E7_CROWD);
+  // The anchor owns the pair build at 0.6 and owns nothing on the four-way crowd build.
+  assert.equal(majorityOwner(pair, ANCHOR), 'majority');
+  assert.equal(majorityOwner(crowd, ANCHOR), null);
+  // Three beds in the crowd build buys the sleeper no standing over it either.
+  assert.equal(majorityOwner(crowd, SLEEPER), null);
+  assert.equal(majorityOwner(pair, SLEEPER), null);
+});
+
+test('an album with residents but no contributors array still computes to nothing', () => {
+  const thread = {builderKey: ANCHOR, eras: [{era: 7, albums: [
+    {buildKey: BUILD_E9, label: 'x', pieces: 1, photos: [],
+     residents: [{builderKey: SLEEPER, beds: 2, evidence: 'bed-owner-in-footprint'}]},
+  ]}]};
+  assert.deepEqual(computeTopEight(thread), []);
+  assert.deepEqual(buildKinshipTree(thread).branches, []);
 });
 
 test('mergeKinshipTags answers for one co-builder on one build', () => {

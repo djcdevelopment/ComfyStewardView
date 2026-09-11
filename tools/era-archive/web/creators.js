@@ -1241,6 +1241,30 @@ const initCreatorsPage = async () => {
       // showing a percentage there would imply a precision the historical import never had.
       if (c.share != null) credits.append(` (${(100 * c.share).toFixed(1)}%)`);
     });
+    // Bed residency, after the contributors and visibly not one of them. Evidence that
+    // somebody slept here, which is not a claim on a single piece of the roof over them --
+    // the archive derives no credit from a nearby structure and this line must not read as
+    // though it did.
+    //
+    // class `resident`, deliberately NOT `credit`: renderConfirmedTagChips() selects
+    // `.credits a.credit[data-builder-key]` and would otherwise park a kinship chip -- a
+    // tag one builder wrote about another's work on this build -- beside a name that is
+    // here only because of a bed.
+    if (Array.isArray(album.residents) && album.residents.length) {
+      credits.append(' · slept here: ');
+      album.residents.forEach((r, i) => {
+        if (i) credits.append(' · ');
+        // Often "Recorded builder" and staying that way: a sleeper with no saved pieces has
+        // no thread and no directory record, so there is no public name to fill in. Showing
+        // one the archive has never published would be a worse answer than none.
+        const anchor = link(buildersByKey.get(r.builderKey)?.displayName || 'Recorded builder',
+          new URL(`${r.builderKey}/`, base));
+        anchor.className = 'resident';
+        anchor.dataset.builderKey = r.builderKey;
+        credits.append(anchor);
+        if (r.beds > 1) credits.append(` (${r.beds} beds)`);
+      });
+    }
     return credits;
   }
 
@@ -1280,10 +1304,13 @@ const initCreatorsPage = async () => {
     }
   }
 
-  // Both hooks are `[data-builder-key]` and both hold a name: the album credit anchors,
-  // and the Top 8 chips' name spans (a chip is a <button>, so its name cannot be an <a>).
+  // Every hook is `[data-builder-key]` and every one holds a name: the album credit anchors,
+  // the resident anchors ("slept here"), and the Top 8 chips' name spans (a chip is a
+  // <button>, so its name cannot be an <a>). Residents ride the same hook for the same
+  // reason -- the thread paints before 818 KB of directory.json lands -- even though most of
+  // them never find a name: a sleeper with no saved pieces has no directory record.
   function hydrateCredits() {
-    for (const anchor of document.querySelectorAll('a.credit[data-builder-key], .top8-chip .top8-name[data-builder-key]')) {
+    for (const anchor of document.querySelectorAll('a.credit[data-builder-key], a.resident[data-builder-key], .top8-chip .top8-name[data-builder-key]')) {
       const name = buildersByKey.get(anchor.dataset.builderKey)?.displayName;
       if (name) anchor.textContent = name;
     }
