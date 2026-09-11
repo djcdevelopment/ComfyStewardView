@@ -268,7 +268,7 @@ def rebuild_read_model(root, catalog):
             if set(community['sourceKeys'])!={e['sourceKey'] for e in catalog['eras']}:
                 raise ValueError('Community catalog source set mismatch')
             for table,ref in community['tables'].items():
-                if table not in {'builder','builder_character','name_observation','build','build_contributor','build_photo'}:
+                if table not in {'builder','builder_character','name_observation','build','build_contributor','build_resident','build_photo'}:
                     raise ValueError('Unexpected community table')
                 con.execute(f'CREATE VIEW {table} AS SELECT * FROM read_parquet({sql_path(checked_file(root,ref))})')
             memberships=load(root/'analysis/catalog.json')['eras']

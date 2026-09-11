@@ -32,9 +32,24 @@ def main():
                             'originalFwl':{k:era['fwl'][k] for k in ('bytes','sha256')},'status':'verified'})
         totals={table:con.execute(f'SELECT count(*) FROM {table}').fetchone()[0] for table in
                 ('zdo','zdo_field','zdo_payload','container_item','build','build_contributor','build_member','build_photo','builder','name_observation')}
+        # build_resident exists only once some era has produced one -- community_store.write()
+        # skips a table with no rows, so the view is genuinely absent on an archive analysed
+        # before bed residency, and counting it unconditionally would fail an archive that is
+        # entirely correct. Look first, then count.
+        for table in con.execute("SELECT table_name FROM information_schema.tables WHERE table_name='build_resident'").fetchall():
+            totals[table[0]]=con.execute(f'SELECT count(*) FROM {table[0]}').fetchone()[0]
         if con.execute('SELECT count(DISTINCT build_key) FROM build').fetchone()[0]!=totals['build']:raise ValueError('Build key collision')
         orphans=con.execute('SELECT count(*) FROM build_contributor c LEFT JOIN build b USING(build_key) LEFT JOIN builder u USING(builder_key) WHERE b.build_key IS NULL OR u.builder_key IS NULL').fetchone()[0]
         if orphans:raise ValueError('Orphan attribution')
+        # The same reconciliation for the sidecar, and deliberately only as far as the build:
+        # a resident is not required to have a builder row. A builder exists because a piece
+        # creator or a recorded name put them there, and a bed whose ZDO carries no ownerName
+        # gives neither -- see readme "Recorded builder". A residency pointing at a build that
+        # is not in the table is a different thing entirely: a join that lost its subject.
+        if 'build_resident' in totals:
+            stray=con.execute('SELECT count(*) FROM build_resident r LEFT JOIN build b USING(build_key) WHERE b.build_key IS NULL').fetchone()[0]
+            if stray:raise ValueError('Orphan bed residency')
+            totals['build_resident_without_builder']=con.execute('SELECT count(*) FROM build_resident r LEFT JOIN builder u USING(builder_key) WHERE u.builder_key IS NULL').fetchone()[0]
     receipt={'schema':'steward-archive-integrity/v1','verifiedAt':now(),'status':'verified','eras':results,'totals':totals,
              'database':artifact(root,root/'world-cache.duckdb'),'readModelReconstructedFromParquet':True,
              'legacyPhotoImports':[{k:e[k] for k in ('slug','images','albums','unresolvedImages')} for e in analysis['legacyImports']],

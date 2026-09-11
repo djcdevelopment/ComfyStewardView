@@ -34,6 +34,11 @@ def main():
                  'label':b['label'],'pieces':b['pieces'],'bounds':b.get('bounds'),'membership_sha256':b.get('membershipSha256'),
                  'legacy_cluster_id':b.get('legacyClusterId'),'attribution':b.get('attribution','saved-piece-creator')} for b in document['builds']))
             write('build_contributor',({'build_key':b['buildKey'],'builder_key':c['builderKey'],'pieces':c['pieces'],'share':c.get('share'),'evidence_type':c['evidence']} for b in document['builds'] for c in b['contributors']))
+            # Its own table, not extra columns on build_contributor: a reader has to be able
+            # to reject bed evidence without losing the piece evidence. write() no-ops on an
+            # empty generator, so an archive with no bed join yet simply has no such table
+            # and no view -- which is why verify.py has to look before it counts.
+            write('build_resident',({'build_key':b['buildKey'],'builder_key':r['builderKey'],'beds':r['beds'],'evidence_type':r['evidence']} for b in document['builds'] for r in b.get('residents') or []))
             write('build_photo',({'build_key':b['buildKey'],'era':b['era'],'photo_id':p['id'],'thumb':p['thumb'],'large':p['large'],'gallery_url':p['href']} for b in document['builds'] for p in b['photos']))
         catalog=load(root/'catalog.json')
         receipt={'schema':'steward-community-tables/v1','createdAt':now(),'source':digest(source),'counts':counts,'tables':refs,

@@ -26,6 +26,16 @@ RECIPE = {"schema": "steward-build-membership/v1", "primaryCell": 16, "primaryMi
           "residualCell": 8, "residualMinCell": 1, "minPieces": 1, "category": "BUILDING"}
 RECIPE_HASH = hashlib.sha256(json.dumps(RECIPE, sort_keys=True).encode()).hexdigest()
 
+# Bed residency is a sidecar, not an ingredient of build identity. RECIPE_HASH is baked into
+# every buildKey (line 137) and into the analysis cache directory name, so folding bed
+# evidence into it would rotate all 318,319 keys and break every published album URL, every
+# capture manifest and every volunteer claim. This recipe is hashed on its own instead: a
+# receipt whose bedRecipeSha256 does not match re-derives residents in place and leaves the
+# clustering -- and therefore the keys -- exactly where they were.
+BED_RECIPE = {"schema": "steward-bed-residency/v1", "category": "BED", "marginXZ": 4,
+              "marginY": 3, "owner": "owner_id", "ambiguity": "smallest-xz-area"}
+BED_RECIPE_HASH = hashlib.sha256(json.dumps(BED_RECIPE, sort_keys=True).encode()).hexdigest()
+
 
 def clean_name(value):
     value = re.sub(r"<[^>]*>", "", str(value or ""))
@@ -82,6 +92,57 @@ def name_observations(con, era):
             for character, name, source, n, example in rows if clean_name(name)]
 
 
+def bed_residency(con, builds):
+    """Which recorded characters own a BED standing inside a build's footprint.
+
+    Evidence that somebody slept there, and nothing more. A bed proves residency; it does
+    not prove a single piece of the roof over it, so this never merges into the contributor
+    list and never becomes a share. The margin is generous on purpose -- a bed pushed
+    against an inside wall sits a metre or two outside the bounding box of the pieces that
+    enclose it -- and deliberately tighter vertically, because 3 m up is the next storey of
+    the same house while 3 m sideways is still the same room.
+
+    A bed inside two boxes (a longhouse standing in the middle of a walled compound, which
+    clusters as its own build) belongs to the smaller footprint: the compound contains the
+    bed only by containing the house. Ties break on build_key so the answer is stable.
+
+    Only build_key, the owning character and a count come back. Coordinates and zdo_index
+    stay inside this function -- the caller writes into a private analysis receipt, but the
+    projection copies whatever it finds there, so private fields are never minted at all."""
+    if not builds:
+        return {}
+    con.execute("CREATE OR REPLACE TEMP TABLE build_box(build_key VARCHAR,min_x DOUBLE,max_x DOUBLE,"
+                "min_y DOUBLE,max_y DOUBLE,min_z DOUBLE,max_z DOUBLE,area DOUBLE)")
+    boxes = []
+    for build in builds:
+        bounds = build["bounds"]
+        # Same footprint formula the geometry score uses, so "smallest" means the same
+        # thing here as it does there, and a degenerate one-dimensional build still sorts.
+        area = max(1, (bounds["maxX"] - bounds["minX"]) * (bounds["maxZ"] - bounds["minZ"]))
+        boxes.append((build["buildKey"], bounds["minX"], bounds["maxX"], bounds["minY"],
+                      bounds["maxY"], bounds["minZ"], bounds["maxZ"], area))
+    con.executemany("INSERT INTO build_box VALUES (?,?,?,?,?,?,?,?)", boxes)
+    xz, y = BED_RECIPE["marginXZ"], BED_RECIPE["marginY"]
+    rows = con.execute("""
+        WITH bed AS (
+            SELECT zdo_index,owner_id,x,y,z FROM zdo
+            WHERE category='BED' AND owner_id IS NOT NULL AND owner_id<>0
+              AND isfinite(x) AND isfinite(y) AND isfinite(z)),
+        hit AS (
+            SELECT b.zdo_index,b.owner_id,k.build_key,
+                   row_number() OVER (PARTITION BY b.zdo_index ORDER BY k.area,k.build_key) AS rk
+            FROM bed b JOIN build_box k
+              ON b.x BETWEEN k.min_x-? AND k.max_x+?
+             AND b.z BETWEEN k.min_z-? AND k.max_z+?
+             AND b.y BETWEEN k.min_y-? AND k.max_y+?)
+        SELECT build_key,owner_id::VARCHAR,count(*) FROM hit WHERE rk=1
+        GROUP BY 1,2 ORDER BY 1,3 DESC,2""", [xz, xz, xz, xz, y, y]).fetchall()
+    residency = defaultdict(list)
+    for build_key, character, beds in rows:
+        residency[build_key].append({"characterId": character, "beds": beds})
+    return dict(residency)
+
+
 def analyze_era(root, entry):
     package = verify_package(root, entry)
     input_hash = hashlib.sha256(json.dumps(entry["ingestion"]["artifacts"],sort_keys=True).encode()).hexdigest()
@@ -89,9 +150,26 @@ def analyze_era(root, entry):
     receipt_path = dest / "analysis.json"
     if receipt_path.exists():
         result = load(receipt_path)
-        if digest(dest / "membership.parquet") == {k: result["membership"][k] for k in ("bytes", "sha256")}:
-            return result
-        raise ValueError(f"Corrupt membership artifact: {dest}")
+        if digest(dest / "membership.parquet") != {k: result["membership"][k] for k in ("bytes", "sha256")}:
+            raise ValueError(f"Corrupt membership artifact: {dest}")
+        # The sidecar catches up without the clustering running again. Everything that
+        # decides a buildKey -- the recipe, the input receipt, the membership -- is already
+        # fixed by the directory name and re-verified above; only the bed join is missing or
+        # stale, and that reads the same package the clustering read.
+        if result.get("bedRecipeSha256") != BED_RECIPE_HASH:
+            with duckdb.connect(":memory:") as con:
+                con.execute("SET threads=4"); con.execute("SET memory_limit='8GB'")
+                con.execute(f"CREATE VIEW zdo AS SELECT * FROM read_parquet({sql_path(package['zdo'])})")
+                residency = bed_residency(con, result["builds"])
+            for build in result["builds"]:
+                build["residents"] = residency.get(build["buildKey"], [])
+            result["bedRecipe"] = BED_RECIPE
+            result["bedRecipeSha256"] = BED_RECIPE_HASH
+            result["bedResidencyGeneratedAt"] = now()
+            save(receipt_path, result)
+            print(f"{entry['slug']}: residents re-derived (bed recipe {BED_RECIPE_HASH[:12]}), "
+                  f"build keys unchanged", flush=True)
+        return result
     dest.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(":memory:") as con:
         con.execute("SET threads=4"); con.execute("SET memory_limit='8GB'")
@@ -147,6 +225,9 @@ def analyze_era(root, entry):
                            "region": "outland" if math.hypot((xmin+xmax)/2,(zmin+zmax)/2)>10500 else "in-world",
                            "templateKey": templates[cid],
                            "membershipSha256": membership_hash, "photos": []})
+        residency = bed_residency(con, builds)
+        for build in builds:
+            build["residents"] = residency.get(build["buildKey"], [])
         con.execute("CREATE TEMP TABLE build_keys(cid BIGINT,build_key VARCHAR)")
         if mapping:
             con.execute("INSERT INTO build_keys SELECT unnest(?::BIGINT[]),unnest(?::VARCHAR[])",
@@ -162,7 +243,8 @@ def analyze_era(root, entry):
         census = dict(con.execute("SELECT category,count(*) FROM zdo GROUP BY category").fetchall())
         result = {"schema": "steward-era-analysis/v1", "era": entry["era"], "slug": entry["slug"],
                   "sourceKey": entry["sourceKey"], "snapshotId": entry["snapshotId"], "recipe": RECIPE,
-                  "recipeSha256": RECIPE_HASH, "inputReceiptSha256": input_hash, "generatedAt": now(), "constructionPieces": expected,
+                  "recipeSha256": RECIPE_HASH, "bedRecipe": BED_RECIPE, "bedRecipeSha256": BED_RECIPE_HASH,
+                  "inputReceiptSha256": input_hash, "generatedAt": now(), "constructionPieces": expected,
                   "residualPiecesRecovered": residual, "quarantinedConstructionPieces":invalid,
                   "quarantine":artifact(root,dest/'spatial-quarantine.parquet') if invalid else None,
                   "census": census, "builds": builds,
@@ -303,6 +385,21 @@ def project(root, analyses, links_path=None, legacy_config=None, capture_manifes
                 grouped[key]=grouped.get(key,0)+contribution["pieces"]
                 if b["buildKey"] not in builder["builds"]:builder["builds"].append(b["buildKey"])
             b["contributors"]=[{"builderKey":key,"pieces":n,"share":n/b["pieces"],"evidence":"saved-piece-creator"} for key,n in sorted(grouped.items())]
+            # A separate key, never merged into contributors and never routed through
+            # ensure(): ensure() appends the buildKey to builder["builds"], and gallery.py
+            # turns every key there into an album on that builder's thread with a fallback
+            # full credit of {pieces: <every piece>, share: 1.0}. Crediting somebody with an
+            # entire house because their bed is in it is exactly the inference this archive
+            # refuses to make. Map straight through builder_key() instead: the resident gets
+            # the same opaque identity a contributor would, and no thread.
+            #
+            # Always assigned, never left as the analysis receipt wrote it: that list holds
+            # raw character IDs, and `b` is a shallow copy, so carrying it through would put
+            # them straight into community-private.json and from there into the projection.
+            residents=defaultdict(int)
+            for r in b.get("residents") or []:
+                residents[builder_key(namespace,r["characterId"],links)]+=r["beds"]
+            b["residents"]=[{"builderKey":key,"beds":n,"evidence":"bed-owner-in-footprint"} for key,n in sorted(residents.items())]
             all_builds.append(b)
         missing=sum(u["constructionPieces"] for u in analysis["unknowns"])
         fraction=missing/max(analysis["constructionPieces"],1)
@@ -433,7 +530,7 @@ def project(root, analyses, links_path=None, legacy_config=None, capture_manifes
     save(root/"analysis/unknown-assets.json",{"schema":"steward-unknown-assets/v1","eras":era_reports,
         "patterns":[{"prefabHash":h,"eras":v,"recurring":len(v)>1} for h,v in sorted(unknown_patterns.items(),key=lambda kv:-sum(x["constructionPieces"] for x in kv[1]))]})
     save(root/"analysis/jobs.json",{"schema":"steward-era-jobs/v1","generatedAt":now(),"jobs":jobs})
-    save(root/"analysis/catalog.json",{"schema":"steward-analysis-catalog/v1","recipe":RECIPE,
+    save(root/"analysis/catalog.json",{"schema":"steward-analysis-catalog/v1","recipe":RECIPE,"bedRecipe":BED_RECIPE,
         "eras":[{"slug":a["slug"],"snapshotId":a["snapshotId"],"sourceKey":a["sourceKey"],"membership":a["membership"]} for a in analyses]})
     print(f"Projected {len(builders):,} builder threads, {len(all_builds):,} albums, {len(jobs):,} queued manual jobs",flush=True)
     return document
