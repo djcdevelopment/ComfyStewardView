@@ -190,6 +190,17 @@ class Worker:
             write(self.root/'state.json',self.state)
             path.unlink()
 
+    def prefs_receipt(self, saves, dest, seed):
+        """Proof the game read and wrote the seeded prefs file, whichever name it resolved."""
+        link=dest/'xdg/unity3d/unknown/unknown';path=saves/'prefs'
+        receipt={'path':str(path),'unknownIsSymlink':link.is_symlink(),
+                 'strayUnknownPrefs':(not link.is_symlink()) and (link/'prefs').is_file()}
+        if path.is_file():
+            current=stamp(path)
+            receipt.update(keys=len(re.findall(r'<pref name=',path.read_text(encoding='utf-8',errors='replace'))),
+                           **current,changedFromSeed=bool(seed) and current['sha256']!=seed['sha256'])
+        return receipt
+
     def attempt(self, builds, group, attempt_number):
         self.check_runtime()
         dest=self.root/'runs'/f'{group}-attempt-{attempt_number:02d}'
@@ -208,17 +219,19 @@ class Worker:
             shutil.copy2(spec['path'],cache_copy);cache_copy.chmod(0o600)
         # Unity writes PlayerPrefs -- every graphics setting -- under XDG_CONFIG_HOME,
         # which is this scratch tree. Without a seed every launch is a first launch on
-        # Unity defaults, whatever the operator set. And the path moved: the pinned
-        # client keeps prefs at unity3d/IronGate/Valheim/prefs, while the 1.0 Linux
-        # build (25185596) lost its company/product name and Unity fell back to
-        # unity3d/unknown/unknown/prefs. Measured 2026-09-11: a seed at the old path
-        # was never read by 1.0. Seed both so the build cannot choose wrong.
+        # Unity defaults, whatever the operator set. The Linux player resolves the prefs
+        # directory at the FIRST PlayerPrefs touch; with -screen-* on the command line that
+        # touch precedes PlayerSettings, so company/product are still empty and the whole
+        # process reads and writes unity3d/unknown/unknown/prefs (measured 2026-09-11: every
+        # -screen-* launch since 2026-08-27, on both builds; the one launch without -screen-*
+        # wrote unity3d/IronGate/Valheim/prefs). Seed the real directory once and point the
+        # unknown name at it, so read, write and seed are one file whichever name resolves.
         prefs=self.runtime.get('prefs')
         if prefs:
             verify(Path(prefs['path']),prefs)
-            for pdir in (saves, dest/'xdg/unity3d/unknown/unknown'):
-                pdir.mkdir(parents=True,exist_ok=True)
-                prefs_copy=pdir/'prefs';shutil.copy2(prefs['path'],prefs_copy);prefs_copy.chmod(0o600)
+            prefs_copy=saves/'prefs';shutil.copy2(prefs['path'],prefs_copy);prefs_copy.chmod(0o600)
+        unknown=dest/'xdg/unity3d/unknown';unknown.mkdir(parents=True)
+        os.symlink('../IronGate/Valheim',unknown/'unknown')
         reason='operator-stop' if self.stopped() else self.limit()
         if reason:
             write(dest/'result.json',{'success':False,'reason':reason,'launched':False})
@@ -264,7 +277,8 @@ class Worker:
         activation='Starting ConnectPortals coroutine with cache' in (dest/'BepInEx.log').read_text(errors='replace')
         success=success and activation
         write(dest/'result.json',{'success':success,'reason':reason,'portalCacheActive':activation,
-                                 'completed':sum(s['shotKey'] in self.state['completed'] for s in allowed.values()),'expected':len(allowed)})
+                                 'completed':sum(s['shotKey'] in self.state['completed'] for s in allowed.values()),'expected':len(allowed),
+                                 'prefs':self.prefs_receipt(saves,dest,prefs)})
         if success:
             # Disposable local save copies only. Raw images, receipts, sources and logs remain.
             scratch=dest/'xdg'

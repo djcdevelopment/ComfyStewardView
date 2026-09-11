@@ -40,9 +40,9 @@ def install(args):
              'sources':sources,'plugins':plugins,'terrainCaches':caches,'runtimeFiles':runtime_files,
              'character':args.character_file.stem,'runtimeMode':'current-client','verifiedLaunch':stamp(args.verified_launch)}
     # The renderer is part of the measurement. Freeze the operator's PlayerPrefs so
-    # every attempt runs the same graphics (and, on 1.0, skips the intro), and record
-    # the game build so two eras shot on different clients can never be mistaken for
-    # the same instrument.
+    # every attempt runs the same graphics, and record the game build so two eras shot
+    # on different clients can never be mistaken for the same instrument. (The 1.0
+    # startup cinematic is NOT a pref; the capture plugin skips it in-process.)
     if args.prefs:
         target=source/'prefs';shutil.copy2(args.prefs,target);verify(target,stamp(args.prefs));target.chmod(0o444)
         runtime['prefs']={'path':str(target),**stamp(target)}
@@ -61,6 +61,6 @@ if __name__=='__main__':
         parser.add_argument('--'+name,type=Path,required=True)
     parser.add_argument('--prefs',type=Path,default=None,
                         help='Unity PlayerPrefs file to seed into every attempt '
-                             '(~/.config/unity3d/IronGate/Valheim/prefs). Without it '
-                             'each launch runs on Unity defaults and, on 1.0, plays the intro.')
+                             '(the operator prefs file, unity3d/<company>/<product>/prefs). Without it '
+                             'each launch runs on Unity defaults, whatever the operator set.')
     install(parser.parse_args())
