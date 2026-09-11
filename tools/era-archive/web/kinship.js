@@ -399,6 +399,16 @@ const initKinshipPage = async () => {
   const labelOf = (build) => build?.label || albumFor(build)?.label || 'Untitled build';
   const piecesOf = (build) => build?.pieces ?? albumFor(build)?.pieces ?? null;
   const contributorsOf = (build) => build?.contributors || albumFor(build)?.contributors || [];
+  // Beds, read from its own key and never from contributorsOf(): a resident is not a
+  // contributor, carries no pieces and no share, and must never reach anything that ranks,
+  // branches or decides who may speak for a build. This answers one question only -- did
+  // this person sleep in this build, and in how many beds.
+  const bedsOf = (build, key) => {
+    const residents = build?.residents || albumFor(build)?.residents;
+    if (!Array.isArray(residents)) return 0;
+    const hit = residents.find((r) => r && r.builderKey === key);
+    return Number(hit?.beds) || 0;
+  };
   const photoCountOf = (build) => {
     const photos = build?.photos ?? albumFor(build)?.photos;
     return Array.isArray(photos) ? photos.length : Number(photos || 0);
@@ -766,6 +776,11 @@ const initKinshipPage = async () => {
     main.append(tagChips(mergedTags(build.buildKey, contributorKey)));
     row.append(main);
     const side = kinNode('div', null, 'kin-cohab-side');
+    // Beside the share, not folded into it: the share is pieces over pieces and a bed adds
+    // nothing to either side of that fraction. Nothing here auto-checks `basemate` -- that
+    // tag is one builder saying so about another, and a bed is not their testimony.
+    const beds = bedsOf(build, contributorKey);
+    if (beds > 0) side.append(kinNode('span', kinPlural(beds, 'bed'), 'kin-cohab-beds'));
     side.append(kinNode('span', share == null ? 'share unknown' : kinPercent(share), 'kin-cohab-share'));
     const merged = mergedTags(build.buildKey, contributorKey);
     const label = (merged.confirmed.length || merged.pending.length) ? '+' : 'Tag';
@@ -1009,6 +1024,11 @@ const initKinshipPage = async () => {
     const syncToBuild = () => {
       const current = byKey.get(select.value) || build;
       $('kin-tag-build-label').textContent = `${labelOf(current)} · era ${current.era}`;
+      // Context for the person choosing a tag, and only context: the dialog follows the
+      // build select, so switching builds re-answers it. It never ticks a box -- `basemate`
+      // is one builder's word about another, and a bed the world saved is not their word.
+      const beds = bedsOf(current, contributorKey);
+      $('kin-tag-beds').textContent = beds > 0 ? `slept here (${kinPlural(beds, 'bed')})` : '';
       const pending = StewardParticipation.tagFor(state, current.buildKey, contributorKey);
       const chosen = new Set(pending?.tags || []);
       for (const box of boxes) box.checked = chosen.has(box.value);
