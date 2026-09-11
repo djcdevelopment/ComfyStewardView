@@ -66,7 +66,7 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* --- Chronicler Archive tokens (see plans/valheim_creators_gallery/.../DESIGN.md) ---
+/* --- Chronicler Archive tokens (see baseline/docs/design/valheim-chronicles-stitch-2026-09/DESIGN.md) ---
    Strict dark. Elevation is tonal stratification plus a 1px chisel edge, never a soft
    drop shadow; the one ambient shadow is reserved for hover lifts and modals. */
 :root {
@@ -239,6 +239,23 @@ button.primary {
 button.primary:hover {
   background: var(--tertiary);
   border-color: var(--tertiary);
+}
+
+/* "Not mine", the quiet half of the claim pair: the stele slab in chisel and parchment
+   rather than bronze, so it reads as the other answer to the same question and never
+   competes with the forged button beside it. Unscoped on purpose -- the thread page
+   carries the same control over the same claim sheet. */
+button.claim-disavow {
+  background: var(--surface-container);
+  border-color: var(--chisel);
+  color: var(--parchment);
+  font-weight: 400;
+}
+
+button.claim-disavow:hover {
+  background: var(--surface-high);
+  border-color: var(--outline-variant);
+  color: var(--on-surface);
 }
 
 fieldset {
@@ -1840,6 +1857,13 @@ textarea:focus-visible,
   font-size: 0.82rem;
 }
 
+/* The claim pair sits on one row inside a 340px aside, so it wraps rather than squeezing
+   two half-width buttons; the buttons keep their own top margin. */
+#kinship .kin-build .actions-row {
+  gap: 8px;
+  margin-top: 0;
+}
+
 #kinship .kin-share-bar {
   display: flex;
   gap: 1px;
@@ -1901,6 +1925,39 @@ textarea:focus-visible,
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+/* A builder the saved world never named. Smaller and quieter than a tag chip, in the
+   outline hairline rather than bronze, so it reads as a state of the record standing
+   beside the name and is never mistaken for a name, an alias or a tag. */
+#kinship .kin-unnamed {
+  flex: none;
+  padding: 2px 6px;
+  font-size: 0.62rem;
+  text-transform: lowercase;
+  color: var(--outline);
+  border-color: var(--outline-variant);
+  box-shadow: none;
+}
+
+#kinship .kin-unnamed[hidden] {
+  display: none;
+}
+
+/* The name and its chip share one baseline row; the name may still ellipsize under it. */
+#kinship .kin-cohab-name,
+#kinship .kin-tip-name {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The tree labels carry no chip -- twelve lanes are crowded enough -- so a placeholder
+   name is dimmed instead, which is as much as a 96px label can honestly say. */
+#kinship .kin-node-name[data-kin-unnamed] {
+  color: var(--outline);
 }
 
 #kinship button.kin-tag-btn {

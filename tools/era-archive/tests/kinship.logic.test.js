@@ -5,6 +5,10 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const kinship = require(path.join(__dirname, '..', 'web', 'kinship.js'));
+// The one import from next door, and deliberate: isUnnamed is only correct if it is fed
+// the same placeholder pattern the directory page sorts by, so the test proves the real
+// exported regex rather than a copy of it that could quietly drift.
+const {PLACEHOLDER_NAME} = require(path.join(__dirname, '..', 'web', 'creators.js'));
 
 // The tree is built by hand rather than by calling into creators.js: this file is about
 // the geometry, and it has to keep failing for geometry reasons alone even while the
@@ -129,6 +133,46 @@ test('only the first maxBranches are laid out; the rest are counted as overflow'
 test('the layout is deterministic', () => {
   const gapped = tree([branch(1, [span(7), span(10, {legacy: true})]), branch(2, [span(8, {sharedPieces: 40})])]);
   assert.deepEqual(kinship.layoutKinshipTree(gapped), kinship.layoutKinshipTree(gapped));
+});
+
+test('the branch cap is eight on a narrow viewport and twelve otherwise', () => {
+  const asked = [];
+  const stub = (matches) => (query) => { asked.push(query); return {matches, media: query}; };
+  assert.equal(kinship.kinBranchCap(stub(true)), 8);
+  assert.equal(kinship.kinBranchCap(stub(false)), 12);
+  assert.deepEqual(asked, ['(max-width: 720px)', '(max-width: 720px)']);
+  // Node, a very old browser, or a document-less render: no matchMedia is not a phone.
+  assert.equal(kinship.kinBranchCap(undefined), 12);
+  assert.equal(kinship.kinBranchCap(null), 12);
+  // The default argument resolves to globalThis.matchMedia, absent under node --test.
+  assert.equal(kinship.kinBranchCap(), 12);
+});
+
+test('the cap is what the layout honours, so a narrow viewport counts the rest as overflow', () => {
+  const many = tree(Array.from({length: 14}, (_, i) => branch(i, [span(7)])));
+  const narrow = kinship.layoutKinshipTree(many, {maxBranches: kinship.kinBranchCap(() => ({matches: true}))});
+  assert.equal(narrow.branches.length, 8);
+  assert.equal(narrow.overflow, 6);
+});
+
+test('isUnnamed reads the published name status, and a placeholder display name', () => {
+  const unnamed = (record) => kinship.isUnnamed(record, PLACEHOLDER_NAME);
+  assert.equal(unnamed({nameStatus: 'unresolved', displayName: 'Builder 11d27f4c'}), true);
+  assert.equal(unnamed({nameStatus: 'ambiguous', displayName: 'Builder 11d27f4c'}), true);
+  // A name that looks like community.py's stand-in counts even where the status does not
+  // say so: directory.json is projected by one tool and the thread files by another.
+  assert.equal(unnamed({nameStatus: 'recorded', displayName: 'Builder 0f07f601'}), true);
+  assert.equal(unnamed({nameStatus: 'recorded', displayName: 'Helina'}), false);
+  assert.equal(unnamed({nameStatus: 'ambiguous'}), true);
+  // "Builder" and a real name is a name; only the eight-hex stand-in is not.
+  assert.equal(unnamed({nameStatus: 'recorded', displayName: 'Builder Bob'}), false);
+  assert.equal(unnamed({nameStatus: 'recorded', displayName: 'Builder 0f07f6'}), false);
+  // The load-state case: no record is not an unnamed builder, it is an unread directory.
+  assert.equal(unnamed(null), false);
+  assert.equal(unnamed(undefined), false);
+  // And with no pattern to test against, only the status can answer.
+  assert.equal(kinship.isUnnamed({nameStatus: 'recorded', displayName: 'Builder 0f07f601'}), false);
+  assert.equal(kinship.isUnnamed({nameStatus: 'unresolved', displayName: 'Builder 0f07f601'}), true);
 });
 
 test('a thread with no eras lays out to an empty canvas rather than throwing', () => {
