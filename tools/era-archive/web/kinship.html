@@ -132,20 +132,27 @@
 
     <div id="toast" role="status" aria-live="polite"></div>
 
-    <section id="claim-modal" class="modal" hidden>
+    <!-- Two kinds, one dialog: kinship.js sets data-claim-kind to "built" or "disavow"
+         when it opens, swaps #claim-title and #claim-confirm, and shows whichever
+         guidance block below matches. The build card's "Not mine" control (.claim-disavow)
+         is what opens the second mode. Kept byte-identical to index.html's dialog. -->
+    <section id="claim-modal" class="modal" data-claim-kind="built" hidden>
       <div class="sheet">
         <h2 id="claim-title">Claim build</h2>
         <p id="claim-build-label" class="muted"></p>
         <label>Volunteer handle
           <input id="claim-handle" type="text" maxlength="80" required>
         </label>
-        <label>Your claim note (optional)
+        <label>Your note (optional)
           <textarea id="claim-note" maxlength="500" rows="4" placeholder="What you built, where to spot your work, and any co-builders you remember."></textarea>
         </label>
-        <p class="muted">A self-reported marker, not verified ownership — credited builders
+        <p class="muted" data-claim-kind="built">A self-reported marker, not verified ownership — credited builders
           are derived from the saved world, and claiming does not change them.</p>
-        <p class="muted">Confirming copies a payload to your clipboard. <strong>Send it on to
-          finish the claim</strong> — nothing reaches the archive on its own.</p>
+        <p class="muted" data-claim-kind="disavow" hidden>A self-reported marker too, and not a correction to the
+          record — credited builders are derived from the saved world, and saying a build is not
+          yours does not remove anyone from it. It tells the archivist where to look.</p>
+        <p class="muted">This is recorded on this device. Confirming copies a payload to your
+          clipboard — <strong>send it on to finish</strong>; nothing reaches the archive on its own.</p>
         <div class="actions-row">
           <button type="button" id="claim-cancel">Cancel</button>
           <button type="button" id="claim-confirm" class="primary">I built this</button>

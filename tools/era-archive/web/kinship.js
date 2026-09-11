@@ -933,6 +933,11 @@ const initKinshipPage = async () => {
     // The sheet is shared, so every opening has to set both directions rather than only
     // the one that differs: a dialog opened once as a disavowal stays worded as one.
     claimModal.dataset.claimKind = kind;
+    // The guidance paragraphs are kind-scoped in the markup (same dialog as index.html):
+    // show the one for this kind, hide the other, every time the sheet opens.
+    for (const block of claimModal.querySelectorAll('[data-claim-kind]')) {
+      block.hidden = block.dataset.claimKind !== kind;
+    }
     $('claim-title').textContent = copy.title;
     $('claim-confirm').textContent = copy.confirm;
     $('claim-build-label').textContent = `${label} · era ${build.era}`;
