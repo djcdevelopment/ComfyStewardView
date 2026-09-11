@@ -110,6 +110,8 @@ gateway draws the archive emblem in place of a tile whenever `portraits.json` sa
 | `src/gateway.js` | the gateway's only script: the name box, its suggestions, and the empty-submit guard |
 | `assets/` | cutouts, emblem, fonts, and the portrait tiles once that lane lands them |
 
+Design record: baseline `docs/design/valheim-chronicles-stitch-2026-09/` (DESIGN.md + the Stitch mocks).
+
 ### Tests
 
 ```
