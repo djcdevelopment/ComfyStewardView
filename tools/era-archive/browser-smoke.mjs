@@ -1,10 +1,18 @@
 import {spawn} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
-const [gallery,world,output]=process.argv.slice(2);
+const [gallery,world,output,worldFlag]=process.argv.slice(2);
 // The world view deploys on its own lane and is not always up; the creator lane has to
-// be verifiable on its own before a release goes out. Pass an empty world URL to skip it.
-if(!gallery||!output)throw Error('Usage: browser-smoke.mjs <creator-base-url> <world-base-url-or-empty> <output-dir>');
+// be verifiable on its own before a release goes out. Pass an empty world URL to skip it,
+// and note that a world leg that fails is reported, not fatal: this run gates the creator
+// release, and a spatial lane that is down must not be able to hold that release hostage.
+// Pass --strict-world (or SMOKE_STRICT_WORLD=1) when the world lane is what is being
+// gated, and the whole run exits non-zero on a spatial failure again.
+if(!gallery||!output)throw Error('Usage: browser-smoke.mjs <creator-base-url> <world-base-url-or-empty> <output-dir> [--strict-world]');
+const strictWorld=worldFlag==='--strict-world'||process.env.SMOKE_STRICT_WORLD==='1';
+// `new URL('api/eras', 'https://host/world')` resolves to https://host/api/eras -- the
+// path segment is a file, not a directory, until it ends in a slash.
+const worldBase=world?new URL(world.endsWith('/')?world:world+'/'):null;
 await mkdir(output,{recursive:true});
 const chrome=process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const browser=spawn(chrome,['--headless','--disable-gpu','--no-first-run','--no-default-browser-check','--remote-debugging-port=0','--window-size=1440,1000',`--user-data-dir=${path.resolve(output,'profile')}`,'about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:true});
@@ -16,9 +24,18 @@ let id=0;const pending=new Map(),errors=[];
 socket.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(Error(m.error.message)):p.resolve(m.result);}if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails.text);};
 const cdp=(method,params={})=>new Promise((resolve,reject)=>{pending.set(++id,{resolve,reject});socket.send(JSON.stringify({id,method,params}));});
 const evaluate=async expression=>(await cdp('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true})).result.value;
-const wait=async expression=>{for(let i=0;i<100;i++){if(await evaluate(expression))return;await new Promise(r=>setTimeout(r,200));}throw Error('Timed out: '+expression);};
+const waitFor=async(expression,attempts,intervalMs)=>{for(let i=0;i<attempts;i++){if(await evaluate(expression))return;await new Promise(r=>setTimeout(r,intervalMs));}throw Error('Timed out: '+expression);};
+// 20 s for the creator pages, which are static files off FX99. The world viewer builds
+// its rasters on demand on AM4 and a cold first tile can take most of a minute, so its
+// own leg gets the 60 s budget world-browser-smoke.mjs already uses.
+const wait=expression=>waitFor(expression,100,200);
+const waitWorld=expression=>waitFor(expression,240,250);
 const screenshot=async name=>{const shot=await cdp('Page.captureScreenshot',{format:'png'});await writeFile(path.join(output,name+'.png'),Buffer.from(shot.data,'base64'));};
 const results={};
+// One tail, written on every path. The two copies this replaced meant a failed run wrote
+// no receipt at all -- the one case where a receipt is most worth having.
+let receiptWritten=false;
+const finish=async()=>{receiptWritten=true;await writeFile(path.join(output,'receipt.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results,null,2));};
 try{
   await cdp('Page.enable');await cdp('Runtime.enable');
   await cdp('Page.navigate',{url:gallery});await wait("document.querySelectorAll('.builder').length>0");
@@ -132,22 +149,63 @@ try{
   await evaluate("document.querySelector('button.kin-tag-btn').click()");
   await wait("document.getElementById('toast').classList.contains('show')");
   results.kinship.gated=true;
-  if(!world){
-    results.spatial='skipped: no world base URL';
-    if(errors.length)throw Error(errors.join('\n'));
-  results.status='passed';await writeFile(path.join(output,'receipt.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results,null,2));
-  }else{
-  await cdp('Page.navigate',{url:new URL('?era=era7',world).href});
-  await wait("[...document.querySelectorAll('.analysis-raster')].some(i=>i.complete&&i.naturalWidth>0)");
-  if(await evaluate("document.querySelectorAll('.context-raster').length")!==0)throw Error('Construction map displayed another era terrain');
-  results.spatial=await evaluate("document.getElementById('terrain-status').textContent");await screenshot('construction-era');
-  await evaluate("document.getElementById('era-select').value='era17';document.getElementById('era-select').dispatchEvent(new Event('change'))");
-  await wait("[...document.querySelectorAll('.context-raster')].some(i=>i.complete&&i.naturalWidth>0)");
-  if(await evaluate("new URLSearchParams(location.search).has('build')"))throw Error('Era switch retained previous build');
-  results.switch=await evaluate("({era:document.getElementById('era-select').value,context:document.querySelector('.context-raster').src,world:document.getElementById('public-world-name').textContent})");
-  if(!new URL(results.switch.context).searchParams.get('era'))throw Error('Terrain request lost era scope');
-  await screenshot('era17');
+  // Page exceptions raised by the creator lane itself are this run's business and still
+  // fail it. Anything the world viewer throws after this point belongs to the world leg
+  // and is folded into its own verdict.
   if(errors.length)throw Error(errors.join('\n'));
-  results.status='passed';await writeFile(path.join(output,'receipt.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results,null,2));
+  const errorsBeforeWorld=errors.length;
+  let spatialFailure=null;
+  if(!world){
+    results.spatial={status:'skipped',reason:'no world base URL'};
+    results.status='passed';
+  }else{
+    try{
+      // Which eras exist, which are ready and which carry terrain is archive state, not a
+      // constant: era 7 gained a context on 2026-09-10 and the old `.analysis-raster` wait
+      // became unreachable, because a terrain-bearing era opens in terrain view and draws
+      // no analysis raster at all. Ask the catalog which layer this era draws, the same way
+      // world-browser-smoke.mjs does, instead of naming one.
+      const response=await fetch(new URL('api/eras',worldBase));
+      if(!response.ok)throw Error(`api/eras answered ${response.status}`);
+      const catalog=await response.json();
+      const ready=(catalog.eras||[]).filter(era=>era.status==='ready');
+      if(!ready.length)throw Error('World viewer lists no ready era');
+      const opening=ready.find(era=>era.slug==='era7')||ready[0];
+      await cdp('Page.navigate',{url:new URL('?era='+opening.slug,worldBase).href});
+      const layer=opening.terrainAvailable?'.context-raster':'.analysis-raster';
+      await waitWorld(`[...document.querySelectorAll('${layer}')].some(i=>i.complete&&i.naturalWidth>0)`);
+      results.spatial={status:'passed',era:opening.slug,terrain:Boolean(opening.terrainAvailable),layer,
+        terrainStatus:await evaluate("document.getElementById('terrain-status').textContent")};
+      await screenshot('construction-era');
+      // Era 17 is the switch this has always exercised; fall back to any other ready era
+      // rather than hanging on a slug the archive no longer publishes.
+      const target=ready.find(era=>era.slug==='era17')||ready.find(era=>era.slug!==opening.slug);
+      if(!target)throw Error('Only one ready era: nothing to switch to');
+      await evaluate(`document.getElementById('era-select').value=${JSON.stringify(target.slug)};document.getElementById('era-select').dispatchEvent(new Event('change'))`);
+      await waitWorld("[...document.querySelectorAll('.context-raster')].some(i=>i.complete&&i.naturalWidth>0)");
+      if(await evaluate("new URLSearchParams(location.search).has('build')"))throw Error('Era switch retained previous build');
+      results.switch=await evaluate("({era:document.getElementById('era-select').value,context:document.querySelector('.context-raster').src,world:document.getElementById('public-world-name').textContent})");
+      if(results.switch.era!==target.slug)throw Error('Era select did not settle on the switched era');
+      if(!new URL(results.switch.context).searchParams.get('era'))throw Error('Terrain request lost era scope');
+      await screenshot(target.slug);
+      const late=errors.slice(errorsBeforeWorld);
+      if(late.length)throw Error(late.join('\n'));
+      results.status='passed';
+    }catch(error){
+      results.spatial={status:'failed',error:String(error?.message||error)};
+      results.status='passed-with-spatial-failure';
+      if(strictWorld)spatialFailure=error;
+    }
   }
+  await finish();
+  // --strict-world still gets the receipt first: the verdict is the artifact, and an
+  // exit code alone cannot say which wait timed out.
+  if(spatialFailure)throw spatialFailure;
+}catch(error){
+  if(!receiptWritten){
+    results.status='failed';
+    results.error=String(error?.message||error);
+    await finish();
+  }
+  throw error;
 }finally{socket.close();browser.kill();}

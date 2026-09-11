@@ -254,8 +254,20 @@ python -m unittest discover -s tools/era-archive/tests -v
 python -m unittest discover -s lab/tools/tests -v
 # Run mvnw.cmd test in viewer and lab.
 node tools/era-archive/browser-smoke.mjs <creator-base-url> <world-base-url> <receipt-dir>
+node tools/era-archive/browser-smoke.mjs <creator-base-url> <world-base-url> <receipt-dir> --strict-world
 node tools/era-archive/world-browser-smoke.mjs <world-base-url> <build-cases.json> <receipt-dir>
 ```
+
+`browser-smoke.mjs` gates the creator release, so its world leg is reported rather than
+fatal: if the spatial lane is down the run writes `"status": "passed-with-spatial-failure"`
+with the reason under `spatial`, and still exits 0. `--strict-world` (or
+`SMOKE_STRICT_WORLD=1`) re-arms it for a run that is gating the world lane — the receipt
+is written first either way, on success and on failure, because the verdict is the
+artifact and an exit code cannot say which wait timed out. An empty world URL skips the
+leg entirely. The leg reads `<world>/api/eras` and waits for whichever raster the opening
+era actually draws (`.context-raster` where terrain exists, `.analysis-raster` where it
+does not) rather than naming a layer: era 7 gained a context on 2026-09-10 and a hard-coded
+analysis-raster wait became unreachable.
 
 Operational data and screenshots belong outside Git. Keep the original archive,
 parser artifact, private identity registry, curated links, processing catalogs and
