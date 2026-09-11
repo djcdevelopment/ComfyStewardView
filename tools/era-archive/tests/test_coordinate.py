@@ -121,7 +121,11 @@ class SeedTests(CoordinateTestCase):
         self.assertFalse(coordinate.participation_path(self.root).exists())
 
     def test_every_other_command_refuses_an_unseeded_root(self):
-        for argv in (("ingest", "-"), ("confirm-tag", f"{BUILD}:{CONTRIBUTOR}"),
+        # "-" among them on purpose: `ingest` must reach that refusal without first
+        # reading stdin, or a mistyped root blocks the terminal waiting for a payload it
+        # could never have filed. This assertion is what proves it does not hang.
+        for argv in (("ingest", "-"), ("ingest", str(self.root / "missing.json")),
+                     ("confirm-tag", f"{BUILD}:{CONTRIBUTOR}"),
                      ("revoke-tag", f"{BUILD}:{CONTRIBUTOR}"), ("forget", HANDLE), ("status",)):
             with self.assertRaises(SystemExit, msg=argv[0]):
                 run("--output-root", self.root, *argv)

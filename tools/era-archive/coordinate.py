@@ -276,6 +276,10 @@ def cmd_seed(args):
 
 
 def cmd_ingest(args):
+    # The file first, the payload second. Reading stdin before checking the root means a
+    # mistyped --output-root sits there with the terminal blocked, waiting for a payload it
+    # was never going to be able to file.
+    path, document = read_document(args.output_root)
     text = sys.stdin.read() if args.payload == "-" else Path(args.payload).read_text(encoding="utf-8-sig")
     try:
         payload = json.loads(text)
@@ -285,7 +289,6 @@ def cmd_ingest(args):
         claims, requests, tags, fallback = records_from_payload(payload)
     except ValueError as error:
         raise SystemExit(str(error))
-    path, document = read_document(args.output_root)
     stamp = now()
     document["claimRecords"], claim_counts = upsert(
         document["claimRecords"], claims, "claimId", clean_claim, stamp, fallback)
