@@ -370,17 +370,28 @@ class ArchiveTest(unittest.TestCase):
 
     def test_public_projection_excludes_private_attribution_and_coordinates(self):
         with tempfile.TemporaryDirectory() as temp:
-            key='a'*32;build='b'*64
+            key='a'*32;build='b'*64;sleeper='e'*32
             doc={'generatedAt':'now','eras':[],'legacyImports':[],
                 'builders':[{'builderKey':key,'displayName':'A','aliases':['A'],'nameStatus':'recorded','builds':[build],
                              'characterIds':['9007199254740993'],'observations':[{'private':'private-evidence'}]}],
                 'builds':[{'buildKey':build,'era':7,'slug':'era7','label':'House','pieces':3,'photos':[],
                            'contributors':[{'builderKey':key,'pieces':3,'share':1,'evidence':'saved-piece-creator'}],
+                           # A resident carrying the two fields a hand-edited receipt could
+                           # smuggle through: the owning character and where the bed stood.
+                           # The whitelist copies three keys and leaves both behind.
+                           'residents':[{'builderKey':sleeper,'beds':2,'evidence':'bed-owner-in-footprint',
+                                         'characterId':'-8675309','x':4242.5}],
                            'bounds':{'minX':123.45},'sourceKey':'secret-source','snapshotId':1001}]}
             gallery.project(doc,Path(temp),'https://world.example/world/',min_build_pieces=0)
             raw=''.join(p.read_text() for p in Path(temp).rglob('*.json'))
-            for private in ('9007199254740993','private-evidence','123.45','secret-source','characterIds','observations'):
+            for private in ('9007199254740993','private-evidence','123.45','secret-source','characterIds','observations',
+                            '-8675309','4242.5'):
                 self.assertNotIn(private,raw)
+            album=archive.load(Path(temp)/'threads'/(key+'.json'))['eras'][0]['albums'][0]
+            self.assertEqual([{'builderKey':sleeper,'beds':2,'evidence':'bed-owner-in-footprint'}],album['residents'])
+            # Beside the credits, never inside them: the album still credits exactly the one
+            # builder whose pieces are saved on it.
+            self.assertEqual([key],[c['builderKey'] for c in album['contributors']])
             thread=archive.load(Path(temp)/'threads'/(key+'.json'))
             self.assertIn('era=era7&build='+build,thread['eras'][0]['albums'][0]['worldUrl'])
 
@@ -409,6 +420,117 @@ class ArchiveTest(unittest.TestCase):
             self.assertEqual([{'era':14,'albums':1,'albumsWithPhotos':1,'photos':1}],directory['photography']['eras'])
             self.assertEqual(1,directory['photography']['buildersWithPhotos'])
             self.assertTrue((Path(temp)/'search-beacon.txt').exists())
+
+    def test_bed_residency_is_evidence_not_credit(self):
+        """A bed is evidence of sleeping, bounded by a margin and by the smallest box.
+
+        The margin is 4 m in XZ and 3 m in Y, and the difference is deliberate: sideways,
+        a bed pushed against the inside of a wall sits outside the bounding box of the
+        pieces that enclose it; vertically, three metres up is the next storey of the same
+        house and a taller margin would hand the ground floor its neighbour's sleeper."""
+        with duckdb.connect(':memory:') as con:
+            con.execute('CREATE TABLE zdo(zdo_index BIGINT,category VARCHAR,x DOUBLE,y DOUBLE,z DOUBLE,owner_id BIGINT)')
+            con.execute("""INSERT INTO zdo VALUES
+                (1,'BED',5,0,5,11),          -- squarely inside the house
+                (2,'BED',13.9,0,5,12),       -- 3.9 m past the east wall: inside the margin
+                (3,'BED',15,0,5,13),         -- 5 m past it: nobody's bedroom
+                (4,'BED',5,6,5,14),          -- 4 m above the roof: the next storey, not this one
+                (11,'BED',5,5,5,18),         -- exactly 3 m above it: the margin's own edge, in
+                (5,'BED',5,0,5,11),          -- the same sleeper's second bed in one house
+                (6,'BED',50,0,50,15),        -- inside both the compound and the cottage
+                (7,'BED',5,0,5,0),           -- owner 0: the world owns it, nobody slept here
+                (8,'BED',5,0,5,NULL),        -- no owner recorded at all
+                (9,'BED','NaN',0,5,16),      -- a broken position is not a place
+                (10,'CHEST',5,0,5,17)        -- not a bed
+                """)
+            box=lambda key,x0,x1,z0,z1:{'buildKey':key,'bounds':{'minX':x0,'maxX':x1,'minY':0,'maxY':2,'minZ':z0,'maxZ':z1}}
+            house=box('h'*64,0,10,0,10)
+            compound=box('c'*64,10,50,10,50)      # 40x40 = 1600
+            cottage=box('t'*64,49.5,50.5,49.5,50.5)  # 1x1, standing inside the compound
+            residency=community.bed_residency(con,[house,compound,cottage])
+            self.assertEqual([{'characterId':'11','beds':2},{'characterId':'12','beds':1},
+                              {'characterId':'18','beds':1}],
+                             sorted(residency['h'*64],key=lambda r:int(r['characterId'])))
+            # The compound contains bed 6 only by containing the cottage, so the cottage has it.
+            self.assertEqual([{'characterId':'15','beds':1}],residency['t'*64])
+            self.assertNotIn('c'*64,residency)
+            found={r['characterId'] for rows in residency.values() for r in rows}
+            for skipped in ('13','14','16','17','0'):
+                self.assertNotIn(skipped,found)
+            self.assertEqual({},community.bed_residency(con,[]))
+
+    def test_residents_rederive_without_rotating_build_keys(self):
+        """The whole point of a separate BED_RECIPE_HASH: an archive that has already been
+        clustered gains bed evidence without a single buildKey moving, and without the
+        clustering -- the only thing that decides those keys -- running again."""
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);package={}
+            with duckdb.connect(':memory:') as con:
+                con.execute('CREATE TABLE world_snapshot(snapshot_id BIGINT)');con.execute('INSERT INTO world_snapshot VALUES (1001)')
+                con.execute('CREATE TABLE zdo(snapshot_id BIGINT,zdo_index BIGINT,category VARCHAR,prefab_hash INTEGER,prefab_name VARCHAR,x DOUBLE,y DOUBLE,z DOUBLE,creator_id BIGINT,owner_id BIGINT)')
+                # Two walls saved by character 1, and two beds inside them: character 7's
+                # bed records an ownerName, character 8's does not. Neither laid a piece.
+                con.execute("""INSERT INTO zdo VALUES
+                    (1001,1,'BUILDING',1,'wall',0,0,0,1,0),(1001,2,'BUILDING',1,'wall',1,0,0,1,0),
+                    (1001,3,'BED',2,'bed',0.5,0,0,0,7),(1001,4,'BED',2,'bed',0.7,0,0,0,8)""")
+                con.execute('CREATE TABLE zdo_field(snapshot_id BIGINT,zdo_index BIGINT,field_name VARCHAR,string_value VARCHAR)')
+                con.execute("INSERT INTO zdo_field VALUES (1001,3,'ownerName','Sleeper')")
+                con.execute('CREATE TABLE container_item(crafter_id BIGINT,crafter_name VARCHAR,container_zdo_index BIGINT)')
+                for table in ('world_snapshot','zdo','zdo_field','container_item'):
+                    path=root/(table+'.parquet');con.execute(f'COPY {table} TO {archive.sql_path(path)} (FORMAT PARQUET)');package[table]=path
+            entry={'era':7,'slug':'era7','sourceKey':'a'*64,'snapshotId':1001,'ingestion':{'artifacts':{}}}
+            with patch.object(community,'verify_package',return_value=package):
+                first=community.analyze_era(root,entry)
+            keys=sorted(b['buildKey'] for b in first['builds'])
+            receipt_path=Path(root/'analysis'/'era7')
+            analysis_json=next(receipt_path.rglob('analysis.json'))
+            membership=next(receipt_path.rglob('membership.parquet'))
+            before=membership.read_bytes()
+
+            # An archive analysed before bed residency existed: the receipt is otherwise
+            # untouched and still passes its membership digest.
+            stale=archive.load(analysis_json)
+            del stale['bedRecipeSha256']
+            for build in stale['builds']:build.pop('residents',None)
+            archive.save(analysis_json,stale)
+            with patch.object(community,'verify_package',return_value=package):
+                second=community.analyze_era(root,entry)
+            self.assertEqual(keys,sorted(b['buildKey'] for b in second['builds']))
+            self.assertEqual(before,membership.read_bytes())
+            self.assertEqual(community.BED_RECIPE_HASH,second['bedRecipeSha256'])
+            self.assertTrue(second.get('bedResidencyGeneratedAt'))
+            resident_build=next(b for b in second['builds'] if b['residents'])
+            self.assertEqual([{'characterId':'7','beds':1},{'characterId':'8','beds':1}],
+                             sorted(resident_build['residents'],key=lambda r:r['characterId']))
+
+            projection=community.project(root,[second])
+            namespace=uuid.UUID(archive.load(root/'analysis/identity-registry.json')['namespace'])
+            named=community.builder_key(namespace,'7',{});unnamed=community.builder_key(namespace,'8',{})
+            by_key={b['builderKey']:b for b in projection['builders']}
+            # ensure() would have hung the album on this thread and gallery.py would have
+            # credited it in full. The sleeper owns no builds and is credited with nothing.
+            self.assertEqual([],by_key[named]['builds'])
+            # And character 8 is not a builder at all: a builder record exists because a
+            # saved piece or a recorded name put one there, and an ownerName-less bed is
+            # neither. This is why verify.py reconciles residency to the build only.
+            self.assertNotIn(unnamed,by_key)
+            public=next(b for b in projection['builds'] if b['buildKey']==resident_build['buildKey'])
+            self.assertEqual([{'builderKey':key,'beds':1,'evidence':'bed-owner-in-footprint'}
+                              for key in sorted((named,unnamed))],public['residents'])
+            self.assertEqual(['7'],by_key[named]['characterIds'])
+            self.assertNotIn(named,[c['builderKey'] for c in public['contributors']])
+            self.assertNotIn(unnamed,[c['builderKey'] for c in public['contributors']])
+            with tempfile.TemporaryDirectory() as out:
+                gallery.project(projection,Path(out),'https://world.example/world/',min_build_pieces=0)
+                threads=sorted((Path(out)/'threads').glob('*.json'))
+                album=archive.load(threads[0])['eras'][0]['albums'][0]
+                self.assertEqual(public['residents'],album['residents'])
+                # Neither sleeper has a thread of their own: one has no builds, the other has
+                # no record. The album will show both as "Recorded builder" and that is the
+                # honest answer -- publishing a name that has never been public is not.
+                self.assertEqual(1,len(threads))
+                for sleeper in (named,unnamed):
+                    self.assertFalse((Path(out)/'threads'/(sleeper+'.json')).exists())
 
     def test_projection_refuses_a_template_without_head_markers(self):
         with self.assertRaises(ValueError):
