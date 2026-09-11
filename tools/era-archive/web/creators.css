@@ -241,6 +241,23 @@ button.primary:hover {
   border-color: var(--tertiary);
 }
 
+/* "Not mine", the quiet half of the claim pair: the stele slab in chisel and parchment
+   rather than bronze, so it reads as the other answer to the same question and never
+   competes with the forged button beside it. Unscoped on purpose -- the thread page
+   carries the same control over the same claim sheet. */
+button.claim-disavow {
+  background: var(--surface-container);
+  border-color: var(--chisel);
+  color: var(--parchment);
+  font-weight: 400;
+}
+
+button.claim-disavow:hover {
+  background: var(--surface-high);
+  border-color: var(--outline-variant);
+  color: var(--on-surface);
+}
+
 fieldset {
   border: 1px solid var(--outline-variant);
   border-radius: 6px;
@@ -1838,6 +1855,13 @@ textarea:focus-visible,
   margin: 10px 0 0;
   padding: 7px 12px;
   font-size: 0.82rem;
+}
+
+/* The claim pair sits on one row inside a 340px aside, so it wraps rather than squeezing
+   two half-width buttons; the buttons keep their own top margin. */
+#kinship .kin-build .actions-row {
+  gap: 8px;
+  margin-top: 0;
 }
 
 #kinship .kin-share-bar {

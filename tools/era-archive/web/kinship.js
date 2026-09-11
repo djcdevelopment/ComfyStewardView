@@ -136,7 +136,11 @@ const initKinshipPage = async () => {
   // creators.js is the only place the participation store and the kinship model live.
   // A cached copy from before they landed would otherwise throw halfway through the
   // first render and leave a half-drawn tree with no explanation.
-  if (typeof StewardParticipation === 'undefined' || typeof buildKinshipTree === 'undefined') {
+  // standingForBuild is checked by name, not just the store: a disavowed build has a claim
+  // record and no standing, so a creators.js that only knows claimForBuild would hand this
+  // page a tag control on a build its owner has said is not theirs.
+  if (typeof StewardParticipation === 'undefined' || typeof buildKinshipTree === 'undefined'
+    || typeof StewardParticipation.standingForBuild !== 'function') {
     const status = $('status');
     if (status) status.textContent = 'This page needs a newer creators.js. Reload once to pick it up.';
     return;
@@ -409,8 +413,15 @@ const initKinshipPage = async () => {
     return null;
   }
 
+  // standingForBuild, not claimForBuild: a disavowal is a claim record too, and the whole
+  // point of one is that it grants no standing to speak for the build's co-builders.
   const canTag = (build) => majorityOwner(albumFor(build), anchor) !== null
-    && Boolean(StewardParticipation.claimForBuild(state, build.buildKey));
+    && Boolean(StewardParticipation.standingForBuild(state, build.buildKey));
+
+  const disavowalFor = (buildKey) => {
+    const claim = StewardParticipation.claimForBuild(state, buildKey);
+    return claim && claim.kind === 'disavow' ? claim : null;
+  };
 
   function majorityBuilds() {
     return Array.isArray(tree?.majorityBuilds) ? tree.majorityBuilds : [];
@@ -425,9 +436,13 @@ const initKinshipPage = async () => {
       .sort((a, b) => (b.pieces || 0) - (a.pieces || 0) || a.buildKey.localeCompare(b.buildKey));
   }
 
+  // Eligible means "a build you have standing to speak for", so the list is the builds
+  // this browser has claimed as built -- not every build the anchor happens to lead. A
+  // visitor with no claims still sees a Tag control; it is inert, and says why.
   function eligibleBuildsFor(contributorKey) {
     return majorityBuilds()
       .filter((build) => contributorsOf(build).some((c) => c && c.builderKey === contributorKey))
+      .filter((build) => Boolean(StewardParticipation.standingForBuild(state, build.buildKey)))
       .sort((a, b) => (piecesOf(b) || 0) - (piecesOf(a) || 0) || a.buildKey.localeCompare(b.buildKey));
   }
 
@@ -728,10 +743,13 @@ const initKinshipPage = async () => {
     if (!build || !canTag(build)) {
       // Never the disabled attribute: a disabled button swallows the tap that would
       // otherwise explain why it is off, which on a touch screen is simply nothing.
+      const disavowed = build ? disavowalFor(build.buildKey) : null;
       btn.classList.add('inert');
       btn.setAttribute('aria-disabled', 'true');
-      btn.title = 'Claim this build first';
-      btn.onclick = () => kinToast('Claim this build before tagging co-builders.');
+      btn.title = disavowed ? 'You marked this build as not yours' : 'Claim this build first';
+      btn.onclick = () => kinToast(disavowed
+        ? 'You marked this build as not yours, so its co-builders are not yours to tag.'
+        : 'Claim this build before tagging co-builders.');
       return btn;
     }
     btn.onclick = () => openTagDialog({build, contributorKey});
@@ -751,7 +769,9 @@ const initKinshipPage = async () => {
     side.append(kinNode('span', share == null ? 'share unknown' : kinPercent(share), 'kin-cohab-share'));
     const merged = mergedTags(build.buildKey, contributorKey);
     const label = (merged.confirmed.length || merged.pending.length) ? '+' : 'Tag';
-    side.append(tagButton(build, contributorKey, label));
+    // A build this browser has disavowed carries no Tag control at all, not an inert one:
+    // "claim this first" is the wrong nudge for a build you have just said is not yours.
+    if (!disavowalFor(build.buildKey)) side.append(tagButton(build, contributorKey, label));
     row.append(side);
     return row;
   }
@@ -786,12 +806,16 @@ const initKinshipPage = async () => {
 
     const claim = StewardParticipation.claimForBuild(state, build.buildKey);
     if (claim) {
-      card.append(kinNode('span', `Claimed by ${claim.participant}`, 'chip claimed'));
+      const verb = claim.kind === 'disavow' ? 'Disavowed' : 'Claimed';
+      card.append(kinNode('span', `${verb} by ${claim.participant}`, 'chip claimed'));
     } else {
-      const btn = kinNode('button', 'I built this', 'kin-claim-btn');
-      btn.type = 'button';
-      btn.onclick = () => openClaimDialog(build);
-      card.append(btn);
+      // Both controls, side by side and unequal: a build the archive says you lead is
+      // most often yours, but the only person who can say it is not is you. Without the
+      // second control the page can only ever be told yes, and a wrong majority owner
+      // has nowhere to put a correction.
+      const row = kinNode('div', null, 'actions-row');
+      row.append(claimButton(build, 'built'), claimButton(build, 'disavow'));
+      card.append(row);
     }
     return card;
   }
@@ -865,11 +889,14 @@ const initKinshipPage = async () => {
       line.append(creditLink(entry.builderKey), unnamedChip(entry.builderKey));
       main.append(line);
       // The largest shared build is the one a tag is likeliest to be about, and it is
-      // also the one whose claim the anchor most likely already holds.
+      // also the one whose claim the anchor most likely already holds. A build already
+      // disavowed is the one build it certainly is not about.
       const eligible = entry.builds
         .slice()
         .sort((a, b) => (piecesOf(b) || 0) - (piecesOf(a) || 0) || a.buildKey.localeCompare(b.buildKey));
-      const preferred = eligible.find((b) => canTag(b)) || eligible[0];
+      const preferred = eligible.find((b) => canTag(b))
+        || eligible.find((b) => !disavowalFor(b.buildKey))
+        || eligible[0];
       main.append(tagChips(mergedTags(preferred.buildKey, entry.builderKey)));
       row.append(main);
       const side = kinNode('div', null, 'kin-cohab-side');
@@ -884,8 +911,30 @@ const initKinshipPage = async () => {
 
   /* ---- claiming and tagging ---- */
 
-  function openClaimDialog(build) {
+  // One table for both directions so the control, the sheet's heading and its confirm
+  // label cannot drift apart: the button that opened the sheet is the sentence it says.
+  const CLAIM_KINDS = {
+    built: {control: 'I built this', cls: 'primary', title: 'Claim build', confirm: 'I built this'},
+    disavow: {control: 'Not mine', cls: 'claim-disavow', title: 'Not my build', confirm: "This isn't mine"},
+  };
+
+  function claimButton(build, kind) {
+    const copy = CLAIM_KINDS[kind] || CLAIM_KINDS.built;
+    const btn = kinNode('button', copy.control, copy.cls);
+    btn.type = 'button';
+    btn.dataset.claimKind = kind;
+    btn.onclick = () => openClaimDialog(build, kind);
+    return btn;
+  }
+
+  function openClaimDialog(build, kind = 'built') {
+    const copy = CLAIM_KINDS[kind] || CLAIM_KINDS.built;
     const label = labelOf(build);
+    // The sheet is shared, so every opening has to set both directions rather than only
+    // the one that differs: a dialog opened once as a disavowal stays worded as one.
+    claimModal.dataset.claimKind = kind;
+    $('claim-title').textContent = copy.title;
+    $('claim-confirm').textContent = copy.confirm;
     $('claim-build-label').textContent = `${label} · era ${build.era}`;
     $('claim-handle').value = state.participant || '';
     $('claim-note').value = '';
@@ -898,6 +947,9 @@ const initKinshipPage = async () => {
       const claim = {
         claimId: randomId('claim'),
         buildKey: build.buildKey,
+        // One record per build either way, so saying "not mine" replaces an earlier
+        // "I built this" and vice versa rather than leaving both on the ledger.
+        kind,
         builderKey: anchor,
         participant,
         buildLabel: label,
@@ -917,7 +969,7 @@ const initKinshipPage = async () => {
       StewardParticipation.putClaim(state, claim);
       StewardParticipation.save(state);
       kinCloseModal(claimModal);
-      if (deliveryStatus === 'submitted') kinToast('Claim sent.');
+      if (deliveryStatus === 'submitted') kinToast(kind === 'disavow' ? 'Disavowal sent.' : 'Claim sent.');
       else await kinCopyPayload(StewardParticipation.exportPayload(state, {kindFilter: 'claim', buildKey: build.buildKey}));
       renderBuilds();
       renderCohabs();
@@ -962,9 +1014,11 @@ const initKinshipPage = async () => {
 
     $('kin-tag-confirm').onclick = async () => {
       const current = byKey.get(select.value) || build;
-      const claim = StewardParticipation.claimForBuild(state, current.buildKey);
+      const claim = StewardParticipation.standingForBuild(state, current.buildKey);
       if (!claim) {
-        $('kin-tag-inline').textContent = 'Claim this build before tagging co-builders.';
+        $('kin-tag-inline').textContent = disavowalFor(current.buildKey)
+          ? 'You marked this build as not yours, so its co-builders are not yours to tag.'
+          : 'Claim this build before tagging co-builders.';
         return;
       }
       const tags = boxes.filter((box) => box.checked).map((box) => box.value);
