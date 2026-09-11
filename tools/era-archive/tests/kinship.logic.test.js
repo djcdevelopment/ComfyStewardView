@@ -131,6 +131,26 @@ test('the layout is deterministic', () => {
   assert.deepEqual(kinship.layoutKinshipTree(gapped), kinship.layoutKinshipTree(gapped));
 });
 
+test('the branch cap is eight on a narrow viewport and twelve otherwise', () => {
+  const asked = [];
+  const stub = (matches) => (query) => { asked.push(query); return {matches, media: query}; };
+  assert.equal(kinship.kinBranchCap(stub(true)), 8);
+  assert.equal(kinship.kinBranchCap(stub(false)), 12);
+  assert.deepEqual(asked, ['(max-width: 720px)', '(max-width: 720px)']);
+  // Node, a very old browser, or a document-less render: no matchMedia is not a phone.
+  assert.equal(kinship.kinBranchCap(undefined), 12);
+  assert.equal(kinship.kinBranchCap(null), 12);
+  // The default argument resolves to globalThis.matchMedia, absent under node --test.
+  assert.equal(kinship.kinBranchCap(), 12);
+});
+
+test('the cap is what the layout honours, so a narrow viewport counts the rest as overflow', () => {
+  const many = tree(Array.from({length: 14}, (_, i) => branch(i, [span(7)])));
+  const narrow = kinship.layoutKinshipTree(many, {maxBranches: kinship.kinBranchCap(() => ({matches: true}))});
+  assert.equal(narrow.branches.length, 8);
+  assert.equal(narrow.overflow, 6);
+});
+
 test('a thread with no eras lays out to an empty canvas rather than throwing', () => {
   const laid = kinship.layoutKinshipTree(tree([branch(1, [span(7)])], []));
   assert.equal(laid.bands.length, 0);

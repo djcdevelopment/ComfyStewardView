@@ -103,8 +103,18 @@ function layoutKinshipTree(tree, options = {}) {
   };
 }
 
+// Twelve lanes need about 720px of canvas before neighbouring portraits start printing
+// over each other's labels. A phone shows roughly half that through the scroller, so a
+// narrow viewport draws the eight closest branches instead and renderOverflowNote() says
+// in words how many were left out. matchMedia is a parameter so the choice can be tested
+// without a browser; Window operations survive being called unbound, so the default is
+// safe to invoke as-is.
+function kinBranchCap(mm = globalThis.matchMedia) {
+  return mm && mm('(max-width: 720px)').matches ? 8 : 12;
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = {KIN_LAYOUT, strokeWidthFor, kinRound, layoutKinshipTree};
+  module.exports = {KIN_LAYOUT, strokeWidthFor, kinRound, layoutKinshipTree, kinBranchCap};
 }
 
 const initKinshipPage = async () => {
@@ -146,6 +156,8 @@ const initKinshipPage = async () => {
   let tree = null;
   let layout = null;
   let activeFilter = 'all';
+  let branchCap = kinBranchCap();
+  let resizeTimer = 0;
   let ledgerShown = LEDGER_PAGE;
   let buildsShown = BUILD_PAGE;
   let suggestions = [];
@@ -1019,6 +1031,19 @@ const initKinshipPage = async () => {
     });
   }
 
+  // A rotate or a window drag fires resize by the dozen, and a rebuild is a full redraw of
+  // the tree, the ledger and both aside cards. Debounce it, and then redraw only when the
+  // answer actually changed: every resize inside one breakpoint costs nothing at all.
+  function wireViewport() {
+    addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (!thread || kinBranchCap() === branchCap) return;
+        rebuild();
+      }, 150);
+    });
+  }
+
   /* ---- the anchor switcher ---- */
 
   function closeSuggestions() {
@@ -1108,7 +1133,8 @@ const initKinshipPage = async () => {
     const source = filteredThread();
     visibleAlbums = (source.eras || []).flatMap((era) => era.albums || []);
     tree = buildKinshipTree(source, {confirmedTags, localTags: state.kinshipTags});
-    layout = layoutKinshipTree(tree);
+    branchCap = kinBranchCap();
+    layout = layoutKinshipTree(tree, {maxBranches: branchCap});
     ledgerShown = LEDGER_PAGE;
     buildsShown = BUILD_PAGE;
     renderTree();
@@ -1130,6 +1156,7 @@ const initKinshipPage = async () => {
 
   wireTabs();
   wireSwitcher();
+  wireViewport();
 
   const directoryLoad = kinReadOptional('directory.json').then((doc) => {
     if (!doc) return;
