@@ -597,3 +597,95 @@ test('StewardParticipation.forget hands back a fresh ledger even when storage th
   assert.deepEqual(StewardParticipation.forget(hostile).kinshipTags, {});
   assert.deepEqual(StewardParticipation.forget(undefined).requests, {});
 });
+
+// ---------------------------------------------------------------------------
+// "Not my build". A photographed build with the wrong name on it had no way to say so:
+// credit comes from the creator saved on each construction piece and a visitor cannot
+// edit those. A disavowal is the correction on offer -- and it is a marker like every
+// other claim, so it records, counts and exports without ever moving a credit.
+// ---------------------------------------------------------------------------
+
+test('standingForBuild answers for a built claim, and for nothing else', () => {
+  const state = StewardParticipation.defaultState();
+  StewardParticipation.putClaim(state, {claimId: 'claim-built', buildKey: BUILD_E9, builderKey: ANCHOR, kind: 'built'});
+  StewardParticipation.putClaim(state, {claimId: 'claim-not-mine', buildKey: BUILD_E7_PAIR, builderKey: ANCHOR, kind: 'disavow'});
+
+  assert.equal(StewardParticipation.standingForBuild(state, BUILD_E9).claimId, 'claim-built');
+  assert.equal(StewardParticipation.standingForBuild(state, BUILD_E7_PAIR), null,
+    'saying a build is not yours cannot be what unlocks acting on it');
+  assert.equal(StewardParticipation.standingForBuild(state, BUILD_E7_CROWD), null);
+
+  // claimForBuild still answers for both: the card has to be able to say which it was.
+  assert.equal(StewardParticipation.claimForBuild(state, BUILD_E9).kind, 'built');
+  assert.equal(StewardParticipation.claimForBuild(state, BUILD_E7_PAIR).kind, 'disavow');
+  assert.equal(StewardParticipation.claimForBuild(state, BUILD_E7_CROWD), null);
+});
+
+test('a claim with no kind at all is a built claim, both on the way in and off the disk', () => {
+  const state = StewardParticipation.defaultState();
+  const stored = StewardParticipation.putClaim(state, {claimId: 'claim-old', buildKey: BUILD_E9, builderKey: ANCHOR});
+  assert.equal(stored.kind, 'built');
+  assert.equal(StewardParticipation.standingForBuild(state, BUILD_E9).claimId, 'claim-old');
+
+  const KEY = StewardParticipation.STORAGE_KEY;
+  const ledger = {
+    schema: StewardParticipation.SCHEMA,
+    participant: 'Skald',
+    claims: {
+      [BUILD_E9]: {claimId: 'claim-1', buildKey: BUILD_E9, deliveryStatus: 'submitted'},
+      [BUILD_E7_PAIR]: {claimId: 'claim-2', buildKey: BUILD_E7_PAIR, kind: 'disavow'},
+      [BUILD_E7_CROWD]: {claimId: 'claim-3', buildKey: BUILD_E7_CROWD, kind: 'nonsense'},
+    },
+    requests: {},
+  };
+  const loaded = StewardParticipation.load(fakeStorage({[KEY]: JSON.stringify(ledger)}));
+  assert.equal(loaded.claims[BUILD_E9].kind, 'built', 'a pre-disavowal ledger is not a broken ledger');
+  assert.equal(loaded.claims[BUILD_E7_PAIR].kind, 'disavow');
+  assert.equal(loaded.claims[BUILD_E7_CROWD].kind, 'built', 'anything that is not a disavowal is a claim');
+  assert.equal(loaded.claims[BUILD_E9].deliveryStatus, 'submitted', 'and nothing else about it moves');
+});
+
+test('one record per build: a disavowal replaces a claim, and a claim replaces a disavowal', () => {
+  const state = StewardParticipation.defaultState();
+  StewardParticipation.putClaim(state, {claimId: 'claim-1', buildKey: BUILD_E9, builderKey: ANCHOR, kind: 'built', deliveryStatus: 'submitted'});
+  StewardParticipation.putClaim(state, {claimId: 'claim-2', buildKey: BUILD_E9, builderKey: ANCHOR, kind: 'disavow', deliveryStatus: 'queued'});
+
+  assert.deepEqual(Object.keys(state.claims), [BUILD_E9], 'one browser cannot hold both answers at once');
+  const disavowal = StewardParticipation.claimForBuild(state, BUILD_E9);
+  assert.equal(disavowal.claimId, 'claim-2');
+  assert.equal(disavowal.kind, 'disavow');
+  assert.equal(disavowal.deliveryStatus, 'submitted', 'a change of mind must not forget that one was delivered');
+  assert.equal(disavowal.resubmittedFrom, 'claim-1');
+  assert.equal(StewardParticipation.standingForBuild(state, BUILD_E9), null);
+
+  StewardParticipation.putClaim(state, {claimId: 'claim-3', buildKey: BUILD_E9, builderKey: ANCHOR, kind: 'built'});
+  assert.deepEqual(Object.keys(state.claims), [BUILD_E9]);
+  assert.equal(StewardParticipation.standingForBuild(state, BUILD_E9).claimId, 'claim-3',
+    'and the way back is the same door');
+});
+
+test('a kinship export rides a built claim and never a disavowal', () => {
+  const state = StewardParticipation.defaultState();
+  state.participant = 'Skald';
+  StewardParticipation.putClaim(state, {claimId: 'claim-9', buildKey: BUILD_E9, builderKey: ANCHOR, kind: 'built'});
+  StewardParticipation.putClaim(state, {claimId: 'claim-7', buildKey: BUILD_E7_PAIR, builderKey: ANCHOR, kind: 'disavow'});
+  StewardParticipation.putKinshipTag(state, kinshipTagRecord(
+    {buildKey: BUILD_E9, era: 9, builderKey: ANCHOR, contributorKey: CO_X, tags: ['mason']}, {id: 'kintag-9'}));
+  StewardParticipation.putKinshipTag(state, kinshipTagRecord(
+    {buildKey: BUILD_E7_PAIR, era: 7, builderKey: ANCHOR, contributorKey: CO_X, tags: ['roof']}, {id: 'kintag-7'}));
+
+  const standing = StewardParticipation.exportPayload(state, {kindFilter: 'kinship', buildKey: BUILD_E9});
+  assert.deepEqual(standing.claims.map((c) => c.claimId), ['claim-9']);
+  assert.deepEqual(standing.kinshipTags.map((t) => t.tagId), ['kintag-9']);
+
+  // A payload carrying somebody's tags for a build they have just said is not theirs
+  // would be a payload arguing with itself. The tags still travel; the standing does not.
+  const disowned = StewardParticipation.exportPayload(state, {kindFilter: 'kinship', buildKey: BUILD_E7_PAIR});
+  assert.deepEqual(disowned.claims, []);
+  assert.deepEqual(disowned.kinshipTags.map((t) => t.tagId), ['kintag-7']);
+
+  // The unfiltered ledger export is the whole ledger, disavowals included -- that is the
+  // payload the volunteer sends on, and a correction is exactly what the coordinator wants.
+  const everything = StewardParticipation.exportPayload(state);
+  assert.deepEqual(everything.claims.map((c) => c.kind).sort(), ['built', 'disavow']);
+});

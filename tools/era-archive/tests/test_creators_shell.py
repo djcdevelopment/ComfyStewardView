@@ -108,9 +108,46 @@ class ChroniclerStyleTests(unittest.TestCase):
             self.assertNotIn('href="#participation-details"', content,
                              "the participation deep link belongs to the directory only")
 
+    def test_the_directory_shell_carries_both_claim_kinds(self):
+        # One dialog answers "is this yours" both ways. The shell declares the default
+        # mode and holds the guidance copy for each; creators.js swaps data-claim-kind,
+        # the title and the confirm label when it opens, and shows the matching block.
+        self.assertIn('<section id="claim-modal" class="modal" data-claim-kind="built" hidden>', self.index)
+        self.assertIn('data-claim-kind="disavow"', self.index)
+        self.assertIn('<h2 id="claim-title">Claim build</h2>', self.index)
+        # The wording never says "submitted": nothing leaves this browser on its own.
+        self.assertIn("recorded on this device", self.index)
+        self.assertNotIn("submitted", self.index)
+
+    def test_the_kinship_shell_carries_both_claim_kinds(self):
+        """Red on this branch alone -- kinship.html is the other builder's file this
+        iteration, and gets the same claim-modal change there. Green at the merge."""
+        self.assertIn('data-claim-kind="disavow"', self.kinship)
+
+    def test_the_disavow_control_is_rendered_and_is_not_the_primary_action(self):
+        # The class and the data attribute are the hooks the stylesheet and the smoke
+        # reach for, so they are pinned where they are written: the album card is drawn
+        # by creators.js, not by the shell.
+        js = (WEB / "creators.js").read_text(encoding="utf-8")
+        self.assertIn("'claim-disavow'", js)
+        self.assertIn("disavow.dataset.claimKind = 'disavow'", js)
+        self.assertIn("claim.dataset.claimKind = 'built'", js)
+        self.assertIn("node('button', 'I built this', 'primary')", js,
+                      "the claim control stays the primary action of the card")
+        self.assertIn("standingForBuild", js)
+
+    def test_the_participation_surface_speaks_of_builders_not_characters(self):
+        # A builder is a person, not a game object and not a class. The participation
+        # surfaces say so: verify_sweep.ps1 holds the same line on the kinship page.
+        # (stats.html is the documented exception -- "Player Archetypes" is a section
+        # heading about a distribution, pinned by test_stats_page.py, and it is talking
+        # about build patterns rather than about anybody.)
+        for banned in ("character", "archetype"):
+            self.assertNotIn(banned, self.index.casefold(), f"index.html says '{banned}'")
+
     def test_stylesheet_href_is_cache_busted_and_still_rewritable(self):
         for name, content in (("index.html", self.index), ("stats.html", self.stats)):
-            self.assertIn('href="./creators.css?v=4"', content, name)
+            self.assertIn('href="./creators.css?v=5"', content, name)
         self.assertIn('src="./creators.js"', self.index)
 
     def test_route_guard_keeps_creators_inert_on_the_kinship_page(self):
@@ -121,7 +158,7 @@ class ChroniclerStyleTests(unittest.TestCase):
         js = (WEB / "creators.js").read_text(encoding="utf-8")
         self.assertIn("dataset.stewardPage !== 'kinship'", js)
         self.assertIn('<html lang="en" data-steward-page="kinship">', self.kinship)
-        self.assertIn('src="./creators.js?v=4"', self.kinship)
+        self.assertIn('src="./creators.js?v=5"', self.kinship)
         self.assertIn('src="./kinship.js"', self.kinship)
         self.assertNotIn("data-steward-page", self.index,
                          "the directory shell is the default route, not a named one")
@@ -143,10 +180,10 @@ class ChroniclerStyleTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             project(document, dest, "https://example.invalid/world")
             thread = (dest / key / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=4"', thread)
+            self.assertIn('href="../creators.css?v=5"', thread)
             self.assertIn('src="../creators.js"', thread)
             stats = (dest / "stats" / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=4"', stats)
+            self.assertIn('href="../creators.css?v=5"', stats)
 
 
 if __name__ == "__main__":

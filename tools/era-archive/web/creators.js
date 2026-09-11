@@ -451,6 +451,11 @@ const StewardParticipation = {
       if (!parsed || parsed.schema !== PARTICIPATION_SCHEMA) return StewardParticipation.defaultState();
       next.participant = String(parsed.participant || '').trim();
       next.claims = parsed.claims && typeof parsed.claims === 'object' ? parsed.claims : {};
+      // A ledger written before "Not my build" existed is a ledger of built claims, not a
+      // broken one -- the same courtesy kinshipTags gets below.
+      for (const claim of Object.values(next.claims)) {
+        if (claim && typeof claim === 'object' && claim.kind !== 'disavow') claim.kind = 'built';
+      }
       next.requests = parsed.requests && typeof parsed.requests === 'object' ? parsed.requests : {};
       // A ledger written before kinship existed is not a broken ledger.
       next.kinshipTags = parsed.kinshipTags && typeof parsed.kinshipTags === 'object' ? parsed.kinshipTags : {};
@@ -482,8 +487,19 @@ const StewardParticipation = {
     return StewardParticipation.defaultState();
   },
 
+  // Either kind: this is what the card reads to say "Claimed by" or "Disavowed by".
   claimForBuild(state, buildKey) {
     return state.claims?.[buildKey] || null;
+  },
+
+  // What a *built* claim confers, and a disavowal does not. Saying "this isn't mine" is
+  // still participation and still a record -- it is a useful correction to publish a count
+  // of -- but it cannot be the thing that unlocks requesting photographs of that build or
+  // tagging the people who built it beside you. Every standing gate reads this, never
+  // claimForBuild, because the two answers differ exactly where it matters.
+  standingForBuild(state, buildKey) {
+    const claim = StewardParticipation.claimForBuild(state, buildKey);
+    return claim && claim.kind === 'built' ? claim : null;
   },
 
   requestsForBuild(state, buildKey) {
@@ -498,9 +514,13 @@ const StewardParticipation = {
     return state.kinshipTags?.[`${buildKey}:${contributorKey}`] || null;
   },
 
-  // A re-claim must not discard the record that an earlier one was delivered.
+  // A re-claim must not discard the record that an earlier one was delivered. One record
+  // per build whichever way it points: a disavowal replaces a claim and a claim replaces a
+  // disavowal, because both are the same person saying the same kind of thing about the
+  // same build, and two stores would let one browser hold both at once.
   putClaim(state, claim) {
     if (!state.claims) state.claims = {};
+    if (claim.kind !== 'disavow') claim.kind = 'built';
     const prior = state.claims[claim.buildKey];
     if (prior && prior.deliveryStatus === 'submitted' && claim.deliveryStatus !== 'submitted') {
       claim.deliveryStatus = 'submitted';
@@ -537,8 +557,11 @@ const StewardParticipation = {
     if (kindFilter === 'request' && buildKey) payload.requests = payload.requests.filter((r) => r.buildKey === buildKey);
     if (kindFilter === 'kinship') {
       payload.kinshipTags = payload.kinshipTags.filter((t) => t.buildKey === buildKey);
-      // The claim is what gives the tagger standing on this build, so it rides along.
-      payload.claims = payload.claims.filter((c) => c.buildKey === buildKey);
+      // The claim is what gives the tagger standing on this build, so it rides along --
+      // and only a built claim is standing. A disavowal riding out with somebody else's
+      // kinship tags would be a payload that argues with itself.
+      const standing = StewardParticipation.standingForBuild(state, buildKey);
+      payload.claims = standing ? [standing] : [];
     }
     return payload;
   },
@@ -678,8 +701,11 @@ const initCreatorsPage = async () => {
 
     for (const item of [...claims, ...requests]) {
       const key = item.builderKey;
-      const record = byBuilder.get(key) || {claims: 0, requests: 0, handles: new Set()};
-      if (item.claimId) record.claims += 1;
+      const record = byBuilder.get(key) || {claims: 0, disavowals: 0, requests: 0, handles: new Set()};
+      // "N claimed builds" must not quietly include the ones this browser said were not
+      // its own; those are counted, and shown, as what they are.
+      if (item.claimId && item.kind === 'disavow') record.disavowals += 1;
+      else if (item.claimId) record.claims += 1;
       if (item.requestId) record.requests += 1;
       if (item.participant) record.handles.add(item.participant);
       byBuilder.set(key, record);
@@ -689,11 +715,15 @@ const initCreatorsPage = async () => {
 
   function countByBuilder(builderKeyValue) {
     const aggregate = toPartsByBuilder();
-    return aggregate.get(builderKeyValue) || {claims: 0, requests: 0, handles: new Set()};
+    return aggregate.get(builderKeyValue) || {claims: 0, disavowals: 0, requests: 0, handles: new Set()};
   }
 
   function claimForBuild(buildKey) {
     return StewardParticipation.claimForBuild(state, buildKey);
+  }
+
+  function standingForBuild(buildKey) {
+    return StewardParticipation.standingForBuild(state, buildKey);
   }
 
   function requestsForBuild(buildKey) {
@@ -756,28 +786,33 @@ const initCreatorsPage = async () => {
   function updateParticipantSnapshot() {
     if (!$('participant-handle')) return;
     $('participant-handle').value = state.participant;
+    const claimValues = Object.values(state.claims);
     const counts = {
-      claims: Object.keys(state.claims).length,
+      claims: claimValues.filter((c) => c.kind !== 'disavow').length,
+      disavowals: claimValues.filter((c) => c.kind === 'disavow').length,
       requests: Object.keys(state.requests).length,
-      submitted: [...Object.values(state.claims), ...Object.values(state.requests)]
+      submitted: [...claimValues, ...Object.values(state.requests)]
         .filter((x) => x.deliveryStatus === 'submitted').length,
     };
     const participants = new Set();
     for (const c of Object.values(state.claims)) participants.add(c.participant);
     for (const r of Object.values(state.requests)) participants.add(r.participant);
 
-    const parts = [
-      `${counts.claims} claimed builds`,
+    const parts = [`${counts.claims} claimed builds`];
+    // Only when there are some: a standing "0 disavowed" reads as an accusation waiting
+    // for a name, and the first-time visitor has enough zeroes to look at already.
+    if (counts.disavowals) parts.push(`${counts.disavowals} disavowed`);
+    parts.push(
       `${counts.requests} photo requests`,
       `${counts.submitted} already submitted`,
       `${participants.size} local participants`,
-    ];
+    );
     $('participation-summary').textContent = parts.join(' · ');
 
     // The panel is a fold on the landing page -- nobody arriving for the first time
     // needs four zeroes above the search box. Open it once there is something in it.
     const details = $('participation-details');
-    if (details && (counts.claims || counts.requests || state.participant || isThread)) details.open = true;
+    if (details && (counts.claims || counts.disavowals || counts.requests || state.participant || isThread)) details.open = true;
 
     const total = externalParticipation && typeof externalParticipation === 'object'
       ? Number(externalParticipation.participants || externalParticipation.totalParticipants || 0)
@@ -794,6 +829,7 @@ const initCreatorsPage = async () => {
     const agg = countByBuilder(builderKeyValue);
     const chips = [];
     if (agg.claims) chips.push(`${agg.claims} claimed build${agg.claims === 1 ? '' : 's'}`);
+    if (agg.disavowals) chips.push(`${agg.disavowals} disavowed`);
     if (agg.requests) chips.push(`${agg.requests} request${agg.requests === 1 ? '' : 's'}`);
     return chips;
   }
@@ -1337,36 +1373,55 @@ const initCreatorsPage = async () => {
   function renderAlbumActions(album, targetBuilderKey) {
     const row = node('div', null, 'actions-row');
     const current = claimForBuild(album.buildKey);
+    const standing = standingForBuild(album.buildKey);
     if (current) {
       // Was a <button> with no handler, which looks pressable and does nothing.
-      row.append(node('span', `Claimed by ${normalizeHandle(current.participant)}`, 'chip claimed'));
+      const verb = current.kind === 'disavow' ? 'Disavowed' : 'Claimed';
+      row.append(node('span', `${verb} by ${normalizeHandle(current.participant)}`, 'chip claimed'));
     } else {
+      // Two ways to answer "is this yours", because a photographed build with the wrong
+      // name on it has no other way to say so: the credits come from the saved pieces and
+      // a visitor cannot edit those. Saying "not mine" is the only correction on offer.
       const claim = node('button', 'I built this', 'primary');
+      claim.dataset.claimKind = 'built';
       claim.onclick = () => {
         selectedAlbum = album;
-        openClaimDialog(album, targetBuilderKey);
+        openClaimDialog(album, targetBuilderKey, {kind: 'built'});
       };
       row.append(claim);
+      const disavow = node('button', 'Not mine', 'claim-disavow');
+      disavow.dataset.claimKind = 'disavow';
+      disavow.onclick = () => {
+        selectedAlbum = album;
+        openClaimDialog(album, targetBuilderKey, {kind: 'disavow'});
+      };
+      row.append(disavow);
     }
 
-    const requests = requestsForBuild(album.buildKey);
-    const label = requests.length
-      ? `Photo requests (${requests.length})`
-      : (album.photos?.length ? 'Request additional photographs' : 'Request photographs');
-    const reqBtn = node('button', label);
-    if (!current) {
-      // `disabled` swallows the tap, so the explanation lived only in a title tooltip --
-      // invisible on a phone, which is where the Discord links land.
-      reqBtn.classList.add('inert');
-      reqBtn.setAttribute('aria-disabled', 'true');
-      reqBtn.title = 'Claim this build before requesting photographs';
+    // A build this browser has just said is not its own offers no photo request. Gating
+    // the control would be worse than removing it: an inert button says "you could ask
+    // for photographs of this if you claimed it", which is the opposite of the answer
+    // just given.
+    if (!current || current.kind !== 'disavow') {
+      const requests = requestsForBuild(album.buildKey);
+      const label = requests.length
+        ? `Photo requests (${requests.length})`
+        : (album.photos?.length ? 'Request additional photographs' : 'Request photographs');
+      const reqBtn = node('button', label);
+      if (!standing) {
+        // `disabled` swallows the tap, so the explanation lived only in a title tooltip --
+        // invisible on a phone, which is where the Discord links land.
+        reqBtn.classList.add('inert');
+        reqBtn.setAttribute('aria-disabled', 'true');
+        reqBtn.title = 'Claim this build before requesting photographs';
+      }
+      reqBtn.onclick = () => {
+        if (!standing) return showToast('Claim this build before requesting photographs.');
+        selectedAlbum = album;
+        openRequestDialog(album, targetBuilderKey, standing.claimId);
+      };
+      row.append(reqBtn);
     }
-    reqBtn.onclick = () => {
-      if (!current) return showToast('Claim this build before requesting photographs.');
-      selectedAlbum = album;
-      openRequestDialog(album, targetBuilderKey, current.claimId);
-    };
-    row.append(reqBtn);
 
     const exportBtn = node('button', 'Copy this build payload');
     exportBtn.onclick = async () => {
@@ -1436,8 +1491,8 @@ const initCreatorsPage = async () => {
     const albums = thread.eras.flatMap((e) => e.albums);
     if (!albums.length) return;
     const top = albums.slice().sort((a, b) => (b.pieces || 0) - (a.pieces || 0))[0];
-    const current = claimForBuild(top.buildKey);
-    if (current) openRequestDialog(top, thread.builderKey, current.claimId);
+    const standing = standingForBuild(top.buildKey);
+    if (standing) openRequestDialog(top, thread.builderKey, standing.claimId);
     else showToast('Claim this build before requesting photographs.');
   }
 
@@ -1642,8 +1697,19 @@ const initCreatorsPage = async () => {
     line.textContent = `You have ${mine.claims} claimed build${mine.claims === 1 ? '' : 's'} and ${mine.requests} request${mine.requests === 1 ? '' : 's'} on this page.`;
   }
 
-  function openClaimDialog(album, targetBuilderKey) {
+  // One dialog, two kinds. The fields are identical -- a handle, an optional note -- and
+  // so is what happens to them, so a second modal would have been a second copy of the
+  // clipboard fallback, the handle validation and the delivery wording to keep honest.
+  function openClaimDialog(album, targetBuilderKey, {kind = 'built'} = {}) {
+    const disavowing = kind === 'disavow';
     selectedAlbum = album;
+    // The shell carries both kinds' guidance copy; the mode picks which one is shown.
+    claimModal.dataset.claimKind = disavowing ? 'disavow' : 'built';
+    for (const block of claimModal.querySelectorAll('[data-claim-kind]')) {
+      block.hidden = block.dataset.claimKind !== claimModal.dataset.claimKind;
+    }
+    $('claim-title').textContent = disavowing ? 'Not my build' : 'Claim build';
+    $('claim-confirm').textContent = disavowing ? "This isn't mine" : 'I built this';
     $('claim-build-label').textContent = `${album.label} · era ${album.era}`;
     $('claim-handle').value = state.participant || '';
     $('claim-note').value = '';
@@ -1658,6 +1724,7 @@ const initCreatorsPage = async () => {
         claimId: randomId('claim'),
         buildKey: album.buildKey,
         builderKey: targetBuilderKey,
+        kind: disavowing ? 'disavow' : 'built',
         participant,
         buildLabel: album.label,
         era: album.era,
@@ -1685,7 +1752,7 @@ const initCreatorsPage = async () => {
       // is not finished until the volunteer sends the payload. Say that, and hand them
       // the payload the same way the photo-request path already does.
       if (deliveryStatus === 'submitted') {
-        showToast('Build claim sent.');
+        showToast(disavowing ? 'Disavowal sent.' : 'Build claim sent.');
       } else {
         await copyActivityPayload(exportPayload('claim'));
       }
