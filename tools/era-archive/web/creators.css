@@ -1235,6 +1235,7 @@ textarea:focus-visible,
 
 .top8-chip .top8-portrait,
 .top8-chip img {
+  grid-row: 1 / span 2;
   width: 36px;
   height: 36px;
   flex: none;
@@ -1283,7 +1284,11 @@ textarea:focus-visible,
 }
 
 .top8-tier {
+  /* Second row, second column: under the name, never in the 36px portrait column, where
+     "Tier III" would break in two. The portrait spans both rows beside it. */
+  grid-column: 2;
   display: block;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.1em;
