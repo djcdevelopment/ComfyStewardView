@@ -51,6 +51,22 @@ class CreatorsLogicSuiteTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         self.assertIn("computeTopEight", result.stdout, "Top 8 ranking coverage did not run")
 
+    def test_the_pair_logic_suite_runs_under_the_same_gate(self):
+        """Red on this branch alone -- tests/pair.logic.test.js is the other builder's
+        file this iteration. Green at the merge, and the pairing model is then covered by
+        the same `python -m unittest` run everything else is."""
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH")
+        suite = REPO / "tools/era-archive/tests/pair.logic.test.js"
+        self.assertTrue(suite.exists(), "pair.logic.test.js has not landed yet")
+        result = subprocess.run(
+            [node, "--test", str(suite)],
+            capture_output=True, text=True, cwd=str(REPO),
+        )
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("buildKinshipPair", result.stdout, "pairing model coverage did not run")
+
 
 class ChroniclerStyleTests(unittest.TestCase):
     def setUp(self):
@@ -136,6 +152,24 @@ class ChroniclerStyleTests(unittest.TestCase):
                       "the claim control stays the primary action of the card")
         self.assertIn("standingForBuild", js)
 
+    def test_the_pair_view_script_speaks_the_archive_vocabulary(self):
+        """Red on this branch alone -- web/pair.js is the other builder's file this
+        iteration. The lint is the same one every other surface gets, and it has to exist
+        before the file does or the file lands unlinted."""
+        pair = WEB / "pair.js"
+        self.assertTrue(pair.exists(), "web/pair.js has not landed yet")
+        source = pair.read_text(encoding="utf-8").casefold()
+        for banned in ("character", "archetype", "submitted"):
+            self.assertNotIn(banned, source, f"pair.js says '{banned}'")
+
+    def test_the_confirmed_tag_sweep_is_scoped_to_the_album_cards(self):
+        # renderConfirmedTagChips() clears before it draws, because participation.json and
+        # the thread land in either order. Unscoped, that sweep also deleted the pair
+        # view's own laurel chips -- which are drawn at mount, i.e. always first.
+        js = (WEB / "creators.js").read_text(encoding="utf-8")
+        self.assertIn("'article.album .kin-chip'", js,
+                      "the confirmed-tag sweep would clear kinship chips outside the albums")
+
     def test_the_participation_surface_speaks_of_builders_not_characters(self):
         # A builder is a person, not a game object and not a class. The participation
         # surfaces say so: verify_sweep.ps1 holds the same line on the kinship page.
@@ -147,8 +181,11 @@ class ChroniclerStyleTests(unittest.TestCase):
 
     def test_stylesheet_href_is_cache_busted_and_still_rewritable(self):
         for name, content in (("index.html", self.index), ("stats.html", self.stats)):
-            self.assertIn('href="./creators.css?v=5"', content, name)
+            self.assertIn('href="./creators.css?v=6"', content, name)
         self.assertIn('src="./creators.js"', self.index)
+        # pair.js rides beside creators.js and wears the same cache policy it does:
+        # unversioned here, where the stylesheet carries the bust for the whole shell.
+        self.assertIn('src="./pair.js"', self.index)
 
     def test_route_guard_keeps_creators_inert_on_the_kinship_page(self):
         # kinship.html loads creators.js for its model and its participation store, then
@@ -158,7 +195,7 @@ class ChroniclerStyleTests(unittest.TestCase):
         js = (WEB / "creators.js").read_text(encoding="utf-8")
         self.assertIn("dataset.stewardPage !== 'kinship'", js)
         self.assertIn('<html lang="en" data-steward-page="kinship">', self.kinship)
-        self.assertIn('src="./creators.js?v=5"', self.kinship)
+        self.assertIn('src="./creators.js?v=6"', self.kinship)
         self.assertIn('src="./kinship.js"', self.kinship)
         self.assertNotIn("data-steward-page", self.index,
                          "the directory shell is the default route, not a named one")
@@ -178,12 +215,18 @@ class ChroniclerStyleTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as temp:
             dest = Path(temp) / "projection"
-            project(document, dest, "https://example.invalid/world")
+            receipt = project(document, dest, "https://example.invalid/world")
             thread = (dest / key / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=5"', thread)
+            self.assertIn('href="../creators.css?v=6"', thread)
             self.assertIn('src="../creators.js"', thread)
+            # The pair view's script gets the same climb. A thread page is one directory
+            # down, so a surviving "./pair.js would 404 on every builder profile.
+            self.assertIn('src="../pair.js"', thread)
+            self.assertNotIn('"./pair.js', thread)
+            self.assertIn("pair.js", {f["path"] for f in receipt["files"]},
+                          "the projection does not ship the pair view's script")
             stats = (dest / "stats" / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=5"', stats)
+            self.assertIn('href="../creators.css?v=6"', stats)
 
 
 if __name__ == "__main__":

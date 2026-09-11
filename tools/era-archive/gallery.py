@@ -254,7 +254,7 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
         save(destination/"threads"/(builder["builderKey"]+".json"),{**record,"eras":[{"era":e,"albums":sorted(bs,key=lambda b:(-len(b["photos"]),-b["pieces"],b["buildKey"]))} for e,bs in sorted(eras.items(),reverse=True)]})
         page=destination/builder["builderKey"]/"index.html";page.parent.mkdir(parents=True,exist_ok=True)
         head=thread_head(builder,eras,record["albums"],record["photos"])
-        page.write_text(with_head(template,head).replace('"./creators.', '"../creators.'),encoding="utf-8")
+        page.write_text(with_head(template,head).replace('"./creators.', '"../creators.').replace('"./pair.js', '"../pair.js'),encoding="utf-8")
     # `eras` only covers analysed world saves, so eras 16-17 -- which exist solely as
     # legacy gallery imports and carry photographs -- are absent from it. The page has to
     # say which eras are photographed and which are still being shot, so count from the
@@ -281,7 +281,11 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
             if not b["contributors"] and b.get("pieces",0)>=min_build_pieces),
         "legacyImports":[{k:r[k] for k in ("slug","images","albums","unresolvedImages")} for r in document["legacyImports"]]})
     (destination/"index.html").write_text(template,encoding="utf-8")
-    for name in ("creators.js","creators.css","kinship.js"):
+    # pair.js is the builder profile's pair view. It is copied unconditionally rather than
+    # skipped when absent: a projection that quietly shipped the page without its script
+    # would serve a profile whose ribbon selects nothing, and the failure would surface as
+    # a dead control on the live site instead of here.
+    for name in ("creators.js","creators.css","kinship.js","pair.js"):
         shutil.copyfile(REPO/"tools/era-archive/web"/name,destination/name)
     # The two other shells. Each is served from its own directory, so every relative asset
     # link climbs one level -- the same rewrite the thread pages get, plus kinship.html's
@@ -305,7 +309,7 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
     write_participation_snapshot()
     # Whitelist above deliberately excludes raw character IDs, names from signs, coordinates,
     # source paths, inventories, world seed, snapshot hashes and private identity-review evidence.
-    # creators.js, creators.css, kinship.js and the kinship shell are presentation only: they
+    # creators.js, creators.css, kinship.js, pair.js and the kinship shell are presentation only: they
     # carry no archive data, they read the same public JSON any visitor can fetch, and the
     # only participation they ever see is what that visitor typed into their own browser.
     # participation.json is the one exception and it is sanitised on the way out --

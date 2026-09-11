@@ -93,7 +93,7 @@ class KinshipProjectionTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             receipt = project(shared_document(), dest, "https://example.invalid/world")
             page = (dest / "kinship" / "index.html").read_text(encoding="utf-8")
-            for marker in ('href="../creators.css?v=5"', 'src="../creators.js?v=5"',
+            for marker in ('href="../creators.css?v=6"', 'src="../creators.js?v=6"',
                            'src="../kinship.js"', 'data-steward-page="kinship"', 'id="kin-tree"'):
                 self.assertIn(marker, page, f"projected kinship page lost {marker}")
             # The rewrite must not leave a same-directory link behind for either script.
@@ -145,6 +145,14 @@ class KinshipShellTests(unittest.TestCase):
         for name, content in (("kinship.html", self.page), ("kinship.js", self.script)):
             for word in BANNED_VOCABULARY:
                 self.assertNotIn(word, content.lower(), f"{name} says '{word}'")
+
+    def test_the_tree_and_the_ledger_link_into_the_pair_view(self):
+        # A co-builder node, a ledger row and a cohabitant row all lead to the same place:
+        # the anchor's own profile, opened on this pairing. Without the query the tree
+        # would keep dropping readers on a cold profile that has forgotten who they came
+        # from -- and a pair link that lost `?kin=` is exactly that regression.
+        self.assertIn("?kin=", self.script, "kinship.js no longer links into the pair view")
+        self.assertIn("kin-pair-link", self.script)
 
     def test_creators_js_stands_down_here_but_still_lends_its_store(self):
         self.assertIn("dataset.stewardPage !== 'kinship'", self.creators,

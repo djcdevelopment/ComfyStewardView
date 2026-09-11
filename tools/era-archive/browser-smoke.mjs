@@ -119,6 +119,32 @@ try{
   await evaluate("document.getElementById('photo-viewer-close').click()");
   await wait("!document.getElementById('photo-viewer-modal').classList.contains('open')");
   if(await evaluate(`document.activeElement.id!==${JSON.stringify(triggerId)}`))throw Error('Closing the photo viewer did not return focus to the trigger thumbnail');
+  // The pair view: the Top 8 ribbon picks one co-builder and the panel below it draws that
+  // pairing. A thread whose every album is solo draws no ribbon at all and is perfectly
+  // legal, so the whole leg sits inside the "there is a ribbon" branch rather than
+  // failing a builder for having worked alone.
+  if(await evaluate("!!document.querySelector('.top8')")){
+    await wait("!!document.querySelector('.top8 button.top8-chip[aria-pressed=\"true\"]')");
+    results.pair=await evaluate("({chips:document.querySelectorAll('.top8-chip').length,hidden:document.getElementById('pair-view')?.hidden,ledgerRows:document.querySelectorAll('#pair-ledger tbody tr').length})");
+    if(results.pair.hidden!==false)throw Error('Pair view stayed hidden with a co-builder selected');
+    if(!results.pair.ledgerRows)throw Error('Pair view drew no shared builds for the selected pairing');
+    await screenshot('pair-view');
+    await evaluate("document.getElementById('pair-tab-viewer').click()");
+    // A pairing whose shared builds are all legacy gallery imports has no world viewer to
+    // open; a muted note saying so is the honest answer there, not a missing link.
+    await wait("!!document.querySelector('#pair-viewer a[target=\"_blank\"], #pair-viewer .muted')");
+    results.pair.viewer=await evaluate("document.querySelector('#pair-viewer a[target=\"_blank\"]')?'world-viewer':'no-world-viewer-note'");
+    // A shared ?kin= link must open on that pairing, not on whichever one leads the
+    // ribbon -- the second chip proves it, because the first is what an unlinked page
+    // would have selected anyway.
+    const chipKeys=await evaluate("[...document.querySelectorAll('.top8-chip')].map(c=>c.dataset.builderKey)");
+    const deepKey=chipKeys[1]||chipKeys[0];
+    await cdp('Page.navigate',{url:new URL(photographed.builderKey+'/?kin='+deepKey,gallery).href});
+    await wait(`!!document.querySelector('.top8-chip[data-builder-key="${deepKey}"][aria-pressed="true"]')`);
+    results.pair.deepLink=true;
+  }else{
+    results.pair={status:'skipped',reason:'this thread shares no build with anybody'};
+  }
   // Kinship: the branching tree of who a builder built beside. It needs an anchor who
   // shares a build with somebody -- a thread whose every album is solo draws a trunk and
   // nothing else, and this step would then be asserting against an empty canvas. The
