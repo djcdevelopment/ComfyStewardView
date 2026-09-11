@@ -132,6 +132,14 @@ class KinshipShellTests(unittest.TestCase):
     def test_both_dialogs_the_page_drives_are_present(self):
         self.assertIn('id="claim-modal"', self.page)
         self.assertIn('id="kin-tag-modal"', self.page)
+        # syncToBuild() writes into each of these unconditionally, and $() hands back null
+        # for an id the page does not have -- so deleting one of them does not quietly drop
+        # a line, it throws on the assignment and the Tag dialog never opens at all.
+        for element in ('id="kin-tag-build-label"', 'id="kin-tag-contributor"',
+                        'id="kin-tag-beds"', 'id="kin-tag-note"', 'id="kin-tag-build"'):
+            self.assertIn(element, self.page, f"kinship.html lost {element}")
+            self.assertIn(element.split('"')[1], self.script,
+                          f"kinship.js no longer addresses {element}")
 
     def test_one_tag_vocabulary_across_the_checkboxes_the_model_and_the_sanitiser(self):
         checkboxes = tag_checkbox_values(self.page)
