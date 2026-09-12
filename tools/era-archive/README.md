@@ -184,6 +184,21 @@ build ride in the URL as `?kin=&build=`, so a pair is a link (a `?view=` from a 
 before pass 3 is dropped: the pair view keeps to the pairing -- the page's carousel shows
 the photographs and every build carries its own world-viewer link).
 
+**Portraits.** Every face on the creators lane -- the hero, the Top 8 ribbon, the kinship
+tree, the pair card -- comes from one resolver, `web/portraits.js`
+(`StewardPortraits.portraitFor(builder, manifest)`), against `/chronicles/portraits.json`:
+a portrait chosen on this device (the picker's ledger) first, then the choice the archive
+published for the builder (`builder.portrait`, once the coordinator confirms one), then the
+default library's slot (`parseInt(key[:8], 16) % count`, unchanged since the first tile), then
+the archive emblem. `web/portrait-picker.js` is the drawer on the profile where a builder with
+standing (a built claim on one of the profile's builds, in this browser) narrows the library by
+Trade, Presentation, Age, Mood, Hair, Setting, Palette, Kit and Theme -- the era viewer's
+live-count mechanic, ported -- opens a portrait's takes, previews the hero and the 40-px cut,
+and chooses. Preview mode (S2): the choice is recorded on this device (`state.portraits`,
+"Portrait recorded on this device"), repaints every face on the page, and does not ride the
+copied payload yet; that is S3, with `coordinate.py`'s validation. The control exists only
+when the manifest carries libraries.
+
 `gallery.py` publishes `participation.json` beside the directory: schema
 `steward-creator-participation-public/v1`, carrying the counts (`participants`, `claims`,
 `disavowals`, `requests`, `openRequests`) plus `confirmedTags`. It is projected from the

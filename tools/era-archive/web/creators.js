@@ -477,6 +477,7 @@ const StewardParticipation = {
       requests: {},     // requestId -> request
       kinshipTags: {},  // `${buildKey}:${contributorKey}` -> tag record
       priorities: {},   // buildKey -> photo priority (first | next | skip)
+      portraits: {},    // builderKey -> the portrait chosen for that profile on this device
     };
   },
 
@@ -499,6 +500,7 @@ const StewardParticipation = {
       next.kinshipTags = parsed.kinshipTags && typeof parsed.kinshipTags === 'object' ? parsed.kinshipTags : {};
       // A ledger written before the feedback column existed is not a broken ledger either.
       next.priorities = parsed.priorities && typeof parsed.priorities === 'object' ? parsed.priorities : {};
+      next.portraits = parsed.portraits && typeof parsed.portraits === 'object' ? parsed.portraits : {};
       next.createdAt = typeof parsed.createdAt === 'string' ? parsed.createdAt : next.createdAt;
       next.updatedAt = typeof parsed.updatedAt === 'string' ? parsed.updatedAt : nowISOString();
       return next;
@@ -614,6 +616,46 @@ const StewardParticipation = {
       deliveryStatus: 'local',
     };
     state.priorities[buildKey] = record;
+    return record;
+  },
+
+  // Standing on a PROFILE rather than a build: a built claim on any of this builder's
+  // builds. It is what lets a visitor choose the portrait the profile wears -- the same
+  // bar as requesting photographs of a build, applied to the person the page is about.
+  standingForBuilder(state, thread) {
+    if (!thread || !thread.builderKey) return null;
+    const keys = new Set();
+    for (const era of thread.eras || []) for (const album of era.albums || []) keys.add(album.buildKey);
+    for (const claim of Object.values(state.claims || {})) {
+      if (claim.kind === 'built' && (claim.builderKey === thread.builderKey || keys.has(claim.buildKey))) return claim;
+    }
+    return null;
+  },
+
+  portraitForBuilder(state, builderKey) {
+    return state.portraits?.[builderKey] || null;
+  },
+
+  // The portrait a builder chose for their profile, recorded on this device. A revert
+  // (`tile: null`, "use the archive's pick") is written as a record too, never a deletion:
+  // the coordinator has to be able to see that a choice was withdrawn, not merely find it
+  // missing. Same record id across changes, so the ledger stays one line per profile.
+  setPortrait(state, {builderKey, tile, take, sha, participant}) {
+    if (!/^[a-f0-9]{32}$/.test(String(builderKey || ''))) return null;
+    if (!state.portraits) state.portraits = {};
+    const prior = state.portraits[builderKey];
+    const record = {
+      portraitId: prior?.portraitId || randomId('portrait'),
+      builderKey,
+      tile: tile ? String(tile) : null,
+      take: tile && take ? String(take) : null,
+      sha: tile && sha ? String(sha) : null,
+      participant: normalizeHandle(participant || ''),
+      createdAt: prior?.createdAt || nowISOString(),
+      chosenAt: nowISOString(),
+      deliveryStatus: 'local',
+    };
+    state.portraits[builderKey] = record;
     return record;
   },
 
@@ -769,6 +811,9 @@ const initCreatorsPage = async () => {
     if (!portraitsPromise) {
       portraitsPromise = readOptional('/chronicles/portraits.json').then((manifest) => {
         portraitManifest = manifest || null;
+        // The choices recorded on this device reach the resolver before the first face is
+        // painted, so a chosen portrait never flashes the slot tile first.
+        if (typeof StewardPortraits === 'object') StewardPortraits.setChoices(state.portraits || {});
         return portraitManifest;
       });
     }
@@ -916,6 +961,8 @@ const initCreatorsPage = async () => {
     if (counts.disavowals) parts.push(`${counts.disavowals} disavowed`);
     const prioritised = Object.keys(state.priorities || {}).length;
     if (prioritised) parts.push(`${prioritised} builds marked for photography`);
+    const portraits = Object.values(state.portraits || {}).filter((p) => p.tile).length;
+    if (portraits) parts.push(`${portraits} portrait${portraits === 1 ? '' : 's'} chosen`);
     parts.push(
       `${counts.requests} photo requests`,
       `${counts.submitted} already sent`,
@@ -2139,20 +2186,22 @@ const initCreatorsPage = async () => {
     return holder;
   }
 
-  // Which face a builder wears, resolved against the manifest. The hero and the ribbon
-  // must agree, so the slot rule (portraitIndex over the manifest's own tile count) and
-  // the URL shapes are written once here instead of twice.
+  // Which face a builder wears, from the one resolver every surface uses (web/portraits.js):
+  // the hero, the ribbon, the tree and the pair card agree by construction, and a portrait
+  // chosen on this device shows in all four. A slate tile serves its 512 with the 128 as
+  // the small candidate, as it always did; a painted portrait serves its bust cuts -- the
+  // avatar is a 160-px square, and a waist-up frame shrunk into it would be all mantle.
   function portraitSources(manifest, key) {
-    const tiles = Array.isArray(manifest?.tiles) ? manifest.tiles : [];
-    const count = Number(manifest?.count) || 0;
-    if (!count || !tiles.length) return null;
-    const tile = tiles[portraitIndex(key, count)];
-    if (!tile || !tile.file) return null;
-    const prefix = manifest.base || '/chronicles/img/portraits/';
-    const version = tile.v ? `?v=${tile.v}` : '';
+    if (typeof StewardPortraits !== 'object') return null;
+    const face = StewardPortraits.portraitFor(key, manifest);
+    if (!face) return null;
+    const slate = face.library === 'slate48';
+    const large = face.url(slate ? 'bust512' : 'bust256');
+    const small = face.url('bust128');
+    if (!large) return null;
     return {
-      src: `${prefix}${tile.file}${version}`,
-      srcset: tile.thumb ? `${prefix}${tile.thumb}${version} 128w, ${prefix}${tile.file}${version} 512w` : '',
+      src: large,
+      srcset: small && small !== large ? `${small} 128w, ${large} ${slate ? 512 : 256}w` : '',
     };
   }
 
@@ -2210,12 +2259,102 @@ const initCreatorsPage = async () => {
   // the thread) a no-op instead of a duplicated card. The hero is the name and one line:
   // the tier, the eras and the counters read without a label each, the tree that used to
   // be a link here is drawn on the page below, and the manifest link sits in the notes.
+  // The picker's entry on the hero card: shown only to a visitor with standing on this
+  // profile (a built claim on one of its builds, recorded in this browser) and only when
+  // the manifest carries libraries to choose from -- a profile served against the v1
+  // manifest shows no control at all. Preview mode: the choice lives on this device.
+  let pickerMounted = false;
+  function renderPortraitPick() {
+    const hero = $('builder-hero');
+    const avatar = $('hero-avatar');
+    if (!hero || !avatar || !thread) return;
+    let actions = $('hero-portrait-actions');
+    const standing = StewardParticipation.standingForBuilder(state, thread);
+    readPortraits().then((manifest) => {
+      const libraries = !!(manifest && manifest.libraries && typeof manifest.libraries === 'object');
+      const ready = standing && libraries && typeof StewardPortraitPicker === 'object';
+      if (!ready) {
+        if (actions) actions.hidden = true;
+        return;
+      }
+      if (!actions) {
+        actions = node('div', null, 'hero-portrait-actions');
+        actions.id = 'hero-portrait-actions';
+        const pick = node('button', 'Choose a portrait', 'kin-open hero-portrait-pick');
+        pick.id = 'hero-portrait-pick';
+        pick.type = 'button';
+        pick.onclick = () => StewardPortraitPicker.open();
+        const note = node('p', '', 'muted hero-portrait-note');
+        note.id = 'hero-portrait-note';
+        actions.append(pick, note);
+        avatar.insertAdjacentElement('afterend', actions);
+      }
+      actions.hidden = false;
+      renderPortraitNote();
+      if (!pickerMounted) {
+        const host = node('div');
+        host.id = 'portrait-picker-host';
+        document.body.append(host);
+        pickerMounted = StewardPortraitPicker.mount(host, {
+          manifest,
+          builderKey: thread.builderKey,
+          choice: StewardParticipation.portraitForBuilder(state, thread.builderKey),
+          onChoose: onPortraitChosen,
+          returnFocus: () => $('hero-portrait-pick'),
+        });
+      }
+    });
+  }
+
+  function renderPortraitNote() {
+    const note = $('hero-portrait-note');
+    if (!note || !thread) return;
+    const choice = StewardParticipation.portraitForBuilder(state, thread.builderKey);
+    const chosen = !!(choice && choice.tile);
+    note.textContent = chosen ? 'Portrait recorded on this device' : '';
+    note.hidden = !chosen;
+  }
+
+  function onPortraitChosen(choice) {
+    if (!thread) return;
+    StewardParticipation.setPortrait(state, {
+      builderKey: thread.builderKey,
+      tile: choice ? choice.tile : null,
+      take: choice ? choice.take : null,
+      sha: choice ? choice.sha : null,
+      participant: state.participant,
+    });
+    saveState();
+    if (typeof StewardPortraits === 'object') StewardPortraits.setChoices(state.portraits || {});
+    if (typeof StewardPortraitPicker === 'object') {
+      StewardPortraitPicker.update({choice: StewardParticipation.portraitForBuilder(state, thread.builderKey)});
+    }
+    repaintPortraits();
+    updateParticipantSnapshot();
+    showToast(choice ? 'Portrait recorded on this device.' : "Back to the archive's pick.");
+  }
+
+  // Every face on the page, through the one resolver, after a choice on this device: the
+  // hero, the ribbon chips, the tree nodes and the pair card.
+  function repaintPortraits() {
+    const manifest = portraitManifest;
+    if (!manifest) return;
+    renderHeroAvatar();
+    renderPortraitNote();
+    for (const holder of document.querySelectorAll('.top8-portrait[data-pair-portrait-key]')) {
+      paintPortrait(holder, holder.dataset.pairPortraitKey, manifest, {sizes: '64px', fallback: emblemSpan});
+    }
+    if (kinHandle) kinHandle.redrawPortraits(manifest);
+    if (pairMounted) StewardPair.update({portraits: manifest});
+  }
+
   function renderHeroCard() {
     const hero = $('builder-hero');
     const text = hero?.querySelector('.hero-text');
     if (!hero || !text) return;
     renderHeroAliases();
     renderHeroAvatar();
+    renderPortraitPick();
     // The brand lockup in the header already says whose community this is.
     const eyebrow = document.querySelector('main .eyebrow');
     if (eyebrow) eyebrow.hidden = true;
@@ -2554,7 +2693,7 @@ const initCreatorsPage = async () => {
     // Offer a way out that does not require clearing site data by hand.
     if ($('forget-participation')) {
       $('forget-participation').onclick = () => {
-        if (!confirm('Forget every claim, request and handle stored in this browser?')) return;
+        if (!confirm('Forget every claim, request, portrait choice and handle stored in this browser?')) return;
         // Retention control: kinship tags name a second person, so they are the first
         // thing this has to clear, not an afterthought bolted on beside the claims.
         const fresh = StewardParticipation.forget();
@@ -2563,6 +2702,8 @@ const initCreatorsPage = async () => {
         state.requests = fresh.requests;
         state.kinshipTags = fresh.kinshipTags;
         state.priorities = fresh.priorities;
+        state.portraits = fresh.portraits;
+        if (typeof StewardPortraits === 'object') StewardPortraits.setChoices(state.portraits);
         updateParticipantSnapshot();
         showToast('Local participation cleared.');
         if (isThread && thread) renderThread();

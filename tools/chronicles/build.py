@@ -22,6 +22,7 @@ import datetime as dt
 import hashlib
 import html
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -51,8 +52,21 @@ WEBP_QUALITY = 82
 PORTRAIT_THUMB_QUALITY = 80
 SHOT_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
 
-PORTRAITS_SCHEMA = "chronicles-portraits/v1"
+# The slate48 source tree's schema (assets/portraits/manifest.json) and the document this
+# build writes. They parted in v2: the document grew a second library beside the slate
+# tiles, while the artist tree kept its shape.
+PORTRAITS_SOURCE_SCHEMA = "chronicles-portraits/v1"
+PORTRAITS_DOC_SCHEMA = "chronicles-portraits/v2"
+PORTRAITS_SCHEMA = PORTRAITS_SOURCE_SCHEMA
+LIBRARY_SCHEMA = "chronicles-portrait-library/v1"
 DEFAULT_PORTRAITS = HERE / "assets" / "portraits"
+DEFAULT_LIBRARY_ID = "slate48"
+# The archive's vocabulary rule applies to portraits.json the same as to a template. The
+# whole document never says the first two; the parts the picker prints as copy (facet and
+# library labels) never say the others either. (A slate row's `seed` is a render receipt,
+# the number the artist fed the model -- not a word on a page.)
+BANNED_WORDS = ("character", "archetype")
+BANNED_COPY_WORDS = ("seed", "gender")
 
 WORLD_VIEWER = "https://am4.tail8e749c.ts.net/world"
 
@@ -249,7 +263,7 @@ def build_cutouts(out: Out) -> dict:
     return assets
 
 
-def build_portraits(out: Out, portraits_dir: Path | None) -> dict:
+def build_portraits(out: Out, portraits_dir: Path | None, library_dirs: list[Path] | None = None) -> dict:
     """The drawn tiles a builder wears beside their name in the search suggestions.
 
     Another lane generates them. This one only ships what it finds: the full tile is
@@ -258,17 +272,21 @@ def build_portraits(out: Out, portraits_dir: Path | None) -> dict:
     tiles in it yet is not an error -- the front door has to be a finished page on the day
     before the first portrait exists, and count 0 is what tells the gateway to draw the
     emblem instead.
+
+    `library_dirs` are further libraries (portraits/build_manifest.py trees): their cuts are
+    copied under img/portraits/<library>/ and their tiles ride under `libraries`, apart from
+    the slate rows, so `count` and `tiles` keep meaning what every v1 reader thinks they mean.
     """
-    empty = {"count": 0, "tiles": []}
+    empty = {"count": 0, "tiles": [], "libraries": []}
     directory = Path(portraits_dir) if portraits_dir is not None else DEFAULT_PORTRAITS
     manifest_path = directory / "manifest.json"
     if not manifest_path.is_file():
         print(f"  portraits       none at {directory} -- building without tiles")
-        return empty
+        return {**empty, "libraries": [build_library(out, path) for path in (library_dirs or [])]}
     source = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if source.get("schema") != PORTRAITS_SCHEMA:
+    if source.get("schema") != PORTRAITS_SOURCE_SCHEMA:
         raise SystemExit(
-            f"{manifest_path} declares schema {source.get('schema')!r}, expected {PORTRAITS_SCHEMA!r}"
+            f"{manifest_path} declares schema {source.get('schema')!r}, expected {PORTRAITS_SOURCE_SCHEMA!r}"
         )
     tiles = []
     for tile in source.get("tiles", []):
@@ -296,7 +314,73 @@ def build_portraits(out: Out, portraits_dir: Path | None) -> dict:
     declared = source.get("count")
     if declared is not None and declared != len(tiles):
         raise SystemExit(f"{manifest_path} says count {declared} but lists {len(tiles)} tiles")
-    return {"count": len(tiles), "tiles": tiles}
+    return {"count": len(tiles), "tiles": tiles,
+            "libraries": [build_library(out, path) for path in (library_dirs or [])]}
+
+
+def build_library(out: Out, library_dir: Path) -> dict:
+    """Ship one portrait library tree: every cut file it names, byte for byte, under
+    img/portraits/<library>/, and its manifest with the file names made relative to
+    `base`. A library marked `dev` (auto-ranked takes included) is refused: this build is
+    what gets deployed, and FR-7 says nothing a human has not looked at goes out."""
+    manifest_path = Path(library_dir) / "manifest.json"
+    if not manifest_path.is_file():
+        raise SystemExit(f"{library_dir} has no manifest.json (portraits/build_manifest.py writes one)")
+    source = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if source.get("schema") != LIBRARY_SCHEMA:
+        raise SystemExit(f"{manifest_path} declares schema {source.get('schema')!r}, expected {LIBRARY_SCHEMA!r}")
+    library = source["library"]
+    if not re.fullmatch(r"[a-z0-9]+", library or ""):
+        raise SystemExit(f"{manifest_path}: library id {library!r} must be lowercase alphanumeric")
+    if source.get("dev") and not os.environ.get("CHRONICLES_ALLOW_DEV_LIBRARY"):
+        raise SystemExit(f"{manifest_path} is a --dev library (auto-ranked takes); it is not publishable. "
+                         "Set CHRONICLES_ALLOW_DEV_LIBRARY=1 for a local build only.")
+    tiles = []
+    files = 0
+    for tile in source.get("tiles", []):
+        takes = []
+        patterns: dict[str, str] = {}
+        for take in tile.get("takes", []):
+            data = b""
+            for role, name in (take.get("files") or {}).items():
+                path = Path(library_dir) / name
+                if not path.is_file():
+                    raise SystemExit(f"{manifest_path} lists {name} but it is not there")
+                data = path.read_bytes()
+                out.write(f"img/portraits/{library}/{name}", data)
+                files += 1
+                # Every take of a tile is cut to the same names with the take id in them,
+                # so the document spells each cut once per tile with `{take}` where the id
+                # goes: a third of the size of one path per take per cut.
+                pattern = f"{library}/{name}".replace(f".{take['id']}.", ".{take}.")
+                if patterns.setdefault(role, pattern) != pattern:
+                    raise SystemExit(f"{manifest_path}: {tile['id']} take {take['id']} names {name} off the tile's pattern")
+            takes.append({
+                "id": take["id"],
+                "v": take.get("v") or stamp(data),
+                "sha": take.get("sha"),
+                "facing": take.get("facing"),
+            })
+        tiles.append({
+            "id": tile["id"],
+            "library": library,
+            "tags": tile.get("tags", {}),
+            "chips": tile.get("chips", []),
+            "cuts": patterns,
+            "takes": takes,
+        })
+    print(f"  library         {library}: {len(tiles)} portraits, {files} files")
+    return {
+        "library": library,
+        "label": source.get("label", library),
+        "framing": source.get("framing", "bust"),
+        "default": bool(source.get("default", False)),
+        "facets": source.get("facets", []),
+        "labels": source.get("labels", {}),
+        "aliases": source.get("aliases", {}),
+        "provenance": source.get("provenance"),
+        "tiles": tiles,
+    }
 
 
 def build_shots(out: Out, shots: Path | None) -> dict:
@@ -385,12 +469,50 @@ def portraits_doc(portraits: dict, cutouts: dict, copy: dict, head: str, generat
     table: the mapping is a pure function of the builderKey, so a consumer that never saw
     this build can still work out which tile a builder wears.
     """
+    slate = [
+        {
+            **tile,
+            "library": DEFAULT_LIBRARY_ID,
+            # v1 shipped tags as a list; the picker reads them as an object like every
+            # other library's, so both are carried until no v1 reader is left.
+            "tagMap": dict(zip(("role", "age", "presentation"), tile.get("tags", []))),
+            "cuts": {"bust128": tile["thumb"], "bust512": tile["file"]},
+        }
+        for tile in portraits["tiles"]
+    ]
+    libraries = {
+        DEFAULT_LIBRARY_ID: {"label": "Slate", "framing": "bust", "default": True},
+    }
+    facets: list[dict] = []
+    labels: dict = {}
+    aliases: dict = {}
+    provenance: dict = {}
+    library_tiles: list[dict] = []
+    for lib in portraits.get("libraries", []):
+        libraries[lib["library"]] = {"label": lib["label"], "framing": lib["framing"], "default": lib["default"]}
+        for facet in lib.get("facets", []):
+            if not any(f["tag"] == facet["tag"] for f in facets):
+                facets.append(facet)
+        for tag, table in (lib.get("labels") or {}).items():
+            labels.setdefault(tag, {}).update(table)
+        for tag, table in (lib.get("aliases") or {}).items():
+            aliases.setdefault(tag, {}).update(table)
+        if lib.get("provenance"):
+            provenance[lib["library"]] = lib["provenance"]
+        library_tiles.extend(lib["tiles"])
     return {
-        "schema": PORTRAITS_SCHEMA,
+        "schema": PORTRAITS_DOC_SCHEMA,
+        # The slot rule and its count are the v1 contract: the first `count` tiles are the
+        # default library in slot order, whatever follows them.
         "count": portraits["count"],
         "base": "/chronicles/img/portraits/",
         "index": "parseInt(builderKey.slice(0,8),16) % count",
-        "tiles": portraits["tiles"],
+        "tiles": slate + library_tiles,
+        "libraries": libraries,
+        "facets": facets,
+        "labels": labels,
+        "aliases": aliases,
+        "provenance": provenance,
         "cutouts": {
             name: {
                 "file": "/chronicles/" + cutouts[name]["file"],
@@ -410,6 +532,14 @@ def portraits_doc(portraits: dict, cutouts: dict, copy: dict, head: str, generat
         "head": head,
         "generatedAt": generated,
     }
+
+
+def default_slice(doc: dict) -> dict:
+    """What the gateway page inlines: the document without the chosen-portrait libraries.
+    The suggestions draw the slot tile only, and ninety-six portraits with four takes each
+    would put sixty kilobytes of JSON into a page whose whole point is to fit one screen."""
+    count = int(doc.get("count") or 0)
+    return {**doc, "tiles": doc["tiles"][:count]}
 
 
 def inline_json(doc: dict) -> str:
@@ -507,8 +637,20 @@ def eras_table(rows: list[dict]) -> str:
 
 # ----------------------------------------------------------------------------- build
 
+def lint_portraits_doc(doc: dict) -> None:
+    """The document is page copy for the picker; the words the archive never says are
+    refused here, before the file exists, rather than caught by the sweep after a deploy."""
+    body = json.dumps({k: v for k, v in doc.items() if k != "provenance"}).lower()
+    said = [word for word in BANNED_WORDS if word in body]
+    copy_text = json.dumps({k: doc.get(k) for k in ("facets", "labels", "libraries", "aliases")}).lower()
+    said += [word for word in BANNED_COPY_WORDS if word in copy_text]
+    if said:
+        raise SystemExit(f"portraits.json says {', '.join(said)}; the archive never does")
+
+
 def build(source_base: str, out_dir: Path, offline: Path | None = None,
-          shots_dir: Path | None = None, portraits_dir: Path | None = None) -> dict:
+          shots_dir: Path | None = None, portraits_dir: Path | None = None,
+          library_dirs: list[Path] | None = None) -> dict:
     out_dir = Path(out_dir)
     if out_dir.exists():
         raise SystemExit(f"{out_dir} already exists. Use a new output directory.")
@@ -522,7 +664,7 @@ def build(source_base: str, out_dir: Path, offline: Path | None = None,
     out = Out(out_dir)
     try:
         cutouts = build_cutouts(out)
-        portraits = build_portraits(out, portraits_dir)
+        portraits = build_portraits(out, portraits_dir, library_dirs)
         shots = build_shots(out, shots_dir)
         fonts = build_fonts(out)
         emblem = out.write_hashed(
@@ -570,7 +712,7 @@ def build(source_base: str, out_dir: Path, offline: Path | None = None,
                     "loading": esc(copy["gateway"]["loading"]),
                     "load_failed": esc(copy["gateway"]["load_failed"]),
                     "no_match": esc(copy["gateway"]["no_match"]),
-                    "portraits_json": inline_json(portrait_manifest),
+                    "portraits_json": inline_json(default_slice(portrait_manifest)),
                 })
                 out.write("index.html", body.encode("utf-8"))
             else:
@@ -604,6 +746,7 @@ def build(source_base: str, out_dir: Path, offline: Path | None = None,
                 })
                 out.write("guide/index.html", body.encode("utf-8"))
 
+        lint_portraits_doc(portrait_manifest)
         out.write("portraits.json",
                   (json.dumps(portrait_manifest, indent=2) + "\n").encode("utf-8"))
 
@@ -651,15 +794,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--portraits", type=Path, default=DEFAULT_PORTRAITS,
                         help="directory of drawn portrait tiles with a manifest.json; "
                              "a tree that is not there yet builds a page with no tiles")
+    parser.add_argument("--library", type=Path, action="append", default=[],
+                        help="a portrait library tree from portraits/build_manifest.py; repeatable")
     args = parser.parse_args(argv)
 
-    manifest = build(args.source_base, args.out, args.offline, args.shots, args.portraits)
+    manifest = build(args.source_base, args.out, args.offline, args.shots, args.portraits, args.library)
     counts = manifest["counts"]
     print(f"built {args.out}")
     print(f"  builders        {thousands(counts['builders'])}")
     print(f"  photographs     {thousands(counts['photos'])}")
     print(f"  populated eras  {thousands(counts['erasWithPhotos'])}")
     print(f"  portraits       {thousands(manifest['assets']['portraits']['count'])}")
+    for lib in manifest['assets']['portraits'].get('libraries', []):
+        print(f"  library         {lib['library']}: {thousands(len(lib['tiles']))} portraits")
     print(f"  head            {manifest['head'][:7]}")
     for source in manifest["sources"]:
         print(f"  source          {source['url']} ({thousands(source['bytes'])} bytes, {source['sha256'][:12]})")

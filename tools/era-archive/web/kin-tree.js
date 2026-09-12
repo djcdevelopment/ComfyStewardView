@@ -162,17 +162,18 @@ function kinEmblemEl(key, cls) {
   return holder;
 }
 
-function kinPortraitTile(key, manifest) {
-  const tiles = Array.isArray(manifest?.tiles) ? manifest.tiles : [];
-  const count = Number(manifest?.count) || 0;
-  if (!count || !tiles.length || typeof portraitIndex !== 'function') return null;
-  return tiles[portraitIndex(key, count)] || null;
+// One resolver for every face on the archive (web/portraits.js). The guard is for a page
+// served with a stale or missing portraits.js -- and for the Node test, which requires
+// this file bare: the emblem is the answer there, never a throw.
+function kinPortraitSrc(key, manifest) {
+  if (typeof StewardPortraits !== 'object' || !manifest) return null;
+  const face = StewardPortraits.portraitFor(key, manifest);
+  return face ? face.url('bust128') : null;
 }
 
 function kinPortraitEl(key, manifest, cls = 'kin-portrait') {
-  const tile = kinPortraitTile(key, manifest);
-  const file = tile?.thumb || tile?.file;
-  if (!file) return kinEmblemEl(key, cls);
+  const src = kinPortraitSrc(key, manifest);
+  if (!src) return kinEmblemEl(key, cls);
   const img = document.createElement('img');
   img.className = cls;
   img.alt = '';
@@ -184,7 +185,7 @@ function kinPortraitEl(key, manifest, cls = 'kin-portrait') {
   // Swap to the emblem on error rather than leaving a broken-image glyph: the portrait
   // lane deploys separately and may be a manifest ahead of the files on this server.
   img.onerror = () => img.replaceWith(kinEmblemEl(key, cls));
-  img.src = `${manifest.base || '/chronicles/img/portraits/'}${file}${tile.v ? `?v=${tile.v}` : ''}`;
+  img.src = src;
   return img;
 }
 

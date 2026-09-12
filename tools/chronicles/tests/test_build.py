@@ -378,7 +378,7 @@ class ChroniclesBuild(unittest.TestCase):
 
     def test_the_portrait_manifest_is_inlined_and_every_tile_is_on_disk(self):
         inlined = self._inlined_manifest()
-        self.assertEqual(inlined["schema"], build.PORTRAITS_SCHEMA)
+        self.assertEqual(inlined["schema"], build.PORTRAITS_DOC_SCHEMA)
         self.assertEqual(inlined["count"], PORTRAIT_COUNT)
         self.assertEqual(inlined["count"], len(inlined["tiles"]))
         self.assertEqual(inlined["base"], "/chronicles/img/portraits/")
@@ -394,7 +394,11 @@ class ChroniclesBuild(unittest.TestCase):
         """deploy.py links portraits.json the way it links build.json, so a consumer that
         reads the file and a consumer that reads the page must not disagree."""
         on_disk = json.loads((self.out / "portraits.json").read_text(encoding="utf-8"))
-        self.assertEqual(on_disk, self._inlined_manifest())
+        # The page inlines the default-library slice of the file: the same document minus
+        # the chosen-portrait libraries, which the suggestions never draw (v2).
+        self.assertEqual(build.default_slice(on_disk), self._inlined_manifest())
+        self.assertEqual(on_disk["tiles"][:on_disk["count"]], self._inlined_manifest()["tiles"])
+        self.assertEqual(on_disk["libraries"]["slate48"]["default"], True)
         self.assertEqual(on_disk["head"], self.manifest["head"])
         for name in build.PATH_IDS:
             self.assertEqual(on_disk["paths"][name]["line"],
@@ -552,7 +556,7 @@ class PortraitsAreOptional(unittest.TestCase):
             out = Path(tmp) / "site"
             manifest = build.build(SOURCE_BASE, out, offline=FIXTURES,
                                    portraits_dir=Path(tmp) / "nothing-here")
-            self.assertEqual(manifest["assets"]["portraits"], {"count": 0, "tiles": []})
+            self.assertEqual(manifest["assets"]["portraits"], {"count": 0, "tiles": [], "libraries": []})
             doc = json.loads((out / "portraits.json").read_text(encoding="utf-8"))
             self.assertEqual(doc["count"], 0)
             self.assertEqual(doc["tiles"], [])

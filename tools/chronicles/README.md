@@ -31,6 +31,7 @@ python tools/chronicles/build.py --source-base https://fx99.tail8e749c.ts.net --
 | `--offline DIR` | read both JSON files from `DIR` instead of fetching. Used by the tests |
 | `--shots DIR` | tutorial crops, named `<path-id>[-2].<png\|jpg\|webp>`; optional |
 | `--portraits DIR` | drawn portrait tiles with a `manifest.json`; defaults to `assets/portraits`, and a tree that is not there yet builds a page with no tiles |
+| `--library DIR` | a further portrait library, the tree `portraits/build_manifest.py` cuts from a corpus (`chronicles-portrait-library/v1`); repeatable. Its cuts ship under `img/portraits/<library>/` and its tiles follow the slate rows in `portraits.json` (schema v2). A tree built with `--dev` (auto-ranked takes) is refused unless `CHRONICLES_ALLOW_DEV_LIBRARY=1`, and that is for a local build only |
 
 Requires Python 3 and Pillow, nothing else.
 
@@ -76,11 +77,15 @@ img/cutouts/<id>.256.webp
 img/cutouts/guide.<hash>.svg    the drawn sixth figure
 img/portraits/pNN.webp          the drawn tiles, copied unchanged from --portraits
 img/portraits/pNN.128.webp      derived thumbnail, the size the suggestions draw
+img/portraits/<lib>/<id>.<take>.{128,256,wide}.webp   a --library's cuts, copied unchanged
 img/emblem.<hash>.svg
 img/fonts/<name>.woff2          stable names, no hash
 img/shots/<name>.<hash>.webp    720x450, only if --shots supplied
 build.json                      counts, era rows, source hashes, HEAD, asset map
-portraits.json                  tiles, cutouts and path lines with their cache busters
+portraits.json                  tiles, cutouts and path lines with their cache busters (schema v2:
+                                the first `count` tiles are the default library in slot order, exactly
+                                the v1 rows; library rows follow with tags{}, cuts{} patterns and
+                                takes[]; then libraries, facets, labels, aliases, provenance)
 receipt.json                    every built file with its size and sha256
 ```
 
@@ -264,3 +269,21 @@ Every one of these writes a JSON receipt on request, and the receipt is the answ
 "what is live". `deploy.py --receipt` records the release and the one it replaced;
 `push_viewer.py --receipt` records the sha pushed and, per directory, the sha it replaced
 -- which is exactly what `--rollback` takes as its argument.
+
+## Portrait libraries (`portraits/build_manifest.py`)
+
+The slate48 tiles are drawn one per slot. A *library* is a curated corpus a builder can
+choose from: `build_manifest.py` reads the corpus lane's `concepts.json` (which takes a
+human picked per portrait) and `catalog.json` (face crops, shas) beside the PNGs, cuts each
+picked take three ways -- `bust128`, `bust256` from the catalog's face crop and `wide768`
+the whole frame -- and writes a library tree with its own `manifest.json`. It refuses a
+concept whose takes are still auto-ranked (FR-7; `--dev` overrides for a local build), a
+rejected take, a PNG whose bytes no longer match the catalog, and any label that says a
+word the archive never does. The first cut of viking96 (2026-09-12): 96 portraits, 382
+takes, 1,146 files, 29.7 MiB (the FR record estimated 45 MB); `portraits.json` grew from
+~5 KB to ~156 KB, of which the gateway page inlines only the default-library slice.
+
+Consumers never build a portrait URL: `tools/era-archive/web/portraits.js`
+(`StewardPortraits.portraitFor`) resolves a builder to a tile, a take and its cuts --
+a choice recorded on this device, then the published choice, then the default library's
+slot, then the emblem.

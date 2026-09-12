@@ -483,16 +483,14 @@ function pairEmblem(key, cls) {
   return holder;
 }
 
+// The face comes from the one resolver every surface uses (web/portraits.js), so the
+// pair card, the ribbon and the tree never disagree about a builder -- including a
+// portrait chosen on this device.
 function pairPortrait(key, cls = 'pair-portrait') {
   const manifest = pairState.ctx && pairState.ctx.portraits;
-  const tiles = Array.isArray(manifest && manifest.tiles) ? manifest.tiles : [];
-  const count = Number(manifest && manifest.count) || 0;
-  const slot = count && tiles.length ? portraitIndex(key, count) : -1;
-  // Tile ids are 1-based; the position in the list is the primary read and the id is the
-  // fallback for a manifest that ships them out of order.
-  const tile = slot < 0 ? null : (tiles[slot] || tiles.find((t) => Number(t && t.id) === slot + 1) || null);
-  const file = tile && (tile.thumb || tile.file);
-  if (!file) return pairEmblem(key, cls);
+  const face = typeof StewardPortraits === 'object' && manifest ? StewardPortraits.portraitFor(key, manifest) : null;
+  const src = face ? face.url('bust128') : null;
+  if (!src) return pairEmblem(key, cls);
   const img = document.createElement('img');
   img.className = cls;
   img.alt = '';
@@ -502,7 +500,7 @@ function pairPortrait(key, cls = 'pair-portrait') {
   img.loading = 'lazy';
   img.dataset.pairPortraitKey = key;
   img.onerror = () => img.replaceWith(pairEmblem(key, cls));
-  img.src = `${manifest.base || '/chronicles/img/portraits/'}${file}${tile.v ? `?v=${tile.v}` : ''}`;
+  img.src = src;
   return img;
 }
 

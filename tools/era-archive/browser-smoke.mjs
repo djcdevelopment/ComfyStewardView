@@ -207,6 +207,64 @@ try{
   await evaluate("document.querySelector('button.kin-tag-btn').click()");
   await wait("document.getElementById('toast').classList.contains('show')");
   results.kinship.gated=true;
+  // The portrait picker (S2, preview mode). It exists only where portraits.json carries
+  // libraries -- the live v1 manifest shows no control at all -- and only for a browser
+  // holding a built claim on the profile, so this leg seeds that claim the way the claim
+  // dialog would, reloads, and walks the drawer: 144 portraits, Trade=Carpenter leaves
+  // eight, choosing the painted one dresses the hero and the tree's anchor on this device,
+  // focus comes back to the control, the archive's pick undresses them again. PICKER=1
+  // runs it (a dev host); without it the leg records why it stood down.
+  if(process.env.PICKER==='1'){
+    const profile=new URL(photographed.builderKey+'/',gallery).href;
+    await cdp('Page.navigate',{url:profile});
+    await wait("!!document.querySelector('article.album')");
+    const libraries=await evaluate("fetch('/chronicles/portraits.json').then(r=>r.ok?r.json():null).then(m=>!!(m&&m.libraries)).catch(()=>false)");
+    if(!libraries){
+      results.picker={status:'skipped',reason:'portraits.json carries no libraries on this host'};
+    }else{
+      if(await evaluate("!!document.getElementById('hero-portrait-pick')"))throw Error('Picker control shown to a visitor with no claim on the profile');
+      await evaluate(`(()=>{const now=new Date().toISOString();const buildKey=document.querySelector('article.album[data-build-key]').dataset.buildKey;const state={schema:'steward-creator-participation-local/v1',createdAt:now,updatedAt:now,participant:'smoke',claims:{[buildKey]:{claimId:'claim_smoke',buildKey,builderKey:'${photographed.builderKey}',buildLabel:'smoke',kind:'built',participant:'smoke',createdAt:now,deliveryStatus:'local'}},requests:{},kinshipTags:{},priorities:{},portraits:{}};localStorage.setItem('creators-participation-v1',JSON.stringify(state));return buildKey;})()`);
+      await cdp('Page.reload',{});
+      await wait("!!document.getElementById('hero-portrait-pick')");
+      await evaluate("document.getElementById('hero-portrait-pick').click()");
+      await wait("!!document.querySelector('#portrait-picker:not([hidden]) .pp-tile')");
+      results.picker=await evaluate("({count:document.getElementById('pp-count').textContent,tiles:document.querySelectorAll('#portrait-picker .pp-tile').length,groups:document.querySelectorAll('#portrait-picker .grp').length,dialog:document.getElementById('portrait-picker').getAttribute('aria-modal')})");
+      if(results.picker.count!=='144 portraits')throw Error('Picker did not open on 144 portraits: '+results.picker.count);
+      if(results.picker.dialog!=='true')throw Error('Picker drawer is not a modal dialog');
+      const banned=await evaluate("/character|archetype|seed|gender/i.test(document.getElementById('portrait-picker').innerText)");
+      if(banned)throw Error('The picker says a banned word');
+      await evaluate("[...document.querySelectorAll('#portrait-picker .ck')].find(b=>b.dataset.k==='role'&&b.dataset.v==='carpenter').click()");
+      await wait("document.getElementById('pp-count').textContent==='8 portraits'");
+      results.picker.carpenters=await evaluate("document.querySelectorAll('#portrait-picker .pp-tile').length");
+      if(results.picker.carpenters!==8)throw Error('Trade=Carpenter did not leave eight portraits');
+      // Hair is a painted-only facet: red leaves the one painted carpenter with red hair
+      // and the four slate joiners (which have no hair tag and so still match), and the
+      // trades no red-haired portrait wears dim to 40 % without leaving the menu.
+      await evaluate("[...document.querySelectorAll('#portrait-picker .ck')].find(b=>b.dataset.k==='hair'&&b.dataset.v==='red').click()");
+      await wait("document.getElementById('pp-count').textContent==='5 portraits'");
+      results.picker.dimmed=await evaluate("document.querySelectorAll('#portrait-picker .ck.zero').length");
+      results.picker.trades=await evaluate("document.querySelectorAll('#portrait-picker .grp[data-k=role] .ck').length");
+      if(!results.picker.dimmed)throw Error('No zero-count option dimmed after narrowing');
+      if(results.picker.trades!==30)throw Error('A zero-count trade left the menu instead of dimming');
+      await evaluate("[...document.querySelectorAll('#portrait-picker .pp-tile')].find(b=>b.dataset.tile.startsWith('viking96/')).click()");
+      await wait("!!document.querySelector('#portrait-picker .pp-preview-wide')&&document.querySelectorAll('#portrait-picker .pp-take').length>=2");
+      await screenshot('picker-preview');
+      await evaluate("document.getElementById('pp-choose').click()");
+      await wait(`document.getElementById('portrait-picker').hidden&&/viking96\\//.test(document.querySelector('#hero-avatar img')?.src||'')&&[...document.querySelectorAll('#kin-beside img[data-portrait-key="${photographed.builderKey}"]')].some(i=>/viking96\\//.test(i.src))`);
+      results.picker.hero=await evaluate("document.querySelector('#hero-avatar img').getAttribute('src')");
+      results.picker.note=await evaluate("document.getElementById('hero-portrait-note').textContent");
+      results.picker.focus=await evaluate("document.activeElement.id");
+      if(results.picker.focus!=='hero-portrait-pick')throw Error('Focus did not return to the picker control');
+      if(!results.picker.note.includes('recorded on this device'))throw Error('The hero does not say the portrait is recorded on this device');
+      await screenshot('picker-chosen');
+      await evaluate("document.getElementById('hero-portrait-pick').click()");
+      await wait("!document.getElementById('portrait-picker').hidden&&!document.getElementById('pp-archive').disabled");
+      await evaluate("document.getElementById('pp-archive').click()");
+      await wait("document.getElementById('portrait-picker').hidden&&!/viking96\\//.test(document.querySelector('#hero-avatar img')?.src||'')");
+      results.picker.reverted=true;
+      await evaluate("localStorage.removeItem('creators-participation-v1')");
+    }
+  }
   // Page exceptions raised by the creator lane itself are this run's business and still
   // fail it. Anything the world viewer throws after this point belongs to the world leg
   // and is folded into its own verdict.
