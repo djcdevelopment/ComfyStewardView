@@ -116,7 +116,10 @@ public final class ShotRequestLedger {
         line.put("tsv", row.tsv());
         line.put("release", release == null ? "" : release);
         Files.createDirectories(file.toAbsolutePath().getParent());
-        Files.writeString(file, mapper.writeValueAsString(line) + "\n", StandardCharsets.UTF_8,
+        // One object per line whatever the shared mapper's pretty-printing preference is.
+        String compact = mapper.writer().without(com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT)
+            .writeValueAsString(line);
+        Files.writeString(file, compact + "\n", StandardCharsets.UTF_8,
             StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.WRITE);
         return line;
     }

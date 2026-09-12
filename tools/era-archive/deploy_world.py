@@ -73,6 +73,9 @@ ui=dest/'ui';ui.mkdir()
 # releases rather than inside one so a request outlives the release it was made against. The
 # server only ever appends JSONL there; a requests session on this host reads it.
 requests_dir=root/'shot-requests';requests_dir.mkdir(exist_ok=True)
+# The image runs as uid 10001 (steward); the host directory is derek's. Hand it over once so
+# the container can create and append the ledger, and prove it before starting anything.
+if os.stat(requests_dir).st_uid!=10001:run('sudo','-n','chown','10001:10001',str(requests_dir))
 image='steward-world:'+settings['release'];run('docker','build','-q','-t',image,str(dest))
 catalog=json.loads((dest/'catalog/catalog.json').read_text());default=next(e for e in catalog['eras'] if e['slug']==catalog['defaultEra'])
 assert default['status']=='ready'

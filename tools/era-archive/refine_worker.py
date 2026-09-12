@@ -187,6 +187,18 @@ def prepare_all(root, from_root):
     print(f'prepared {len(builds)} builds in {root}')
 
 
+def read_json_stream(text):
+    """Every JSON object in a file, one per line or pretty-printed across lines."""
+    decoder = json.JSONDecoder(); pos = 0; out = []
+    while True:
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+        if pos >= len(text):
+            return out
+        entry, pos = decoder.raw_decode(text, pos)
+        out.append(entry)
+
+
 def prepare_requests(root, from_root, ledger_path):
     """campaign.json = the requested poses from a viewer ledger (steward-shot-request/v1), one
     shot per request, keyed to the source campaign's builds. The ledger row's cluster_id is a
@@ -194,11 +206,7 @@ def prepare_requests(root, from_root, ledger_path):
     root = Path(root); src = read(Path(from_root) / 'campaign.json')
     by_key = {b['buildKey']: b for b in src['builds']}
     builds, requests, skipped = {}, [], []
-    for line in Path(ledger_path).read_text(encoding='utf-8').splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        entry = json.loads(line)
+    for entry in read_json_stream(Path(ledger_path).read_text(encoding='utf-8-sig')):
         if entry.get('schema') != 'steward-shot-request/v1' or entry.get('era') != src['era']:
             skipped.append((entry.get('id'), 'wrong schema or era')); continue
         build = by_key.get(entry.get('build'))
@@ -510,8 +518,8 @@ class RefineWorker(Worker):
         t0 = time.monotonic()
         while self.game_alive() and time.monotonic() - t0 < 90:
             time.sleep(2)
-        code = self.process.poll() if self.process else None
         self.stop_game()
+        code = self.process.poll() if self.process else None
         if self.log:
             self.log.close()
         self.collect_logs(self.dest, self.saves)
