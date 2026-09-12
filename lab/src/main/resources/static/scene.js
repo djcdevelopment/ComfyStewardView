@@ -299,8 +299,17 @@ function proceduralMesh(kind) {
     quad([x0,y1,z1],[x1,y1,z1],[x1,y1,z0],[x0,y1,z0]);
     quad([x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1]);
   };
-  const wedge = shallow => {
-    const top = shallow ? .12 : .5, p0=[-.5,-.5],p1=[.5,-.5],p2=[.5,top];
+  // Valheim's straight roof snap points put the high edge at local -Z and the low edge at
+  // local +Z. The instance extents already encode 26 vs 45 degree rise, so both pitches use
+  // this same normalized thin slab; using a solid wedge invents the sawtooth walls it replaced.
+  const slopedPanel = () => {
+    const highTop=.5,highBottom=.4,lowTop=-.4,lowBottom=-.5;
+    const a=[-.5,highTop,-.5],b=[.5,highTop,-.5],c=[.5,lowTop,.5],d=[-.5,lowTop,.5];
+    const e=[-.5,highBottom,-.5],f=[.5,highBottom,-.5],g=[.5,lowBottom,.5],h=[-.5,lowBottom,.5];
+    quad(a,b,c,d); quad(h,g,f,e); quad(e,f,b,a); quad(d,c,g,h); quad(b,f,g,c); quad(e,a,d,h);
+  };
+  const triangularPrism = () => {
+    const p0=[-.5,-.5],p1=[.5,-.5],p2=[.5,.5];
     tri([p0[0],p0[1],.5],[p1[0],p1[1],.5],[p2[0],p2[1],.5]);
     tri([p2[0],p2[1],-.5],[p1[0],p1[1],-.5],[p0[0],p0[1],-.5]);
     quad([p0[0],p0[1],-.5],[p1[0],p1[1],-.5],[p1[0],p1[1],.5],[p0[0],p0[1],.5]);
@@ -326,8 +335,8 @@ function proceduralMesh(kind) {
       quad(ao,bo,bi,ai); quad(bob,aob,aib,bib); quad(aob,bob,bo,ao); quad(bib,aib,ai,bi);
     }
   };
-  if (kind === 'sloped-panel-26') wedge(true);
-  else if (kind === 'sloped-panel-45' || kind === 'triangular-prism') wedge(false);
+  if (kind === 'sloped-panel-26' || kind === 'sloped-panel-45') slopedPanel();
+  else if (kind === 'triangular-prism') triangularPrism();
   else if (kind === 'cylinder-12') cylinder();
   else if (kind === 'ring-12') ring(false);
   else if (kind === 'arch-12') ring(true);

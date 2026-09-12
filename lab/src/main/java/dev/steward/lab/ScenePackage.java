@@ -699,7 +699,8 @@ public final class ScenePackage {
         Kind quality = "family_median".equals(piece.geometrySource) ? Kind.ESTIMATED : Kind.MEASURED;
         return List.of(new Visual(piece.zdoIndex, group, "structure", true,
             color(piece.family), linear, center, quality,
-            piece.primitiveKind == null ? primitiveKind(piece.family, quality) : normalizePrimitiveKind(piece.primitiveKind),
+            piece.primitiveKind == null ? primitiveKind(piece.prefabName, piece.family, quality)
+                : normalizePrimitiveKind(piece.primitiveKind),
             piece.confidence == null ? confidence(piece.geometrySource) : piece.confidence,
             piece.surfaceClass == null ? surfaceClass(piece.family) : piece.surfaceClass));
     }
@@ -758,15 +759,28 @@ public final class ScenePackage {
         return Double.isFinite(volume) && volume <= MAX_PROXY_VOLUME;
     }
 
-    private static String primitiveKind(String family, Kind quality) {
+    static String primitiveKind(String prefabName, String family, Kind quality) {
         if (quality == Kind.PIVOT || quality == Kind.CONTEXT) return "box";
+        if ("roof".equals(family)) return roofPrimitive(prefabName);
         return switch (family == null ? "" : family) {
-            case "roof" -> "sloped-panel-45";
             case "stair" -> "stepped-stair";
             case "pole", "light" -> "cylinder-12";
             case "portal" -> "ring-12";
             default -> "box";
         };
+    }
+
+    /** Roof pitch is prefab-local geometry, not an instance Euler angle. Only exact straight
+     * panel and gable names are promoted; corners, ridges, arches and unknown roofs retain their
+     * measured envelope until they have an audited procedural mesh. */
+    static String roofPrimitive(String prefabName) {
+        String name = prefabName == null ? "" : prefabName.toLowerCase(java.util.Locale.ROOT);
+        if (name.contains("corner") || name.contains("roof_top") || name.contains("arch") ||
+                name.contains("cap") || name.contains("upsidedown")) return "box";
+        if (name.contains("wall_roof") || name.contains("roof_wall")) return "triangular-prism";
+        if (name.endsWith("_roof_45")) return "sloped-panel-45";
+        if (name.endsWith("_roof") || name.equals("turf_roof")) return "sloped-panel-26";
+        return "box";
     }
 
     private static String normalizePrimitiveKind(String value) {

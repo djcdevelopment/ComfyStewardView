@@ -74,7 +74,7 @@ class PublicCacheExporterTest {
             try (var row = statement.executeQuery(
                     "SELECT primitive_kind, surface_class, confidence FROM prefab_geometry WHERE prefab_hash=2")) {
                 assertTrue(row.next());
-                assertEquals("sloped-panel-45", row.getString(1));
+                assertEquals("sloped-panel-26", row.getString(1));
                 assertEquals("roofing", row.getString(2));
                 assertEquals("estimated", row.getString(3));
             }
@@ -109,6 +109,14 @@ class PublicCacheExporterTest {
                 buildingGeometry(true), pieceGeometry(), representations(), promotionReceipt()));
         assertTrue(error.getMessage().contains("exact, valid snapshot join"));
         assertTrue(Files.notExists(output));
+    }
+
+    @Test void exportsPrefabSpecificRoofPrimitives() {
+        assertEquals("sloped-panel-26", PublicCacheExporter.geometryPrimitive("wood_roof", "roof"));
+        assertEquals("sloped-panel-45", PublicCacheExporter.geometryPrimitive("wood_roof_45", "roof"));
+        assertEquals("triangular-prism",
+            PublicCacheExporter.geometryPrimitive("ashwood_wall_roof_26", "roof"));
+        assertEquals("box", PublicCacheExporter.geometryPrimitive("wood_roof_ocorner", "roof"));
     }
 
     @Test void spatialPackageOpensWithoutTerrainAndCannotClaimBiomes() throws Exception {

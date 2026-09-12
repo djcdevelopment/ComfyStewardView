@@ -305,7 +305,7 @@ public final class PublicCacheExporter {
                 throw new IllegalArgumentException("Invalid extents for " + name);
             }
             result.add(new Geometry(hash, name, family, source, extents, center,
-                geometryPrimitive(family), geometrySurface(family), geometryConfidence(source)));
+                geometryPrimitive(name, family), geometrySurface(family), geometryConfidence(source)));
         }
         if (result.size() == 0) throw new IllegalArgumentException("Piece geometry catalog has no pieces");
         return result;
@@ -551,9 +551,9 @@ public final class PublicCacheExporter {
         }
     }
 
-    private static String geometryPrimitive(String family) {
+    static String geometryPrimitive(String prefabName, String family) {
+        if ("roof".equals(family)) return ScenePackage.roofPrimitive(prefabName);
         return switch (family) {
-            case "roof" -> "sloped-panel-45";
             case "stair" -> "stepped-stair";
             case "pole", "light" -> "cylinder-12";
             case "portal" -> "ring-12";

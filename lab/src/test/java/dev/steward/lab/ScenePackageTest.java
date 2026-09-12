@@ -262,6 +262,18 @@ class ScenePackageTest {
         assertArrayEquals(new double[] {-1, 0, 0}, combined[2], 1e-9);
     }
 
+    @Test void mapsOnlyAuditedRoofPrefabShapesInsteadOfTheWholeFamilyToOneWedge() {
+        assertEquals("sloped-panel-26", ScenePackage.roofPrimitive("wood_roof"));
+        assertEquals("sloped-panel-26", ScenePackage.roofPrimitive("darkwood_roof"));
+        assertEquals("sloped-panel-45", ScenePackage.roofPrimitive("wood_roof_45"));
+        assertEquals("sloped-panel-45", ScenePackage.roofPrimitive("piece_grausten_roof_45"));
+        assertEquals("triangular-prism", ScenePackage.roofPrimitive("wood_wall_roof_45"));
+        assertEquals("box", ScenePackage.roofPrimitive("wood_roof_icorner_45"));
+        assertEquals("box", ScenePackage.roofPrimitive("wood_roof_top"));
+        assertEquals("box", ScenePackage.roofPrimitive("Ashlands_ArchRoof"));
+        assertEquals("box", ScenePackage.roofPrimitive("unknown_roof_shape"));
+    }
+
     @Test void suppliesAUsefulDenseHomeFrameForWidelySeparatedElevation() throws Exception {
         Path cache = temporary.resolve("home-frame.duckdb");
         createFixture(cache, 0);
