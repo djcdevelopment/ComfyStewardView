@@ -93,13 +93,16 @@ class KinshipProjectionTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             receipt = project(shared_document(), dest, "https://example.invalid/world")
             page = (dest / "kinship" / "index.html").read_text(encoding="utf-8")
-            for marker in ('href="../creators.css?v=7"', 'src="../creators.js?v=7"',
-                           'src="../kinship.js"', 'data-steward-page="kinship"', 'id="kin-tree"'):
+            for marker in ('href="../creators.css?v=8"', 'src="../creators.js?v=8"',
+                           'src="../kin-tree.js?v=8"', 'src="../kinship.js"',
+                           'data-steward-page="kinship"', 'id="kin-tree"'):
                 self.assertIn(marker, page, f"projected kinship page lost {marker}")
-            # The rewrite must not leave a same-directory link behind for either script.
+            # The rewrite must not leave a same-directory link behind for any script.
             self.assertNotIn('"./creators.', page)
+            self.assertNotIn('"./kin-tree.js', page)
             self.assertNotIn('"./kinship.js', page)
             self.assertTrue((dest / "kinship.js").exists(), "kinship.js ships beside creators.js")
+            self.assertTrue((dest / "kin-tree.js").exists(), "kin-tree.js ships beside kinship.js")
             paths = {f["path"] for f in receipt["files"]}
             self.assertIn("kinship/index.html", paths)
             self.assertIn("kinship.js", paths)
@@ -150,7 +153,8 @@ class KinshipShellTests(unittest.TestCase):
         self.assertEqual(10, len(gallery.KINSHIP_TAGS))
 
     def test_the_kinship_page_never_calls_a_builder_a_character(self):
-        for name, content in (("kinship.html", self.page), ("kinship.js", self.script)):
+        tree = (WEB / "kin-tree.js").read_text(encoding="utf-8")
+        for name, content in (("kinship.html", self.page), ("kinship.js", self.script), ("kin-tree.js", tree)):
             for word in BANNED_VOCABULARY:
                 self.assertNotIn(word, content.lower(), f"{name} says '{word}'")
 
@@ -187,7 +191,7 @@ class KinshipLogicSuiteTests(unittest.TestCase):
         # would only be red for a reason nobody can fix. The moment the stub is replaced
         # the requirement becomes real, and a layout shipped without its own case in this
         # suite fails the Python gate the same way a broken Top 8 ranking does.
-        script = (WEB / "kinship.js").read_text(encoding="utf-8")
+        script = (WEB / "kin-tree.js").read_text(encoding="utf-8")
         if "Placeholder: Builder A replaces this" in script:
             self.skipTest("kinship.js layout is still the skeleton stub")
         self.assertIn("layoutKinshipTree", result.stdout, "kinship layout coverage did not run")

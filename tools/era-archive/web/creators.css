@@ -436,6 +436,12 @@ fieldset input {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
+/* An album is one row now, not a card: the name, the pieces, this builder's share, a
+   photographed dot and the first four frames. The rest opens on the row's own toggle. */
+#content .album {
+  padding: 8px 14px;
+}
+
 #content .builder {
   transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
 }
@@ -533,7 +539,138 @@ fieldset input {
 }
 
 .album {
-  margin: 18px 0;
+  margin: 6px 0;
+}
+
+.album-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px 64px 20px 228px;
+  gap: 12px;
+  align-items: center;
+}
+
+.album-ledger-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px 64px 20px 228px;
+  gap: 12px;
+  margin: 0 15px 4px;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--outline);
+}
+
+.album-ledger-head > :nth-child(2),
+.album-ledger-head > :nth-child(3) {
+  text-align: right;
+}
+
+.album-name {
+  margin: 0;
+  min-width: 0;
+}
+
+/* The name is the toggle. It wears none of the stele button's iron: a caret and the
+   display face, and the row's hover says the rest. */
+.album-toggle {
+  margin: 0;
+  padding: 6px 0 6px 18px;
+  width: auto;
+  max-width: 100%;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  text-align: left;
+  position: relative;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.album-toggle::before {
+  content: "▸";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.7em;
+  color: var(--outline);
+  transition: transform 0.15s ease;
+}
+
+.album-toggle[aria-expanded="true"]::before {
+  transform: translateY(-50%) rotate(90deg);
+}
+
+.album-toggle:hover {
+  background: none;
+  border: 0;
+  color: var(--primary);
+}
+
+.album-pieces,
+.album-share {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--parchment);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.album-shot {
+  text-align: center;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--flame);
+}
+
+.album-shot[data-shot="none"] {
+  color: var(--outline-variant);
+}
+
+.album-shot[data-shot="withheld"] {
+  color: var(--outline);
+}
+
+.album-strip,
+.photos.album-strip {
+  display: flex;
+  gap: 4px;
+  min-height: 29px;
+  margin: 0;
+}
+
+.album-strip .photo-thumb {
+  width: 52px;
+  flex: none;
+}
+
+.album-strip img {
+  border-radius: 3px;
+}
+
+.album-more {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--outline-variant);
+  display: grid;
+  gap: 10px;
+}
+
+.album-more .photos {
+  margin-top: 0;
+}
+
+.album-more .actions-row {
+  margin-top: 2px;
 }
 
 .album .credits {
@@ -567,6 +704,117 @@ fieldset input {
   aspect-ratio: 16 / 9;
   object-fit: cover;
   border-radius: 4px;
+}
+
+/* A thumbnail is a button so the viewer opens on Enter, but it is a picture, not a
+   stele: none of the page's button iron, and no 20px margin around it. */
+.photo-thumb {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  display: block;
+  line-height: 0;
+}
+
+.photo-thumb:hover {
+  background: none;
+  border: 0;
+}
+
+.photo-thumb img {
+  display: block;
+}
+
+/* The work: the builder's best frame from each photographed album, under the hero. */
+.work-mosaic {
+  margin: 0 0 30px;
+}
+
+.work-mosaic h2 {
+  font-size: 1.5rem;
+  margin: 0 0 12px;
+}
+
+.photos.mosaic {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 0;
+}
+
+.mosaic-tile {
+  position: relative;
+  border: 1px solid var(--outline-variant);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface-low);
+  transition: border-color 0.14s ease;
+}
+
+.mosaic-tile:hover {
+  border: 1px solid var(--bronze);
+}
+
+.mosaic-tile img {
+  border-radius: 0;
+}
+
+.mosaic-era {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 2px 7px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 4px;
+  background: rgba(9, 15, 22, 0.8);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.4;
+  color: var(--on-surface);
+}
+
+.mosaic-foot {
+  margin: 10px 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+
+/* Albums by era: the heading, the attribution sentence once, then the era folds. */
+.albums h2 {
+  font-size: 1.5rem;
+  margin: 0 0 4px;
+}
+
+.albums-note {
+  margin: 0 0 6px;
+  font-size: 0.88rem;
+}
+
+/* The notes strip at the foot: the name-conflict status, this browser's claims, the
+   capture progress and the manifest link, in one quiet slab. */
+.notes {
+  margin-top: 28px;
+  padding: 14px 16px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-container-low);
+  display: grid;
+  gap: 6px;
+  font-size: 0.88rem;
+  color: var(--parchment);
+}
+
+.notes #status {
+  margin: 0;
+}
+
+.notes #thread-actions {
+  margin-top: 6px;
 }
 
 .links {
@@ -908,6 +1156,56 @@ footer {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   }
 
+  .photos.mosaic {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .album-ledger-head {
+    display: none;
+  }
+
+  .album-row {
+    grid-template-columns: minmax(0, 1fr) 20px;
+    row-gap: 6px;
+  }
+
+  .album-pieces,
+  .album-share {
+    text-align: left;
+  }
+
+  .album-pieces {
+    grid-column: 1;
+  }
+
+  .album-share {
+    grid-column: 2;
+    text-align: right;
+  }
+
+  .album-strip {
+    grid-column: 1 / -1;
+  }
+
+  .album-strip .photo-thumb {
+    width: calc(25% - 3px);
+  }
+
+  .album-toggle,
+  .photo-thumb,
+  .kin-tree button.kin-node {
+    width: auto;
+  }
+
+  .photo-thumb {
+    width: 100%;
+  }
+
+  .builder-hero #intro {
+    font-size: 0.9rem;
+    line-height: 1.9;
+  }
+
   .chip.claimed {
     width: 100%;
     text-align: center;
@@ -1182,24 +1480,36 @@ textarea:focus-visible,
 /* --------------------------------------------------------------------------
    Top 8: the co-builders this builder placed the most pieces beside.
    -------------------------------------------------------------------------- */
-.top8 {
-  margin: 8px 0 34px;
-  padding: 18px 20px 20px;
+/* Who they built beside: the tree and, under it, the Top 8 as its caption. The slab
+   the ribbon used to wear belongs to the section now. */
+.kin-beside {
+  margin: 0 0 32px;
+  padding: 18px 20px 16px;
   border: 1px solid var(--outline-variant);
   border-radius: 6px;
   background: var(--surface-container-low);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.top8 h2 {
+.kin-beside h2 {
   font-size: 1.5rem;
   margin: 0 0 4px;
 }
 
-.top8-sub {
-  margin: 0 0 16px;
-  color: var(--parchment);
-  font-size: 0.86rem;
+.kin-beside-sub {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+}
+
+.top8 {
+  margin: 14px 0 0;
+}
+
+.top8-note {
+  margin: 10px 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
 }
 
 /* Eight across on a wide page: the ribbon is a row of names to pick from, not eight
@@ -1400,7 +1710,7 @@ textarea:focus-visible,
    long builder name cannot push the portrait off a laptop screen. */
 .builder-hero h1 {
   font-size: clamp(2rem, 5vw, 3.2rem);
-  margin: 6px 0 4px;
+  margin: 0 0 6px;
 }
 
 .hero-aliases {
@@ -1409,34 +1719,12 @@ textarea:focus-visible,
   font-size: 0.9rem;
 }
 
-.hero-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
-  margin: 0 0 12px;
-  font-family: var(--font-mono);
-  font-size: 0.76rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--outline);
-}
-
-.hero-facts dt,
-.hero-facts dd {
-  display: inline;
+/* The one line under the name: the tier and the eras in words, the three figures in
+   their counter cells. No label row -- each value carries its own meaning. */
+.builder-hero #intro {
   margin: 0;
-}
-
-.hero-facts dt::after {
-  content: " ";
-}
-
-.hero-facts dd {
-  color: var(--parchment);
-}
-
-#hero-signature {
-  margin-top: 12px;
+  font-size: 0.98rem;
+  line-height: 2;
 }
 
 /* --------------------------------------------------------------------------
@@ -2201,6 +2489,67 @@ textarea:focus-visible,
   }
 }
 
+/* Details: laurels, hearth, affinity, the facts, the tiles and the allotment, behind
+   one native disclosure. The summary wears the eyebrow voice; nothing else in the pair
+   view needs a label, and this is the one thing that hides something. */
+#pair-view .pair-more {
+  margin-top: 14px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--outline-variant);
+}
+
+#pair-view .pair-more > summary {
+  cursor: pointer;
+  list-style: none;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--outline);
+}
+
+#pair-view .pair-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+#pair-view .pair-more > summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 0.15s ease;
+}
+
+#pair-view .pair-more[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+#pair-view .pair-more > summary:hover {
+  color: var(--primary);
+}
+
+#pair-view .pair-more-body {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+#pair-view .pair-more-body .pair-pills {
+  margin-bottom: 8px;
+}
+
+#pair-view .pair-more-body .pair-metrics {
+  margin-top: 20px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+@media (max-width: 980px) {
+  #pair-view .pair-more-body .pair-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Last in the block on purpose: every rule above sets a display, and an element the
    view has hidden -- a panel, the hearth, the unnamed chip -- has to stay hidden. */
 #pair-view [hidden] {
@@ -2322,32 +2671,32 @@ textarea:focus-visible,
   display: none;
 }
 
-#kinship .kin-scroll {
+.kin-tree {
   overflow-x: auto;
 }
 
-#kinship .kin-canvas {
+.kin-tree .kin-canvas {
   position: relative;
   min-width: 720px;
 }
 
-#kinship #kin-tree-svg {
+.kin-tree .kin-tree-svg {
   width: 100%;
   height: auto;
   display: block;
 }
 
-#kinship #kin-nodes {
+.kin-tree .kin-nodes {
   position: absolute;
   inset: 0;
 }
 
-#kinship .kin-band-line {
+.kin-tree .kin-band-line {
   stroke: var(--outline-variant);
   stroke-width: 0.5;
 }
 
-#kinship .kin-band-label {
+.kin-tree .kin-band-label {
   fill: var(--outline);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -2355,27 +2704,27 @@ textarea:focus-visible,
   letter-spacing: 0.08em;
 }
 
-#kinship .kin-trunk {
+.kin-tree .kin-trunk {
   stroke: var(--bronze);
   stroke-width: 10;
   stroke-linecap: round;
 }
 
-#kinship .kin-seg {
+.kin-tree .kin-seg {
   fill: none;
   stroke-linecap: round;
 }
 
-#kinship .kin-seg-shared {
+.kin-tree .kin-seg-shared {
   stroke: url(#kin-ember);
 }
 
-#kinship .kin-seg-legacy {
+.kin-tree .kin-seg-legacy {
   stroke: var(--bronze);
   stroke-dasharray: 6 5;
 }
 
-#kinship .kin-seg-memory {
+.kin-tree .kin-seg-memory {
   stroke: var(--outline-variant);
   stroke-dasharray: 2 4;
 }
@@ -2384,7 +2733,7 @@ textarea:focus-visible,
    the name and the count hang off it absolutely, free to be wider than a lane. Twelve
    lanes leave only about fifty rendered pixels between neighbours, so every second lane
    on a side drops its label a row lower rather than printing it over its neighbour's. */
-#kinship a.kin-node {
+.kin-tree .kin-node {
   position: absolute;
   transform: translate(-50%, -50%);
   display: block;
@@ -2394,8 +2743,40 @@ textarea:focus-visible,
   color: inherit;
 }
 
-#kinship .kin-node-name,
-#kinship .kin-node-meta {
+/* On the profile a node is a button (a click selects the pairing in place); it wears
+   none of the page's button iron and keeps the portrait's exact size. */
+.kin-tree button.kin-node {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.kin-tree button.kin-node:hover {
+  background: none;
+  border: 0;
+}
+
+.kin-tree .kin-node[aria-pressed="true"] .kin-portrait,
+.kin-tree .kin-node.is-active .kin-portrait {
+  border-color: rgba(245, 158, 11, 0.5);
+  box-shadow: 0 0 0 2px var(--ember);
+}
+
+.kin-tree .kin-branch.is-active .kin-seg-shared {
+  stroke: var(--tertiary);
+}
+
+.kin-tree .kin-node:focus-visible {
+  outline: 2px solid #ffc174;
+  outline-offset: 2px;
+}
+
+.kin-tree .kin-node-name,
+.kin-tree .kin-node-meta {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -2409,42 +2790,44 @@ textarea:focus-visible,
   pointer-events: none;
 }
 
-#kinship .kin-node-name {
+.kin-tree .kin-node-name {
   top: 36px;
 }
 
-#kinship .kin-node-meta {
+.kin-tree .kin-node-meta {
   top: 54px;
 }
 
-#kinship .kin-node-alt .kin-node-name {
+.kin-tree .kin-node-alt .kin-node-name {
   top: 60px;
 }
 
-#kinship .kin-node-alt .kin-node-meta {
+.kin-tree .kin-node-alt .kin-node-meta {
   top: 78px;
 }
 
-#kinship a.kin-node:hover .kin-node-name,
-#kinship a.kin-node:focus .kin-node-name {
+.kin-tree .kin-node:hover .kin-node-name,
+.kin-tree .kin-node:focus-visible .kin-node-name,
+.kin-tree .kin-node.is-active .kin-node-name {
   color: var(--primary);
 }
 
-#kinship .kin-anchor-node {
+.kin-tree .kin-anchor-node {
   width: 48px;
   height: 48px;
 }
 
-#kinship .kin-anchor-node .kin-node-name {
+.kin-tree .kin-anchor-node .kin-node-name {
   top: 52px;
   font-size: 1rem;
 }
 
-#kinship .kin-anchor-node .kin-node-meta {
+.kin-tree .kin-anchor-node .kin-node-meta {
   top: 74px;
 }
 
-#kinship .kin-portrait {
+.kin-tree .kin-portrait,
+.kin-tree .kin-portrait {
   width: 32px;
   height: 32px;
   flex: none;
@@ -2456,33 +2839,35 @@ textarea:focus-visible,
   background: var(--surface-low);
 }
 
-#kinship .kin-portrait > svg,
-#kinship .kin-portrait > img {
+.kin-tree .kin-portrait > svg,
+.kin-tree .kin-portrait > img,
+.kin-tree .kin-portrait > svg,
+.kin-tree .kin-portrait > img {
   width: 100%;
   height: 100%;
   display: block;
   object-fit: cover;
 }
 
-#kinship .kin-anchor-node .kin-portrait {
+.kin-tree .kin-anchor-node .kin-portrait {
   width: 48px;
   height: 48px;
 }
 
-#kinship .kin-node-name {
+.kin-tree .kin-node-name {
   font-family: var(--font-display);
   font-size: 0.8rem;
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
 
-#kinship .kin-node-meta {
+.kin-tree .kin-node-meta {
   font-family: var(--font-mono);
   font-size: 0.65rem;
   color: var(--outline);
 }
 
-#kinship #kin-tip {
+.kin-tree .kin-tip {
   position: absolute;
   z-index: 5;
   max-width: 320px;
@@ -2494,13 +2879,13 @@ textarea:focus-visible,
   font-size: 0.8rem;
 }
 
-#kinship .kin-tip-name {
+.kin-tree .kin-tip-name {
   font-family: var(--font-display);
   font-size: 1rem;
   margin-bottom: 4px;
 }
 
-#kinship .kin-tip-eras {
+.kin-tree .kin-tip-eras {
   margin: 0 0 6px;
   padding-left: 16px;
   color: var(--parchment);
@@ -2666,7 +3051,8 @@ textarea:focus-visible,
 
 /* The name and its chip share one baseline row; the name may still ellipsize under it. */
 #kinship .kin-cohab-name,
-#kinship .kin-tip-name {
+#kinship .kin-tip-name,
+.kin-tree .kin-tip-name {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
@@ -2676,7 +3062,7 @@ textarea:focus-visible,
 
 /* The tree labels carry no chip -- twelve lanes are crowded enough -- so a placeholder
    name is dimmed instead, which is as much as a 96px label can honestly say. */
-#kinship .kin-node-name[data-kin-unnamed] {
+.kin-tree .kin-node-name[data-kin-unnamed] {
   color: var(--outline);
 }
 
@@ -2718,8 +3104,12 @@ textarea:focus-visible,
 }
 
 @media (max-width: 680px) {
-  #kinship .kin-canvas {
+  .kin-tree .kin-canvas {
     min-width: 640px;
+  }
+
+  #kin-embed.kin-canvas {
+    min-width: 600px;
   }
 
   #kinship .kin-tabs {

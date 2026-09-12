@@ -261,7 +261,7 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
         save(destination/"threads"/(builder["builderKey"]+".json"),{**record,"eras":[{"era":e,"albums":sorted(bs,key=lambda b:(-len(b["photos"]),-b["pieces"],b["buildKey"]))} for e,bs in sorted(eras.items(),reverse=True)]})
         page=destination/builder["builderKey"]/"index.html";page.parent.mkdir(parents=True,exist_ok=True)
         head=thread_head(builder,eras,record["albums"],record["photos"])
-        page.write_text(with_head(template,head).replace('"./creators.', '"../creators.').replace('"./pair.js', '"../pair.js'),encoding="utf-8")
+        page.write_text(with_head(template,head).replace('"./creators.', '"../creators.').replace('"./kin-tree.js', '"../kin-tree.js').replace('"./pair.js', '"../pair.js'),encoding="utf-8")
     # `eras` only covers analysed world saves, so eras 16-17 -- which exist solely as
     # legacy gallery imports and carry photographs -- are absent from it. The page has to
     # say which eras are photographed and which are still being shot, so count from the
@@ -288,11 +288,12 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
             if not b["contributors"] and b.get("pieces",0)>=min_build_pieces),
         "legacyImports":[{k:r[k] for k in ("slug","images","albums","unresolvedImages")} for r in document["legacyImports"]]})
     (destination/"index.html").write_text(template,encoding="utf-8")
-    # pair.js is the builder profile's pair view. It is copied unconditionally rather than
-    # skipped when absent: a projection that quietly shipped the page without its script
-    # would serve a profile whose ribbon selects nothing, and the failure would surface as
-    # a dead control on the live site instead of here.
-    for name in ("creators.js","creators.css","kinship.js","pair.js"):
+    # pair.js is the builder profile's pair view and kin-tree.js draws the kinship tree on
+    # both the profile and the kinship page. They are copied unconditionally rather than
+    # skipped when absent: a projection that quietly shipped the page without a script
+    # would serve a profile whose ribbon selects nothing or whose tree never draws, and the
+    # failure would surface as a dead control on the live site instead of here.
+    for name in ("creators.js","creators.css","kinship.js","pair.js","kin-tree.js"):
         shutil.copyfile(REPO/"tools/era-archive/web"/name,destination/name)
     # The two other shells. Each is served from its own directory, so every relative asset
     # link climbs one level -- the same rewrite the thread pages get, plus kinship.html's
@@ -306,7 +307,7 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
         folder_dir = destination / folder
         folder_dir.mkdir(parents=True, exist_ok=True)
         (folder_dir / "index.html").write_text(
-            content.replace('"./creators.', '"../creators.').replace('"./kinship.js', '"../kinship.js'),
+            content.replace('"./creators.', '"../creators.').replace('"./kin-tree.js', '"../kin-tree.js').replace('"./kinship.js', '"../kinship.js'),
             encoding="utf-8")
         if keep_at_root:
             (destination / source_name).write_text(content, encoding="utf-8")

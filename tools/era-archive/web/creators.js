@@ -190,6 +190,38 @@ function heroAliases(threadDoc, limit = 4) {
   return {shown: kept.slice(0, limit), more: Math.max(0, kept.length - limit)};
 }
 
+// The builder's best photographs, one per album: most-photographed album first, then the
+// largest. The first frame of every album is already the best one -- import_captures
+// sorts each album by the aesthetic head's score before it is ever projected, and the
+// og:image has leaned on that for weeks -- so this never has to rank frames itself.
+function pickMosaicAlbums(threadDoc, limit = 8) {
+  if (!threadDoc) return [];
+  return threadDoc.eras.flatMap((e) => e.albums)
+    .filter((a) => Array.isArray(a.photos) && a.photos.length)
+    .sort((a, b) => b.photos.length - a.photos.length
+      || (b.pieces || 0) - (a.pieces || 0)
+      || a.buildKey.localeCompare(b.buildKey))
+    .slice(0, limit);
+}
+
+// Every album carries its attribution sentence in the data, and forty cards saying the
+// same sentence forty times was the loudest thing on the page. The distinct sentences,
+// standard one first (legacy imports word theirs differently), said once at the top.
+function distinctAttributions(threadDoc) {
+  if (!threadDoc) return [];
+  const seen = new Set();
+  const out = [];
+  for (const era of threadDoc.eras || []) {
+    for (const album of era.albums || []) {
+      const text = String(album.attribution || '').trim();
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      out.push(text);
+    }
+  }
+  return out.sort((a, b) => (a.startsWith('Every saved') ? 0 : 1) - (b.startsWith('Every saved') ? 0 : 1));
+}
+
 // ---------------------------------------------------------------------------
 // Local-first participation rails. Hoisted out of the page closure so the kinship
 // page can reuse them and so the pure-logic suite can exercise them in Node with an
@@ -584,7 +616,7 @@ if (typeof module !== 'undefined') {
   module.exports = {
     PLACEHOLDER_NAME, AUTO_ALBUM_LABEL, searchTerms, matchScore, compareBuilders,
     SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, computeTopEight,
-    portraitIndex, eraBounds, heroAliases,
+    portraitIndex, eraBounds, heroAliases, pickMosaicAlbums, distinctAttributions,
     nowISOString, randomId, normalizeHandle, submitPayload,
     KINSHIP_TAGS, KINSHIP_TAG_IDS, majorityOwner, buildKinshipTree, mergeKinshipTags,
     kinshipTagRecord, StewardParticipation,
@@ -842,7 +874,7 @@ const initCreatorsPage = async () => {
     if (counts.disavowals) parts.push(`${counts.disavowals} disavowed`);
     parts.push(
       `${counts.requests} photo requests`,
-      `${counts.submitted} already submitted`,
+      `${counts.submitted} already sent`,
       `${participants.size} local participants`,
     );
     $('participation-summary').textContent = parts.join(' · ');
@@ -1310,7 +1342,7 @@ const initCreatorsPage = async () => {
   // reason -- the thread paints before 818 KB of directory.json lands -- even though most of
   // them never find a name: a sleeper with no saved pieces has no directory record.
   function hydrateCredits() {
-    for (const anchor of document.querySelectorAll('a.credit[data-builder-key], a.resident[data-builder-key], .top8-chip .top8-name[data-builder-key]')) {
+    for (const anchor of document.querySelectorAll('a.credit[data-builder-key], a.resident[data-builder-key], .top8-chip .top8-name[data-builder-key], .kin-tree .kin-node-name[data-builder-key]')) {
       const name = buildersByKey.get(anchor.dataset.builderKey)?.displayName;
       if (name) anchor.textContent = name;
     }
@@ -1380,20 +1412,17 @@ const initCreatorsPage = async () => {
     return chip;
   }
 
-  // The panel every profile page has had since 2005, as the selector for the pair view
-  // below it. Names ride the same `data-builder-key` hook the album credit lines use, so
-  // hydrateCredits() fills them in when directory.json arrives -- no second fetch for this.
-  function renderTopEight() {
+  // The panel every profile page has had since 2005, now the caption under the tree and
+  // the selector for the pair view below it. Names ride the same `data-builder-key` hook
+  // the album credit lines use, so hydrateCredits() fills them in when directory.json
+  // arrives -- no second fetch for this. `coBuilders` is the count the tree knows, so the
+  // note can say "Top 8 of 34"; `drawn` is how many branches the tree could fit.
+  function renderTopEight({coBuilders = 0, drawn = 0} = {}) {
     const ranked = computeTopEight(thread);
     if (!ranked.length) return null;
-    const panel = node('section', null, 'top8');
-    panel.append(node('h2', 'Top 8 · Shield-wall fellows'));
-    // Top 8 is the first eight names; the kinship tree is all of them, era by era.
-    const kinshipLink = link('Open the kinship tree', new URL(`kinship/?builder=${thread.builderKey}`, base));
-    kinshipLink.id = 'top8-kinship-link';
-    kinshipLink.className = 'kin-open';
-    panel.append(kinshipLink);
-    panel.append(node('p', 'The builders this builder placed the most pieces beside', 'top8-sub'));
+    const panel = node('div', null, 'top8');
+    panel.setAttribute('role', 'group');
+    panel.setAttribute('aria-label', 'Top 8 co-builders');
     const grid = node('div', null, 'top8-grid');
     ranked.forEach((entry, index) => grid.append(top8Chip(entry, index + 1)));
     // A shared link can name a co-builder who is real but outside the first eight -- the
@@ -1404,7 +1433,139 @@ const initCreatorsPage = async () => {
       if (extra) grid.append(top8Chip(extra, null));
     }
     panel.append(grid);
+    // Top 8 is the first eight names; the kinship page is all of them, with the ledger
+    // and the tagging.
+    const note = node('p', null, 'top8-note muted');
+    const total = Math.max(coBuilders, ranked.length);
+    note.append(`Top ${Math.min(8, ranked.length)} of ${plural(total, 'co-builder')}`);
+    if (drawn && total > drawn) note.append(` · the tree draws the ${drawn} closest`);
+    note.append(' · ');
+    const kinshipLink = link('Open the kinship tree', new URL(`kinship/?builder=${thread.builderKey}`, base));
+    kinshipLink.id = 'top8-kinship-link';
+    kinshipLink.className = 'kin-open';
+    note.append(kinshipLink, ' for the ledger and tagging');
+    panel.append(note);
     return panel;
+  }
+
+  // Who they built beside: the kinship tree, drawn on the page, with the Top 8 as its
+  // caption. The tree is the same one the kinship page draws (kin-tree.js) over the
+  // same model (buildKinshipTree); a click on a branch selects that pairing exactly as a
+  // chip does, and the `pair:change` the view announces sets both. Without kin-tree.js
+  // the section degrades to the ribbon alone -- the same posture the pair view takes.
+  let kinHandle = null;
+  let kinTree = null;
+  let kinTarget = null;
+  let kinCap = 0;
+  let kinResizeTimer = 0;
+  // Per era, the function that puts its first page of rows on the page. Folded eras
+  // render nothing until they open -- the richest thread has 1,563 albums -- and a deep
+  // link into one asks for its rows by era here.
+  const eraRenderers = new Map();
+
+  function drawKinshipEmbed() {
+    if (!kinTree || !kinTarget) return null;
+    kinCap = kinBranchCap();
+    // Long threads get shorter bands so seven eras still fit in one screen.
+    // padBottom leaves room under the oldest band for the labels that hang off its nodes
+    // (an alternate-row label reaches 90px below the portrait); the scroller clips.
+    const options = {maxBranches: kinCap, padBottom: 104};
+    if (kinTree.eras.length > 6) options.bandHeight = 52;
+    const layout = layoutKinshipTree(kinTree, options);
+    kinHandle = drawKinshipTree(kinTarget, layout, kinTree, {
+      anchorKey: thread.builderKey,
+      nameFor: (key) => buildersByKey.get(key)?.displayName || placeholderName(key),
+      isUnnamedKey: (key) => isUnnamed(buildersByKey.get(key) || null, PLACEHOLDER_NAME),
+      portraits: portraitManifest,
+      hrefFor: () => null,
+      onPick: (key) => {
+        if (typeof StewardPair === 'undefined') return;
+        const active = StewardPair.select(key);
+        if (active && $('pair-view')) $('pair-view').scrollIntoView({block: 'nearest'});
+      },
+      anchorMeta: plural(kinTree.coBuilderCount || 0, 'co-builder'),
+      branchMeta: (branch) => `${(branch?.totalSharedPieces || 0).toLocaleString()} shared pieces`,
+    });
+    const pressed = document.querySelector('.top8-chip[aria-pressed="true"]');
+    kinHandle.setActive(pressed ? pressed.dataset.builderKey : null);
+    if (!portraitManifest) readPortraits().then((manifest) => { if (manifest && kinHandle) kinHandle.redrawPortraits(manifest); });
+    return layout;
+  }
+
+  function renderKinshipEmbed() {
+    kinHandle = null;
+    kinTree = null;
+    kinTarget = null;
+    const canDraw = typeof drawKinshipTree === 'function' && typeof layoutKinshipTree === 'function';
+    const tree = canDraw
+      ? buildKinshipTree(thread, {confirmedTags: externalParticipation?.confirmedTags || [], localTags: state.kinshipTags})
+      : null;
+    const section = node('section', null, 'kin-beside');
+    section.id = 'kin-beside';
+    section.setAttribute('aria-labelledby', 'kin-beside-h2');
+    const heading = node('h2', 'Who they built beside');
+    heading.id = 'kin-beside-h2';
+    section.append(heading);
+    let drawn = 0;
+    if (tree && tree.branches.length) {
+      kinTree = tree;
+      section.append(node('p',
+        `${plural(tree.coBuilderCount || tree.branches.length, 'builder')} placed pieces on the same builds, across ${plural(tree.eras.length, 'era')}. Pick one to see the pair.`,
+        'kin-beside-sub muted'));
+      const scroll = node('div', null, 'kin-scroll kin-tree');
+      const canvas = node('div', null, 'kin-canvas');
+      canvas.id = 'kin-embed';
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'kin-tree-svg');
+      svg.setAttribute('role', 'img');
+      svg.setAttribute('aria-label', 'Kinship tree');
+      const nodes = node('div', null, 'kin-nodes');
+      const tip = node('div', null, 'kin-tip');
+      tip.setAttribute('role', 'tooltip');
+      tip.hidden = true;
+      canvas.append(svg, nodes, tip);
+      scroll.append(canvas);
+      section.append(scroll);
+      kinTarget = {svg, nodes, tip, canvas};
+      const layout = drawKinshipEmbed();
+      drawn = layout ? layout.branches.length : 0;
+      // The trunk is the middle of a 960-unit drawing; on a phone the scroller shows
+      // about two thirds of it, and it should open on the anchor, not on the left edge.
+      requestAnimationFrame(() => { scroll.scrollLeft = Math.max(0, (canvas.scrollWidth - scroll.clientWidth) / 2); });
+    }
+    const ribbon = renderTopEight({coBuilders: tree ? tree.coBuilderCount : 0, drawn});
+    if (!ribbon) return null;
+    section.append(ribbon);
+    return section;
+  }
+
+  function redrawKinshipEmbedIfNeeded() {
+    if (!thread || !kinTree || kinBranchCap() === kinCap) return;
+    drawKinshipEmbed();
+  }
+
+  // The three lines that used to sit under the hero as orphans, and the manifest link,
+  // together at the foot of the page. #status and #thread-actions are MOVED, not copied:
+  // their ids, role and rendered strings travel with them.
+  function renderThreadNotes() {
+    const notes = $('thread-notes');
+    if (!notes) return;
+    let line = $('thread-participation-line');
+    if (!line) {
+      line = node('p', null, 'muted');
+      line.id = 'thread-participation-line';
+    }
+    let capture = $('thread-capture-note');
+    if (!capture) {
+      capture = node('p', null, 'muted');
+      capture.id = 'thread-capture-note';
+    }
+    const note = captureNoteForThread();
+    capture.textContent = note;
+    capture.hidden = !note;
+    notes.replaceChildren(...[$('status'), line, capture, $('thread-actions')].filter(Boolean));
+    notes.hidden = false;
+    refreshThreadParticipationLine();
   }
 
   // The thread's headline figures get the same recessed hit-counter cell the directory's
@@ -1469,30 +1630,92 @@ const initCreatorsPage = async () => {
     $('photo-viewer-close').focus();
   }
 
-  function renderAlbumPhotos(album) {
-    // The old per-album "photography planned" line rendered up to forty times on one
-    // page. The single note under the title says it once, with the real numbers. The one
-    // exception is a build that WAS photographed and had every frame withheld -- that is
-    // a different fact from "not shot yet" and only this album can state it.
-    if (!album.photos?.length) {
-      return album.photoStatus === 'rejected'
-        ? node('p', 'Photographed, but none of the frames were worth showing — fog, a blocked camera, or a near-identical shot of a neighbouring build. This one is queued for another attempt.', 'muted')
-        : null;
-    }
-    const photos = node('div', null, 'photos');
-    for (const p of album.photos) {
-      const btn = node('button', null, 'photo-thumb');
-      btn.type = 'button';
-      const img = document.createElement('img');
-      img.src = p.thumb;
-      img.alt = p.label + (p.shot ? ` (${p.shot})` : '');
-      img.loading = 'lazy';
-      btn.append(img);
-      btn.setAttribute('aria-label', `View image: ${p.label}`);
-      btn.onclick = () => openPhotoViewer(p);
-      photos.append(btn);
-    }
+  // A build that WAS photographed and had every frame withheld is a different fact from
+  // "not shot yet", and only that album can state it; it does so inside its row.
+  const WITHHELD_NOTE = 'Photographed, but none of the frames were worth showing — fog, a blocked camera, or a near-identical shot of a neighbouring build. This one is queued for another attempt.';
+
+  function photoThumb(p, cls = 'photo-thumb') {
+    const btn = node('button', null, cls);
+    btn.type = 'button';
+    const img = document.createElement('img');
+    img.src = p.thumb;
+    img.alt = p.label + (p.shot ? ` (${p.shot})` : '');
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    btn.append(img);
+    btn.setAttribute('aria-label', `View image: ${p.label}`);
+    btn.onclick = () => openPhotoViewer(p);
+    return btn;
+  }
+
+  // A slice of an album's photographs as thumbnails, or null when the slice is empty. The
+  // row shows the first four; the rest wait in the expanded body.
+  function renderAlbumPhotos(album, {from = 0, limit = Infinity, cls = 'photos'} = {}) {
+    const slice = (album.photos || []).slice(from, from + limit);
+    if (!slice.length) return null;
+    const photos = node('div', null, cls);
+    for (const p of slice) photos.append(photoThumb(p));
     return photos;
+  }
+
+  // The builder's best frames, one per album, under the hero. This is the page's first
+  // picture of the work; until pass 3 the photographs were the fourth thing inside each
+  // album card, a screen and a half below the name.
+  function renderWorkMosaic() {
+    const picks = pickMosaicAlbums(thread, 8);
+    if (!picks.length) return null;
+    const section = node('section', null, 'work-mosaic');
+    section.id = 'work-mosaic';
+    section.setAttribute('aria-labelledby', 'work-h2');
+    const heading = node('h2', 'The work');
+    heading.id = 'work-h2';
+    section.append(heading);
+    const grid = node('div', null, 'photos mosaic');
+    picks.forEach((album, index) => {
+      const tile = photoThumb(album.photos[0], 'photo-thumb mosaic-tile');
+      // The first row is above the fold on every screen; the rest can wait.
+      if (index < 4) tile.querySelector('img').loading = 'eager';
+      tile.append(node('span', `Era ${album.era}`, 'mosaic-era'));
+      grid.append(tile);
+    });
+    section.append(grid);
+    const albums = thread.eras.flatMap((e) => e.albums);
+    const shot = albums.filter((a) => a.photos?.length).length;
+    section.append(node('p', `${plural(thread.photos || 0, 'photograph')} across ${plural(shot, 'album')}`, 'mosaic-foot muted'));
+    return section;
+  }
+
+  // This builder's share of an album's pieces, or null where the import never recorded
+  // one (legacy albums carry no shares at all).
+  function shareFor(album, targetBuilderKey) {
+    const mine = (album.contributors || []).find((c) => c && c.builderKey === targetBuilderKey);
+    return mine && mine.share != null ? mine.share : null;
+  }
+
+  // What a row still owes its expanded body -- today the photographs past the first
+  // four. Rendered on the first open rather than up front: an image inside a hidden
+  // body never loads, and the release smoke rightly counts that as a broken photograph.
+  const albumRest = new WeakMap();
+
+  function setAlbumExpanded(card, on) {
+    if (on && albumRest.has(card)) {
+      const pending = albumRest.get(card);
+      albumRest.delete(card);
+      pending();
+    }
+    card.dataset.expanded = on ? 'true' : 'false';
+    const toggle = card.querySelector('.album-toggle');
+    if (toggle) toggle.setAttribute('aria-expanded', String(on));
+    const more = card.querySelector('.album-more');
+    if (more) more.hidden = !on;
+  }
+
+  // The one label row that earns its place: a bare "34 %" says nothing without it.
+  function albumLedgerHead() {
+    const head = node('div', null, 'album-ledger-head');
+    head.setAttribute('aria-hidden', 'true');
+    head.append(node('span', 'Build'), node('span', 'Pieces'), node('span', 'Share'), node('span', ''), node('span', 'Photos'));
+    return head;
   }
 
   function renderAlbumActions(album, targetBuilderKey) {
@@ -1560,40 +1783,71 @@ const initCreatorsPage = async () => {
     return row;
   }
 
-  function buildAlbumCard(album, targetBuilderKey) {
+  // One row per build: the name, the pieces, this builder's share, whether it has been
+  // photographed, and the first four frames. Everything a visitor reads once and then
+  // wants out of the way -- the credits, the links, the claim controls -- opens on the
+  // row's own toggle. The article keeps class `album` and its data-build-key: the
+  // confirmed-tag sweep, the claim refresh and the release smoke all find it by those.
+  function buildAlbumCard(album, targetBuilderKey, {expanded = false} = {}) {
     const card = node('article', null, 'album');
     card.dataset.buildKey = album.buildKey;
-    card.append(
-      node('h3', album.label),
-      node('p', `${album.pieces.toLocaleString()} construction pieces`),
-      node('p', album.attribution, 'muted'),
-    );
-    card.append(buildCreditLine(album));
+    const moreId = `album-more-${album.buildKey.slice(0, 12)}`;
 
+    const row = node('div', null, 'album-row');
+    const name = node('h3', null, 'album-name');
+    const toggle = node('button', album.label, 'album-toggle');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-controls', moreId);
+    toggle.onclick = () => setAlbumExpanded(card, card.dataset.expanded !== 'true');
+    name.append(toggle);
+
+    const pieces = node('span', album.pieces.toLocaleString(), 'album-pieces');
+    pieces.append(node('span', ' pieces', 'visually-hidden'));
+    const share = shareFor(album, targetBuilderKey);
+    const shareEl = node('span', share == null ? '—' : `${Math.round(share * 100)} %`, 'album-share');
+    if (share != null) shareEl.title = `${(100 * share).toFixed(1)}% of the pieces are this builder's`;
+    const shot = node('span', '●', 'album-shot');
+    const shotState = album.photos?.length ? 'yes' : (album.photoStatus === 'rejected' ? 'withheld' : 'none');
+    shot.dataset.shot = shotState;
+    shot.setAttribute('role', 'img');
+    shot.setAttribute('aria-label', shotState === 'yes' ? 'Photographed' : (shotState === 'withheld' ? 'Photographed, frames withheld' : 'Not photographed yet'));
+    const strip = renderAlbumPhotos(album, {limit: 4, cls: 'photos album-strip'}) || node('div', null, 'album-strip');
+    row.append(name, pieces, shareEl, shot, strip);
+
+    const more = node('div', null, 'album-more');
+    more.id = moreId;
+    if (shotState === 'withheld') more.append(node('p', WITHHELD_NOTE, 'muted'));
+    more.append(buildCreditLine(album));
     const links = node('div', null, 'links');
     if (album.galleryUrl) links.append(link('Open original gallery', album.galleryUrl));
     if (album.worldUrl) links.append(link('Open in world viewer', album.worldUrl));
-    card.append(links);
-
+    if (links.childElementCount) more.append(links);
     const requestHistory = requestsForBuild(album.buildKey);
     if (requestHistory.length) {
       const requestCount = requestHistory.length;
-      const submitted = requestHistory.filter((r) => r.deliveryStatus === 'submitted').length;
-      const queueLine = node('p', `${requestCount} request${requestCount === 1 ? '' : 's'} for this build ( ${submitted} submitted )`, 'muted');
-      card.append(queueLine);
+      const sent = requestHistory.filter((r) => r.deliveryStatus === 'submitted').length;
+      more.append(node('p', `${requestCount} request${requestCount === 1 ? '' : 's'} for this build ( ${sent} sent )`, 'muted'));
+    }
+    const actions = renderAlbumActions(album, targetBuilderKey);
+    more.append(actions);
+    if ((album.photos || []).length > 4) {
+      albumRest.set(card, () => {
+        const rest = renderAlbumPhotos(album, {from: 4, cls: 'photos album-rest'});
+        if (rest) more.insertBefore(rest, actions);
+      });
     }
 
-    const photos = renderAlbumPhotos(album);
-    if (photos) card.append(photos);
-    card.append(renderAlbumActions(album, targetBuilderKey));
+    card.append(row, more);
+    setAlbumExpanded(card, expanded);
     return card;
   }
 
   // A claim changes one card. Re-rendering the whole page threw away every "show more"
-  // the visitor had clicked and jumped them back to the top of a 340-album thread.
+  // the visitor had clicked and jumped them back to the top of a 340-album thread. The
+  // row stays open across the swap: the visitor just pressed a button inside it.
   function refreshAlbumCard(album, targetBuilderKey) {
     const existing = document.querySelector('article.album[data-build-key="' + album.buildKey + '"]');
-    if (existing) existing.replaceWith(buildAlbumCard(album, targetBuilderKey));
+    if (existing) existing.replaceWith(buildAlbumCard(album, targetBuilderKey, {expanded: existing.dataset.expanded === 'true'}));
   }
 
   function renderManifestAction() {
@@ -1717,73 +1971,22 @@ const initCreatorsPage = async () => {
     holder.hidden = false;
   }
 
-  function renderHeroFacts() {
-    const facts = $('hero-facts');
-    if (!facts) return;
-    facts.replaceChildren();
-    const bounds = eraBounds(thread);
-    const rows = [];
-    if (thread.tier) rows.push(['Tier', thread.tier]);
-    if (bounds.first != null) rows.push(['First era', `Era ${bounds.first}`]);
-    if (bounds.latest != null) rows.push(['Latest era', `Era ${bounds.latest}`]);
-    for (const [term, value] of rows) {
-      facts.append(node('dt', term), node('dd', value));
-    }
-  }
-
-  // The same picking rule the directory cards use, asked for three instead of two: a
-  // build with a source-recorded title, largest first. A builder whose every album is an
-  // auto-labelled "Build 0a1b2c3d" gets no panel rather than a panel of hex.
-  function renderHeroSignature() {
-    const holder = $('hero-signature');
-    if (!holder) return;
-    for (const stale of holder.querySelectorAll('ul')) stale.remove();
-    const picks = pickSignatureAlbums(thread, 3);
-    if (!picks.length) {
-      holder.hidden = true;
-      return;
-    }
-    const list = node('ul');
-    for (const album of picks) {
-      const li = node('li');
-      li.append(album.label);
-      if (album.pieces != null) li.append(` · ${album.pieces.toLocaleString()} pieces`);
-      if (album.worldUrl) {
-        li.append(' · ');
-        li.append(link('Open in world viewer', album.worldUrl));
-      }
-      list.append(li);
-    }
-    holder.append(list);
-    holder.hidden = false;
-  }
-
-  // Moving the existing nodes rather than rebuilding them is the whole trick: #title,
-  // #intro and #thread-actions keep their ids, their listeners and their rendered strings,
-  // and appending all seven children in a fixed order makes a second call (forget-
-  // participation re-renders the thread) a no-op instead of a duplicated card.
+  // Moving the existing nodes rather than rebuilding them is the whole trick: #title and
+  // #intro keep their ids, their listeners and their rendered strings, and appending the
+  // three children in a fixed order makes a second call (forget-participation re-renders
+  // the thread) a no-op instead of a duplicated card. The hero is the name and one line:
+  // the tier, the eras and the counters read without a label each, the tree that used to
+  // be a link here is drawn on the page below, and the manifest link sits in the notes.
   function renderHeroCard() {
     const hero = $('builder-hero');
     const text = hero?.querySelector('.hero-text');
     if (!hero || !text) return;
     renderHeroAliases();
-    renderHeroFacts();
-    renderHeroSignature();
     renderHeroAvatar();
-    // The kinship page is the one place a thread links out to that is about this builder
-    // and somebody else at the same time, so it belongs under the signature creations
-    // rather than in the look-out row of archive-wide paths.
-    const kinship = $('hero-kinship');
-    if (kinship) {
-      const anchor = $('hero-kinship-link');
-      if (anchor) anchor.href = new URL(`kinship/?builder=${thread.builderKey}`, base);
-      kinship.hidden = false;
-    }
-    const ordered = [
-      document.querySelector('main .eyebrow'),
-      $('title'), $('hero-aliases'), $('hero-facts'), $('intro'), $('hero-signature'),
-      $('hero-kinship'), $('thread-actions'),
-    ].filter(Boolean);
+    // The brand lockup in the header already says whose community this is.
+    const eyebrow = document.querySelector('main .eyebrow');
+    if (eyebrow) eyebrow.hidden = true;
+    const ordered = [$('title'), $('hero-aliases'), $('intro')].filter(Boolean);
     text.append(...ordered);
     hero.hidden = false;
     if ($('look-out')) $('look-out').hidden = false;
@@ -1803,6 +2006,9 @@ const initCreatorsPage = async () => {
       const section = $('content').querySelector(`details[data-era="${era.era}"]`);
       if (!section) return null;
       section.open = true;
+      // Opening fires `toggle` asynchronously; the rows are wanted now.
+      const ensure = eraRenderers.get(String(era.era));
+      if (ensure) ensure();
       const more = section.querySelector('button.more-albums');
       // One page per click. The cap is generous enough for the richest thread in the
       // archive (1,563 albums, forty to a page) and finite either way.
@@ -1813,14 +2019,15 @@ const initCreatorsPage = async () => {
       card = find();
     }
     if (!card) return null;
+    // Older eras start folded now, so a card can exist and still be out of sight; the
+    // row arrives open and so does its era -- the visitor was sent here for its
+    // credits and its buttons.
+    const era = card.closest('details');
+    if (era) era.open = true;
+    setAlbumExpanded(card, true);
     card.scrollIntoView({block: 'start'});
-    // The heading is the card's own name and is not focusable on its own; a programmatic
-    // -1 makes it a focus target without putting it in the tab order.
-    const heading = card.querySelector('h3');
-    if (heading) {
-      if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
-      heading.focus();
-    }
+    const toggle = card.querySelector('.album-toggle');
+    if (toggle) toggle.focus({preventScroll: true});
     return card;
   }
 
@@ -1849,9 +2056,15 @@ const initCreatorsPage = async () => {
     if ($('hero-stats')) $('hero-stats').hidden = true;
     const eraCount = thread.eras.reduce((sum, e) => sum + e.albums.length, 0);
     $('title').textContent = thread.displayName;
-    const introParts = [plural(eraCount, 'build album')];
-    if (thread.pieces != null) introParts.push(`${thread.pieces.toLocaleString()} construction pieces`);
+    // One line, no labels: the tier and the eras first because they are words, then the
+    // three figures in their counter cells. It replaces the TIER / FIRST ERA / LATEST ERA
+    // row the hero used to carry beneath the name.
+    const introParts = [];
     if (thread.tier) introParts.push(thread.tier);
+    const bounds = eraBounds(thread);
+    if (bounds.first != null) introParts.push(bounds.first === bounds.latest ? `era ${bounds.first}` : `eras ${bounds.first}–${bounds.latest}`);
+    introParts.push(plural(eraCount, 'build album'));
+    if (thread.pieces != null) introParts.push(`${thread.pieces.toLocaleString()} construction pieces`);
     introParts.push(`${thread.photos.toLocaleString()} photographs`);
     $('intro').replaceChildren(threadIntroLine(introParts));
     $('status').textContent = thread.nameStatus === 'ambiguous'
@@ -1860,8 +2073,6 @@ const initCreatorsPage = async () => {
     renderManifestAction();
     renderHeroCard();
 
-    const h = node('p', null, 'muted');
-    h.id = 'thread-participation-line';
     // A second render (forget-participation redraws the thread) wipes #content, and with
     // it the node the pair view drew into. Say so before the node disappears, rather than
     // leaving a mounted view holding an element that is no longer on the page.
@@ -1870,16 +2081,16 @@ const initCreatorsPage = async () => {
       pairMounted = false;
     }
     $('content').className = '';
-    $('content').replaceChildren(h);
-    refreshThreadParticipationLine();
+    $('content').replaceChildren();
+    eraRenderers.clear();
 
-    const note = captureNoteForThread();
-    if (note) $('content').append(node('p', note, 'muted'));
+    // The order is the story: the work, then who they built beside, then the albums.
+    const work = renderWorkMosaic();
+    if (work) $('content').append(work);
 
-    // Above the era sections: who this builder worked beside, before the 1,562 albums.
-    const topEight = renderTopEight();
-    if (topEight) {
-      $('content').append(topEight);
+    const beside = renderKinshipEmbed();
+    if (beside) {
+      $('content').append(beside);
       // The pair view's canvas. This page owns where it sits and what context it gets;
       // everything inside it is pair.js's, which is why nothing here ever writes to it.
       // It only exists where the ribbon does -- with no co-builder there is no pair.
@@ -1903,21 +2114,35 @@ const initCreatorsPage = async () => {
       }
     }
 
+    const albumsBlock = node('section', null, 'albums');
+    albumsBlock.id = 'albums';
+    albumsBlock.setAttribute('aria-labelledby', 'albums-h2');
+    const albumsHeading = node('h2', 'Albums by era');
+    albumsHeading.id = 'albums-h2';
+    albumsBlock.append(albumsHeading);
+    const attributions = distinctAttributions(thread);
+    if (attributions.length) albumsBlock.append(node('p', attributions.join(' '), 'albums-note muted'));
+    $('content').append(albumsBlock);
+
     const allEraBlocks = thread.eras.slice().sort((a, b) => b.era - a.era);
-    for (const era of allEraBlocks) {
+    allEraBlocks.forEach((era, position) => {
       const section = node('details');
       // revealAlbum() has to find the era that holds one build without walking the DOM
       // for it, and a deep-linked build can be on any of them.
       section.dataset.era = String(era.era);
-      section.open = true;
+      // The newest era opens; the older ones wait one click away, and revealAlbum() opens
+      // whichever one a deep link needs.
+      section.open = position === 0;
       const photographed = era.albums.filter((a) => a.photos?.length).length;
       section.append(node('summary',
         `Era ${era.era} · ${era.albums.length.toLocaleString()} albums · ${photographed.toLocaleString()} photographed`));
+      section.append(albumLedgerHead());
 
       let shown = 0;
       // Classed, not found by position: the album cards inside this section carry buttons
       // of their own and they are inserted BEFORE this one.
       const more = node('button', 'Show more albums', 'more-albums');
+      more.hidden = true;
       const appendAlbums = () => {
         for (const album of era.albums.slice(shown, shown + PAGE_SIZE_ALBUMS)) {
           section.insertBefore(buildAlbumCard(album, thread.builderKey), more);
@@ -1927,12 +2152,27 @@ const initCreatorsPage = async () => {
       };
       section.append(more);
       more.onclick = appendAlbums;
-      appendAlbums();
-      $('content').append(section);
-    }
+      // A folded era renders its rows the first time it opens, and hangs the confirmed
+      // tags on them then -- participation.json usually landed long before.
+      const ensureRendered = () => {
+        if (shown) return;
+        appendAlbums();
+        renderConfirmedTagChips(externalParticipation);
+      };
+      eraRenderers.set(String(era.era), ensureRendered);
+      if (section.open) appendAlbums();
+      else section.addEventListener('toggle', () => { if (section.open) ensureRendered(); });
+      albumsBlock.append(section);
+    });
+    renderThreadNotes();
     // If participation.json already landed there are albums to hang its chips on now.
     renderConfirmedTagChips(externalParticipation);
     openRequestShortcutIfLinked();
+    // A shared pair link lands under the work and the tree now; bring the pair up unless
+    // a #hash has already claimed the scroll.
+    if (initialPair.kin && pairMounted && !location.hash) {
+      requestAnimationFrame(() => { if ($('pair-view')) $('pair-view').scrollIntoView({block: 'start'}); });
+    }
   }
 
   function refreshThreadParticipationLine() {
@@ -2137,6 +2377,14 @@ const initCreatorsPage = async () => {
         for (const chip of document.querySelectorAll('.top8-chip')) {
           chip.setAttribute('aria-pressed', String(Boolean(ally) && chip.dataset.builderKey === ally));
         }
+        if (kinHandle) kinHandle.setActive(ally || null);
+      });
+    }
+    // A rotate fires resize by the dozen; the tree only cares when the branch cap flips.
+    if (isThread) {
+      addEventListener('resize', () => {
+        clearTimeout(kinResizeTimer);
+        kinResizeTimer = setTimeout(redrawKinshipEmbedIfNeeded, 150);
       });
     }
     setSearchHotkeyLabel();

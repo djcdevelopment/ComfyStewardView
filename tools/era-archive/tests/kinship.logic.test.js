@@ -1,10 +1,11 @@
 'use strict';
-// Pure layout logic for the kinship page. Run with: node --test tools/era-archive/tests/kinship.logic.test.js
+// Pure layout logic for the kinship tree (web/kin-tree.js, drawn on the kinship page and
+// the builder profile). Run with: node --test tools/era-archive/tests/kinship.logic.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 
-const kinship = require(path.join(__dirname, '..', 'web', 'kinship.js'));
+const kinship = require(path.join(__dirname, '..', 'web', 'kin-tree.js'));
 // The one import from next door, and deliberate: isUnnamed is only correct if it is fed
 // the same placeholder pattern the directory page sorts by, so the test proves the real
 // exported regex rather than a copy of it that could quietly drift.
@@ -40,7 +41,7 @@ function tree(branches, eras = [7, 8, 9, 10]) {
 
 const SIMPLE = tree([branch(1, [span(7), span(8)]), branch(2, [span(8)])]);
 
-test('kinship.js exports layoutKinshipTree and its layout helpers', () => {
+test('kin-tree.js exports layoutKinshipTree and its layout helpers', () => {
   assert.equal(typeof kinship.layoutKinshipTree, 'function');
   assert.equal(typeof kinship.strokeWidthFor, 'function');
 });

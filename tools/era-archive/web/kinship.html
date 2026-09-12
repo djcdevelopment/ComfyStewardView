@@ -12,8 +12,9 @@
     <meta property="og:title" content="Kinship · Comfy builders">
     <meta property="og:description" content="Who a builder built beside, era by era.">
     <meta name="twitter:card" content="summary">
-    <link rel="stylesheet" href="./creators.css?v=7">
-    <script src="./creators.js?v=7" defer></script>
+    <link rel="stylesheet" href="./creators.css?v=8">
+    <script src="./creators.js?v=8" defer></script>
+    <script src="./kin-tree.js?v=8" defer></script>
     <script src="./kinship.js" defer></script>
   </head>
   <body>
@@ -67,13 +68,13 @@
       <div class="kin-layout">
         <div class="kin-main">
           <section id="kin-tree-panel" role="tabpanel" aria-labelledby="kin-tab-tree">
-            <div class="kin-scroll">
+            <div class="kin-scroll kin-tree">
               <div id="kin-tree" class="kin-canvas">
-                <svg id="kin-tree-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" role="img" aria-label="Kinship tree"></svg>
-                <div id="kin-nodes"></div>
+                <svg id="kin-tree-svg" class="kin-tree-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" role="img" aria-label="Kinship tree"></svg>
+                <div id="kin-nodes" class="kin-nodes"></div>
                 <!-- Inside the canvas on purpose: the nodes are positioned against it, so
                      the tooltip can be clamped to the same box with plain offsets. -->
-                <div id="kin-tip" role="tooltip" hidden></div>
+                <div id="kin-tip" class="kin-tip" role="tooltip" hidden></div>
               </div>
             </div>
             <p id="kin-legend" class="muted">Solid branches carry the pieces you placed side by side in that era. Dashed branches are eras kept only as photographs, where shares are unknown. A hairline is an era apart; the branch resumes when you built together again.</p>

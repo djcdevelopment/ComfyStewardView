@@ -156,11 +156,34 @@ class ChroniclerStyleTests(unittest.TestCase):
         """Red on this branch alone -- web/pair.js is the other builder's file this
         iteration. The lint is the same one every other surface gets, and it has to exist
         before the file does or the file lands unlinted."""
-        pair = WEB / "pair.js"
-        self.assertTrue(pair.exists(), "web/pair.js has not landed yet")
-        source = pair.read_text(encoding="utf-8").casefold()
-        for banned in ("character", "archetype", "submitted"):
-            self.assertNotIn(banned, source, f"pair.js says '{banned}'")
+        for name in ("pair.js", "kin-tree.js"):
+            script = WEB / name
+            self.assertTrue(script.exists(), f"web/{name} has not landed yet")
+            source = script.read_text(encoding="utf-8").casefold()
+            for banned in ("character", "archetype", "submitted"):
+                self.assertNotIn(banned, source, f"{name} says '{banned}'")
+
+    def test_the_pair_view_folds_its_detail_under_a_native_disclosure(self):
+        # Photo, status line and the shared-builds ledger stay in view; laurels, hearth,
+        # affinity, the facts and the tiles open on one <details>. Native, so no script
+        # owns the open state -- and a repaint reads it back rather than snapping it shut.
+        pair = (WEB / "pair.js").read_text(encoding="utf-8")
+        self.assertIn("pairNode('details', null, 'pair-more')", pair)
+        self.assertIn("pairNode('summary', 'Details')", pair)
+        self.assertIn("pairMoreEl({open: pairMoreOpen()})", pair)
+
+    def test_the_tree_drawing_is_shared_by_both_pages(self):
+        tree = (WEB / "kin-tree.js").read_text(encoding="utf-8")
+        kinship = (WEB / "kinship.js").read_text(encoding="utf-8")
+        creators = (WEB / "creators.js").read_text(encoding="utf-8")
+        self.assertIn("function drawKinshipTree(", tree)
+        self.assertIn("function layoutKinshipTree(", tree)
+        for name, source in (("kinship.js", kinship), ("creators.js", creators)):
+            self.assertIn("drawKinshipTree(", source, f"{name} does not draw with the shared tree")
+        # A classic script's top-level names are page globals; a second declaration is a
+        # load-time SyntaxError that takes the whole page script down with it.
+        for moved in ("const KIN_LAYOUT", "function layoutKinshipTree", "function kinBranchCap", "function isUnnamed", "function renderNodes", "function showTip"):
+            self.assertNotIn(moved, kinship, f"kinship.js still declares {moved}")
 
     def test_the_confirmed_tag_sweep_is_scoped_to_the_album_cards(self):
         # renderConfirmedTagChips() clears before it draws, because participation.json and
@@ -181,11 +204,12 @@ class ChroniclerStyleTests(unittest.TestCase):
 
     def test_stylesheet_href_is_cache_busted_and_still_rewritable(self):
         for name, content in (("index.html", self.index), ("stats.html", self.stats)):
-            self.assertIn('href="./creators.css?v=7"', content, name)
+            self.assertIn('href="./creators.css?v=8"', content, name)
         self.assertIn('src="./creators.js"', self.index)
-        # pair.js rides beside creators.js and wears the same cache policy it does:
-        # unversioned here, where the stylesheet carries the bust for the whole shell.
+        # pair.js and kin-tree.js ride beside creators.js and wear the same cache policy it
+        # does: unversioned here, where the stylesheet carries the bust for the whole shell.
         self.assertIn('src="./pair.js"', self.index)
+        self.assertIn('src="./kin-tree.js"', self.index)
 
     def test_route_guard_keeps_creators_inert_on_the_kinship_page(self):
         # kinship.html loads creators.js for its model and its participation store, then
@@ -195,7 +219,8 @@ class ChroniclerStyleTests(unittest.TestCase):
         js = (WEB / "creators.js").read_text(encoding="utf-8")
         self.assertIn("dataset.stewardPage !== 'kinship'", js)
         self.assertIn('<html lang="en" data-steward-page="kinship">', self.kinship)
-        self.assertIn('src="./creators.js?v=7"', self.kinship)
+        self.assertIn('src="./creators.js?v=8"', self.kinship)
+        self.assertIn('src="./kin-tree.js?v=8"', self.kinship)
         self.assertIn('src="./kinship.js"', self.kinship)
         self.assertNotIn("data-steward-page", self.index,
                          "the directory shell is the default route, not a named one")
@@ -217,16 +242,19 @@ class ChroniclerStyleTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             receipt = project(document, dest, "https://example.invalid/world")
             thread = (dest / key / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=7"', thread)
+            self.assertIn('href="../creators.css?v=8"', thread)
             self.assertIn('src="../creators.js"', thread)
-            # The pair view's script gets the same climb. A thread page is one directory
-            # down, so a surviving "./pair.js would 404 on every builder profile.
+            # The pair view's script and the tree's get the same climb. A thread page is
+            # one directory down, so a surviving "./pair.js would 404 on every profile.
             self.assertIn('src="../pair.js"', thread)
             self.assertNotIn('"./pair.js', thread)
-            self.assertIn("pair.js", {f["path"] for f in receipt["files"]},
-                          "the projection does not ship the pair view's script")
+            self.assertIn('src="../kin-tree.js"', thread)
+            self.assertNotIn('"./kin-tree.js', thread)
+            paths = {f["path"] for f in receipt["files"]}
+            self.assertIn("pair.js", paths, "the projection does not ship the pair view's script")
+            self.assertIn("kin-tree.js", paths, "the projection does not ship the tree's script")
             stats = (dest / "stats" / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=7"', stats)
+            self.assertIn('href="../creators.css?v=8"', stats)
 
 
 if __name__ == "__main__":

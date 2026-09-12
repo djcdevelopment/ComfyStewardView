@@ -80,22 +80,46 @@ class HeroShellTests(unittest.TestCase):
 
     def test_the_hero_card_ships_hidden_with_every_slot_renderThread_fills(self):
         self.assertIn('<section id="builder-hero" class="builder-hero" hidden', self.index)
-        for marker in ('id="hero-avatar"', 'id="hero-aliases"', 'id="hero-facts"',
-                       'id="hero-signature"', 'class="hero-text"'):
+        # Pass 3 took the labelled facts row and the signature panel out of the hero: the
+        # tier and the eras ride the one intro line now, beside the counters.
+        for marker in ('id="hero-avatar"', 'id="hero-aliases"', 'class="hero-text"'):
             self.assertIn(marker, self.index, f"hero card lost {marker}")
+        for gone in ('id="hero-facts"', 'id="hero-signature"', 'id="hero-kinship"'):
+            self.assertNotIn(gone, self.index, f"the hero grew {gone} back")
+        # The notes strip at the foot of a builder page: hidden until the thread renders.
+        self.assertIn('<section id="thread-notes" class="notes" hidden', self.index)
         # The directory renders this same file and never calls renderThread(): the card and
         # the nav have to be invisible until the thread renderer un-hides them.
         self.assertIn('<nav id="look-out" class="paths" hidden', self.index)
 
     def test_the_thread_renderer_is_the_only_thing_that_reveals_them(self):
-        for target in ("builder-hero", "look-out"):
+        for target in ("builder-hero", "look-out", "thread-notes"):
             self.assertIn(f"$('{target}')", self.js, f"nothing un-hides #{target}")
         self.assertIn("renderHeroCard();", self.js)
-        # renderDirectory() must not touch either one.
+        # renderDirectory() must not touch any of them.
         directory = self.js[self.js.index("function renderDirectory()"):]
         directory = directory[:directory.index("\n  function ", 10)]
-        for target in ("builder-hero", "look-out", "hero-avatar"):
+        for target in ("builder-hero", "look-out", "hero-avatar", "thread-notes"):
             self.assertNotIn(target, directory, f"the directory renderer reaches for #{target}")
+
+    def test_the_builder_page_tells_one_story_in_order(self):
+        # The work, then who they built beside, then the albums -- renderThread() appends
+        # them in that order, and each is a real section a reader (and a test) can find.
+        thread = self.js[self.js.index("function renderThread()"):]
+        order = [thread.index(marker) for marker in
+                 ("renderWorkMosaic()", "renderKinshipEmbed()", "'Albums by era'", "renderThreadNotes()")]
+        self.assertEqual(order, sorted(order), "the builder page lost its order")
+        # The attribution sentence is said once for the page, not once per album.
+        self.assertIn("distinctAttributions(", self.js)
+        self.assertIn("'albums-note muted'", self.js)
+        # Album rows collapse: the toggle owns aria-expanded and the body is hidden by default.
+        for marker in ("'album-toggle'", "aria-expanded", "'album-more'", "setAlbumExpanded("):
+            self.assertIn(marker, self.js, f"album rows lost {marker}")
+        # The tree is drawn on the profile with the shared drawing, and the ribbon is its
+        # caption: no second heading for the same eight names.
+        self.assertIn("drawKinshipTree(", self.js)
+        self.assertNotIn("'Top 8 · Shield-wall fellows'", self.js)
+        self.assertIn("top8-kinship-link", self.js)
 
     def test_five_wordless_figures_in_order_with_the_published_strings(self):
         cards = path_cards(self.index)
@@ -124,7 +148,8 @@ class HeroShellTests(unittest.TestCase):
                     self.assertRegex(url, CUTOUT, f"{key} srcset entry {url}")
 
     def test_the_page_never_calls_a_builder_a_character(self):
-        for name, content in (("index.html", self.index), ("creators.js", self.js)):
+        tree = (WEB / "kin-tree.js").read_text(encoding="utf-8")
+        for name, content in (("index.html", self.index), ("creators.js", self.js), ("kin-tree.js", tree)):
             for word in BANNED_VOCABULARY:
                 self.assertNotIn(word, content.lower(), f"{name} says '{word}'")
 
@@ -149,8 +174,10 @@ class HeroProjectionTests(unittest.TestCase):
             destination = Path(temp) / "projection"
             project(document, destination, "https://example.invalid/world")
             thread = (destination / key / "index.html").read_text(encoding="utf-8")
-        self.assertIn('href="../creators.css?v=7"', thread)
+        self.assertIn('href="../creators.css?v=8"', thread)
         self.assertIn('src="../creators.js"', thread)
+        self.assertIn('src="../kin-tree.js"', thread)
+        self.assertNotIn('"./kin-tree.js', thread)
         self.assertIn('<section id="builder-hero" class="builder-hero" hidden', thread)
         self.assertIn('<nav id="look-out" class="paths" hidden', thread)
         # Absolute figure and destination URLs are shared with the landing page and must

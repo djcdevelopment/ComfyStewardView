@@ -10,7 +10,7 @@ const {
   SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, compareBuilders, matchScore,
   computeTopEight, portraitIndex, eraBounds, heroAliases,
   majorityOwner, buildKinshipTree, mergeKinshipTags, kinshipTagRecord, StewardParticipation,
-  KINSHIP_TAG_IDS,
+  KINSHIP_TAG_IDS, pickMosaicAlbums, distinctAttributions,
 } = require(path.join(__dirname, '..', 'web', 'creators.js'));
 
 function builder(overrides) {
@@ -753,4 +753,32 @@ test('a kinship export rides a built claim and never a disavowal', () => {
   // payload the volunteer sends on, and a correction is exactly what the coordinator wants.
   const everything = StewardParticipation.exportPayload(state);
   assert.deepEqual(everything.claims.map((c) => c.kind).sort(), ['built', 'disavow']);
+});
+
+// ---- the work mosaic and the attribution sentence (builder page pass 3) ----
+
+test('pickMosaicAlbums keeps photographed albums only, most-photographed then largest, capped', () => {
+  const album = (key, era, pieces, photos) => ({buildKey: key.repeat(64), era, pieces,
+    photos: Array.from({length: photos}, (_, i) => ({id: `${key}-${i}`, thumb: `t${i}`, large: `l${i}`, label: `Build ${key}`}))});
+  const doc = {builderKey: 'a'.repeat(32), eras: [
+    {era: 12, albums: [album('1', 12, 100, 0), album('2', 12, 50, 4)]},
+    {era: 7, albums: [album('3', 7, 900, 4), album('4', 7, 10, 1), album('5', 7, 5, 2)]},
+  ]};
+  const picks = pickMosaicAlbums(doc, 8).map((a) => a.buildKey[0]);
+  assert.deepEqual(picks, ['3', '2', '5', '4']);
+  assert.deepEqual(pickMosaicAlbums(doc, 2).map((a) => a.buildKey[0]), ['3', '2']);
+  assert.deepEqual(pickMosaicAlbums(null), []);
+  assert.deepEqual(pickMosaicAlbums({eras: [{era: 1, albums: [album('9', 1, 1, 0)]}]}), []);
+});
+
+test('distinctAttributions says each sentence once, the standard one first', () => {
+  const legacy = 'historical recorded leading contributor; full membership unresolved';
+  const standard = 'Every saved construction contributor is credited; nearby ownership is not inferred.';
+  const doc = {eras: [
+    {era: 16, albums: [{attribution: legacy}, {attribution: legacy}]},
+    {era: 12, albums: [{attribution: standard}, {attribution: standard}, {attribution: ''}]},
+  ]};
+  assert.deepEqual(distinctAttributions(doc), [standard, legacy]);
+  assert.deepEqual(distinctAttributions({eras: []}), []);
+  assert.deepEqual(distinctAttributions(null), []);
 });

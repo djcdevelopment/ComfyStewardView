@@ -1,134 +1,10 @@
 'use strict';
 
 // Kinship page: the branching tree of who a builder built beside, era by era, and the
-// tagging that a build's majority owner may add on top. Pure layout helpers live at top
-// level so Node can test them; the page code runs only when a document exists and only
-// when a creators.js new enough to carry the participation store has loaded first.
-
-const KIN_LAYOUT = {width: 960, bandHeight: 72, laneGap: 64, maxBranches: 12, padTop: 64, padBottom: 40, padX: 24};
-
-function strokeWidthFor(sharedPieces) {
-  return Math.min(8, Math.max(2, 2 * Math.log10((sharedPieces || 0) + 1)));
-}
-
-// Two decimals, and back through Number so "480" never renders as "480.00". The layout
-// is asserted string-for-string in the node test, so every coordinate that reaches a
-// path has to round the same way on every machine rather than trailing float dust.
-function kinRound(value) {
-  return Math.round(value * 100) / 100;
-}
-
-// The tree is drawn oldest-at-the-bottom, the way a tree grows: band 0 is the earliest
-// era and sits on the floor, the trunk climbs to the latest era, and each co-builder
-// leaves the trunk at the era they first appear beside the anchor. Deterministic and
-// DOM-free -- given the same tree it returns the same numbers and the same path strings.
-function layoutKinshipTree(tree, options = {}) {
-  const o = {...KIN_LAYOUT, ...options};
-  const eras = Array.isArray(tree && tree.eras) ? tree.eras : [];
-  const allBranches = Array.isArray(tree && tree.branches) ? tree.branches : [];
-  if (!eras.length) {
-    return {width: o.width, height: o.padTop + o.padBottom, bands: [], trunk: null, anchorNode: null, branches: [], overflow: allBranches.length};
-  }
-
-  // Half a band of headroom above the newest era so the anchor portrait has somewhere to
-  // sit, and the same half band below the oldest so a branch curve has room to leave.
-  const height = o.padTop + (eras.length - 1) * o.bandHeight + o.bandHeight / 2 + o.padBottom;
-  const y = (index) => kinRound(height - o.padBottom - index * o.bandHeight);
-  const bands = eras.map((era, index) => ({era, y: y(index), label: `Era ${era}`}));
-  const trunkX = kinRound(o.width / 2);
-  const lastIndex = eras.length - 1;
-  const trunk = {x: trunkX, y0: y(0), y1: y(lastIndex)};
-  const anchorNode = {x: trunkX, y: kinRound(y(lastIndex) - 30)};
-  const indexOfEra = new Map(eras.map((era, index) => [era, index]));
-
-  const branches = allBranches.slice(0, o.maxBranches).map((branch, rank) => {
-    const side = rank % 2 ? 'left' : 'right';
-    const lane = Math.floor(rank / 2);
-    // padX is a guard rail, not a layout term: at the default twelve lanes nothing comes
-    // near it, but a caller that widens laneGap or maxBranches would otherwise push
-    // portraits off the canvas where they cannot be clicked at all.
-    const rawLaneX = trunkX + (side === 'left' ? -1 : 1) * o.laneGap * (lane + 1);
-    const laneX = kinRound(Math.min(o.width - o.padX, Math.max(o.padX, rawLaneX)));
-
-    const spans = Array.isArray(branch.spans) ? branch.spans : [];
-    const spanByEra = new Map(spans.map((span) => [span.era, span]));
-    const firstIndex = indexOfEra.has(branch.firstEra) ? indexOfEra.get(branch.firstEra) : 0;
-    const branchLast = indexOfEra.has(branch.lastEra) ? indexOfEra.get(branch.lastEra) : firstIndex;
-    const yFirst = y(firstIndex);
-    const foot = kinRound(yFirst + o.bandHeight / 2);
-    const firstSpan = spanByEra.get(eras[firstIndex]);
-
-    const curve = {
-      d: `M ${trunkX},${foot} C ${trunkX},${yFirst} ${laneX},${foot} ${laneX},${yFirst}`,
-      width: strokeWidthFor(firstSpan ? firstSpan.sharedPieces : 0),
-      kind: firstSpan && firstSpan.legacy ? 'legacy' : 'shared',
-    };
-
-    const segments = [];
-    for (let index = firstIndex + 1; index <= branchLast; index += 1) {
-      const era = eras[index];
-      const span = spanByEra.get(era);
-      segments.push({
-        era,
-        y0: y(index - 1),
-        y1: y(index),
-        // An era with no span is not the end of the branch: the hairline carries it
-        // across so a builder who returns two eras later rejoins the same lane instead
-        // of appearing as a second, unrelated branch.
-        kind: span ? (span.legacy ? 'legacy' : 'shared') : 'memory',
-        width: span ? strokeWidthFor(span.sharedPieces) : 1,
-      });
-    }
-
-    return {
-      builderKey: branch.builderKey,
-      rank,
-      side,
-      laneX,
-      curve,
-      segments,
-      node: {x: laneX, y: kinRound(y(branchLast) - 22)},
-      spans,
-    };
-  });
-
-  return {
-    width: o.width,
-    height: kinRound(height),
-    bands,
-    trunk,
-    anchorNode,
-    branches,
-    overflow: Math.max(0, allBranches.length - o.maxBranches),
-  };
-}
-
-// Twelve lanes need about 720px of canvas before neighbouring portraits start printing
-// over each other's labels. A phone shows roughly half that through the scroller, so a
-// narrow viewport draws the eight closest branches instead and renderOverflowNote() says
-// in words how many were left out. matchMedia is a parameter so the choice can be tested
-// without a browser; Window operations survive being called unbound, so the default is
-// safe to invoke as-is.
-function kinBranchCap(mm = globalThis.matchMedia) {
-  return mm && mm('(max-width: 720px)').matches ? 8 : 12;
-}
-
-// "unresolved" and "ambiguous" are what community.py records when no single recorded name
-// won; "Builder 8014fa60" is the stand-in it then publishes as the display name.
-const KIN_UNNAMED_STATUSES = new Set(['unresolved', 'ambiguous']);
-
-// Deliberately false for a missing record: before directory.json lands, every builder on
-// the page is nameless in exactly the same way, and marking them all "unnamed" for that
-// half-second would be the page reporting its own load state as a fact about a person.
-function isUnnamed(record, placeholder) {
-  if (!record) return false;
-  if (KIN_UNNAMED_STATUSES.has(record.nameStatus)) return true;
-  return Boolean(placeholder && placeholder.test(String(record.displayName || '')));
-}
-
-if (typeof module !== 'undefined') {
-  module.exports = {KIN_LAYOUT, strokeWidthFor, kinRound, layoutKinshipTree, kinBranchCap, isUnnamed};
-}
+// tagging that a build's majority owner may add on top. The layout and the drawing of
+// the tree live in kin-tree.js (the builder profile draws the same tree); this file is
+// the page around it. It runs only when a document exists and only when a creators.js
+// new enough to carry the participation store, and kin-tree.js, have loaded first.
 
 const initKinshipPage = async () => {
   const $ = (id) => document.getElementById(id);
@@ -145,6 +21,11 @@ const initKinshipPage = async () => {
     if (status) status.textContent = 'This page needs a newer creators.js. Reload once to pick it up.';
     return;
   }
+  if (typeof drawKinshipTree !== 'function' || typeof layoutKinshipTree !== 'function') {
+    const status = $('status');
+    if (status) status.textContent = 'This page needs kin-tree.js. Reload once to pick it up.';
+    return;
+  }
 
   const LEDGER_PAGE = 50;
   const BUILD_PAGE = 12;
@@ -152,7 +33,6 @@ const initKinshipPage = async () => {
   const COHAB_ROWS_PER_BUILD = 8;
   const OTHER_BUILD_LIMIT = 6;
   const SUGGESTION_LIMIT = 8;
-  const SVG_NS = 'http://www.w3.org/2000/svg';
   const KEY_PATTERN = /^[a-f0-9]{32}$/;
 
   const base = new URL('../', location.href);
@@ -175,6 +55,7 @@ const initKinshipPage = async () => {
   let portraitManifest = null;
   let tree = null;
   let layout = null;
+  let treeHandle = null;
   let activeFilter = 'all';
   let branchCap = kinBranchCap();
   let resizeTimer = 0;
@@ -211,12 +92,6 @@ const initKinshipPage = async () => {
   // themselves is not a thing this page can draw.
   const pairHref = (key, buildKey) => new URL(
     `${anchor}/?kin=${key}${buildKey ? `&build=${buildKey}` : ''}`, base).href;
-
-  const svgEl = (tag, attrs = {}) => {
-    const el = document.createElementNS(SVG_NS, tag);
-    for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, String(value));
-    return el;
-  };
 
   async function kinRead(name) {
     const response = await fetch(new URL(name, base));
@@ -309,17 +184,7 @@ const initKinshipPage = async () => {
     return chip;
   }
 
-  function hydrateNames(root = document) {
-    for (const el of root.querySelectorAll('[data-kin-name-key]')) {
-      const key = el.dataset.kinNameKey;
-      el.textContent = nameFor(key);
-      if (unnamedKey(key)) el.dataset.kinUnnamed = '1';
-      else delete el.dataset.kinUnnamed;
-    }
-    for (const chip of root.querySelectorAll('[data-kin-unnamed-for]')) {
-      chip.hidden = !unnamedKey(chip.dataset.kinUnnamedFor);
-    }
-  }
+  const hydrateNames = (root = document) => hydrateKinNames(root, nameFor, unnamedKey);
 
   function nameSpan(key, tag = 'span', cls) {
     const el = kinNode(tag, nameFor(key), cls);
@@ -335,54 +200,8 @@ const initKinshipPage = async () => {
     return a;
   }
 
-  function portraitTile(key) {
-    const tiles = Array.isArray(portraitManifest?.tiles) ? portraitManifest.tiles : [];
-    const count = Number(portraitManifest?.count) || 0;
-    if (!count || !tiles.length) return null;
-    return tiles[portraitIndex(key, count)] || null;
-  }
-
-  function emblemPortrait(key, cls) {
-    const holder = kinNode('span', null, cls);
-    holder.dataset.portraitKey = key;
-    holder.setAttribute('aria-hidden', 'true');
-    const emblem = document.querySelector('.brand-emblem');
-    if (emblem) {
-      const clone = emblem.cloneNode(true);
-      clone.removeAttribute('class');
-      clone.removeAttribute('width');
-      clone.removeAttribute('height');
-      holder.append(clone);
-    }
-    return holder;
-  }
-
-  function kinPortrait(key, cls = 'kin-portrait') {
-    const tile = portraitTile(key);
-    const file = tile?.thumb || tile?.file;
-    if (!file) return emblemPortrait(key, cls);
-    const img = document.createElement('img');
-    img.className = cls;
-    img.alt = '';
-    img.width = 32;
-    img.height = 32;
-    img.decoding = 'async';
-    img.loading = 'lazy';
-    img.dataset.portraitKey = key;
-    // Swap to the emblem on error rather than leaving a broken-image glyph: the portrait
-    // lane deploys separately and may be a manifest ahead of the files on this server.
-    img.onerror = () => img.replaceWith(emblemPortrait(key, cls));
-    img.src = `${portraitManifest.base || '/chronicles/img/portraits/'}${file}${tile.v ? `?v=${tile.v}` : ''}`;
-    return img;
-  }
-
-  function hydratePortraits() {
-    for (const el of [...document.querySelectorAll('[data-portrait-key]')]) {
-      const next = kinPortrait(el.dataset.portraitKey, el.getAttribute('class') || 'kin-portrait');
-      if (el.id) next.id = el.id;
-      el.replaceWith(next);
-    }
-  }
+  const kinPortrait = (key, cls = 'kin-portrait') => kinPortraitEl(key, portraitManifest, cls);
+  const hydratePortraits = () => repaintKinPortraits(document, portraitManifest);
 
   /* ---- reading the tree the model handed back ---- */
 
@@ -481,91 +300,23 @@ const initKinshipPage = async () => {
 
   /* ---- the tree ---- */
 
+  // A co-builder's portrait opens the two of them together rather than dropping the
+  // reader on a cold profile: the tree is a picture of pairings, so its nodes lead to
+  // the pairing. The anchor keeps its own page.
   function renderTree() {
-    const svg = $('kin-tree-svg');
-    svg.replaceChildren();
-    svg.setAttribute('viewBox', `0 0 ${layout.width} ${layout.height}`);
-
-    const defs = svgEl('defs');
-    // userSpaceOnUse, not the objectBoundingBox default: a vertical stroke has zero
-    // bounding-box width, and an objectBoundingBox gradient over it renders nothing at
-    // all -- the branches simply disappear.
-    const gradient = svgEl('linearGradient', {id: 'kin-ember', gradientUnits: 'userSpaceOnUse', x1: 0, y1: layout.height, x2: 0, y2: 0});
-    gradient.append(
-      svgEl('stop', {offset: '0', 'stop-color': '#f59e0b'}),
-      svgEl('stop', {offset: '1', 'stop-color': '#d97707'}),
-    );
-    defs.append(gradient);
-    svg.append(defs);
-
-    for (const band of layout.bands) {
-      svg.append(svgEl('line', {class: 'kin-band-line', x1: KIN_LAYOUT.padX, y1: band.y, x2: layout.width - KIN_LAYOUT.padX, y2: band.y}));
-      const label = svgEl('text', {class: 'kin-band-label', x: KIN_LAYOUT.padX, y: band.y - 7});
-      label.textContent = band.label;
-      svg.append(label);
-    }
-
-    if (layout.trunk) {
-      svg.append(svgEl('line', {class: 'kin-trunk', x1: layout.trunk.x, y1: layout.trunk.y0, x2: layout.trunk.x, y2: layout.trunk.y1}));
-    }
-
-    for (const branch of layout.branches) {
-      const group = svgEl('g', {class: 'kin-branch'});
-      group.dataset.builderKey = branch.builderKey;
-      group.append(svgEl('path', {class: `kin-seg kin-seg-${branch.curve.kind}`, d: branch.curve.d, 'stroke-width': branch.curve.width}));
-      for (const segment of branch.segments) {
-        group.append(svgEl('path', {
-          class: `kin-seg kin-seg-${segment.kind}`,
-          d: `M ${branch.laneX},${segment.y0} L ${branch.laneX},${segment.y1}`,
-          'stroke-width': segment.width,
-        }));
-      }
-      svg.append(group);
-    }
-
-    renderNodes();
+    treeHandle = drawKinshipTree(
+      {svg: $('kin-tree-svg'), nodes: $('kin-nodes'), tip: $('kin-tip'), canvas: $('kin-tree')},
+      layout, tree, {
+        anchorKey: anchor,
+        nameFor,
+        isUnnamedKey: unnamedKey,
+        portraits: portraitManifest,
+        hrefFor: (key, isAnchor) => (isAnchor ? builderHref(key) : pairHref(key)),
+        tipFor: (key, branch) => (branch ? branchTip(branch) : anchorTip()),
+        anchorMeta: kinPlural(tree.coBuilderCount || 0, 'co-builder'),
+        branchMeta: (branch) => `${kinCount(branch?.totalSharedPieces)} shared pieces`,
+      });
     renderOverflowNote();
-  }
-
-  function nodeElement(key, {isAnchor = false, meta = '', rank = 0} = {}) {
-    // A co-builder's portrait opens the two of them together rather than dropping the
-    // reader on a cold profile: the tree is a picture of pairings, so its nodes lead to
-    // the pairing. The anchor keeps its own page.
-    const a = kinLink('', isAnchor ? builderHref(key) : pairHref(key));
-    // Every second lane on a side carries its label a row lower: at twelve lanes the
-    // neighbours are close enough that two labels at the same height overprint.
-    const alt = !isAnchor && Math.floor(rank / 2) % 2 === 1;
-    a.className = `kin-node${isAnchor ? ' kin-anchor-node' : ''}${alt ? ' kin-node-alt' : ''}`;
-    a.dataset.builderKey = key;
-    a.append(kinPortrait(key), nameSpan(key, 'span', 'kin-node-name'), kinNode('span', meta, 'kin-node-meta'));
-    return a;
-  }
-
-  function renderNodes() {
-    const holder = $('kin-nodes');
-    holder.replaceChildren();
-    if (!layout.anchorNode) return;
-
-    const place = (el, point) => {
-      // Percentages, not pixels: the SVG is width:100% inside a scroller, so it renders
-      // at whatever the column is wide and the nodes have to track that scaling.
-      el.style.left = `${(point.x / layout.width) * 100}%`;
-      el.style.top = `${(point.y / layout.height) * 100}%`;
-    };
-
-    const anchorEl = nodeElement(anchor, {isAnchor: true, meta: kinPlural(tree.coBuilderCount || 0, 'co-builder')});
-    place(anchorEl, layout.anchorNode);
-    wireTip(anchorEl, () => anchorTip());
-    holder.append(anchorEl);
-
-    const branchByKey = new Map((tree.branches || []).map((b) => [b.builderKey, b]));
-    for (const laid of layout.branches) {
-      const branch = branchByKey.get(laid.builderKey);
-      const el = nodeElement(laid.builderKey, {meta: `${kinCount(branch?.totalSharedPieces)} shared pieces`, rank: laid.rank});
-      place(el, laid.node);
-      wireTip(el, () => branchTip(branch));
-      holder.append(el);
-    }
   }
 
   function renderOverflowNote() {
@@ -621,35 +372,6 @@ const initKinshipPage = async () => {
     page.className = 'kin-open';
     frag.append(page);
     return frag;
-  }
-
-  function hideTip() {
-    const tip = $('kin-tip');
-    tip.hidden = true;
-    tip.replaceChildren();
-  }
-
-  function showTip(target, build) {
-    const tip = $('kin-tip');
-    tip.replaceChildren(build());
-    hydrateNames(tip);
-    tip.hidden = false;
-    const canvas = $('kin-tree');
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
-    const left = Math.min(Math.max(8, target.offsetLeft + 26), Math.max(8, width - tip.offsetWidth - 8));
-    const top = Math.min(Math.max(8, target.offsetTop - tip.offsetHeight - 8), Math.max(8, height - tip.offsetHeight - 8));
-    tip.style.left = `${left}px`;
-    tip.style.top = `${top}px`;
-  }
-
-  function wireTip(el, build) {
-    // Focus as well as hover: the nodes are links, so a keyboard reader tabs through
-    // them and would otherwise get a portrait and a name with none of the era detail.
-    el.addEventListener('mouseenter', () => showTip(el, build));
-    el.addEventListener('focus', () => showTip(el, build));
-    el.addEventListener('mouseleave', hideTip);
-    el.addEventListener('blur', hideTip);
   }
 
   /* ---- the ledger ---- */
@@ -1139,7 +861,7 @@ const initKinshipPage = async () => {
     else next.delete('mode');
     const query = next.toString();
     history.replaceState(null, '', query ? `${location.pathname}?${query}` : location.pathname);
-    if (!ledger) hideTip();
+    if (!ledger && treeHandle) treeHandle.hideTip();
   }
 
   function wireTabs() {
@@ -1183,7 +905,7 @@ const initKinshipPage = async () => {
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
       kinCloseAllModals();
-      hideTip();
+      if (treeHandle) treeHandle.hideTip();
       closeSuggestions();
     });
   }
@@ -1291,7 +1013,8 @@ const initKinshipPage = async () => {
     visibleAlbums = (source.eras || []).flatMap((era) => era.albums || []);
     tree = buildKinshipTree(source, {confirmedTags, localTags: state.kinshipTags});
     branchCap = kinBranchCap();
-    layout = layoutKinshipTree(tree, {maxBranches: branchCap});
+    // padBottom: room under the oldest band for the labels hanging off its nodes.
+    layout = layoutKinshipTree(tree, {maxBranches: branchCap, padBottom: 104});
     ledgerShown = LEDGER_PAGE;
     buildsShown = BUILD_PAGE;
     renderTree();

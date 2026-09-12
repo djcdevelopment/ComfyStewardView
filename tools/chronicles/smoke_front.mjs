@@ -154,7 +154,7 @@ try {
   await until(`!!document.querySelector('#builder-hero:not([hidden])')`, 'profile hero');
   await check('profile hero shows an avatar or its fallback',
     () => evaluate(`(()=>{const i=document.querySelector('#hero-avatar img');if(i)return !!(i.complete&&i.naturalWidth>0);return !!document.querySelector('#hero-avatar .hero-avatar-fallback')})()`));
-  await check('profile hero shows an era fact', () => evaluate(`/Era \\d+/.test(document.querySelector('#hero-facts').textContent)`));
+  await check('profile hero shows an era fact', () => evaluate(`/\\beras? \\d+/.test(document.querySelector('#intro').textContent)`));
   await check('profile keeps its retro counters', () => evaluate(`document.querySelectorAll('#intro .counter').length>=3`));
   await check('path cards at the bottom link the five paths in order',
     () => evaluate(`[...document.querySelectorAll('#look-out a.path')].map(a=>a.getAttribute('href')).join(' ')==='/valheim/creators/ /valheim/ /valheim/era7/ /valheim/creators/#participation-details /valheim/creators/stats/'`));

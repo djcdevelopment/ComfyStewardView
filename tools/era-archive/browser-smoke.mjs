@@ -91,7 +91,15 @@ try{
   results.thread=await evaluate("({title:document.title,heading:document.getElementById('title').textContent,eras:document.querySelectorAll('#content details').length,photos:document.querySelectorAll('.photos img').length,description:document.querySelector('meta[name=\"description\"]')?.content||'',image:document.querySelector('meta[property=\"og:image\"]')?.content||''})");
   if(!results.thread.title.startsWith(results.thread.heading))throw Error('Thread page still carries the shared directory title');
   if(!results.thread.image||!results.thread.description)throw Error('Thread page would unfurl bare in Discord');
-  await wait("[...document.querySelectorAll('.photos img')].filter(i=>i.loading!=='lazy'||i.getBoundingClientRect().top<innerHeight).every(i=>i.complete&&i.naturalWidth>0)");await screenshot('creator-thread');
+  await wait("[...document.querySelectorAll('.photos img')].filter(i=>{const r=i.getBoundingClientRect();return i.loading!=='lazy'||(r.width>0&&r.top<innerHeight)}).every(i=>i.complete&&i.naturalWidth>0)");await screenshot('creator-thread');
+  // The one-story page (pass 3): the builder's best frames sit under the hero, the
+  // attribution sentence is said once, and every album row starts folded. A row that
+  // rendered open, or a second disclaimer, is the old wall creeping back.
+  results.story=await evaluate("({mosaic:document.querySelectorAll('#work-mosaic .photo-thumb').length,notes:document.querySelectorAll('.albums-note').length,rows:document.querySelectorAll('article.album').length,folded:[...document.querySelectorAll('article.album')].every(a=>a.querySelector('.album-more').hidden),notesStrip:!document.getElementById('thread-notes')?.hidden})");
+  if(results.story.mosaic<1)throw Error('Builder page drew no work mosaic for a photographed thread');
+  if(results.story.notes!==1)throw Error('Attribution sentence is not said exactly once');
+  if(!results.story.rows||!results.story.folded)throw Error('Album rows did not start folded');
+  if(!results.story.notesStrip)throw Error('The notes strip at the foot did not render');
   // The check that would have caught a modal whose sheet was display:none inside a
   // visible overlay: every participation dialog opened as an empty black screen.
   await evaluate("document.querySelector('.album button.primary').click()");
@@ -128,6 +136,12 @@ try{
     results.pair=await evaluate("({chips:document.querySelectorAll('.top8-chip').length,hidden:document.getElementById('pair-view')?.hidden,ledgerRows:document.querySelectorAll('#pair-ledger tbody tr').length})");
     if(results.pair.hidden!==false)throw Error('Pair view stayed hidden with a co-builder selected');
     if(!results.pair.ledgerRows)throw Error('Pair view drew no shared builds for the selected pairing');
+    // The tree is drawn on the profile beside the ribbon, the pair's detail starts folded,
+    // and the branch of the selected pairing is the one lit.
+    results.tree=await evaluate("({branches:document.querySelectorAll('#kin-beside .kin-branch').length,active:document.querySelector('#kin-beside .kin-branch.is-active')?.dataset.builderKey||null,pressed:document.querySelector('.top8-chip[aria-pressed=\"true\"]')?.dataset.builderKey||null,moreOpen:document.getElementById('pair-more')?.open})");
+    if(!results.tree.branches)throw Error('Builder page drew no kinship tree beside the ribbon');
+    if(results.tree.active!==results.tree.pressed)throw Error('The lit branch and the pressed chip disagree');
+    if(results.tree.moreOpen!==false)throw Error('Pair view detail did not start folded');
     await screenshot('pair-view');
     await evaluate("document.getElementById('pair-tab-viewer').click()");
     // A pairing whose shared builds are all legacy gallery imports has no world viewer to

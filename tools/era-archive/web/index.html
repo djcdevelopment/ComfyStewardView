@@ -14,8 +14,9 @@
     <meta property="og:description" content="Search the community archive for your own builds across every era.">
     <meta name="twitter:card" content="summary">
     <!-- /per-thread head -->
-    <link rel="stylesheet" href="./creators.css?v=7">
+    <link rel="stylesheet" href="./creators.css?v=8">
     <script src="./creators.js" defer></script>
+    <script src="./kin-tree.js" defer></script>
     <script src="./pair.js" defer></script>
   </head>
   <body>
@@ -42,17 +43,15 @@
       <p id="intro">Every builder recorded on a saved construction piece, era by era, with the photographs taken of their work.</p>
       <div id="thread-actions" hidden></div>
 
-      <!-- Thread mode only. renderThread() moves the eyebrow, #title, #intro and
-           #thread-actions into .hero-text, so every pinned id and string keeps its node
-           and the directory page never reveals this section at all. -->
+      <!-- Thread mode only. renderThread() moves #title, the aliases and #intro into
+           .hero-text, so every pinned id and string keeps its node and the directory
+           page never reveals this section at all. The hero is one line now: the tier,
+           the eras and the counters read without labels, the tree that used to be a
+           link here is drawn on the page, and the manifest link waits in the notes. -->
       <section id="builder-hero" class="builder-hero" hidden aria-labelledby="title">
         <div id="hero-avatar" class="hero-avatar"></div>
         <div class="hero-text">
           <p id="hero-aliases" class="hero-aliases" hidden></p>
-          <dl id="hero-facts" class="hero-facts"></dl>
-          <div id="hero-signature" class="signature-creations" hidden><span class="signature-creations-label">Signature creations</span></div>
-          <!-- Thread mode only: renderHeroCard() points this at the builder's own key. -->
-          <p id="hero-kinship" class="muted" hidden><a id="hero-kinship-link" class="kin-open" href="/valheim/creators/kinship/">Open the kinship tree</a></p>
         </div>
       </section>
 
@@ -110,6 +109,11 @@
       <p id="empty-state" class="muted" hidden></p>
       <div id="content"></div>
       <button id="more" hidden>Show more</button>
+
+      <!-- Thread mode only: the name-conflict status, the visitor's own claims on this
+           page, the capture progress and the manifest download, together at the foot
+           rather than scattered under the hero. renderThreadNotes() moves the nodes in. -->
+      <section id="thread-notes" class="notes" hidden aria-label="Notes"></section>
 
       <!-- The look-out step, shown at the foot of a builder page only. One stone slab per
            path: a wordless figure, a backlight and one action line. No title attribute,

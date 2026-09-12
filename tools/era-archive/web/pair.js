@@ -778,7 +778,8 @@ function pairPhotosPanelEl() {
   panel.setAttribute('role', 'tabpanel');
   panel.setAttribute('aria-labelledby', 'pair-tab-photos');
   panel.hidden = pairState.view !== 'photos';
-  panel.append(pairHeroEl(), pairLaurelsEl(), pairHearthEl(), pairAffinityEl(), pairFactsEl());
+  // The photograph alone. Laurels, hearth, affinity and the facts wait under Details.
+  panel.append(pairHeroEl());
   return panel;
 }
 
@@ -857,7 +858,6 @@ function pairViewerPanelEl() {
   } else {
     panel.append(pairNode('p', 'This era has no world viewer', 'muted'));
   }
-  panel.append(pairAllotmentEl());
   return panel;
 }
 
@@ -899,15 +899,41 @@ function pairAllyCardEl() {
   who.append(marks);
   head.append(who);
   card.append(head);
+  return card;
+}
 
+// The five tiles the ally card used to carry. They live under Details now: the status
+// line above the photograph already says shared builds and shared pieces in words.
+function pairMetricsEl() {
+  const model = pairState.model;
   const metrics = pairNode('div', null, 'pair-metrics');
+  metrics.id = 'pair-metrics';
   metrics.append(pairMetricEl('Shared pieces', model.sharedPieces.toLocaleString()));
   metrics.append(pairMetricEl('Shared builds', model.sharedBuildCount.toLocaleString(), pairEraRange(model.eras)));
   metrics.append(pairMetricEl('Photographed', model.photographedCount.toLocaleString()));
   metrics.append(pairMetricEl('Confirmed tags', model.confirmedTagCount.toLocaleString(), null, 'pair-metric-tags'));
   metrics.append(pairMetricEl('Kinship affinity', pairAffinityText(model.affinity)));
-  card.append(metrics);
-  return card;
+  return metrics;
+}
+
+// Everything about the pair that a visitor reads once, folded under one native
+// disclosure: the build pills, the laurels, the shared hearth, the affinity, the facts
+// table, the metric tiles and the piece allotment. Native <details>, so no script owns
+// the open state -- but a repaint reads it back so a data arrival never snaps it shut.
+function pairMoreEl({open = false} = {}) {
+  const more = pairNode('details', null, 'pair-more');
+  more.id = 'pair-more';
+  more.open = open;
+  more.append(pairNode('summary', 'Details'));
+  const body = pairNode('div', null, 'pair-more-body');
+  body.append(pairPillsEl(), pairLaurelsEl(), pairHearthEl(), pairAffinityEl(), pairFactsEl(), pairMetricsEl(), pairAllotmentEl());
+  more.append(body);
+  return more;
+}
+
+function pairMoreOpen() {
+  const current = pairQuery('#pair-more');
+  return current ? current.open : false;
 }
 
 function pairLedgerStatus(row) {
@@ -1026,7 +1052,7 @@ function pairRenderAll() {
   const main = pairNode('div', null, 'pair-main');
   main.append(pairPhotosPanelEl(), pairViewerPanelEl());
   layout.append(main, pairSideEl());
-  host.replaceChildren(pairTitleEl(), pairStatusEl(), pairModesEl(), pairPillsEl(), layout);
+  host.replaceChildren(pairTitleEl(), pairStatusEl(), pairModesEl(), layout, pairMoreEl({open: pairMoreOpen()}));
   host.hidden = false;
 }
 
@@ -1036,7 +1062,7 @@ function pairRenderAll() {
 function pairRenderActiveBuild() {
   pairSwap('pair-photos', pairPhotosPanelEl());
   pairSwap('pair-viewer', pairViewerPanelEl());
-  pairSwap('pair-pills', pairPillsEl());
+  pairSwap('pair-more', pairMoreEl({open: pairMoreOpen()}));
   pairPaintLedgerRows();
   const download = pairQuery('#pair-download');
   if (download) pairPaintDownload(download);
