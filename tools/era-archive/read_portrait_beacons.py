@@ -55,9 +55,16 @@ def notes(paths):
             builder = first(query, "builder")
             if action not in ACTIONS or not HEX32.match(builder):
                 continue
+            # Behind `tailscale serve` every request arrives from 127.0.0.1; the caller is in
+            # X-Forwarded-For (a tailnet or Funnel address) and a tailnet user is named in
+            # Tailscale-User-Login, which is the best identity a beacon line can carry.
+            headers = request.get("headers") or {}
+            forwarded = (headers.get("X-Forwarded-For") or [""])[0].split(",")[0].strip()
+            login = (headers.get("Tailscale-User-Login") or [""])[0].strip()
             note = {
                 "ts": entry.get("ts"),
-                "addr": (request.get("remote_ip") or request.get("remote_addr") or "").split(":")[0],
+                "addr": forwarded or (request.get("remote_ip") or request.get("remote_addr") or "").split(":")[0],
+                "login": login or None,
                 "action": action,
                 "builderKey": builder,
                 "receipt": first(query, "receipt") if RECEIPT.match(first(query, "receipt")) else None,
@@ -153,7 +160,8 @@ def main():
     print(f"\nlast {min(args.recent, len(found))}")
     for n in found[-args.recent:]:
         what = n.get("tile") and f"{n['tile']}#{n.get('take') or '-'}" or n.get("level") or "archive's pick"
-        print(f"  {n['ts']}  {n['addr']:>15}  {n['action']:<6} {n['builderKey'][:8]}…  {what}  {n['receipt'] or ''}")
+        who = n["login"] or n["addr"]
+        print(f"  {n['ts']}  {who:>28}  {n['action']:<6} {n['builderKey'][:8]}…  {what}  {n['receipt'] or ''}")
 
 
 if __name__ == "__main__":
