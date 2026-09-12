@@ -290,15 +290,33 @@ main {
 
 /* -------------------------------------------------------------------- door */
 
-/* The whole front page: a line, a box, a button, and nothing under them but the footer.
-   The height is the viewport minus the fixed header and main's own bottom padding, so
-   the stack centres in the first screen and the footer starts exactly at the fold. */
+/* The whole front page: a line, a box, a button, and the footer -- in one screen. The
+   first cut sized the door to the viewport so the footer began "exactly at the fold",
+   which on a page with nothing else on it is a scrollbar for no reason. Now the body is
+   a column, the front page's main takes whatever the header and footer leave, and the
+   door centres its stack in that; the footer height (it wraps on a phone) is simply
+   whatever it is. Only the front page's main opts in: the guide is a long page and flex
+   would stop its section margins collapsing. */
+body {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+main.front {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding-bottom: var(--space-xl);
+}
+
 .door {
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: calc(100svh - var(--header) - 6rem);
   padding: var(--space-3xl) 0;
   text-align: center;
 }
