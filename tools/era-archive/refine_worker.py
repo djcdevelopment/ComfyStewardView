@@ -6,17 +6,25 @@ pipeline that measures them days later on another host. This worker launches the
 ONCE in ComfyCameraProof's feed mode (0.2.3+), then feeds it one small shotplan at a time:
 the planned pose of a build, a fan of candidate poses around it, and if one of those wins,
 a second fan around the winner. Every master is judged on this host's CPU about a second
-after the shutter (frame_judge: master_detail's tile math + frame_geometry's mask metrics)
-and the paired compare decides the next move. A fed row costs ~7 s; nothing leaves the host.
+after the shutter (frame_judge) and the paired compare decides the next move. A fed row
+costs ~7 s; nothing leaves the host.
+
+v2 (after reading all 47 frames of the first slice): the receipt and the first frame gate
+the fan. A build whose aim is off its mass (pieces_near_aim below the floor), sits in
+Mistlands mist, or aims at sky gets no orbit/elevation/distance fan -- those are the
+planner's problems, journalled as `needs` -- and at most one re-aim toward where the
+texture actually is. The fan gains `up20` (the top-down the occlusion ladder found by
+accident) and `c75` is offered once per build and only while the frame is under-filled:
+closer twice walks into texture resolution.
 
     ~/venvs/torch-xpu/bin/python refine_worker.py --prepare --root R --from-root V5 --framing F --builds 8
     python3 install_capture_worker.py --root R ...      # freezes runtime.json; single-use root
     ~/venvs/torch-xpu/bin/python refine_worker.py --root R --builds 8 --rounds 2 --threads 8
 
 Receipts: refine-journal.jsonl (every launch/plan/judgement/decision), refine.json (the
-winner per build with its pose and metrics), refine-summary.md, plus the masters under
-images/<run>/ and the usual state.json journal. Candidate shots are journalled like any
-other shot; nothing here imports, derives or publishes.
+winner per build with its pose, metrics and `needs`), refine-summary.md, plus the masters
+under images/<run>/ and the usual state.json journal. Nothing here imports, derives or
+publishes.
 """
 import argparse
 import hashlib
@@ -34,10 +42,18 @@ if str(HERE) not in sys.path:
 from capture_worker import HEADER, Worker, read, write   # noqa: E402
 
 FEED_DIR = 'shotplan-feed'
-# The round-1 fan. Names are part of the shot name, so a frame says how it was made.
-MOVES = (('o45', 'orbit +45 deg about the aim, same distance and elevation'),
-         ('lo12', 'elevation -12 deg, same distance (floor instead of sky)'),
-         ('c75', 'distance x0.75, same bearing (min 6 m)'))
+MOVES = {
+    'o45': 'orbit +45 deg about the aim, same distance and elevation',
+    'lo12': 'elevation -12 deg, same distance (floor instead of sky)',
+    'up20': 'elevation +20 deg, same distance (the top-down the ladder found by accident)',
+    'c75': 'distance x0.75, same bearing (min 6 m); once per build, only while under-filled',
+    'aim': 're-aim toward the live-tile centroid; same camera position',
+}
+FAN = ('o45', 'lo12', 'up20')
+CLOSER_LIVE_MAX = 0.35       # c75 only while liveTileShare is below this
+REAIM_MIN_OFFSET = 0.15      # re-aim only when the texture centroid is this far from centre (frame units)
+DUPLICATE_M = 1.0            # two candidates placed within this are the same photograph
+FOV_V_DEG = 65.0             # Camera.main.fieldOfView; the receipt carries the live value
 
 
 # ---- pose math: pure trig from the incumbent's receipt, the inverse of plan_shots.camera_for
@@ -50,6 +66,12 @@ def look_angles(cam, aim):
     return round(yaw, 2), round(pitch, 2)
 
 
+def forward(yaw_deg, pitch_deg):
+    """Unit view direction for Unity yaw/pitch (pitch positive = down)."""
+    y, p = math.radians(yaw_deg), math.radians(pitch_deg)
+    return (math.sin(y) * math.cos(p), -math.sin(p), math.cos(y) * math.cos(p))
+
+
 def pose_from_receipt(receipt):
     """lens is the true camera; placed is the player's feet the TSV positions. Keep the offset."""
     lens = receipt['lens']; aim = receipt['aim']; placed = receipt['placed']
@@ -57,8 +79,10 @@ def pose_from_receipt(receipt):
     off = (lens['x'] - placed['x'], lens['y'] - placed['y'], lens['z'] - placed['z'])
     v = (L[0] - A[0], L[1] - A[1], L[2] - A[2])
     horiz = math.hypot(v[0], v[2])
-    return {'aim': A, 'offset': off, 'distance': math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2),
-            'azimuth': math.atan2(v[0], v[2]), 'elevation': math.atan2(v[1], horiz)}
+    return {'lens': L, 'feet': (placed['x'], placed['y'], placed['z']), 'aim': A, 'offset': off,
+            'distance': math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2),
+            'azimuth': math.atan2(v[0], v[2]), 'elevation': math.atan2(v[1], horiz),
+            'yaw': receipt.get('yaw'), 'pitch': receipt.get('pitch'), 'fov': receipt.get('fov') or FOV_V_DEG}
 
 
 def place(pose, azimuth, elevation, distance):
@@ -68,33 +92,59 @@ def place(pose, azimuth, elevation, distance):
             A[2] + distance * math.cos(elevation) * math.cos(azimuth))
     feet = (lens[0] - off[0], lens[1] - off[1], lens[2] - off[2])
     yaw, pitch = look_angles(feet, A)
-    return {'cam': tuple(round(c, 1) for c in feet), 'lens': tuple(round(c, 2) for c in lens),
+    return {'cam': tuple(round(c, 1) for c in feet), 'aim': tuple(round(c, 1) for c in A),
             'yaw': yaw, 'pitch': pitch, 'azimuth_deg': round(math.degrees(azimuth) % 360, 1),
             'elevation_deg': round(math.degrees(elevation), 1), 'distance_m': round(distance, 1)}
 
 
-def candidates(receipt):
+def reaim(pose, centroid_x, centroid_y, crop_bottom=0.93):
+    """Same camera, turned toward the live-tile centroid. Centroid coords are in the HUD-cropped
+    frame (top 93 %); pitch positive = down, image y grows downward, so the signs agree."""
+    fov_v = math.radians(pose['fov'])
+    fov_h = 2 * math.atan(math.tan(fov_v / 2) * 16 / 9)
+    cy_full = centroid_y * crop_bottom
+    d_yaw = math.degrees(math.atan((centroid_x - 0.5) * 2 * math.tan(fov_h / 2)))
+    d_pitch = math.degrees(math.atan((cy_full - 0.5) * 2 * math.tan(fov_v / 2)))
+    yaw = round((pose['yaw'] + d_yaw) % 360, 2); pitch = round(pose['pitch'] + d_pitch, 2)
+    f = forward(yaw, pitch); d = pose['distance']; L = pose['lens']
+    aim = (L[0] + d * f[0], L[1] + d * f[1], L[2] + d * f[2])
+    return {'cam': tuple(round(c, 1) for c in pose['feet']), 'aim': tuple(round(c, 1) for c in aim),
+            'yaw': yaw, 'pitch': pitch, 'azimuth_deg': None, 'elevation_deg': None, 'distance_m': round(d, 1),
+            'd_yaw': round(d_yaw, 1), 'd_pitch': round(d_pitch, 1)}
+
+
+def candidate_poses(receipt, metrics, moves):
     pose = pose_from_receipt(receipt)
     az, el, d = pose['azimuth'], pose['elevation'], pose['distance']
     out = []
-    for move, _ in MOVES:
+    for move in moves:
         if move == 'o45':
             out.append((move, place(pose, az + math.radians(45), el, d)))
         elif move == 'lo12':
             out.append((move, place(pose, az, max(math.radians(3), el - math.radians(12)), d)))
+        elif move == 'up20':
+            out.append((move, place(pose, az, min(math.radians(80), el + math.radians(20)), d)))
         elif move == 'c75':
             out.append((move, place(pose, az, el, max(6.0, 0.75 * d))))
+        elif move == 'aim':
+            m = (metrics or {}).get('master') or {}
+            cx, cy = m.get('liveCentroidX'), m.get('liveCentroidY')
+            if cx is not None and pose['yaw'] is not None:
+                out.append((move, reaim(pose, cx, cy)))
     return pose, out
 
 
 def tsv_row(cid, name, cam, yaw, pitch, aim, label):
-    a = tuple(round(c, 1) for c in aim)
     return '\t'.join(str(x) for x in (cid, name, cam[0], cam[1], cam[2], yaw, pitch, 'Clear', 0.64,
-                                       a[0], a[1], a[2], label, '', 0, ''))
+                                       aim[0], aim[1], aim[2], label, '', 0, ''))
 
 
 def shot_key(source_key, build_key, shot_name):
     return hashlib.sha256(f'{source_key}:{build_key}:{shot_name}'.encode()).hexdigest()
+
+
+def dist(a, b):
+    return math.sqrt(sum((a[i] - b[i]) ** 2 for i in range(3)))
 
 
 # ---- sample selection and the single-use root
@@ -122,19 +172,29 @@ def prepare(root, from_root, framing_path, n):
             break
     if len(chosen) < n:
         raise ValueError(f'only {len(chosen)} of {n} sample builds resolved against {from_root}')
-    plan = {k: v for k, v in src.items() if k != 'builds'}
-    plan['builds'] = list(chosen.values())
-    plan['createdAt'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-    plan['refine'] = {'fromRoot': str(Path(from_root).resolve()), 'framing': str(Path(framing_path).resolve()),
-                      'sample': sample, 'moves': [m for m, _ in MOVES]}
-    root.mkdir(parents=True, exist_ok=True)
-    write(root / 'campaign.json', plan)
-    (root / 'all-shots.tsv').write_text(HEADER + ''.join(s['tsv'] + '\n' for b in plan['builds'] for s in b['shots']),
-                                        encoding='utf-8')
-    write(root / 'refine-sample.json', {'schema': 'steward-refine-sample/v1', 'sample': sample})
+    write_campaign(root, src, list(chosen.values()), {'fromRoot': str(Path(from_root).resolve()),
+                                                       'framing': str(Path(framing_path).resolve()), 'sample': sample})
     print(f'prepared {len(chosen)} builds in {root}')
     for s in sample:
         print(f"  {s['framingKey']:<18} live {s['liveTileShare']:.3f}  {s['buildKey'][:8]}")
+
+
+def prepare_all(root, from_root):
+    """campaign.json = every build of the source campaign, first shot each (the full detail tier)."""
+    root = Path(root); src = read(Path(from_root) / 'campaign.json')
+    builds = [{**{k: v for k, v in b.items() if k != 'shots'}, 'shots': b['shots'][:1]} for b in src['builds'] if b['shots']]
+    write_campaign(root, src, builds, {'fromRoot': str(Path(from_root).resolve()), 'sample': 'all-first-shots'})
+    print(f'prepared {len(builds)} builds in {root}')
+
+
+def write_campaign(root, src, builds, refine):
+    plan = {k: v for k, v in src.items() if k != 'builds'}
+    plan['builds'] = builds
+    plan['createdAt'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    plan['refine'] = {**refine, 'moves': dict(MOVES), 'fan': list(FAN)}
+    root.mkdir(parents=True, exist_ok=True)
+    write(root / 'campaign.json', plan)
+    (root / 'all-shots.tsv').write_text(HEADER + ''.join(s['tsv'] + '\n' for b in builds for s in b['shots']), encoding='utf-8')
 
 
 class RefineWorker(Worker):
@@ -145,7 +205,7 @@ class RefineWorker(Worker):
         self.journal_path = self.root / 'refine-journal.jsonl'
         self.counter = 0
         self.results = {}
-        self.dest = None; self.saves = None; self.log = None
+        self.dest = None; self.saves = None; self.log = None; self.prefs = None
         self.t_start = time.monotonic()
 
     # ---- receipts
@@ -155,7 +215,7 @@ class RefineWorker(Worker):
         with self.journal_path.open('a', encoding='utf-8') as fh:
             fh.write(json.dumps(row) + '\n')
         print(f"[{row['wall_s']:7.1f}s] {event} " + ' '.join(f'{k}={v}' for k, v in data.items()
-                                                             if k in ('name', 'rows', 'winner', 'reason', 'score', 'build')), flush=True)
+                                                             if k in ('name', 'rows', 'winner', 'reason', 'score', 'build', 'needs')), flush=True)
 
     def raw_receipts(self, keys):
         """Every receipt for these (cluster_id, shot) keys, skipped ones included -- the vetoes need them."""
@@ -196,6 +256,11 @@ class RefineWorker(Worker):
                                             'runtimeMode': 'current-client', 'mode': 'refine'})
         self.state['activeAttempt'] = self.dest.relative_to(self.root).as_posix()
         write(self.root / 'state.json', self.state)
+        # BepInEx recreates LogOutput.log at startup, but not before this worker's first poll:
+        # a stale 'Feed: watching' from the previous session opened the feed at t+3 s once.
+        stale = self.game / 'BepInEx/LogOutput.log'
+        if stale.exists():
+            stale.unlink()
         self.log = self.launch_game(self.dest)
         self.status('capturing', batch='refine', attempt=1)
         self.journal('launch', pid=self.process.pid)
@@ -241,12 +306,12 @@ class RefineWorker(Worker):
             time.sleep(2)
         receipts = self.raw_receipts(set(allowed))
         skipped = sorted(k[1] for k, r in receipts.items() if r.get('skipped'))
-        self.journal('plan_done', name=name, wall_s=round(time.monotonic() - t0, 1), receipts=len(receipts), skipped=skipped)
+        self.journal('plan_done', name=name, plan_wall_s=round(time.monotonic() - t0, 1), receipts=len(receipts), skipped=skipped)
         self.status('capturing', batch='refine', attempt=1, plan=name)
         return receipts
 
     def judge_shot(self, judge, entry):
-        """entry: {name, shotKey, receipt}. Fills metrics/vetoes/score from the harvested master."""
+        """entry: {name, shotKey, receipt, [requested]}. Fills metrics/vetoes/score from the harvested master."""
         import frame_judge
         completed = self.state['completed'].get(entry['shotKey'])
         metrics = None
@@ -254,11 +319,16 @@ class RefineWorker(Worker):
             metrics = judge.measure(self.root / completed['file'])
             entry['file'] = completed['file']
         entry['metrics'] = metrics
-        entry['vetoes'] = frame_judge.veto(entry['receipt'], metrics)
+        entry['vetoes'] = list(entry.get('vetoes') or []) + frame_judge.veto(entry['receipt'], metrics)
         entry['score'] = frame_judge.score(metrics) if metrics is not None and not entry['vetoes'] else None
+        r = entry['receipt'] or {}
+        placed_delta = None
+        if entry.get('requested') and r.get('placed'):
+            placed_delta = round(dist(entry['requested']['cam'], (r['placed']['x'], r['placed']['y'], r['placed']['z'])), 1)
         self.journal('judged', name=entry['name'], shotKey=entry['shotKey'], file=entry.get('file'),
-                     receipt={k: entry['receipt'].get(k) for k in ('run', 'plan', 'clearance', 'occluded', 'pieces_near_aim',
-                                                                  'lens', 'aim', 'yaw', 'pitch', 'skipped')} if entry['receipt'] else None,
+                     requested=entry.get('requested'), placed_delta_m=placed_delta,
+                     receipt={k: r.get(k) for k in ('run', 'plan', 'clearance', 'occluded', 'pieces_near_aim',
+                                                    'lens', 'placed', 'aim', 'yaw', 'pitch', 'fov', 'skipped')} if entry['receipt'] else None,
                      master=metrics['master'] if metrics else None, geometry=metrics['geometry'] if metrics else None,
                      timings=metrics['timings'] if metrics else None, device=judge.device, threads=judge.threads,
                      vetoes=entry['vetoes'], score=entry['score'])
@@ -268,12 +338,36 @@ class RefineWorker(Worker):
         self.counter += 1
         return f'{self.counter:04d}-{build_key[:8]}-{tag}'
 
+    def gate(self, incumbent):
+        """What the receipt and the first frame say the build needs before any fan is worth shooting."""
+        v = incumbent['vetoes']; m = incumbent['metrics']
+        if incumbent['receipt'] is None or incumbent['receipt'].get('skipped') or 'lens' not in incumbent['receipt']:
+            return 'no-receipt', []
+        if 'aim-off-mass' in v:
+            return 'aim', []
+        sky = ((m or {}).get('geometry') or {}).get('skyFraction') or 0.0
+        if 'flat' in v and sky < 0.3:
+            return 'demist', []
+        if 'sky' in v:
+            return 'sky', ['aim']
+        return None, None
+
+    def fan_moves(self, incumbent, c75_used):
+        moves = list(FAN)
+        m = (incumbent['metrics'] or {}).get('master') or {}
+        if not c75_used and (m.get('liveTileShare') or 0.0) < CLOSER_LIVE_MAX:
+            moves.append('c75')
+        cx, cy = m.get('liveCentroidX'), m.get('liveCentroidY')
+        if cx is not None and (abs(cx - 0.5) > REAIM_MIN_OFFSET or abs(cy * 0.93 - 0.5) > REAIM_MIN_OFFSET):
+            moves.append('aim')
+        return moves
+
     def refine_build(self, judge, build, rounds):
         import frame_judge
         cid, key, label = build['localClusterId'], build['buildKey'], f'Build {build["buildKey"][:8]}'
         shot = build['shots'][0]
-        # Round 0: the planned pose, as the campaign would have shot it.
         allowed = {(cid, shot['shot']): shot}
+        receipt = None
         for attempt in ('r0', 'r0b'):
             name = self.next_plan_name(key, attempt)
             self.feed_plan(name, [shot['tsv']])
@@ -285,53 +379,72 @@ class RefineWorker(Worker):
             break
         incumbent = self.judge_shot(judge, {'name': shot['shot'], 'shotKey': shot['shotKey'], 'receipt': receipt})
         history = [incumbent]
-        rounds_run = 0
+        needs, forced_moves = self.gate(incumbent)
+        rounds_run, c75_used = 0, False
+        if needs and not forced_moves:
+            self.journal('decision', build=key[:8], round=0, incumbent=incumbent['name'], winner=incumbent['name'],
+                         reason=f'gated: needs-{needs}; no fan spent', candidates=[], needs=needs)
+            rounds = 0
         for round_no in range(1, rounds + 1):
-            if incumbent['receipt'] is None or incumbent['receipt'].get('skipped') or 'lens' not in incumbent['receipt']:
+            moves = forced_moves if forced_moves else self.fan_moves(incumbent, c75_used)
+            pose, fan = candidate_poses(incumbent['receipt'], incumbent['metrics'], moves)
+            if not fan:
                 self.journal('decision', build=key[:8], round=round_no, incumbent=incumbent['name'], winner=incumbent['name'],
-                             reason='incumbent has no usable receipt; nothing to move from', candidates=[])
+                             reason='no candidate pose could be derived', candidates=[], needs=needs)
                 break
-            pose, fan = candidates(incumbent['receipt'])
             entries, rows = [], []
             for move, p in fan:
                 name = f"{incumbent['name']}~{move}"
-                rows.append(tsv_row(cid, name, p['cam'], p['yaw'], p['pitch'], pose['aim'], label))
-                entries.append({'name': name, 'shotKey': shot_key(self.plan['sourceKey'], key, name), 'shot': name,
-                                'pose': p, 'move': move})
+                rows.append(tsv_row(cid, name, p['cam'], p['yaw'], p['pitch'], p['aim'], label))
+                entries.append({'name': name, 'shotKey': shot_key(self.plan['sourceKey'], key, name), 'move': move,
+                                'requested': p, 'vetoes': []})
             allowed = {(cid, e['name']): {'shotKey': e['shotKey'], 'shot': e['name']} for e in entries}
             plan_name = self.next_plan_name(key, f'r{round_no}')
-            self.journal('fan', build=key[:8], round=round_no, around=incumbent['name'],
+            self.journal('fan', build=key[:8], round=round_no, around=incumbent['name'], moves=moves,
                          incumbent_pose={k: pose[k] for k in ('distance', 'elevation', 'azimuth')},
-                         candidates=[{'name': e['name'], **e['pose']} for e in entries])
+                         candidates=[{'name': e['name'], **e['requested']} for e in entries])
             self.feed_plan(plan_name, rows)
             receipts = self.wait_plan(plan_name, allowed, timeout=90 * len(rows) + 60)
+            placed_seen = []
             for e in entries:
                 e['receipt'] = receipts.get((cid, e['name']))
+                r = e['receipt'] or {}
+                if r.get('placed'):
+                    here = (r['placed']['x'], r['placed']['y'], r['placed']['z'])
+                    twin = next((n for n, q in placed_seen if dist(here, q) < DUPLICATE_M), None)
+                    if twin:
+                        e['vetoes'] = [f'duplicate:{twin}']
+                    placed_seen.append((e['name'], here))
                 self.judge_shot(judge, e)
             verdict = frame_judge.compare(incumbent, entries)
             rounds_run = round_no
             self.journal('decision', build=key[:8], round=round_no, incumbent=incumbent['name'],
                          incumbent_score=incumbent['score'], candidates=verdict['rows'],
-                         winner=verdict['winner'], reason=verdict['reason'])
+                         winner=verdict['winner'], reason=verdict['reason'], needs=needs)
             if verdict['winner'] == incumbent['name']:
                 break
             incumbent = next(e for e in entries if e['name'] == verdict['winner'])
+            if incumbent['move'] == 'c75':
+                c75_used = True
             history.append(incumbent)
+            if forced_moves:
+                break       # a gated build gets one re-aim, not a climb
         self.results[key] = {
             'localClusterId': cid, 'shot': shot['shot'], 'incumbent': history[0]['name'], 'winner': incumbent['name'],
-            'rounds': rounds_run, 'path': [h['name'] for h in history],
+            'needs': needs, 'rounds': rounds_run, 'path': [h['name'] for h in history],
             'winnerFile': incumbent.get('file'), 'winnerShotKey': incumbent['shotKey'],
             'pose': ({k: incumbent['receipt'].get(k) for k in ('lens', 'placed', 'aim', 'yaw', 'pitch', 'clearance')}
                      if incumbent['receipt'] else None),
             'metrics': {h['name']: {'score': h['score'], 'vetoes': h['vetoes'],
-                                    **({'structureFraction': h['metrics']['geometry']['structureFraction'],
-                                        'subjectEdgeDensity': h['metrics']['geometry']['subjectEdgeDensity'],
-                                        'subjectBBoxFill': h['metrics']['geometry']['subjectBBoxFill'],
-                                        'skyFraction': h['metrics']['geometry']['skyFraction'],
-                                        'liveTileShare': h['metrics']['master']['liveTileShare']} if h['metrics'] else {})}
+                                    **({'liveTileShare': h['metrics']['master']['liveTileShare'],
+                                        'centralLiveShare': h['metrics']['master'].get('centralLiveShare'),
+                                        'gradMean': h['metrics']['master']['gradMean'],
+                                        'lumaMean': h['metrics']['master']['lumaMean'],
+                                        'lumaStd': h['metrics']['master']['lumaStd'],
+                                        'skyFraction': h['metrics']['geometry']['skyFraction']} if h['metrics'] else {})}
                         for h in history},
         }
-        write(self.root / 'refine.json', {'schema': 'steward-refine/v1', 'sourceKey': self.plan['sourceKey'],
+        write(self.root / 'refine.json', {'schema': 'steward-refine/v2', 'sourceKey': self.plan['sourceKey'],
                                           'era': self.plan['era'], 'builds': self.results})
 
     def finish(self):
@@ -354,17 +467,15 @@ class RefineWorker(Worker):
         self.write_summary()
 
     def write_summary(self):
-        lines = ['| build | shot | inc score | inc struct | inc edge | inc live | best cand | cand score | Δ | rounds | winner | vetoes |',
-                 '|---|---|---|---|---|---|---|---|---|---|---|---|']
+        lines = ['| build | shot | needs | inc score | inc live | inc luma | winner | win score | Δ | rounds | vetoes |',
+                 '|---|---|---|---|---|---|---|---|---|---|---|']
+        fmt = lambda v, p=4: '-' if v is None else f'{v:.{p}f}'
         for key, r in self.results.items():
-            inc = r['metrics'].get(r['incumbent'], {})
-            best_name = r['winner']; best = r['metrics'].get(best_name, {})
-            fmt = lambda v, p=4: '-' if v is None else f'{v:.{p}f}'
-            delta = (best.get('score') or 0) - (inc.get('score') or 0) if best.get('score') is not None and inc.get('score') is not None else None
-            lines.append(f"| {key[:8]} | {r['shot']} | {fmt(inc.get('score'), 5)} | {fmt(inc.get('structureFraction'), 3)} | "
-                         f"{fmt(inc.get('subjectEdgeDensity'))} | {fmt(inc.get('liveTileShare'), 3)} | "
-                         f"{best_name if best_name != r['incumbent'] else '(incumbent)'} | {fmt(best.get('score'), 5)} | "
-                         f"{fmt(delta, 5)} | {r['rounds']} | {r['winner']} | {','.join(inc.get('vetoes', [])) or '-'} |")
+            inc = r['metrics'].get(r['incumbent'], {}); best = r['metrics'].get(r['winner'], {})
+            delta = (best['score'] - inc['score']) if best.get('score') is not None and inc.get('score') is not None else None
+            lines.append(f"| {key[:8]} | {r['shot']} | {r['needs'] or '-'} | {fmt(inc.get('score'), 6)} | {fmt(inc.get('liveTileShare'), 2)} | "
+                         f"{fmt(inc.get('lumaMean'), 2)} | {r['winner'] if r['winner'] != r['incumbent'] else '(incumbent)'} | "
+                         f"{fmt(best.get('score'), 6)} | {fmt(delta, 6)} | {r['rounds']} | {','.join(inc.get('vetoes', [])) or '-'} |")
         (self.root / 'refine-summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
     def run_refine(self, builds_n, rounds):
@@ -374,8 +485,9 @@ class RefineWorker(Worker):
             self.lock_acquired = True
             self.status('starting')
             import frame_judge
-            judge = frame_judge.Judge(threads=self.threads)     # the 12 s load happens under the world load
-            self.journal('judge_ready', model=judge.model_name, load_s=judge.load_s, device=judge.device, threads=judge.threads)
+            judge = frame_judge.Judge(threads=self.threads)     # the model load happens under the world load
+            self.journal('judge_ready', model=judge.model_name, load_s=judge.load_s, device=judge.device, threads=judge.threads,
+                         thresholds=frame_judge.THRESHOLDS)
             self.launch()
             try:
                 self.wait_world()
@@ -394,16 +506,19 @@ if __name__ == '__main__':
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--prepare', action='store_true', help='write campaign.json/all-shots.tsv for the sample (before install)')
     parser.add_argument('--from-root', type=Path, help='installed campaign root to sample builds and poses from')
-    parser.add_argument('--framing', type=Path, help='master_detail JSON whose lowest liveTileShare picks the sample')
+    parser.add_argument('--framing', type=Path, help='master_detail JSON whose lowest liveTileShare picks the sample; omit for every build')
     parser.add_argument('--builds', type=int, default=8)
     parser.add_argument('--rounds', type=int, default=2)
     parser.add_argument('--threads', type=int, default=8)
     parser.add_argument('--idle-seconds', type=int, default=600)
     args = parser.parse_args()
     if args.prepare:
-        if not (args.from_root and args.framing):
-            parser.error('--prepare needs --from-root and --framing')
-        prepare(args.root, args.from_root, args.framing, args.builds)
+        if not args.from_root:
+            parser.error('--prepare needs --from-root')
+        if args.framing:
+            prepare(args.root, args.from_root, args.framing, args.builds)
+        else:
+            prepare_all(args.root, args.from_root)
         sys.exit(0)
     worker = RefineWorker(args.root, threads=args.threads, idle_seconds=args.idle_seconds)
     try:
