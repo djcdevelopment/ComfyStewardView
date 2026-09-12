@@ -416,3 +416,137 @@ class VocabularyParityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---- portrait choices (S3): the payload line, the manifest check, confirm, revert, publish
+
+TILE = "viking96/carpenter_f_artisan"
+
+
+def portrait(portrait_id="portrait-1", tile=TILE, take="s4", sha="sha-s4", participant=HANDLE, chosen="2026-09-12T10:00:00Z"):
+    return {"portraitId": portrait_id, "builderKey": BUILDER, "tile": tile, "take": take, "sha": sha,
+            "participant": participant, "createdAt": "2026-09-12T09:00:00Z", "chosenAt": chosen, "deliveryStatus": "local"}
+
+
+def manifest_file(root):
+    doc = {"schema": "chronicles-portraits/v2", "count": 1, "base": "/chronicles/img/portraits/",
+           "tiles": [{"id": "p01", "library": "slate48", "file": "p01.webp", "thumb": "p01.128.webp", "v": "x"},
+                     {"id": "carpenter_f_artisan", "library": "viking96", "tags": {"role": "carpenter"},
+                      "cuts": {"bust128": "viking96/carpenter_f_artisan.{take}.128.webp"},
+                      "takes": [{"id": "s4", "v": "a", "sha": "sha-s4"}, {"id": "s1", "v": "b", "sha": "sha-s1"}]}],
+           "libraries": {"slate48": {"default": True}, "viking96": {"default": False}}}
+    path = root / "portraits.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    return path
+
+
+class PortraitTests(CoordinateTestCase):
+    def ingest_portraits(self, *lines, manifest=True, **extra):
+        payload = {"schema": coordinate.EXPORT_SCHEMA, "participant": HANDLE, "portraits": list(lines), **extra}
+        argv = ["--output-root", self.root, "ingest", write_payload(self.root, payload)]
+        if manifest:
+            argv += ["--portraits", manifest_file(self.root)]
+        return run(*argv)
+
+    def test_a_portrait_line_needs_the_manifest_to_be_checked_against(self):
+        self.seed()
+        with self.assertRaises(SystemExit) as caught:
+            self.ingest_portraits(portrait(), manifest=False)
+        self.assertIn("--portraits", str(caught.exception))
+        self.assertEqual([], read_file(self.root)["portraitRecords"])
+        # A payload with no portrait line never needs one.
+        self.ingest({"schema": coordinate.EXPORT_SCHEMA, "participant": HANDLE, "claims": [claim()]})
+
+    def test_a_choice_the_manifest_can_draw_is_filed_and_a_bad_one_is_reported_not_filed(self):
+        self.seed()
+        out = self.ingest_portraits(
+            portrait(),
+            portrait("portrait-2", tile="viking96/nobody_m_missing"),
+            portrait("portrait-3", take="s9"),
+            portrait("portrait-4", sha="not-the-manifests"),
+            portrait("portrait-5", tile="Bad Tile"),
+        )
+        doc = read_file(self.root)
+        self.assertEqual(["portrait-1"], [r["portraitId"] for r in doc["portraitRecords"]])
+        self.assertEqual(1, doc["portraitChoices"])
+        self.assertIn("refused portrait lines", out)
+        self.assertIn("portrait-2: tile viking96/nobody_m_missing is not in the manifest", out)
+        self.assertIn("portrait-3: take 's9' is not one of", out)
+        self.assertIn("portrait-4: sha does not match", out)
+        self.assertIn("malformed portrait line", out)
+        # A slate tile has no takes: any take id is fine, and the sha is not checked.
+        self.ingest_portraits(portrait("portrait-6", tile="slate48/p01", take=None, sha=None))
+        self.assertEqual(2, read_file(self.root)["portraitChoices"])
+
+    def test_the_build_payload_and_the_event_shape_carry_one_choice(self):
+        self.seed()
+        payload = {"schema": coordinate.BUILD_SCHEMA, "builderKey": BUILDER, "buildKey": BUILD, "buildLabel": "Great Hall",
+                   "claim": claim(), "requests": [], "kinshipTags": [], "priority": None, "portrait": portrait()}
+        run("--output-root", self.root, "ingest", write_payload(self.root, payload), "--portraits", manifest_file(self.root))
+        self.assertEqual(1, read_file(self.root)["portraitChoices"])
+        event = {"schema": coordinate.EVENT_SCHEMA, "eventType": "portrait", "participant": HANDLE,
+                 "portrait": portrait("portrait-2", take="s1", sha="sha-s1")}
+        run("--output-root", self.root, "ingest", write_payload(self.root, event, "event.json"), "--portraits", manifest_file(self.root))
+        self.assertEqual(2, read_file(self.root)["portraitChoices"])
+
+    def test_confirming_publishes_the_latest_choice_on_the_record_and_a_revert_takes_it_down(self):
+        self.seed()
+        self.ingest_portraits(portrait())
+        out = run("--output-root", self.root, "confirm-portrait", BUILDER)
+        self.assertIn("confirmed viking96/carpenter_f_artisan#s4", out)
+        doc = read_file(self.root)
+        self.assertEqual([{"builderKey": BUILDER, "tile": TILE, "take": "s4", "sha": "sha-s4", "portraitId": "portrait-1"}],
+                         [{k: e[k] for k in ("builderKey", "tile", "take", "sha", "portraitId")} for e in doc["confirmedPortraits"]])
+        dest = self.root / "projection"
+        project(document(), dest, WORLD, self.root)
+        directory = json.loads((dest / "directory.json").read_text(encoding="utf-8"))
+        thread = json.loads((dest / "threads" / f"{BUILDER}.json").read_text(encoding="utf-8"))
+        self.assertEqual({"tile": TILE, "take": "s4"}, directory["builders"][0]["portrait"])
+        self.assertEqual({"tile": TILE, "take": "s4"}, thread["portrait"])
+        raw = (dest / "directory.json").read_text(encoding="utf-8") + (dest / "threads" / f"{BUILDER}.json").read_text(encoding="utf-8")
+        for leaked in (HANDLE, "sha-s4", "portrait-1", "chosenAt", "confirmedAt"):
+            self.assertNotIn(leaked, raw, f"the public record carries {leaked}")
+        # The same choice re-sent (a re-ordered ledger) is not pending; a new take is.
+        self.assertEqual([], coordinate.pending_portraits(read_file(self.root)))
+        self.ingest_portraits(portrait(take="s1", sha="sha-s1", chosen="2026-09-12T11:00:00Z"))
+        self.assertEqual(1, len(coordinate.pending_portraits(read_file(self.root))))
+        # A revert is a record; confirming it removes the published choice and the field.
+        self.ingest_portraits(portrait(tile=None, take=None, sha=None, chosen="2026-09-12T12:00:00Z"))
+        self.assertIsNone(read_file(self.root)["portraitRecords"][-1]["tile"])
+        out = run("--output-root", self.root, "confirm-portrait", BUILDER)
+        self.assertIn("wears the archive", out)
+        self.assertEqual([], read_file(self.root)["confirmedPortraits"])
+        dest2 = self.root / "projection2"
+        project(document(), dest2, WORLD, self.root)
+        self.assertNotIn("portrait", json.loads((dest2 / "directory.json").read_text(encoding="utf-8"))["builders"][0])
+
+    def test_revoke_is_a_veto_with_a_reason_and_forget_takes_the_choice_with_the_handle(self):
+        self.seed()
+        self.ingest_portraits(portrait())
+        run("--output-root", self.root, "confirm-portrait", BUILDER)
+        out = run("--output-root", self.root, "revoke-portrait", BUILDER, "--reason", "wolf, not a face")
+        self.assertIn("revoked the portrait", out)
+        doc = read_file(self.root)
+        self.assertEqual([], doc["confirmedPortraits"])
+        self.assertEqual("wolf, not a face", doc["portraitRecords"][-1]["revokedWhy"])
+        with self.assertRaises(SystemExit):
+            run("--output-root", self.root, "revoke-portrait", BUILDER)
+        run("--output-root", self.root, "confirm-portrait", BUILDER)
+        run("--output-root", self.root, "forget", HANDLE)
+        doc = read_file(self.root)
+        self.assertEqual([], doc["portraitRecords"])
+        self.assertEqual([], doc["confirmedPortraits"])
+        self.assertEqual(0, doc["portraitChoices"])
+
+    def test_the_public_participation_file_says_nothing_about_portraits(self):
+        self.seed()
+        self.ingest_portraits(portrait())
+        # status names the pending choice by builder until it is confirmed, then counts it.
+        self.assertIn(f"pending portrait {BUILDER}", run("--output-root", self.root, "status"))
+        run("--output-root", self.root, "confirm-portrait", BUILDER)
+        self.assertIn("portraits      1 confirmed · 0 pending", run("--output-root", self.root, "status"))
+        dest = self.root / "projection"
+        project(document(), dest, WORLD, self.root)
+        raw = (dest / "participation.json").read_text(encoding="utf-8")
+        for key in ("portraitRecords", "confirmedPortraits", "portraitChoices", "sha"):
+            self.assertNotIn(f'"{key}"', raw)

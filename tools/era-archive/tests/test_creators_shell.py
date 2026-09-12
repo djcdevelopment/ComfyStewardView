@@ -189,9 +189,17 @@ class ChroniclerStyleTests(unittest.TestCase):
         self.assertIn("portraits: {},", creators)
         self.assertIn("next.portraits = parsed.portraits", creators)
         self.assertIn("state.portraits = fresh.portraits", creators)
-        # Preview mode: the choice is recorded on this device and not yet in the payload.
-        self.assertIn("'Portrait recorded on this device'", creators)
-        self.assertNotIn("portraits: Object.values(state.portraits", creators)
+        # The choice is recorded on this device, rides the copied payload like a claim
+        # (S3), and the published choices reach the resolver as the records land.
+        self.assertIn("'Portrait recorded on this device", creators)
+        self.assertIn("portraits: Object.values(state.portraits", creators)
+        self.assertIn("portrait: StewardParticipation.portraitForBuilder(state, builderKey)", creators)
+        self.assertIn("StewardPortraits.setPublished(", creators)
+        self.assertIn("'Copy your payload'", creators)
+        # FR-8: the one disclosure the profile makes about the faces on it, for every visitor.
+        self.assertIn("Portraits are painted by the archive's own models; builders choose theirs.", creators)
+        kinship = (WEB / "kinship.js").read_text(encoding="utf-8")
+        self.assertIn("StewardPortraits.setPublished(", kinship)
         gallery_src = (Path(__file__).resolve().parents[1] / "gallery.py").read_text(encoding="utf-8")
         for name in ("portraits.js", "portrait-picker.js"):
             self.assertIn(f'"{name}"', gallery_src, f"gallery.py does not copy {name}")

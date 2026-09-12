@@ -1042,6 +1042,12 @@ const initKinshipPage = async () => {
     if (!doc) return;
     directory = doc;
     buildersByKey = new Map(doc.builders.map((b) => [b.builderKey, b]));
+    if (typeof StewardPortraits === 'object') {
+      const published = {};
+      for (const b of doc.builders) if (b.portrait && b.portrait.tile) published[b.builderKey] = b.portrait;
+      StewardPortraits.setPublished(published, {merge: true});
+      if (portraitManifest) hydratePortraits();
+    }
     hydrateNames();
     if (thread) renderAnchorPill();
   });

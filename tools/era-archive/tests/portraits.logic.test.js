@@ -127,3 +127,23 @@ test('flipping the default library changes the unchosen face and nothing for a c
   assert.equal(P.portraitFor(OTHER, manifest).tile.id, 'p03');
   assert.equal(P.tileById(manifest, 'p03').id, 'p03', 'a bare v1 id still finds a slate tile');
 });
+
+test('the published table answers below the device and above the slot, and merges', () => {
+  const manifest = v2();
+  P.setPublished({[TUGCOW]: {tile: 'viking96/carpenter_f_artisan', take: 's1'}});
+  assert.equal(P.portraitFor(TUGCOW, manifest).take.id, 's1');
+  assert.equal(P.portraitFor(OTHER, manifest).library, 'slate48');
+  // The thread lands first with one builder, the directory later with everyone: merge.
+  P.setPublished({[OTHER]: {tile: 'slate48/p05', take: null}}, {merge: true});
+  assert.equal(P.portraitFor(TUGCOW, manifest).take.id, 's1');
+  assert.equal(P.portraitFor(OTHER, manifest).tile.id, 'p05');
+  // The device's own word still comes first, a revert included.
+  P.setChoices({[TUGCOW]: {tile: null}});
+  assert.equal(P.portraitFor(TUGCOW, manifest).tile.id, 'p47');
+  P.setChoices({});
+  // A published entry with no tile, or a bad key, is ignored; a replace without merge clears.
+  P.setPublished({[TUGCOW]: {tile: null}, nonsense: {tile: 'viking96/carpenter_f_artisan'}});
+  assert.equal(P.portraitFor(TUGCOW, manifest).tile.id, 'p47');
+  assert.equal(P.portraitFor(OTHER, manifest).library, 'slate48');
+  P.setPublished({});
+});

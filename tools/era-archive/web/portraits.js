@@ -29,6 +29,7 @@
   const HEX32 = /^[a-f0-9]{32}$/;
 
   let deviceChoices = {};
+  let publishedChoices = {};
 
   // The slot rule, byte for byte the one creators.js and gateway.js apply: the first eight
   // hex digits of the key, modulo the count, never negative, 0 when nothing parses.
@@ -163,7 +164,9 @@
       // A revert (tile: null) or a tile the manifest no longer carries: the default.
       if (local.tile === null) return defaultTile(manifest, key);
     }
-    const published = typeof builder === 'object' && builder ? builder.portrait : null;
+    // The archive's published choice: on the record when the caller has one, else in the
+    // table the page filled from directory.json / the thread.
+    const published = (typeof builder === 'object' && builder && builder.portrait) || publishedChoices[key] || null;
     const confirmed = fromChoice(manifest, published);
     if (confirmed) return confirmed;
     return defaultTile(manifest, key);
@@ -185,8 +188,19 @@
     }
   }
 
+  // What the coordinator confirmed and gallery.py published on the builders' records
+  // (`portrait: {tile, take}`); the page hands them over as directory.json lands. Additive:
+  // a page that never calls this resolves the slot for everyone, as before.
+  function setPublished(map, {merge = false} = {}) {
+    const next = merge ? {...publishedChoices} : {};
+    for (const [key, choice] of Object.entries(map || {})) {
+      if (HEX32.test(key) && choice && typeof choice === 'object' && choice.tile) next[key] = choice;
+    }
+    publishedChoices = next;
+  }
+
   const api = {portraitIndex: slotIndex, tilesOf, defaultLibrary, defaultPool, tileById, takeOf, cutsOf,
-    labelFor, altFor, portraitFor, defaultTile, setChoices, qualifiedId};
+    labelFor, altFor, portraitFor, defaultTile, setChoices, setPublished, qualifiedId};
   globalThis.StewardPortraits = api;
   if (typeof module !== 'undefined') module.exports = api;
 })();

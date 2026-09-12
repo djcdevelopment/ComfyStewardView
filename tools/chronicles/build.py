@@ -61,6 +61,7 @@ PORTRAITS_SCHEMA = PORTRAITS_SOURCE_SCHEMA
 LIBRARY_SCHEMA = "chronicles-portrait-library/v1"
 DEFAULT_PORTRAITS = HERE / "assets" / "portraits"
 DEFAULT_LIBRARY_ID = "slate48"
+PORTRAITS_RESOLVER = HERE.parent / "era-archive" / "web" / "portraits.js"
 # The archive's vocabulary rule applies to portraits.json the same as to a template. The
 # whole document never says the first two; the parts the picker prints as copy (facet and
 # library labels) never say the others either. (A slate row's `seed` is a render receipt,
@@ -674,6 +675,9 @@ def build(source_base: str, out_dir: Path, offline: Path | None = None,
             "chronicles.{}.css", (HERE / "src" / "chronicles.css").read_bytes()
         )
         js = out.write_hashed("gateway.{}.js", (HERE / "src" / "gateway.js").read_bytes())
+        # The one portrait resolver, shared with the creators lane byte for byte: the
+        # suggestions draw a builder's published choice the way the profile does.
+        portraits_js = out.write_hashed("portraits.{}.js", PORTRAITS_RESOLVER.read_bytes())
 
         generated = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
         head = head_sha()
@@ -702,6 +706,7 @@ def build(source_base: str, out_dir: Path, offline: Path | None = None,
                 body = render((HERE / "templates" / "index.html").read_text(encoding="utf-8"), {
                     **common,
                     "js_href": js,
+                    "portraits_js_href": portraits_js,
                     "meta_description": esc(copy["gateway"]["lede"]),
                     "h1": text(copy["gateway"]["h1"]),
                     "search_label": text(copy["gateway"]["search_label"]),
@@ -764,7 +769,7 @@ def build(source_base: str, out_dir: Path, offline: Path | None = None,
             "sources": sources,
             "head": head,
             "assets": {
-                "css": css, "js": js, "emblem": emblem,
+                "css": css, "js": js, "portraitsJs": portraits_js, "emblem": emblem,
                 "cutouts": cutouts, "portraits": portraits, "shots": shots, "fonts": fonts,
             },
         }

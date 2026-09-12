@@ -808,3 +808,39 @@ test('setPriority records one mark per build, clears on repeat, and rides the ex
   const storage = {getItem: () => JSON.stringify({...state, priorities: undefined}), setItem() {}, removeItem() {}};
   assert.deepEqual(StewardParticipation.load(storage).priorities, {});
 });
+
+test('setPortrait records one choice per profile, a revert is a record, and both ride the payload', () => {
+  const state = StewardParticipation.defaultState('2026-09-12T00:00:00Z');
+  const me = 'a'.repeat(32);
+  const thread = {builderKey: me, eras: [{era: 7, albums: [{buildKey: 'c'.repeat(64)}]}]};
+  // Standing on a profile is a built claim on one of its builds, in this browser.
+  assert.equal(StewardParticipation.standingForBuilder(state, thread), null);
+  StewardParticipation.putClaim(state, {claimId: 'claim_1', buildKey: 'c'.repeat(64), builderKey: me, kind: 'disavow'});
+  assert.equal(StewardParticipation.standingForBuilder(state, thread), null, 'a disavowal is not standing');
+  StewardParticipation.putClaim(state, {claimId: 'claim_1', buildKey: 'c'.repeat(64), builderKey: me, kind: 'built'});
+  assert.ok(StewardParticipation.standingForBuilder(state, thread));
+  const rec = StewardParticipation.setPortrait(state, {builderKey: me, tile: 'viking96/carpenter_f_artisan', take: 's4', sha: 'sha', participant: ' Skald '});
+  assert.equal(rec.tile, 'viking96/carpenter_f_artisan');
+  assert.equal(rec.take, 's4');
+  assert.equal(rec.participant, 'Skald');
+  assert.equal(rec.deliveryStatus, 'local');
+  assert.equal(StewardParticipation.portraitForBuilder(state, me).portraitId, rec.portraitId);
+  // A second choice replaces in place under the same id; a revert keeps the record.
+  const again = StewardParticipation.setPortrait(state, {builderKey: me, tile: 'slate48/p03', take: null});
+  assert.equal(again.portraitId, rec.portraitId);
+  assert.equal(again.take, null);
+  const revert = StewardParticipation.setPortrait(state, {builderKey: me, tile: null});
+  assert.equal(revert.portraitId, rec.portraitId);
+  assert.equal(revert.tile, null);
+  assert.equal(revert.take, null);
+  assert.equal(revert.sha, null);
+  assert.equal(Object.keys(state.portraits).length, 1);
+  // A key that is not a builder key is refused.
+  assert.equal(StewardParticipation.setPortrait(state, {builderKey: 'nope', tile: 'x/y'}), null);
+  // The export and the build payload carry it.
+  assert.deepEqual(StewardParticipation.exportPayload(state).portraits.map((p) => p.tile), [null]);
+  assert.equal(StewardParticipation.buildPayload(state, {builderKey: me, buildKey: 'c'.repeat(64), buildLabel: 'x'}).portrait.portraitId, rec.portraitId);
+  // A ledger saved before the map existed loads with an empty one.
+  const storage = {getItem: () => JSON.stringify({...state, portraits: undefined}), setItem() {}, removeItem() {}};
+  assert.deepEqual(StewardParticipation.load(storage).portraits, {});
+});

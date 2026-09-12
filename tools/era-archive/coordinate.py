@@ -35,6 +35,7 @@ writes a temporary file and renames it into place.
 from __future__ import annotations
 import argparse
 import json
+import re
 from pathlib import Path
 import sys
 
@@ -49,7 +50,11 @@ EVENT_SCHEMA = "steward-creator-participation-event/v1"
 # replaces the other -- because a disavowal is a claim about oneself too, and keeping them
 # in separate stores would let a build be claimed and disavowed by one person at once.
 CLAIM_KINDS = ("built", "disavow")
-RECORD_LISTS = ("claimRecords", "requestRecords", "tagRecords")
+RECORD_LISTS = ("claimRecords", "requestRecords", "tagRecords", "portraitRecords")
+# A portrait choice names a tile as `<library>/<id>` and a take as `s<N>`; a revert names no
+# tile at all (tile: null) and is a record in its own right, never a deletion.
+PORTRAIT_TILE = re.compile(r"^[a-z0-9]+/[a-z0-9_]+$")
+PORTRAIT_TAKE = re.compile(r"^s[0-9]{1,3}$")
 # What a confirmed tag may carry beyond the five public keys. `tagId` is the receipt: it
 # says which ingested record this confirmation came from, so `forget` can find it again.
 # gallery.sanitize_confirmed_tags() drops it on the way out.
@@ -76,6 +81,62 @@ def _hex(pattern, value):
 
 def _identifier(value):
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def clean_portrait(raw, fallback_participant=None):
+    """A portrait choice as received: the builder it dresses, the tile and take it names
+    (or none, for a revert), the source sha the browser copied from the manifest. Whether
+    the tile exists is the manifest's question, asked at ingest by check_portraits()."""
+    if not isinstance(raw, dict):
+        return None
+    portrait_id = _identifier(raw.get("portraitId"))
+    if not portrait_id or not _hex(gallery.HEX32, raw.get("builderKey")):
+        return None
+    tile = raw.get("tile")
+    if tile is not None and not (isinstance(tile, str) and PORTRAIT_TILE.match(tile)):
+        return None
+    take = raw.get("take") if tile is not None else None
+    if take is not None and not (isinstance(take, str) and PORTRAIT_TAKE.match(take)):
+        return None
+    record = dict(raw)
+    record["portraitId"] = portrait_id
+    record["tile"] = tile
+    record["take"] = take
+    record["sha"] = raw.get("sha") if tile is not None and isinstance(raw.get("sha"), str) else None
+    record["participant"] = normalize_handle(raw.get("participant") or fallback_participant)
+    return record
+
+
+def manifest_tiles(manifest):
+    """`<library>/<id>` -> {takeId -> sha} for a portraits.json (schema 2) or one library
+    tree's manifest.json. A tile with no takes (a slate row) maps to an empty dict."""
+    if not isinstance(manifest, dict):
+        return {}
+    library = manifest.get("library") if isinstance(manifest.get("library"), str) else None
+    tiles = {}
+    for tile in manifest.get("tiles") or []:
+        if not isinstance(tile, dict) or not isinstance(tile.get("id"), str):
+            continue
+        lib = tile.get("library") or library or "slate48"
+        tiles[f"{lib}/{tile['id']}"] = {
+            t["id"]: t.get("sha") for t in (tile.get("takes") or []) if isinstance(t, dict) and isinstance(t.get("id"), str)
+        }
+    return tiles
+
+
+def check_portrait(record, tiles):
+    """Why a cleaned portrait line cannot be filed against this manifest, or None."""
+    if record.get("tile") is None:
+        return None
+    takes = tiles.get(record["tile"])
+    if takes is None:
+        return f"{record['portraitId']}: tile {record['tile']} is not in the manifest"
+    take = record.get("take")
+    if takes and take not in takes:
+        return f"{record['portraitId']}: take {take!r} is not one of {record['tile']}'s"
+    if takes and record.get("sha") and takes.get(take) and record["sha"] != takes[take]:
+        return f"{record['portraitId']}: sha does not match the manifest's for {record['tile']}#{take}"
+    return None
 
 
 def clean_claim(raw, fallback_participant=None):
@@ -137,32 +198,39 @@ def clean_tag(raw, fallback_participant=None):
 
 
 def records_from_payload(payload):
-    """The three shapes a volunteer's browser can hand over, as (claims, requests, tags).
+    """The three shapes a volunteer's browser can hand over, as (claims, requests, tags,
+    fallback participant, portraits).
 
     The export is the whole ledger, the build payload is one card's worth, and the event is
     what an endpoint would have received had one ever been configured. All three are things
-    a volunteer can paste into Discord today, so all three are things this has to read."""
+    a volunteer can paste into Discord today, so all three are things this has to read.
+    Portrait choices ride the export (`portraits[]`) and the build payload (`portrait`) --
+    a ledger written before the picker existed carries neither and reads as none."""
     if not isinstance(payload, dict):
         raise ValueError("payload is not a JSON object")
     schema = payload.get("schema")
     fallback = payload.get("participant")
     if schema == EXPORT_SCHEMA:
         return (payload.get("claims") or [], payload.get("requests") or [],
-                payload.get("kinshipTags") or [], fallback)
+                payload.get("kinshipTags") or [], fallback, payload.get("portraits") or [])
     if schema == BUILD_SCHEMA:
         claim = payload.get("claim")
+        portrait = payload.get("portrait")
         return ([claim] if claim else [], payload.get("requests") or [],
-                payload.get("kinshipTags") or [], fallback)
+                payload.get("kinshipTags") or [], fallback, [portrait] if portrait else [])
     if schema == EVENT_SCHEMA:
         event = payload.get("eventType")
         if event == "claim":
-            return ([payload.get("claim")] if payload.get("claim") else [], [], [], fallback)
+            return ([payload.get("claim")] if payload.get("claim") else [], [], [], fallback, [])
         if event == "photoRequest":
             one = payload.get("request") or payload.get("photoRequest")
-            return [], ([one] if one else []), [], fallback
+            return [], ([one] if one else []), [], fallback, []
         if event == "kinshipTag":
             one = payload.get("kinshipTag") or payload.get("tag")
-            return [], [], ([one] if one else []), fallback
+            return [], [], ([one] if one else []), fallback, []
+        if event == "portrait":
+            one = payload.get("portrait")
+            return [], [], [], fallback, ([one] if one else [])
         raise ValueError(f"unsupported eventType {event!r}")
     raise ValueError(f"unsupported payload schema {schema!r}")
 
@@ -197,13 +265,38 @@ def recount(document):
     claims = document["claimRecords"]
     requests = document["requestRecords"]
     tags = document["tagRecords"]
-    handles = {handle_key(r.get("participant")) for r in (*claims, *requests, *tags)}
+    portraits = document.get("portraitRecords") or []
+    handles = {handle_key(r.get("participant")) for r in (*claims, *requests, *tags, *portraits)}
     document["participants"] = len(handles)
     document["claims"] = sum(1 for c in claims if c.get("kind", "built") == "built")
     document["disavowals"] = sum(1 for c in claims if c.get("kind") == "disavow")
     document["requests"] = len(requests)
     document["openRequests"] = sum(1 for r in requests if not r.get("closedAt"))
+    document["portraitChoices"] = len(portraits)
     return document
+
+
+def latest_portrait(document, builder_key):
+    """The volunteer's most recent word on a builder's portrait: a re-sent choice replaces
+    the earlier copy in place, so the last matching record is the current one."""
+    matches = [r for r in (document.get("portraitRecords") or []) if r.get("builderKey") == builder_key]
+    return matches[-1] if matches else None
+
+
+def pending_portraits(document):
+    """Ingested portrait choices the coordinator has not confirmed (or reverted) yet."""
+    confirmed = {e.get("builderKey"): e.get("portraitChosenAt") for e in document.get("confirmedPortraits") or []}
+    seen = {}
+    for record in document.get("portraitRecords") or []:
+        seen[record.get("builderKey")] = record
+    waiting = []
+    for key, record in seen.items():
+        if record.get("tile") is None and key not in confirmed:
+            continue  # a revert with nothing published to revert
+        if confirmed.get(key) == record.get("chosenAt"):
+            continue
+        waiting.append(record)
+    return waiting
 
 
 def pending_tags(document):
@@ -223,9 +316,11 @@ def new_document(stamp):
         "requests": 0,
         "openRequests": 0,
         "confirmedTags": [],
+        "confirmedPortraits": [],
         "claimRecords": [],
         "requestRecords": [],
         "tagRecords": [],
+        "portraitRecords": [],
     }
 
 
@@ -239,6 +334,9 @@ def read_document(output_root):
     document.setdefault("confirmedTags", [])
     if not isinstance(document["confirmedTags"], list):
         document["confirmedTags"] = []
+    document.setdefault("confirmedPortraits", [])
+    if not isinstance(document["confirmedPortraits"], list):
+        document["confirmedPortraits"] = []
     for key in RECORD_LISTS:
         if not isinstance(document.get(key), list):
             document[key] = []
@@ -250,6 +348,8 @@ def write_document(path, document, dry_run, note=""):
     recount(document)
     summary = {k: document[k] for k in ("participants", "claims", "disavowals", "requests", "openRequests")}
     summary["confirmedTags"] = len(document["confirmedTags"])
+    summary["portraitChoices"] = document.get("portraitChoices", 0)
+    summary["confirmedPortraits"] = len(document.get("confirmedPortraits") or [])
     if dry_run:
         print(f"DRY RUN -- {path} left untouched")
     else:
@@ -286,9 +386,33 @@ def cmd_ingest(args):
     except json.JSONDecodeError as error:
         raise SystemExit(f"payload is not JSON: {error}")
     try:
-        claims, requests, tags, fallback = records_from_payload(payload)
+        claims, requests, tags, fallback, portraits = records_from_payload(payload)
     except ValueError as error:
         raise SystemExit(str(error))
+    # A portrait line is checked against the manifest the archive serves, not against its
+    # own shape alone: a tile the manifest does not carry, a take the strip does not hold,
+    # a sha that is not the take's -- each is reported back by id and not filed, because a
+    # choice nobody can draw is not a choice. The manifest is an input to this command.
+    refused = []
+    if portraits:
+        if not args.portraits:
+            raise SystemExit("the payload carries portrait choices; pass --portraits <portraits.json or a library manifest.json> "
+                             "so they can be checked against what the archive serves")
+        tiles = manifest_tiles(load(Path(args.portraits)))
+        if not tiles:
+            raise SystemExit(f"{args.portraits} names no tiles")
+        admitted = []
+        for raw in portraits:
+            record = clean_portrait(raw, fallback)
+            if record is None:
+                refused.append(f"{(raw or {}).get('portraitId') if isinstance(raw, dict) else raw!r}: malformed portrait line")
+                continue
+            problem = check_portrait(record, tiles)
+            if problem:
+                refused.append(problem)
+                continue
+            admitted.append(raw)
+        portraits = admitted
     stamp = now()
     document["claimRecords"], claim_counts = upsert(
         document["claimRecords"], claims, "claimId", clean_claim, stamp, fallback)
@@ -296,7 +420,11 @@ def cmd_ingest(args):
         document["requestRecords"], requests, "requestId", clean_request, stamp, fallback)
     document["tagRecords"], tag_counts = upsert(
         document["tagRecords"], tags, "tagId", clean_tag, stamp, fallback)
-    note = (f"claims {claim_counts} · requests {request_counts} · kinship tags {tag_counts}")
+    document["portraitRecords"], portrait_counts = upsert(
+        document["portraitRecords"], portraits, "portraitId", clean_portrait, stamp, fallback)
+    note = (f"claims {claim_counts} · requests {request_counts} · kinship tags {tag_counts} · portraits {portrait_counts}")
+    if refused:
+        note += "\n  refused portrait lines:\n    " + "\n    ".join(refused)
     write_document(path, document, args.dry_run, note)
 
 
@@ -338,12 +466,62 @@ def cmd_revoke_tag(args):
     write_document(path, document, args.dry_run, f"revoked {removed} confirmed tag(s)")
 
 
+def cmd_confirm_portrait(args):
+    """Publish a builder's latest portrait choice -- or, when that choice is a revert, take
+    the published one down. Either way the record stays; the confirmation is what moves."""
+    builder_key = args.builder
+    if not _hex(gallery.HEX32, builder_key):
+        raise SystemExit("expected a builderKey (32 hex)")
+    path, document = read_document(args.output_root)
+    record = latest_portrait(document, builder_key)
+    if record is None:
+        raise SystemExit(f"no ingested portrait choice for {builder_key}")
+    kept = [e for e in document["confirmedPortraits"] if e.get("builderKey") != builder_key]
+    if record.get("tile") is None:
+        document["confirmedPortraits"] = kept
+        write_document(path, document, args.dry_run, f"{builder_key[:8]}… wears the archive's pick again (revert confirmed)")
+        return
+    kept.append({
+        "builderKey": builder_key,
+        "tile": record["tile"],
+        "take": record.get("take"),
+        "sha": record.get("sha"),
+        "confirmedAt": now(),
+        "portraitId": record.get("portraitId"),
+        "portraitChosenAt": record.get("chosenAt"),
+    })
+    kept.sort(key=lambda e: str(e.get("builderKey")))
+    document["confirmedPortraits"] = kept
+    write_document(path, document, args.dry_run, f"confirmed {record['tile']}#{record.get('take')} on {builder_key[:8]}…")
+
+
+def cmd_revoke_portrait(args):
+    """The coordinator's veto: the published choice comes down and the reason is written
+    beside the record, so the builder's next payload can see why."""
+    builder_key = args.builder
+    if not _hex(gallery.HEX32, builder_key):
+        raise SystemExit("expected a builderKey (32 hex)")
+    path, document = read_document(args.output_root)
+    before = len(document["confirmedPortraits"])
+    document["confirmedPortraits"] = [e for e in document["confirmedPortraits"] if e.get("builderKey") != builder_key]
+    if before == len(document["confirmedPortraits"]):
+        raise SystemExit(f"no confirmed portrait for {builder_key}")
+    record = latest_portrait(document, builder_key)
+    if record is not None:
+        record["revokedAt"] = now()
+        record["revokedWhy"] = args.reason or ""
+    write_document(path, document, args.dry_run, f"revoked the portrait on {builder_key[:8]}…" + (f": {args.reason}" if args.reason else ""))
+
+
 def cmd_forget(args):
-    """The withdrawal answer. One handle, every record it sent, and the tags they carried."""
+    """The withdrawal answer. One handle, every record it sent, the tags they carried, and
+    the portrait choices they made."""
     target = handle_key(args.handle)
     path, document = read_document(args.output_root)
     theirs = {t.get("tagId") for t in document["tagRecords"]
               if handle_key(t.get("participant")) == target and isinstance(t.get("tagId"), str)}
+    their_portraits = {r.get("portraitId") for r in document["portraitRecords"]
+                       if handle_key(r.get("participant")) == target and isinstance(r.get("portraitId"), str)}
     removed = {}
     for key in RECORD_LISTS:
         kept = [r for r in document[key] if handle_key(r.get("participant")) != target]
@@ -352,6 +530,9 @@ def cmd_forget(args):
     before = len(document["confirmedTags"])
     document["confirmedTags"] = [e for e in document["confirmedTags"] if e.get("tagId") not in theirs]
     removed["confirmedTags"] = before - len(document["confirmedTags"])
+    before = len(document["confirmedPortraits"])
+    document["confirmedPortraits"] = [e for e in document["confirmedPortraits"] if e.get("portraitId") not in their_portraits]
+    removed["confirmedPortraits"] = before - len(document["confirmedPortraits"])
     note = f"forgot {normalize_handle(args.handle)!r}: " + " · ".join(f"{k} {v}" for k, v in removed.items())
     write_document(path, document, args.dry_run, note)
 
@@ -368,12 +549,17 @@ def cmd_status(args):
     print(f"  claims         {document['claims']} built · {document['disavowals']} disavowed")
     print(f"  requests       {document['requests']} ({len(open_requests)} open)")
     print(f"  kinship tags   {len(document['confirmedTags'])} confirmed · {len(waiting)} pending")
+    portraits_waiting = pending_portraits(document)
+    print(f"  portraits      {len(document.get('confirmedPortraits') or [])} confirmed · {len(portraits_waiting)} pending")
     for request in open_requests[:20]:
         print(f"    open request {request.get('requestId')} · {request.get('buildLabel') or request.get('buildKey')}"
               f" · {request.get('participant')}")
     for tag in waiting[:20]:
         print(f"    pending tag  {tag.get('buildKey')}:{tag.get('contributorKey')}"
               f" · {', '.join(tag.get('tags') or [])} · {tag.get('participant')}")
+    for record in portraits_waiting[:20]:
+        wants = "the archive's pick" if record.get("tile") is None else f"{record.get('tile')}#{record.get('take')}"
+        print(f"    pending portrait {record.get('builderKey')} · {wants} · {record.get('participant')}")
     print("")
     print("  Publish what is confirmed:")
     print(f"    python tools/era-archive/gallery.py --output-root {root} "
@@ -407,7 +593,17 @@ def main():
     mutating("seed", "create an empty coordinator file").set_defaults(handler=cmd_seed)
     ingest = mutating("ingest", "take in a payload a volunteer sent")
     ingest.add_argument("payload", help="path to the payload JSON, or - for stdin")
+    ingest.add_argument("--portraits", default=None,
+                        help="portraits.json (schema 2) or a library manifest.json; required when the payload "
+                             "carries portrait choices, which are checked against it")
     ingest.set_defaults(handler=cmd_ingest)
+    confirm_portrait = mutating("confirm-portrait", "publish a builder's latest portrait choice (or confirm a revert)")
+    confirm_portrait.add_argument("builder", metavar="<builderKey>")
+    confirm_portrait.set_defaults(handler=cmd_confirm_portrait)
+    revoke_portrait = mutating("revoke-portrait", "take a published portrait choice down")
+    revoke_portrait.add_argument("builder", metavar="<builderKey>")
+    revoke_portrait.add_argument("--reason", default="")
+    revoke_portrait.set_defaults(handler=cmd_revoke_portrait)
     confirm = mutating("confirm-tag", "publish one ingested kinship tag")
     confirm.add_argument("pair", metavar="<buildKey>:<contributorKey>")
     confirm.set_defaults(handler=cmd_confirm_tag)

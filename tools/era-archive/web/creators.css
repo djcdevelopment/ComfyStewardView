@@ -3314,12 +3314,28 @@ textarea:focus-visible,
   background: none;
 }
 
-.hero-portrait-note {
+.hero-portrait-note,
+.hero-portrait-disclosure {
   margin: 0;
   font-family: var(--font-mono);
   font-size: 0.68rem;
   letter-spacing: 0.04em;
   color: var(--outline);
+}
+
+.hero-portrait-note .hero-portrait-copy {
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
+.hero-portrait-note .hero-portrait-copy:hover {
+  background: none;
 }
 
 html.pp-open,

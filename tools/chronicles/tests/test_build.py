@@ -183,6 +183,7 @@ class ChroniclesBuild(unittest.TestCase):
         just because it is not markup."""
         shipped = {
             self.manifest["assets"]["js"]: (self.out / self.manifest["assets"]["js"]),
+            self.manifest["assets"]["portraitsJs"]: (self.out / self.manifest["assets"]["portraitsJs"]),
             "portraits.json": (self.out / "portraits.json"),
         }
         for name, path in shipped.items():

@@ -34,9 +34,22 @@ ExpectStatus '/' 404
 ExpectStatus '/chronicles' 308
 if (-not $SkipChronicles) {
     Check '/chronicles/' @('<h1', 'href="/valheim/"', 'href="/chronicles/guide/"', 'role="combobox"', 'id="suggestions"', 'id="portrait-manifest"') @('character', 'archetype', 'class="path"', 'cdn.tailwindcss', 'fonts.googleapis')
-    Check '/chronicles/portraits.json' @('"count"', '"tiles"') @() 'no-cache'
+    Check '/chronicles/portraits.json' @('"count"', '"tiles"', '"libraries"', '"viking96"', '"facets"') @('character', 'archetype') 'no-cache'
     Check '/chronicles/img/portraits/p01.webp' @() @() 'immutable'
     Check '/chronicles/img/portraits/p01.128.webp' @() @() 'immutable'
+    # One painted take of the library, all three cuts, immutable like the slate tiles.
+    try {
+        $pm = (Invoke-WebRequest -Uri ($base + '/chronicles/portraits.json') -UseBasicParsing -TimeoutSec 30).Content | ConvertFrom-Json
+        $lib = $pm.tiles | Where-Object { $_.library -eq 'viking96' } | Select-Object -First 1
+        if ($null -eq $lib) { $script:fail++; "FAIL portraits.json carries no viking96 tile" }
+        else {
+            $take = $lib.takes[0].id
+            foreach ($cut in 'bust128', 'bust256', 'wide768') {
+                $rel = ([string]$lib.cuts.$cut).Replace('{take}', $take)
+                Check ('/chronicles/img/portraits/' + $rel) @() @() 'immutable'
+            }
+        }
+    } catch { $script:fail++; "FAIL portrait library probe: $($_.Exception.Message)" }
     Check '/chronicles/img/cutouts/find.webp' @() @() 'immutable'
     Check '/chronicles/guide/' @('<h1', 'id="claims"') @('character', 'archetype', 'fonts.googleapis')
     Check '/chronicles/build.json' @('"counts"')
@@ -78,24 +91,28 @@ if (-not $SkipViewer) {
 
 if (-not $SkipCreators) {
     "== creators"
-    Check '/valheim/creators/' @('creators.css?v=10', 'id="stats-link"', 'href="/chronicles/"')
-    Check '/valheim/creators/creators.css?v=10' @('--flame', '@font-face')
+    Check '/valheim/creators/' @('creators.css?v=11', 'id="stats-link"', 'href="/chronicles/"', 'src="./portraits.js"', 'src="./portrait-picker.js"')
+    Check '/valheim/creators/creators.css?v=11' @('--flame', '@font-face', '#portrait-picker')
     Check '/valheim/creators/creators.js' @('Top 8', 'portraitIndex', 'StewardParticipation', 'buildKinshipTree')
     # The pair view is mounted by creators.js and drawn entirely by this script, so the
     # section itself cannot be probed in the served HTML -- the script's own presence and
     # the two names it is reached by are what there is to check.
     Check '/valheim/creators/pair.js' @('buildKinshipPair', 'StewardPair')
     Check '/valheim/creators/kin-tree.js' @('layoutKinshipTree', 'drawKinshipTree')
+    # One resolver for every face, and the picker drawer, both linted for the words the
+    # archive never says about the people in it.
+    Check '/valheim/creators/portraits.js' @('StewardPortraits', 'portraitFor') @('character', 'archetype', 'seed', 'gender')
+    Check '/valheim/creators/portrait-picker.js' @('StewardPortraitPicker', 'Clear all') @('character', 'archetype', 'seed', 'gender')
     Check '/valheim/creators/stats/' @('Archive Statistics', 'href="/chronicles/"')
     # The kinship page is served from its own directory, so its assets climb one level.
     # The two banned words and the participation deep link all belong to other pages.
-    Check '/valheim/creators/kinship/' @('id="kin-tree"', '../creators.css?v=10', 'src="../kin-tree.js?v=10"', 'data-steward-page="kinship"', 'href="/chronicles/"') @('character', 'archetype', 'href="#participation-details"')
+    Check '/valheim/creators/kinship/' @('id="kin-tree"', '../creators.css?v=11', 'src="../portraits.js?v=11"', 'src="../kin-tree.js?v=11"', 'data-steward-page="kinship"', 'href="/chronicles/"') @('character', 'archetype', 'href="#participation-details"')
     Check '/valheim/creators/kinship.js' @('initKinshipPage', 'drawKinshipTree(')
     Check '/valheim/creators/directory.json' @('"builders"') @() 'no-cache'
     try {
         $d = (Invoke-WebRequest -Uri ($base + '/valheim/creators/directory.json') -UseBasicParsing -TimeoutSec 60).Content | ConvertFrom-Json
         $top = $d.builders | Sort-Object -Property albums -Descending | Select-Object -First 1
-        Check ('/valheim/creators/' + $top.builderKey + '/') @('../creators.css?v=10', 'src="../pair.js"', 'src="../kin-tree.js"', 'href="/chronicles/"', 'id="builder-hero"', 'id="look-out"', 'id="thread-notes"')
+        Check ('/valheim/creators/' + $top.builderKey + '/') @('../creators.css?v=11', 'src="../pair.js"', 'src="../kin-tree.js"', 'src="../portraits.js"', 'src="../portrait-picker.js"', 'href="/chronicles/"', 'id="builder-hero"', 'id="look-out"', 'id="thread-notes"')
         Check ('/valheim/creators/threads/' + $top.builderKey + '.json') @('"contributors"')
         # A named anchor has to reach the same shell the bare page does.
         Check ('/valheim/creators/kinship/?builder=' + $top.builderKey) @('id="kin-tree"')

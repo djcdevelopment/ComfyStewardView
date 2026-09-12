@@ -222,10 +222,12 @@ try{
     if(!libraries){
       results.picker={status:'skipped',reason:'portraits.json carries no libraries on this host'};
     }else{
-      if(await evaluate("!!document.getElementById('hero-portrait-pick')"))throw Error('Picker control shown to a visitor with no claim on the profile');
+      const stranger=await evaluate("({pick:!!document.querySelector('#hero-portrait-pick:not([hidden])'),disclosure:document.getElementById('hero-portrait-disclosure')?.textContent||''})");
+      if(stranger.pick)throw Error('Picker control shown to a visitor with no claim on the profile');
+      if(!/painted by the archive/.test(stranger.disclosure))throw Error('The profile carries no portrait disclosure line');
       await evaluate(`(()=>{const now=new Date().toISOString();const buildKey=document.querySelector('article.album[data-build-key]').dataset.buildKey;const state={schema:'steward-creator-participation-local/v1',createdAt:now,updatedAt:now,participant:'smoke',claims:{[buildKey]:{claimId:'claim_smoke',buildKey,builderKey:'${photographed.builderKey}',buildLabel:'smoke',kind:'built',participant:'smoke',createdAt:now,deliveryStatus:'local'}},requests:{},kinshipTags:{},priorities:{},portraits:{}};localStorage.setItem('creators-participation-v1',JSON.stringify(state));return buildKey;})()`);
       await cdp('Page.reload',{});
-      await wait("!!document.getElementById('hero-portrait-pick')");
+      await wait("!!document.querySelector('#hero-portrait-pick:not([hidden])')");
       await evaluate("document.getElementById('hero-portrait-pick').click()");
       await wait("!!document.querySelector('#portrait-picker:not([hidden]) .pp-tile')");
       results.picker=await evaluate("({count:document.getElementById('pp-count').textContent,tiles:document.querySelectorAll('#portrait-picker .pp-tile').length,groups:document.querySelectorAll('#portrait-picker .grp').length,dialog:document.getElementById('portrait-picker').getAttribute('aria-modal')})");

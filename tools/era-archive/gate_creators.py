@@ -27,20 +27,39 @@ def main() -> int:
 
     data_paths = sorted(p for p in local_sha if p.startswith("threads/") and p.endswith(".json"))
     missing = [p for p in data_paths if p not in live_sha]
-    changed = [p for p in data_paths if p in live_sha and live_sha[p] != local_sha[p]]
+    differing = [p for p in data_paths if p in live_sha and live_sha[p] != local_sha[p]]
     gone = sorted(p for p in live_sha if p.startswith("threads/") and p not in local_sha)
 
-    # directory.json: identical apart from generatedAt
+    # The two admitted differences: generatedAt, and a builder's confirmed portrait choice
+    # (`portrait` on the record), which the coordinator publishes through this same lane.
+    # A thread whose bytes differ is fetched and compared with both stripped; anything
+    # else that moved is a data change and fails the gate as before.
+    def admitted(doc):
+        doc = dict(doc)
+        doc.pop("generatedAt", None)
+        doc.pop("portrait", None)
+        if isinstance(doc.get("builders"), list):
+            doc["builders"] = [{k: v for k, v in b.items() if k != "portrait"} for b in doc["builders"]]
+        return doc
+
+    changed = []
+    portrait_only = []
+    for p in differing:
+        t_local = json.loads((root / p).read_text(encoding="utf-8"))
+        t_live = json.loads(urllib.request.urlopen(LIVE + p, timeout=60).read())
+        (portrait_only if admitted(t_local) == admitted(t_live) else changed).append(p)
+
+    # directory.json: identical apart from generatedAt and the portrait choices
     d_local = json.loads((root / "directory.json").read_text(encoding="utf-8"))
     d_live = json.loads(urllib.request.urlopen(LIVE + "directory.json", timeout=60).read())
-    d_local.pop("generatedAt", None); d_live.pop("generatedAt", None)
-    dir_same = d_local == d_live
+    dir_same = admitted(d_local) == admitted(d_live)
 
     pres = sorted(p for p in local_sha if not p.startswith("threads/") and p != "directory.json"
                   and (p not in live_sha or live_sha[p] != local_sha[p]))
     print(f"threads: {len(data_paths)} local, {len(live_sha) - 1 - sum(1 for p in live_sha if not p.startswith('threads/'))} live")
-    print(f"  identical: {len(data_paths) - len(missing) - len(changed)}  changed: {len(changed)}  new: {len(missing)}  gone: {len(gone)}")
-    print(f"directory.json data identical (ignoring generatedAt): {dir_same}")
+    print(f"  identical: {len(data_paths) - len(missing) - len(changed) - len(portrait_only)}  changed: {len(changed)}  "
+          f"portrait only: {len(portrait_only)}  new: {len(missing)}  gone: {len(gone)}")
+    print(f"directory.json data identical (ignoring generatedAt and portrait): {dir_same}")
     print(f"presentation files that differ from live: {len(pres)} (expected: index.html copies, creators.css/js, stats/*)")
     for p in pres[:8]: print("   ", p)
     ok = not changed and not missing and not gone and dir_same

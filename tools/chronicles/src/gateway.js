@@ -106,6 +106,7 @@ const DEBOUNCE_MS = 90;
 // the race rather than closing the list under the pointer.
 const BLUR_CLOSE_MS = 150;
 const DIRECTORY_URL = '/valheim/creators/directory.json';
+const PORTRAITS_URL = '/chronicles/portraits.json';
 const PROFILE = (key) => '/valheim/creators/' + key + '/';
 
 // The one ranking definition the door has: the live filter, the live comparator, the
@@ -154,7 +155,11 @@ function initGateway() {
     failed: list.dataset.failed || '',
     empty: list.dataset.empty || '',
   };
-  const manifest = readManifest();
+  // The page inlines the default-library slice of portraits.json (the slot tiles); the
+  // full document, with the libraries a builder can have chosen from, is fetched once and
+  // only when the directory shows somebody has chosen.
+  let manifest = readManifest();
+  let manifestRequest = null;
 
   let builders = null;
   let loadFailed = false;
@@ -194,6 +199,12 @@ function initGateway() {
       })
       .then((doc) => {
         builders = doc.builders || [];
+        if (typeof StewardPortraits === 'object') {
+          const published = {};
+          for (const b of builders) if (b.portrait && b.portrait.tile) published[b.builderKey] = b.portrait;
+          StewardPortraits.setPublished(published);
+          if (Object.keys(published).length && !manifest.libraries) loadManifest();
+        }
         // Whatever was typed while the file was in flight is now answerable.
         if (input.value.trim().length >= MIN_CHARS) query();
       })
@@ -206,17 +217,37 @@ function initGateway() {
     return directoryRequest;
   }
 
+  function loadManifest() {
+    if (manifestRequest) return manifestRequest;
+    manifestRequest = fetch(PORTRAITS_URL, {credentials: 'omit'})
+      .then((response) => (response.ok ? response.json() : null))
+      .then((doc) => {
+        if (doc && Array.isArray(doc.tiles) && doc.tiles.length) {
+          manifest = doc;
+          if (isOpen && input.value.trim().length >= MIN_CHARS) query();
+        }
+      })
+      .catch(() => {});
+    return manifestRequest;
+  }
+
   // ----------------------------------------------------------------- rendering
 
+  function emblemFallback() {
+    const fallback = document.createElement('div');
+    fallback.className = 'portrait portrait-fallback';
+    fallback.setAttribute('aria-hidden', 'true');
+    fallback.innerHTML = EMBLEM;
+    return fallback;
+  }
+
+  // The face a row wears comes from the one resolver every archive surface uses
+  // (portraits.js, shipped beside this script): the builder's published choice when the
+  // coordinator confirmed one, else the slot tile, else the emblem.
   function portraitFor(builder) {
-    if (!manifest.count || !manifest.tiles.length) {
-      const fallback = document.createElement('div');
-      fallback.className = 'portrait portrait-fallback';
-      fallback.setAttribute('aria-hidden', 'true');
-      fallback.innerHTML = EMBLEM;
-      return fallback;
-    }
-    const tile = manifest.tiles[portraitIndex(builder.builderKey, manifest.count)];
+    const face = typeof StewardPortraits === 'object' ? StewardPortraits.portraitFor(builder, manifest) : null;
+    const src = face ? face.url('bust128') : null;
+    if (!src) return emblemFallback();
     const img = document.createElement('img');
     img.className = 'portrait';
     img.alt = '';
@@ -224,7 +255,8 @@ function initGateway() {
     img.height = 40;
     img.loading = 'lazy';
     img.decoding = 'async';
-    img.src = manifest.base + tile.thumb + '?v=' + tile.v;
+    img.onerror = () => img.replaceWith(emblemFallback());
+    img.src = src;
     return img;
   }
 

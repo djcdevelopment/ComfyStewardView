@@ -21,6 +21,32 @@ HEX32 = re.compile(r"^[0-9a-f]{32}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 
+PORTRAIT_TILE = re.compile(r"^[a-z0-9]+/[a-z0-9_]+$")
+PORTRAIT_TAKE = re.compile(r"^s[0-9]{1,3}$")
+
+
+def sanitize_confirmed_portraits(items):
+    """Coordinator-confirmed portrait choices, as builderKey -> {tile, take}: the address of
+    a tile in the portrait manifest and the take's id, nothing else. The sha, the handle,
+    the record id and the timestamps stay in the coordinator's file; `v` is the manifest's
+    to say, so a re-cut never leaves a stale buster in a builder's record."""
+    kept = {}
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        builder_key = item.get("builderKey")
+        tile = item.get("tile")
+        take = item.get("take")
+        if not isinstance(builder_key, str) or not HEX32.match(builder_key):
+            continue
+        if not isinstance(tile, str) or not PORTRAIT_TILE.match(tile):
+            continue
+        if take is not None and not (isinstance(take, str) and PORTRAIT_TAKE.match(take)):
+            continue
+        kept[builder_key] = {"tile": tile, "take": take}
+    return kept
+
+
 def sanitize_confirmed_tags(items):
     """Coordinator-confirmed kinship tags, stripped to what a public page may carry.
 
@@ -208,6 +234,16 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
             return
         save(destination / "participation.json", participation)
 
+    # The portrait a builder chose and the coordinator confirmed rides the builder's public
+    # record (directory.json and the thread), where every face resolver already looks.
+    confirmed_portraits = {}
+    if analysis_root is not None:
+        participation_file = Path(analysis_root) / "analysis" / "participation.json"
+        if participation_file.exists():
+            source = load(participation_file)
+            if isinstance(source, dict):
+                confirmed_portraits = sanitize_confirmed_portraits(source.get("confirmedPortraits"))
+
     builds={b["buildKey"]:b for b in document["builds"]}
     directory=[]
     template=(REPO/"tools/era-archive/web/index.html").read_text(encoding="utf-8")
@@ -257,6 +293,8 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
             pieces=builder_pieces,
             tier=classify_volume_tier(builder_pieces),
         )
+        if builder["builderKey"] in confirmed_portraits:
+            record["portrait"] = dict(confirmed_portraits[builder["builderKey"]])
         directory.append(record)
         save(destination/"threads"/(builder["builderKey"]+".json"),{**record,"eras":[{"era":e,"albums":sorted(bs,key=lambda b:(-len(b["photos"]),-b["pieces"],b["buildKey"]))} for e,bs in sorted(eras.items(),reverse=True)]})
         page=destination/builder["builderKey"]/"index.html";page.parent.mkdir(parents=True,exist_ok=True)

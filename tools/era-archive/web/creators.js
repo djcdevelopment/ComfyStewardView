@@ -668,6 +668,9 @@ const StewardParticipation = {
       requests: Object.values(state.requests || {}),
       kinshipTags: Object.values(state.kinshipTags || {}),
       priorities: Object.values(state.priorities || {}),
+      // The portrait each profile wears by this device's choice, reverts included: a
+      // revert is a line the coordinator confirms, not a gap they have to infer.
+      portraits: Object.values(state.portraits || {}),
     };
     if (kindFilter === 'claim') payload.claims = payload.claims.filter((c) => c.buildKey === buildKey);
     if (kindFilter === 'request' && buildKey) payload.requests = payload.requests.filter((r) => r.buildKey === buildKey);
@@ -693,6 +696,7 @@ const StewardParticipation = {
       requests: StewardParticipation.requestsForBuild(state, buildKey),
       kinshipTags: StewardParticipation.tagsForBuild(state, buildKey),
       priority: StewardParticipation.priorityForBuild(state, buildKey),
+      portrait: StewardParticipation.portraitForBuilder(state, builderKey),
     };
   },
 };
@@ -2272,8 +2276,7 @@ const initCreatorsPage = async () => {
     const standing = StewardParticipation.standingForBuilder(state, thread);
     readPortraits().then((manifest) => {
       const libraries = !!(manifest && manifest.libraries && typeof manifest.libraries === 'object');
-      const ready = standing && libraries && typeof StewardPortraitPicker === 'object';
-      if (!ready) {
+      if (!libraries) {
         if (actions) actions.hidden = true;
         return;
       }
@@ -2286,11 +2289,18 @@ const initCreatorsPage = async () => {
         pick.onclick = () => StewardPortraitPicker.open();
         const note = node('p', '', 'muted hero-portrait-note');
         note.id = 'hero-portrait-note';
-        actions.append(pick, note);
+        // The one disclosure the page makes about the faces on it (FR-8), for every
+        // visitor: the portraits are painted, and the choice is the builder's.
+        const disclosure = node('p', "Portraits are painted by the archive's own models; builders choose theirs.", 'hero-portrait-disclosure');
+        disclosure.id = 'hero-portrait-disclosure';
+        actions.append(pick, note, disclosure);
         avatar.insertAdjacentElement('afterend', actions);
       }
       actions.hidden = false;
+      const ready = !!standing && typeof StewardPortraitPicker === 'object';
+      $('hero-portrait-pick').hidden = !ready;
       renderPortraitNote();
+      if (!ready) return;
       if (!pickerMounted) {
         const host = node('div');
         host.id = 'portrait-picker-host';
@@ -2306,13 +2316,23 @@ const initCreatorsPage = async () => {
     });
   }
 
+  // The line under the avatar once a choice is recorded: where it lives, and the one
+  // action that gets it to the coordinator -- the same copied payload every claim rides.
   function renderPortraitNote() {
     const note = $('hero-portrait-note');
     if (!note || !thread) return;
     const choice = StewardParticipation.portraitForBuilder(state, thread.builderKey);
-    const chosen = !!(choice && choice.tile);
-    note.textContent = chosen ? 'Portrait recorded on this device' : '';
-    note.hidden = !chosen;
+    const recorded = !!choice;
+    note.replaceChildren();
+    if (recorded) {
+      note.append(choice.tile ? 'Portrait recorded on this device. ' : "Back to the archive's pick, recorded on this device. ");
+      const copy = node('button', 'Copy your payload', 'kin-open hero-portrait-copy');
+      copy.id = 'hero-portrait-copy';
+      copy.type = 'button';
+      copy.onclick = () => copyActivityPayload(exportPayload());
+      note.append(copy);
+    }
+    note.hidden = !recorded;
   }
 
   function onPortraitChosen(choice) {
@@ -2753,6 +2773,19 @@ const initCreatorsPage = async () => {
     wireGlobalHotkey();
   }
 
+  // The coordinator's confirmed choices ride the builders' public records; every face on
+  // the page resolves through them once they are known. Merged, because the thread lands
+  // before the directory and each names a different set of builders.
+  function publishPortraits(records) {
+    if (typeof StewardPortraits !== 'object') return;
+    const map = {};
+    for (const record of records || []) {
+      if (record && record.builderKey && record.portrait && record.portrait.tile) map[record.builderKey] = record.portrait;
+    }
+    StewardPortraits.setPublished(map, {merge: true});
+    if (portraitManifest && Object.keys(map).length) repaintPortraits();
+  }
+
   function bootstrap() {
     wireCommonEvents();
     updateParticipantSnapshot();
@@ -2765,6 +2798,7 @@ const initCreatorsPage = async () => {
       read(`threads/${builderKey}.json`)
         .then((entry) => {
           thread = entry;
+          publishPortraits([entry]);
           renderThread();
         })
         .catch((error) => {
@@ -2774,6 +2808,7 @@ const initCreatorsPage = async () => {
         if (!doc) return;
         directory = doc;
         buildersByKey = new Map(directory.builders.map((b) => [b.builderKey, b]));
+        publishPortraits(directory.builders);
         hydrateCredits();
         // Same arrival, second surface: the pair view holds names of its own and reads
         // them through ctx.builderFor, which now answers.
