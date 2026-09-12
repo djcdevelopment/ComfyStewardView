@@ -41,6 +41,8 @@ public final class ScenePackage {
     private static final double MAX_PROXY_VOLUME = 2_000.0;
     private static final double HOME_ALL_MAX_SPAN = 600.0;
     private static final double HOME_CELL_METERS = 64.0;
+    private static final String WISP_STONE_COLOR = "#9e9e9e";
+    private static final String WISP_GLOW_COLOR = "#69d5ff";
     private static final Map<String, String> FAMILY_COLORS = familyColors();
 
     private final SnapshotRepository snapshots;
@@ -197,7 +199,8 @@ public final class ScenePackage {
             for (Visual visual : group.visuals) {
                 double[] localCenter = localCenter(visual.center, origin);
                 putModel(instanceBuffer, mirrorX(visual.linear), localCenter);
-                for (float channel : hexColor(visual.color)) instanceBuffer.putFloat(channel);
+                boolean emissive = "emissive-particle".equals(visual.surfaceClass);
+                for (float channel : hexColor(visual.color, emissive)) instanceBuffer.putFloat(channel);
                 if (identityBuffer != null) {
                     if (authoring && (visual.zdoIndex < 0 || visual.zdoIndex > 0xffff_ffffL)) {
                         throw new IllegalStateException("Creator scene ZDO index exceeds uint32");
@@ -610,6 +613,7 @@ public final class ScenePackage {
         if (piece.representation != null && "runtime-compound".equals(piece.representation.strategy)) {
             return Math.max(1, primitives.getOrDefault(piece.prefabHash, List.of()).size());
         }
+        if (isWispFountain(piece)) return 2;
         return 1;
     }
 
@@ -644,6 +648,7 @@ public final class ScenePackage {
             return List.of(marker(piece, "unresolved", "structure", true,
                 representation.markerAxis, FAMILY_COLORS.get("unknown"), Kind.PIVOT));
         }
+        if (isWispFountain(piece)) return wispFountain(piece, representation, coverage);
         return envelope(piece, representation, coverage);
     }
 
@@ -672,6 +677,7 @@ public final class ScenePackage {
             return List.of(marker(piece, "unresolved", "structure", true,
                 representation.markerAxis, FAMILY_COLORS.get("unknown"), Kind.PIVOT));
         }
+        if (isWispFountain(piece)) return wispFountain(piece, representation, coverage);
         return envelope(piece, representation, coverage);
     }
 
@@ -697,12 +703,29 @@ public final class ScenePackage {
         String group = representation != null && "structure".equals(representation.semanticClass)
             ? piece.prefabName : piece.family;
         Kind quality = "family_median".equals(piece.geometrySource) ? Kind.ESTIMATED : Kind.MEASURED;
+        boolean wispFountain = isWispFountain(piece);
         return List.of(new Visual(piece.zdoIndex, group, "structure", true,
-            color(piece.family), linear, center, quality,
+            wispFountain ? WISP_STONE_COLOR : color(piece.family), linear, center, quality,
             piece.primitiveKind == null ? primitiveKind(piece.prefabName, piece.family, quality)
                 : normalizePrimitiveKind(piece.primitiveKind),
             piece.confidence == null ? confidence(piece.geometrySource) : piece.confidence,
-            piece.surfaceClass == null ? surfaceClass(piece.family) : piece.surfaceClass));
+            wispFountain ? "stone" :
+                (piece.surfaceClass == null ? surfaceClass(piece.family) : piece.surfaceClass)));
+    }
+
+    private static List<Visual> wispFountain(Piece piece, Representation representation,
+            Coverage coverage) {
+        List<Visual> envelope = envelope(piece, representation, coverage);
+        Visual stone = envelope.get(0);
+        if (!"wisp-fountain".equals(stone.primitiveKind)) return envelope;
+        Visual glow = new Visual(piece.zdoIndex, stone.group, "effect", true,
+            WISP_GLOW_COLOR, stone.linear, stone.center, stone.kind, "wisp-glow",
+            stone.confidence, "emissive-particle");
+        return List.of(stone, glow);
+    }
+
+    private static boolean isWispFountain(Piece piece) {
+        return "piece_wisplure".equalsIgnoreCase(piece.prefabName);
     }
 
     private static Visual marker(Piece piece, String group, String semanticClass,
@@ -800,7 +823,7 @@ public final class ScenePackage {
     private static String normalizePrimitiveKind(String value) {
         return Set.of("box", "sloped-panel-26", "sloped-panel-45", "triangular-prism",
             "stepped-stair", "cylinder-12", "wisp-fountain", "standing-brazier",
-            "arch-12", "ring-12", "plane-double-sided")
+            "wisp-glow", "arch-12", "ring-12", "plane-double-sided")
             .contains(value) ? value : "box";
     }
 
@@ -830,6 +853,7 @@ public final class ScenePackage {
             case "triangular-prism" -> 8;
             case "cylinder-12" -> 48;
             case "wisp-fountain", "standing-brazier" -> 96;
+            case "wisp-glow" -> 48;
             case "ring-12", "arch-12" -> 96;
             case "stepped-stair" -> 60;
             case "plane-double-sided" -> 4;
@@ -1048,12 +1072,12 @@ public final class ScenePackage {
         return FAMILY_COLORS.getOrDefault(family, FAMILY_COLORS.get("misc"));
     }
 
-    private static float[] hexColor(String value) {
+    private static float[] hexColor(String value, boolean emissive) {
         return new float[] {
             Integer.parseInt(value.substring(1, 3), 16) / 255f,
             Integer.parseInt(value.substring(3, 5), 16) / 255f,
             Integer.parseInt(value.substring(5, 7), 16) / 255f,
-            1f
+            emissive ? 2f : 1f
         };
     }
 

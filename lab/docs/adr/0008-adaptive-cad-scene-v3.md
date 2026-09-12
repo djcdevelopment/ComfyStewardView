@@ -27,7 +27,7 @@ package.
 Public-cache schema 5 stores a primitive kind, surface class, and confidence on each exact prefab
 name/hash geometry row. The approved procedural vocabulary is `box`, `sloped-panel-26`,
 `sloped-panel-45`, `triangular-prism`, `stepped-stair`, `cylinder-12`, `wisp-fountain`,
-`standing-brazier`, `arch-12`, `ring-12`, and `plane-double-sided`. Runtime substring matching is
+`standing-brazier`, `wisp-glow`, `arch-12`, `ring-12`, and `plane-double-sided`. Runtime substring matching is
 forbidden. Audited compound primitives may carry the same vocabulary in
 `steward-prefab-representations/v2`.
 

@@ -351,6 +351,22 @@ function proceduralMesh(kind) {
     frustum(-.30,.30,.14,.14,.48,.48);
     frustum(.30,.50,.50,.50,.44,.44);
   };
+  const wispGlow = () => {
+    // One deterministic representative of the runtime wisps: a narrow curling tail ending
+    // in a faceted blue mote just above the stone tip. Saved orbit phase is unavailable.
+    frustum(.42,.53,.025,.025,.065,.055,[.13,.03],[.20,.05]);
+    const center=[.23,.57,.06],rx=.10,ry=.08,rz=.085,sides=8,equator=[];
+    for(let i=0;i<sides;i++){
+      const angle=Math.PI/8+i*Math.PI*2/sides;
+      equator.push([center[0]+Math.cos(angle)*rx,center[1],center[2]+Math.sin(angle)*rz]);
+    }
+    const top=[center[0],center[1]+ry,center[2]],bottom=[center[0],center[1]-ry,center[2]];
+    for(let i=0;i<sides;i++){
+      const next=(i+1)%sides;
+      tri(top,equator[next],equator[i]);
+      tri(bottom,equator[i],equator[next]);
+    }
+  };
   const ring = (arch=false) => {
     const sides=arch?12:16, start=arch?0:-Math.PI, span=arch?Math.PI:Math.PI*2;
     for(let i=0;i<sides;i++){
@@ -366,6 +382,7 @@ function proceduralMesh(kind) {
   else if (kind === 'cylinder-12') cylinder();
   else if (kind === 'wisp-fountain') wispFountain();
   else if (kind === 'standing-brazier') standingBrazier();
+  else if (kind === 'wisp-glow') wispGlow();
   else if (kind === 'ring-12') ring(false);
   else if (kind === 'arch-12') ring(true);
   else if (kind === 'stepped-stair') for(let i=0;i<5;i++) box([-.5+i*.2,-.5,-.5],[ -.3+i*.2,-.3+i*.2,.5]);
@@ -481,7 +498,7 @@ async function main() {
       @location(4) m2:vec4f, @location(5) m3:vec4f, @location(6) color:vec4f
     }
     struct SolidOut { @builtin(position) position:vec4f, @location(0) color:vec4f,
-      @location(1) lightPosition:vec4f }
+      @location(1) lightPosition:vec4f, @location(2) emissive:f32 }
     fn linearToSrgb(value:vec3f)->vec3f { return pow(max(value,vec3f(0)),vec3f(1.0/2.2)); }
     @vertex fn solidVS(input:SolidIn)->SolidOut {
       let world=input.m0*input.position.x+input.m1*input.position.y+input.m2*input.position.z+input.m3;
@@ -489,17 +506,19 @@ async function main() {
       let normal=normalize(direction);
       let diffuse=0.28+0.72*max(dot(normal,vec3f(-.4629,.8230,.3292)),0);
       let horizon=0.9+0.1*max(normal.y,0);
+      let emissive=select(0.0,1.0,input.color.a>1.5);
       var out:SolidOut; out.position=camera.viewProjection*world;
       let linearColor=pow(input.color.rgb,vec3f(2.2));
-      out.color=vec4f(linearToSrgb(linearColor*diffuse*horizon),1);
-      out.lightPosition=camera.lightViewProjection*world; return out;
+      out.color=vec4f(linearToSrgb(linearColor*mix(diffuse*horizon,1.0,emissive)),1);
+      out.lightPosition=camera.lightViewProjection*world; out.emissive=emissive; return out;
     }
     @fragment fn solidFS(input:SolidOut)->@location(0) vec4f {
       let projected=input.lightPosition.xyz/input.lightPosition.w;
       let uv=vec2f(projected.x*.5+.5,projected.y*-.5+.5);
       let inMap=all(uv>=vec2f(0))&&all(uv<=vec2f(1))&&projected.z>=0&&projected.z<=1;
       let shadowValue=textureSampleCompare(shadowTexture,shadowSampler,uv,projected.z-.0015);
-      let visibility=${shadowMapSize > 0 ? 'select(1.0,0.58,inMap && shadowValue<.5)' : '1.0'};
+      let shadedVisibility=${shadowMapSize > 0 ? 'select(1.0,0.58,inMap && shadowValue<.5)' : '1.0'};
+      let visibility=mix(shadedVisibility,1.0,input.emissive);
       return vec4f(input.color.rgb*visibility,input.color.a);
     }
     struct ShadowIn { @location(0) position:vec3f,

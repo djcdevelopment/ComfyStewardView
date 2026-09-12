@@ -1,5 +1,6 @@
 package dev.steward.lab;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.BeforeAll;
@@ -17,6 +18,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -281,6 +283,38 @@ class ScenePackageTest {
         assertEquals("cylinder-12", ScenePackage.lightPrimitive("piece_groundtorch_wood"));
         assertEquals("box", ScenePackage.lightPrimitive("piece_dvergr_lantern"));
         assertEquals("box", ScenePackage.lightPrimitive(null));
+    }
+
+    @Test void rendersWispFountainAsGreyStoneWithOneBlueRepresentativeWisp() throws Exception {
+        Path cache = temporary.resolve("wisp-fountain.duckdb");
+        createFixture(cache, 0);
+        try (var connection = DriverManager.getConnection("jdbc:duckdb:" + cache);
+             var statement = connection.createStatement()) {
+            statement.executeUpdate("INSERT INTO prefab_geometry VALUES " +
+                "(4,'piece_wisplure','light','mesh',1.63,4.99,1.89,0,2.495,0)");
+            statement.executeUpdate("INSERT INTO zdo VALUES " +
+                "(7,20,1,0,1,'piece_wisplure',4,'BUILDING','mistlands',false,0,0,0)");
+        }
+        ObjectMapper mapper = new ObjectMapper();
+        ScenePackage.Result result = new ScenePackage(
+            new SnapshotRepository(cache, new LensRegistry(), mapper, true), mapper).buildV3(
+                7, "build-density", -10, 10, -10, 10, List.of(), false, "test",
+                "candidate", false, false, null);
+
+        assertEquals(5, result.pieces());
+        assertEquals(7, result.renderInstances());
+        JsonNode stone = null, glow = null;
+        for (JsonNode group : result.manifest().withArray("drawGroups")) {
+            if ("wisp-fountain".equals(group.path("primitiveKind").asText())) stone = group;
+            if ("wisp-glow".equals(group.path("primitiveKind").asText())) glow = group;
+        }
+        assertNotNull(stone);
+        assertNotNull(glow);
+        assertEquals("#9e9e9e", stone.path("color").asText());
+        assertEquals("stone", stone.path("surfaceClass").asText());
+        assertEquals("#69d5ff", glow.path("color").asText());
+        assertEquals("emissive-particle", glow.path("surfaceClass").asText());
+        assertEquals(1, glow.path("pieces").asInt());
     }
 
     @Test void suppliesAUsefulDenseHomeFrameForWidelySeparatedElevation() throws Exception {

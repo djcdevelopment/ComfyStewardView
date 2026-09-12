@@ -255,7 +255,7 @@ class PublicCacheExporterTest {
         root.put("schema", "steward-prefab-representations/v2").put("gameVersion", "test");
         for (String kind : new String[]{"box", "sloped-panel-26", "sloped-panel-45",
                 "triangular-prism", "stepped-stair", "cylinder-12", "wisp-fountain",
-                "standing-brazier", "arch-12", "ring-12", "plane-double-sided"}) {
+                "standing-brazier", "wisp-glow", "arch-12", "ring-12", "plane-double-sided"}) {
             root.withArray("proceduralVocabulary").add(kind);
         }
         ObjectNode compound = root.withArray("representations").addObject();
