@@ -253,6 +253,11 @@ try{
       await wait("!!document.querySelector('#portrait-picker:not([hidden]) .pp-tile')");
       results.picker=await evaluate("({count:document.getElementById('pp-count').textContent,dialog:document.getElementById('portrait-picker').getAttribute('aria-modal')})");
       if(results.picker.count!=='96 portraits')throw Error('Picker did not open on 96 portraits: '+results.picker.count);
+      // The grid's faces are real files, not a pattern with {take} left in it: the first
+      // twelve tiles are on screen and must decode.
+      await wait("[...document.querySelectorAll('#portrait-picker .pp-tile img')].slice(0,12).every(i=>i.complete)");
+      results.picker.gridBroken=await evaluate("[...document.querySelectorAll('#portrait-picker .pp-tile img')].slice(0,12).filter(i=>!i.naturalWidth).map(i=>i.getAttribute('src'))");
+      if(results.picker.gridBroken.length)throw Error('Picker grid tiles do not load: '+JSON.stringify(results.picker.gridBroken));
       if(results.picker.dialog!=='true')throw Error('Picker drawer is not a modal dialog');
       if(await evaluate("/character|archetype|seed|gender/i.test(document.getElementById('portrait-picker').innerText)"))throw Error('The picker says a banned word');
       await evaluate("[...document.querySelectorAll('#portrait-picker .ck')].find(b=>b.dataset.k==='role'&&b.dataset.v==='carpenter').click()");

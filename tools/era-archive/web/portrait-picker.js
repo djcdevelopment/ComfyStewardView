@@ -90,7 +90,10 @@
     const takeId = take && take.id;
     const chosen = P.tileById(state.manifest, P.qualifiedId(tile));
     if (!chosen) return null;
-    const real = takeId ? P.takeOf(chosen, takeId) : null;
+    // No take named means the first picked take -- the grid shows each portrait by it. A
+    // tile's cuts are one pattern with {take} in it, so a take is needed to spell a URL;
+    // takeOf answers the first when none is named and null for a tile without takes.
+    const real = P.takeOf(chosen, takeId);
     // Resolve through the same cut logic the page uses, for this specific take.
     const cuts = P.cutsOf(chosen, real);
     const base = state.manifest.base || '/chronicles/img/portraits/';
