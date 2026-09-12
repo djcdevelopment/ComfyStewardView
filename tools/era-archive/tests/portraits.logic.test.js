@@ -111,7 +111,7 @@ test('a published choice on the record is honoured below the device, above the s
   const record = {builderKey: TUGCOW, portrait: {tile: 'viking96/carpenter_f_artisan', take: 's4'}};
   assert.equal(P.portraitFor(record, manifest).take.id, 's4');
   P.setChoices({[TUGCOW]: {tile: null}});
-  assert.equal(P.portraitFor(record, manifest).tile.id, 'p47', 'a revert on this device overrides the published choice');
+  assert.equal(P.portraitFor(record, manifest).take.id, 's4', "a revert withdraws this device's word; the published face shows again");
   P.setChoices({});
   assert.equal(P.portraitFor({builderKey: TUGCOW, portrait: {tile: 'viking96/nope'}}, manifest).tile.id, 'p47');
 });
@@ -137,9 +137,11 @@ test('the published table answers below the device and above the slot, and merge
   P.setPublished({[OTHER]: {tile: 'slate48/p05', take: null}}, {merge: true});
   assert.equal(P.portraitFor(TUGCOW, manifest).take.id, 's1');
   assert.equal(P.portraitFor(OTHER, manifest).tile.id, 'p05');
-  // The device's own word still comes first, a revert included.
+  // The device's own word still comes first; a revert steps aside for the published face.
+  P.setChoices({[TUGCOW]: {tile: 'slate48/p09', take: null}});
+  assert.equal(P.portraitFor(TUGCOW, manifest).tile.id, 'p09');
   P.setChoices({[TUGCOW]: {tile: null}});
-  assert.equal(P.portraitFor(TUGCOW, manifest).tile.id, 'p47');
+  assert.equal(P.portraitFor(TUGCOW, manifest).take.id, 's1');
   P.setChoices({});
   // A published entry with no tile, or a bad key, is ignored; a replace without merge clears.
   P.setPublished({[TUGCOW]: {tile: null}, nonsense: {tile: 'viking96/carpenter_f_artisan'}});

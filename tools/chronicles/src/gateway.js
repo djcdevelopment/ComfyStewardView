@@ -197,13 +197,15 @@ function initGateway() {
         if (!response.ok) throw new Error('directory answered ' + response.status);
         return response.json();
       })
-      .then((doc) => {
+      .then(async (doc) => {
         builders = doc.builders || [];
         if (typeof StewardPortraits === 'object') {
           const published = {};
           for (const b of builders) if (b.portrait && b.portrait.tile) published[b.builderKey] = b.portrait;
           StewardPortraits.setPublished(published);
-          if (Object.keys(published).length && !manifest.libraries) loadManifest();
+          // The rows draw the builders' published faces; the first render waits for the
+          // document that names them rather than painting emblems and repainting.
+          if (Object.keys(published).length && !manifest.libraries) await loadManifest();
         }
         // Whatever was typed while the file was in flight is now answerable.
         if (input.value.trim().length >= MIN_CHARS) query();
@@ -490,8 +492,11 @@ function initGateway() {
 
   // ---------------------------------------------------------------- first draw
 
-  if ('requestIdleCallback' in window) window.requestIdleCallback(() => loadDirectory());
-  else window.setTimeout(loadDirectory, 250);
+  // With no tiles inlined (slate retired), the portrait document is the other half of
+  // the first paint, so it is fetched on the same idle tick as the directory.
+  const warm = () => { loadDirectory(); if (!manifest.count && !manifest.libraries) loadManifest(); };
+  if ('requestIdleCallback' in window) window.requestIdleCallback(warm);
+  else window.setTimeout(warm, 250);
 
   const deepLink = (new URLSearchParams(location.search).get('q') || '').trim();
   if (deepLink) {

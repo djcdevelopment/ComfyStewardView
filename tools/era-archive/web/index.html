@@ -14,12 +14,11 @@
     <meta property="og:description" content="Search the community archive for your own builds across every era.">
     <meta name="twitter:card" content="summary">
     <!-- /per-thread head -->
-    <link rel="stylesheet" href="./creators.css?v=11">
+    <link rel="stylesheet" href="./creators.css?v=12">
     <script src="./creators.js" defer></script>
     <script src="./portraits.js" defer></script>
     <script src="./kin-tree.js" defer></script>
     <script src="./pair.js" defer></script>
-    <script src="./portrait-picker.js" defer></script>
   </head>
   <body>
     <header>
@@ -51,7 +50,7 @@
            the eras and the counters read without labels, the tree that used to be a
            link here is drawn on the page, and the manifest link waits in the notes. -->
       <section id="builder-hero" class="builder-hero" hidden aria-labelledby="title">
-        <div id="hero-avatar" class="hero-avatar"></div>
+        <a id="hero-avatar" class="hero-avatar"></a>
         <div class="hero-text">
           <p id="hero-aliases" class="hero-aliases" hidden></p>
         </div>
@@ -152,6 +151,7 @@
       <details id="participation-details" class="participation-block">
         <summary>Your participation on this device</summary>
         <p id="participation-summary" role="status">No local participation recorded yet.</p>
+        <p class="muted">Your portrait and your opt-out choices live on your own page: open your builder page and click the portrait.</p>
         <p id="global-participation" class="muted" hidden></p>
         <label>Volunteer handle
           <input id="participant-handle" type="text" maxlength="80" placeholder="Name this volunteer uses across claims">

@@ -156,7 +156,7 @@ class ChroniclerStyleTests(unittest.TestCase):
         """Red on this branch alone -- web/pair.js is the other builder's file this
         iteration. The lint is the same one every other surface gets, and it has to exist
         before the file does or the file lands unlinted."""
-        for name in ("pair.js", "kin-tree.js", "portraits.js", "portrait-picker.js"):
+        for name in ("pair.js", "kin-tree.js", "portraits.js", "portrait-picker.js", "profile.js"):
             script = WEB / name
             self.assertTrue(script.exists(), f"web/{name} has not landed yet")
             source = script.read_text(encoding="utf-8").casefold()
@@ -164,7 +164,7 @@ class ChroniclerStyleTests(unittest.TestCase):
                 self.assertNotIn(banned, source, f"{name} says '{banned}'")
         # The picker and the resolver speak to visitors about portraits and takes; the
         # words the naming note bans outright are not in them even as identifiers.
-        for name in ("portraits.js", "portrait-picker.js"):
+        for name in ("portraits.js", "portrait-picker.js", "profile.js", "profile.html"):
             source = (WEB / name).read_text(encoding="utf-8").casefold()
             for banned in ("seed", "gender"):
                 self.assertNotIn(banned, source, f"{name} says '{banned}'")
@@ -181,28 +181,28 @@ class ChroniclerStyleTests(unittest.TestCase):
         for name, source in (("creators.js", creators), ("pair.js", pair), ("kin-tree.js", tree)):
             self.assertIn("StewardPortraits.portraitFor(", source, f"{name} does not ask the resolver")
             self.assertNotIn("'/chronicles/img/portraits/'}${", source, f"{name} still builds a portrait URL")
-        # The device ledger's choices reach the resolver, and the picker is mounted only
-        # for a visitor with standing on the profile and a manifest with libraries.
+        # The device ledger's choices reach the resolver before the first face is painted;
+        # the picker itself lives on the builder's own page (profile.js), and the builder
+        # page's avatar is the door to it.
         self.assertIn("StewardPortraits.setChoices(state.portraits", creators)
-        self.assertIn("standingForBuilder(state, thread)", creators)
-        self.assertIn("StewardPortraitPicker.mount(", creators)
         self.assertIn("portraits: {},", creators)
         self.assertIn("next.portraits = parsed.portraits", creators)
         self.assertIn("state.portraits = fresh.portraits", creators)
-        # The choice is recorded on this device, rides the copied payload like a claim
-        # (S3), and the published choices reach the resolver as the records land.
-        self.assertIn("'Portrait recorded on this device", creators)
         self.assertIn("portraits: Object.values(state.portraits", creators)
         self.assertIn("portrait: StewardParticipation.portraitForBuilder(state, builderKey)", creators)
         self.assertIn("StewardPortraits.setPublished(", creators)
-        self.assertIn("'Copy your payload'", creators)
+        self.assertIn("'Your profile'", creators)
         # FR-8: the one disclosure the profile makes about the faces on it, for every visitor.
         self.assertIn("Portraits are painted by the archive's own models; builders choose theirs.", creators)
+        profile = (WEB / "profile.js").read_text(encoding="utf-8")
+        self.assertIn("standingForBuilder(state, thread)", profile)
+        self.assertIn("StewardPortraitPicker.mount(", profile)
+        self.assertIn("'Portrait recorded on this device", profile)
         kinship = (WEB / "kinship.js").read_text(encoding="utf-8")
         self.assertIn("StewardPortraits.setPublished(", kinship)
         gallery_src = (Path(__file__).resolve().parents[1] / "gallery.py").read_text(encoding="utf-8")
-        for name in ("portraits.js", "portrait-picker.js"):
-            self.assertIn(f'"{name}"', gallery_src, f"gallery.py does not copy {name}")
+        for name in ("portraits.js", "portrait-picker.js", "profile.js", "profile.html"):
+            self.assertIn(f'"{name}"', gallery_src, f"gallery.py does not ship {name}")
 
     def test_the_pair_view_folds_its_detail_under_a_native_disclosure(self):
         # Photo, status line and the shared-builds ledger stay in view; laurels, hearth,
@@ -267,7 +267,7 @@ class ChroniclerStyleTests(unittest.TestCase):
 
     def test_stylesheet_href_is_cache_busted_and_still_rewritable(self):
         for name, content in (("index.html", self.index), ("stats.html", self.stats)):
-            self.assertIn('href="./creators.css?v=11"', content, name)
+            self.assertIn('href="./creators.css?v=12"', content, name)
         self.assertIn('src="./creators.js"', self.index)
         # pair.js and kin-tree.js ride beside creators.js and wear the same cache policy it
         # does: unversioned here, where the stylesheet carries the bust for the whole shell.
@@ -277,7 +277,9 @@ class ChroniclerStyleTests(unittest.TestCase):
         # drawer; both ride the same policy, and portraits.js loads before the scripts
         # that draw faces so the deferred order is the dependency order.
         self.assertIn('src="./portraits.js"', self.index)
-        self.assertIn('src="./portrait-picker.js"', self.index)
+        # The picker lives on the builder's own page (profile.html); the thread page no
+        # longer loads it.
+        self.assertNotIn('src="./portrait-picker.js"', self.index)
         self.assertLess(self.index.index('src="./portraits.js"'), self.index.index('src="./kin-tree.js"'))
         self.assertLess(self.index.index('src="./portraits.js"'), self.index.index('src="./pair.js"'))
 
@@ -287,11 +289,11 @@ class ChroniclerStyleTests(unittest.TestCase):
         # and #participant-handle, which the kinship shell does not have, so it has to
         # stand down here rather than throw on the first missing node.
         js = (WEB / "creators.js").read_text(encoding="utf-8")
-        self.assertIn("dataset.stewardPage !== 'kinship'", js)
+        self.assertIn("!['kinship', 'profile'].includes(document.documentElement.dataset.stewardPage)", js)
         self.assertIn('<html lang="en" data-steward-page="kinship">', self.kinship)
-        self.assertIn('src="./creators.js?v=11"', self.kinship)
-        self.assertIn('src="./portraits.js?v=11"', self.kinship)
-        self.assertIn('src="./kin-tree.js?v=11"', self.kinship)
+        self.assertIn('src="./creators.js?v=12"', self.kinship)
+        self.assertIn('src="./portraits.js?v=12"', self.kinship)
+        self.assertIn('src="./kin-tree.js?v=12"', self.kinship)
         self.assertIn('src="./kinship.js"', self.kinship)
         self.assertNotIn("data-steward-page", self.index,
                          "the directory shell is the default route, not a named one")
@@ -313,7 +315,7 @@ class ChroniclerStyleTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             receipt = project(document, dest, "https://example.invalid/world")
             thread = (dest / key / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=11"', thread)
+            self.assertIn('href="../creators.css?v=12"', thread)
             self.assertIn('src="../creators.js"', thread)
             # The pair view's script and the tree's get the same climb. A thread page is
             # one directory down, so a surviving "./pair.js would 404 on every profile.
@@ -325,7 +327,7 @@ class ChroniclerStyleTests(unittest.TestCase):
             self.assertIn("pair.js", paths, "the projection does not ship the pair view's script")
             self.assertIn("kin-tree.js", paths, "the projection does not ship the tree's script")
             stats = (dest / "stats" / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=11"', stats)
+            self.assertIn('href="../creators.css?v=12"', stats)
 
 
 if __name__ == "__main__":

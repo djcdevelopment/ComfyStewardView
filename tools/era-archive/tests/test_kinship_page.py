@@ -93,9 +93,9 @@ class KinshipProjectionTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             receipt = project(shared_document(), dest, "https://example.invalid/world")
             page = (dest / "kinship" / "index.html").read_text(encoding="utf-8")
-            for marker in ('href="../creators.css?v=11"', 'src="../creators.js?v=11"',
-                           'src="../portraits.js?v=11"',
-                           'src="../kin-tree.js?v=11"', 'src="../kinship.js"',
+            for marker in ('href="../creators.css?v=12"', 'src="../creators.js?v=12"',
+                           'src="../portraits.js?v=12"',
+                           'src="../kin-tree.js?v=12"', 'src="../kinship.js"',
                            'data-steward-page="kinship"', 'id="kin-tree"'):
                 self.assertIn(marker, page, f"projected kinship page lost {marker}")
             # The rewrite must not leave a same-directory link behind for any script.
@@ -168,7 +168,7 @@ class KinshipShellTests(unittest.TestCase):
         self.assertIn("kin-pair-link", self.script)
 
     def test_creators_js_stands_down_here_but_still_lends_its_store(self):
-        self.assertIn("dataset.stewardPage !== 'kinship'", self.creators,
+        self.assertIn("!['kinship', 'profile'].includes(document.documentElement.dataset.stewardPage)", self.creators,
                       "creators.js would boot the directory renderer on the kinship page")
         self.assertIn("const StewardParticipation", self.creators,
                       "kinship.js reads the participation store off creators.js")

@@ -113,8 +113,10 @@ async function check(label, fn) {
 const Q = "document.querySelector('#q')";
 const ROWS = "document.querySelectorAll('#suggestions li.suggestion')";
 const nameLit = JSON.stringify(args.name);
-// tiles are 1-based ids (p01..p48); portraitIndex(key) % count picks tiles[index], i.e. p<index+1>
-const tileId = 'p' + String(Number(args.portrait) + 1).padStart(2, '0');
+// The row wears whatever the resolver says that record wears: the coordinator's confirmed
+// choice or the archive's pick from directory.json, else the slot tile. Compared against the
+// same resolver on the page, so the smoke follows the rule instead of restating it.
+const keyLit = JSON.stringify(args.key);
 try {
   await go('chronicles/');
   await check('front page has the combobox and the button',
@@ -127,8 +129,8 @@ try {
   await check('first row starts with the expected name',
     () => evaluate(`${ROWS}[0].textContent.trim().startsWith(${nameLit})`));
   await until(`(()=>{const i=${ROWS}[0].querySelector('img.portrait');return !!(i&&i.complete&&i.naturalWidth>0)})()`, 'portrait tile loaded');
-  await check('first row portrait tile comes from the expected slot',
-    () => evaluate(`${ROWS}[0].querySelector('img.portrait').getAttribute('src').includes('/${tileId}.')`));
+  await check('first row portrait is the resolver face for that builder',
+    () => evaluate(`(async()=>{const row=${ROWS}[0];const src=row.querySelector('img.portrait').getAttribute('src');const [m,d]=await Promise.all([fetch('/chronicles/portraits.json').then(r=>r.json()),fetch('/valheim/creators/directory.json').then(r=>r.json())]);const rec=d.builders.find(b=>b.builderKey===${keyLit});const face=StewardPortraits.portraitFor(rec,m);return !!face&&face.url('bust128')===src&&(row.querySelector('a').getAttribute('href')||'').includes(${keyLit})})()`));
   await shot('front-suggestions');
   await typeInto('#q', args.multi);
   await until(`${ROWS}.length>1`, 'several rows for ' + args.multi);

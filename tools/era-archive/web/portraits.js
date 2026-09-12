@@ -157,12 +157,13 @@
   function portraitFor(builder, manifest) {
     const key = typeof builder === 'string' ? builder : builder && builder.builderKey;
     if (!key || !tilesOf(manifest).length) return null;
+    // This device's word first. A revert (tile: null) withdraws it and nothing more: the
+    // published face -- the archive's pick, or a choice the coordinator confirmed --
+    // shows again, as it does for everyone else looking at this builder.
     const local = deviceChoices[key];
-    if (local && Object.prototype.hasOwnProperty.call(local, 'tile')) {
+    if (local && local.tile) {
       const chosen = fromChoice(manifest, local);
       if (chosen) return chosen;
-      // A revert (tile: null) or a tile the manifest no longer carries: the default.
-      if (local.tile === null) return defaultTile(manifest, key);
     }
     // The archive's published choice: on the record when the caller has one, else in the
     // table the page filled from directory.json / the thread.

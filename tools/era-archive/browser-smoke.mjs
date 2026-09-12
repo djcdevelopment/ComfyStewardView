@@ -207,62 +207,79 @@ try{
   await evaluate("document.querySelector('button.kin-tag-btn').click()");
   await wait("document.getElementById('toast').classList.contains('show')");
   results.kinship.gated=true;
-  // The portrait picker (S2, preview mode). It exists only where portraits.json carries
-  // libraries -- the live v1 manifest shows no control at all -- and only for a browser
-  // holding a built claim on the profile, so this leg seeds that claim the way the claim
-  // dialog would, reloads, and walks the drawer: 144 portraits, Trade=Carpenter leaves
-  // eight, choosing the painted one dresses the hero and the tree's anchor on this device,
-  // focus comes back to the control, the archive's pick undresses them again. PICKER=1
-  // runs it (a dev host); without it the leg records why it stood down.
+  // The builder's own page and the portrait picker on it. Every builder wears a painted
+  // face by the archive's pick; the avatar on the builder page is the door to the profile
+  // page, where a browser holding a built claim on the builder (seeded here the way the
+  // claim dialog writes it) may choose another: 96 portraits, Trade=Carpenter leaves four,
+  // +red hair leaves one, 24 trades stay in the menu with the empty ones dimmed, Choose
+  // dresses the page and the builder page, the archive's pick undresses. Sign-in ships
+  // switched off and the opt-out Send waits for a level. PICKER=1 runs it (any host whose
+  // portraits.json carries libraries); without it the leg records why it stood down.
   if(process.env.PICKER==='1'){
-    const profile=new URL(photographed.builderKey+'/',gallery).href;
-    await cdp('Page.navigate',{url:profile});
-    await wait("!!document.querySelector('article.album')");
+    const threadUrl=new URL(photographed.builderKey+'/',gallery).href;
+    await cdp('Page.navigate',{url:threadUrl});
+    await wait("!!document.querySelector('article.album')&&!!document.querySelector('#hero-avatar img')");
     const libraries=await evaluate("fetch('/chronicles/portraits.json').then(r=>r.ok?r.json():null).then(m=>!!(m&&m.libraries)).catch(()=>false)");
     if(!libraries){
       results.picker={status:'skipped',reason:'portraits.json carries no libraries on this host'};
     }else{
-      const stranger=await evaluate("({pick:!!document.querySelector('#hero-portrait-pick:not([hidden])'),disclosure:document.getElementById('hero-portrait-disclosure')?.textContent||''})");
-      if(stranger.pick)throw Error('Picker control shown to a visitor with no claim on the profile');
-      if(!/painted by the archive/.test(stranger.disclosure))throw Error('The profile carries no portrait disclosure line');
-      await evaluate(`(()=>{const now=new Date().toISOString();const buildKey=document.querySelector('article.album[data-build-key]').dataset.buildKey;const state={schema:'steward-creator-participation-local/v1',createdAt:now,updatedAt:now,participant:'smoke',claims:{[buildKey]:{claimId:'claim_smoke',buildKey,builderKey:'${photographed.builderKey}',buildLabel:'smoke',kind:'built',participant:'smoke',createdAt:now,deliveryStatus:'local'}},requests:{},kinshipTags:{},priorities:{},portraits:{}};localStorage.setItem('creators-participation-v1',JSON.stringify(state));return buildKey;})()`);
+      const door=await evaluate("({href:document.getElementById('hero-avatar').getAttribute('href')||'',tag:document.getElementById('hero-avatar').tagName,face:document.querySelector('#hero-avatar img').getAttribute('src'),disclosure:document.getElementById('hero-portrait-disclosure')?.textContent||'',link:document.getElementById('hero-profile-link')?.getAttribute('href')||''})");
+      if(door.tag!=='A'||!door.href.includes('profile/?builder='+photographed.builderKey))throw Error('The avatar is not the door to the profile page');
+      if(!/painted by the archive/.test(door.disclosure))throw Error('The builder page carries no portrait disclosure line');
+      if(!/\/img\/portraits\/viking96\//.test(door.face))throw Error('The builder page hero does not wear a painted portrait by default: '+door.face);
+      const assigned=door.face;
+      // A stranger on the profile page: the sections, sign-in off, the picker gated, Send waiting.
+      const profileUrl=new URL('profile/?builder='+photographed.builderKey,gallery).href;
+      await cdp('Page.navigate',{url:profileUrl});
+      await wait("!document.getElementById('profile-portrait').hidden&&!!document.querySelector('#portrait-current img')");
+      results.profile=await evaluate("({title:document.getElementById('title').textContent,sections:['profile-who','profile-portrait','profile-optout','profile-about'].filter(id=>!document.getElementById(id).hidden).length,discordOff:!document.getElementById('discord-off').hidden,pickDisabled:document.getElementById('portrait-pick').disabled,gate:document.getElementById('portrait-gate').textContent,sendDisabled:document.getElementById('optout-send').disabled,levels:[...document.querySelectorAll('input[name=optout-level]')].map(i=>i.value),current:document.querySelector('#portrait-current img').getAttribute('src'),archive:document.querySelector('#portrait-archive img')?.getAttribute('src')||null,back:document.getElementById('profile-back-link').getAttribute('href')})");
+      if(results.profile.sections!==4)throw Error('The profile page is missing a section');
+      if(!results.profile.discordOff)throw Error('Discord sign-in reads as switched on with no client id');
+      if(!results.profile.pickDisabled||!results.profile.sendDisabled)throw Error('A stranger can choose a portrait or send a request');
+      if(results.profile.levels.join()!=='none,name,erase')throw Error('Opt-out levels are not none, name, erase: '+results.profile.levels.join());
+      if(results.profile.current!==assigned||results.profile.archive!==assigned)throw Error('The profile page does not show the archive pick the builder page wears');
+      if(await evaluate("/character|archetype|seed|gender|submitted/i.test(document.getElementById('profile').innerText)"))throw Error('The profile page says a banned word');
+      // Picking a level arms Send; nothing is sent by the smoke.
+      await evaluate("document.querySelector('input[name=optout-level][value=name]').click()");
+      if(await evaluate("document.getElementById('optout-send').disabled"))throw Error('Picking a level did not arm Send');
+      await screenshot('profile-stranger');
+      // Standing: a built claim on one of this builder's builds, seeded as the claim dialog writes it.
+      await evaluate(`(()=>{const now=new Date().toISOString();const state={schema:'steward-creator-participation-local/v1',createdAt:now,updatedAt:now,participant:'smoke',claims:{['${photographed.builderKey}'.repeat(2)]:{claimId:'claim_smoke',buildKey:'${photographed.builderKey}'.repeat(2),builderKey:'${photographed.builderKey}',buildLabel:'smoke',kind:'built',participant:'smoke',createdAt:now,deliveryStatus:'local'}},requests:{},kinshipTags:{},priorities:{},portraits:{},optOuts:{}};localStorage.setItem('creators-participation-v1',JSON.stringify(state));})()`);
       await cdp('Page.reload',{});
-      await wait("!!document.querySelector('#hero-portrait-pick:not([hidden])')");
-      await evaluate("document.getElementById('hero-portrait-pick').click()");
+      await wait("!document.getElementById('profile-portrait').hidden&&!document.getElementById('portrait-pick').disabled");
+      await evaluate("document.getElementById('portrait-pick').click()");
       await wait("!!document.querySelector('#portrait-picker:not([hidden]) .pp-tile')");
-      results.picker=await evaluate("({count:document.getElementById('pp-count').textContent,tiles:document.querySelectorAll('#portrait-picker .pp-tile').length,groups:document.querySelectorAll('#portrait-picker .grp').length,dialog:document.getElementById('portrait-picker').getAttribute('aria-modal')})");
-      if(results.picker.count!=='144 portraits')throw Error('Picker did not open on 144 portraits: '+results.picker.count);
+      results.picker=await evaluate("({count:document.getElementById('pp-count').textContent,dialog:document.getElementById('portrait-picker').getAttribute('aria-modal')})");
+      if(results.picker.count!=='96 portraits')throw Error('Picker did not open on 96 portraits: '+results.picker.count);
       if(results.picker.dialog!=='true')throw Error('Picker drawer is not a modal dialog');
-      const banned=await evaluate("/character|archetype|seed|gender/i.test(document.getElementById('portrait-picker').innerText)");
-      if(banned)throw Error('The picker says a banned word');
+      if(await evaluate("/character|archetype|seed|gender/i.test(document.getElementById('portrait-picker').innerText)"))throw Error('The picker says a banned word');
       await evaluate("[...document.querySelectorAll('#portrait-picker .ck')].find(b=>b.dataset.k==='role'&&b.dataset.v==='carpenter').click()");
-      await wait("document.getElementById('pp-count').textContent==='8 portraits'");
-      results.picker.carpenters=await evaluate("document.querySelectorAll('#portrait-picker .pp-tile').length");
-      if(results.picker.carpenters!==8)throw Error('Trade=Carpenter did not leave eight portraits');
-      // Hair is a painted-only facet: red leaves the one painted carpenter with red hair
-      // and the four slate joiners (which have no hair tag and so still match), and the
-      // trades no red-haired portrait wears dim to 40 % without leaving the menu.
+      await wait("document.getElementById('pp-count').textContent==='4 portraits'");
       await evaluate("[...document.querySelectorAll('#portrait-picker .ck')].find(b=>b.dataset.k==='hair'&&b.dataset.v==='red').click()");
-      await wait("document.getElementById('pp-count').textContent==='5 portraits'");
+      await wait("document.getElementById('pp-count').textContent==='1 portrait'");
       results.picker.dimmed=await evaluate("document.querySelectorAll('#portrait-picker .ck.zero').length");
       results.picker.trades=await evaluate("document.querySelectorAll('#portrait-picker .grp[data-k=role] .ck').length");
       if(!results.picker.dimmed)throw Error('No zero-count option dimmed after narrowing');
-      if(results.picker.trades!==30)throw Error('A zero-count trade left the menu instead of dimming');
-      await evaluate("[...document.querySelectorAll('#portrait-picker .pp-tile')].find(b=>b.dataset.tile.startsWith('viking96/')).click()");
+      if(results.picker.trades!==24)throw Error('The Trade menu is not the 24 painted trades: '+results.picker.trades);
+      await evaluate("document.querySelector('#portrait-picker .pp-tile').click()");
       await wait("!!document.querySelector('#portrait-picker .pp-preview-wide')&&document.querySelectorAll('#portrait-picker .pp-take').length>=2");
       await screenshot('picker-preview');
       await evaluate("document.getElementById('pp-choose').click()");
-      await wait(`document.getElementById('portrait-picker').hidden&&/viking96\\//.test(document.querySelector('#hero-avatar img')?.src||'')&&[...document.querySelectorAll('#kin-beside img[data-portrait-key="${photographed.builderKey}"]')].some(i=>/viking96\\//.test(i.src))`);
+      await wait("document.getElementById('portrait-picker').hidden&&/carpenter_f_artisan/.test(document.querySelector('#portrait-current img')?.src||'')");
+      results.picker.chosen=await evaluate("({current:document.querySelector('#portrait-current img').getAttribute('src'),note:document.getElementById('portrait-note').textContent,focus:document.activeElement.id,send:!document.getElementById('portrait-send').hidden})");
+      if(results.picker.chosen.focus!=='portrait-pick')throw Error('Focus did not return to the picker control');
+      if(!results.picker.chosen.note.includes('recorded on this device'))throw Error('The page does not say the portrait is recorded on this device');
+      if(!results.picker.chosen.send)throw Error('Send my choice did not appear after a choice');
+      await screenshot('profile-chosen');
+      // The builder page wears it too, on this device.
+      await cdp('Page.navigate',{url:threadUrl});
+      await wait("/carpenter_f_artisan/.test(document.querySelector('#hero-avatar img')?.src||'')");
       results.picker.hero=await evaluate("document.querySelector('#hero-avatar img').getAttribute('src')");
-      results.picker.note=await evaluate("document.getElementById('hero-portrait-note').textContent");
-      results.picker.focus=await evaluate("document.activeElement.id");
-      if(results.picker.focus!=='hero-portrait-pick')throw Error('Focus did not return to the picker control');
-      if(!results.picker.note.includes('recorded on this device'))throw Error('The hero does not say the portrait is recorded on this device');
-      await screenshot('picker-chosen');
-      await evaluate("document.getElementById('hero-portrait-pick').click()");
-      await wait("!document.getElementById('portrait-picker').hidden&&!document.getElementById('pp-archive').disabled");
-      await evaluate("document.getElementById('pp-archive').click()");
-      await wait("document.getElementById('portrait-picker').hidden&&!/viking96\\//.test(document.querySelector('#hero-avatar img')?.src||'')");
+      // Back on the profile page, the archive's pick undresses it.
+      await cdp('Page.navigate',{url:profileUrl});
+      await wait("!document.getElementById('profile-portrait').hidden&&!document.getElementById('portrait-archive-pick').disabled");
+      await evaluate("document.getElementById('portrait-archive-pick').click()");
+      await wait(`document.querySelector('#portrait-current img')?.getAttribute('src')===${JSON.stringify(assigned)}`);
       results.picker.reverted=true;
       await evaluate("localStorage.removeItem('creators-participation-v1')");
     }

@@ -264,6 +264,11 @@ def build_cutouts(out: Out) -> dict:
     return assets
 
 
+# The sentinel for "ship no slate tree at all" -- distinct from None, which means the
+# default tree under assets/portraits.
+NO_SLATE = object()
+
+
 def build_portraits(out: Out, portraits_dir: Path | None, library_dirs: list[Path] | None = None) -> dict:
     """The drawn tiles a builder wears beside their name in the search suggestions.
 
@@ -279,6 +284,9 @@ def build_portraits(out: Out, portraits_dir: Path | None, library_dirs: list[Pat
     the slate rows, so `count` and `tiles` keep meaning what every v1 reader thinks they mean.
     """
     empty = {"count": 0, "tiles": [], "libraries": []}
+    if portraits_dir is NO_SLATE:
+        print("  portraits       slate retired -- no slot tiles shipped")
+        return {**empty, "libraries": [build_library(out, path) for path in (library_dirs or [])]}
     directory = Path(portraits_dir) if portraits_dir is not None else DEFAULT_PORTRAITS
     manifest_path = directory / "manifest.json"
     if not manifest_path.is_file():
@@ -460,7 +468,8 @@ def stat_slab(label: str, value: str) -> str:
     )
 
 
-def portraits_doc(portraits: dict, cutouts: dict, copy: dict, head: str, generated: str) -> dict:
+def portraits_doc(portraits: dict, cutouts: dict, copy: dict, head: str, generated: str,
+                  default_library: str | None = None) -> dict:
     """One file naming every drawn thing the archive can put beside a builder or a path,
     and the query string that busts each one.
 
@@ -481,9 +490,11 @@ def portraits_doc(portraits: dict, cutouts: dict, copy: dict, head: str, generat
         }
         for tile in portraits["tiles"]
     ]
-    libraries = {
-        DEFAULT_LIBRARY_ID: {"label": "Slate", "framing": "bust", "default": True},
-    }
+    # The slate entry exists only while slate rows ship; retired, it leaves the document
+    # entirely so the resolver's default pool is a library that has tiles.
+    libraries = {}
+    if slate:
+        libraries[DEFAULT_LIBRARY_ID] = {"label": "Slate", "framing": "bust", "default": True}
     facets: list[dict] = []
     labels: dict = {}
     aliases: dict = {}
@@ -501,6 +512,18 @@ def portraits_doc(portraits: dict, cutouts: dict, copy: dict, head: str, generat
         if lib.get("provenance"):
             provenance[lib["library"]] = lib["provenance"]
         library_tiles.extend(lib["tiles"])
+    # Exactly one default. Asked for by name, else the slate when it ships, else the only
+    # library there is; two libraries and no slate is a question the build refuses to guess.
+    if default_library is None and not slate:
+        if len(libraries) == 1:
+            default_library = next(iter(libraries))
+        elif libraries:
+            raise SystemExit("more than one portrait library and no slate: pass --default-library <id>")
+    if default_library is not None:
+        if default_library not in libraries:
+            raise SystemExit(f"--default-library {default_library!r} names no shipped library ({', '.join(libraries) or 'none'})")
+        for lib_id, entry in libraries.items():
+            entry["default"] = lib_id == default_library
     return {
         "schema": PORTRAITS_DOC_SCHEMA,
         # The slot rule and its count are the v1 contract: the first `count` tiles are the
@@ -651,7 +674,7 @@ def lint_portraits_doc(doc: dict) -> None:
 
 def build(source_base: str, out_dir: Path, offline: Path | None = None,
           shots_dir: Path | None = None, portraits_dir: Path | None = None,
-          library_dirs: list[Path] | None = None) -> dict:
+          library_dirs: list[Path] | None = None, default_library: str | None = None) -> dict:
     out_dir = Path(out_dir)
     if out_dir.exists():
         raise SystemExit(f"{out_dir} already exists. Use a new output directory.")
@@ -683,7 +706,7 @@ def build(source_base: str, out_dir: Path, offline: Path | None = None,
         head = head_sha()
         stamp_text = f"built {generated.strftime('%Y-%m-%dT%H:%MZ')} · {head[:7]}"
         generated_at = generated.isoformat().replace("+00:00", "Z")
-        portrait_manifest = portraits_doc(portraits, cutouts, copy, head, generated_at)
+        portrait_manifest = portraits_doc(portraits, cutouts, copy, head, generated_at, default_library)
 
         for page, prefix in (("index", ""), ("guide", "../")):
             header, footer = shell_parts({
@@ -801,9 +824,15 @@ def main(argv: list[str] | None = None) -> int:
                              "a tree that is not there yet builds a page with no tiles")
     parser.add_argument("--library", type=Path, action="append", default=[],
                         help="a portrait library tree from portraits/build_manifest.py; repeatable")
+    parser.add_argument("--no-slate", action="store_true",
+                        help="ship no slate tiles: the libraries are the whole manifest and the first (or "
+                             "--default-library) is what an unchosen builder wears")
+    parser.add_argument("--default-library", default=None,
+                        help="the library whose tiles unchosen builders wear (libraries.<id>.default)")
     args = parser.parse_args(argv)
 
-    manifest = build(args.source_base, args.out, args.offline, args.shots, args.portraits, args.library)
+    manifest = build(args.source_base, args.out, args.offline, args.shots,
+                     NO_SLATE if args.no_slate else args.portraits, args.library, args.default_library)
     counts = manifest["counts"]
     print(f"built {args.out}")
     print(f"  builders        {thousands(counts['builders'])}")

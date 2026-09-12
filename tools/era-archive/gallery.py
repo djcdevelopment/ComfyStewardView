@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import shutil
 from archive import REPO, artifact, load, now, save
+import portrait_assign
 
 # The closed kinship tag vocabulary, identical to KINSHIP_TAGS in
 # tools/era-archive/web/creators.js and to the checkbox values in web/kinship.html. A tag
@@ -187,7 +188,8 @@ def is_qualifying_album(build, contributor, min_build_pieces=20, min_builder_pie
     return False
 
 
-def project(document, destination, world_url, analysis_root=None, min_build_pieces=20, min_builder_pieces=10, min_builder_share=0.05):
+def project(document, destination, world_url, analysis_root=None, min_build_pieces=20, min_builder_pieces=10, min_builder_share=0.05,
+            portrait_library=None):
     destination=Path(destination)
     if not world_url.startswith("https://"):
         raise ValueError("World URL must use HTTPS")
@@ -243,6 +245,13 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
             source = load(participation_file)
             if isinstance(source, dict):
                 confirmed_portraits = sanitize_confirmed_portraits(source.get("confirmedPortraits"))
+    # Everyone else wears the archive's pick: a face from the portrait library chosen for
+    # them from what the archive knows (portrait_assign.py), stamped `by: archive` so the
+    # page can say so and the picker can offer it back. Without a library the record
+    # carries no portrait and the page falls back to the resolver's slot rule.
+    library_doc = load(Path(portrait_library)) if portrait_library else None
+    if library_doc is not None and not isinstance(library_doc, dict):
+        raise ValueError(f"{portrait_library} is not a portrait library manifest")
 
     builds={b["buildKey"]:b for b in document["builds"]}
     directory=[]
@@ -294,7 +303,11 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
             tier=classify_volume_tier(builder_pieces),
         )
         if builder["builderKey"] in confirmed_portraits:
-            record["portrait"] = dict(confirmed_portraits[builder["builderKey"]])
+            record["portrait"] = {**confirmed_portraits[builder["builderKey"]], "by": "builder"}
+        elif library_doc is not None:
+            assigned = portrait_assign.assign_portrait(record, library_doc)
+            if assigned:
+                record["portrait"] = {**assigned, "by": "archive"}
         directory.append(record)
         save(destination/"threads"/(builder["builderKey"]+".json"),{**record,"eras":[{"era":e,"albums":sorted(bs,key=lambda b:(-len(b["photos"]),-b["pieces"],b["buildKey"]))} for e,bs in sorted(eras.items(),reverse=True)]})
         page=destination/builder["builderKey"]/"index.html";page.parent.mkdir(parents=True,exist_ok=True)
@@ -332,13 +345,13 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
     # rather than skipped when absent: a projection that quietly shipped the page without
     # a script would serve a profile whose ribbon selects nothing or whose tree never
     # draws, and the failure would surface as a dead control on the live site instead of here.
-    for name in ("creators.js","creators.css","kinship.js","pair.js","kin-tree.js","portraits.js","portrait-picker.js"):
+    for name in ("creators.js","creators.css","kinship.js","pair.js","kin-tree.js","portraits.js","portrait-picker.js","profile.js"):
         shutil.copyfile(REPO/"tools/era-archive/web"/name,destination/name)
     # The two other shells. Each is served from its own directory, so every relative asset
     # link climbs one level -- the same rewrite the thread pages get, plus kinship.html's
     # own page script. stats.html also keeps a copy at the root because that URL is already
     # published; kinship has no such history and gets the directory form only.
-    for source_name, folder, keep_at_root in (("stats.html", "stats", True), ("kinship.html", "kinship", False)):
+    for source_name, folder, keep_at_root in (("stats.html", "stats", True), ("kinship.html", "kinship", False), ("profile.html", "profile", False)):
         source = REPO / "tools/era-archive/web" / source_name
         if not source.exists():
             continue
@@ -346,7 +359,7 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
         folder_dir = destination / folder
         folder_dir.mkdir(parents=True, exist_ok=True)
         (folder_dir / "index.html").write_text(
-            content.replace('"./creators.', '"../creators.').replace('"./kin-tree.js', '"../kin-tree.js').replace('"./kinship.js', '"../kinship.js').replace('"./portraits.js', '"../portraits.js'),
+            content.replace('"./creators.', '"../creators.').replace('"./kin-tree.js', '"../kin-tree.js').replace('"./kinship.js', '"../kinship.js').replace('"./portraits.js', '"../portraits.js').replace('"./portrait-picker.js', '"../portrait-picker.js').replace('"./profile.js', '"../profile.js'),
             encoding="utf-8")
         if keep_at_root:
             (destination / source_name).write_text(content, encoding="utf-8")
@@ -377,6 +390,9 @@ def main():
     parser.add_argument("--min-build-pieces",type=int,default=20)
     parser.add_argument("--min-builder-pieces",type=int,default=10)
     parser.add_argument("--min-builder-share",type=float,default=0.05)
+    parser.add_argument("--portrait-library",type=Path,default=None,
+                        help="a portrait library manifest (a build_manifest.py tree's manifest.json or a built portraits.json); "
+                             "every builder record then carries the archive's pick as `portrait`")
     args=parser.parse_args()
     if args.destination.exists(): raise ValueError("Use a new immutable projection directory")
     receipt=project(
@@ -387,6 +403,7 @@ def main():
         min_build_pieces=args.min_build_pieces,
         min_builder_pieces=args.min_builder_pieces,
         min_builder_share=args.min_builder_share,
+        portrait_library=args.portrait_library,
     )
     print(f"VERIFIED projection: {receipt['builders']:,} creator threads; {receipt['albums']:,} albums")
 

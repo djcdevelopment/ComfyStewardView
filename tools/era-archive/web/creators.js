@@ -478,6 +478,7 @@ const StewardParticipation = {
       kinshipTags: {},  // `${buildKey}:${contributorKey}` -> tag record
       priorities: {},   // buildKey -> photo priority (first | next | skip)
       portraits: {},    // builderKey -> the portrait chosen for that profile on this device
+      optOuts: {},      // builderKey -> the opt-out asked for on this device (a request, until confirmed)
     };
   },
 
@@ -501,6 +502,7 @@ const StewardParticipation = {
       // A ledger written before the feedback column existed is not a broken ledger either.
       next.priorities = parsed.priorities && typeof parsed.priorities === 'object' ? parsed.priorities : {};
       next.portraits = parsed.portraits && typeof parsed.portraits === 'object' ? parsed.portraits : {};
+      next.optOuts = parsed.optOuts && typeof parsed.optOuts === 'object' ? parsed.optOuts : {};
       next.createdAt = typeof parsed.createdAt === 'string' ? parsed.createdAt : next.createdAt;
       next.updatedAt = typeof parsed.updatedAt === 'string' ? parsed.updatedAt : nowISOString();
       return next;
@@ -659,6 +661,41 @@ const StewardParticipation = {
     return record;
   },
 
+  // The opt-out levels a builder can ask for. `none` is the default and is never written;
+  // the other two are requests the coordinator confirms on Discord before anything changes.
+  OPT_OUT_LEVELS: ['name', 'erase'],
+
+  optOutForBuilder(state, builderKey) {
+    return state.optOuts?.[builderKey] || null;
+  },
+
+  // One record per profile, replaced in place; `sentAt`/`receipt` are filled when the relay
+  // took it, so a copied payload can say which request it repeats.
+  setOptOut(state, {builderKey, level, note, participant, discord}) {
+    if (!/^[a-f0-9]{32}$/.test(String(builderKey || ''))) return null;
+    if (!state.optOuts) state.optOuts = {};
+    if (!level || level === 'none') {
+      delete state.optOuts[builderKey];
+      return null;
+    }
+    if (!StewardParticipation.OPT_OUT_LEVELS.includes(level)) return null;
+    const prior = state.optOuts[builderKey];
+    const record = {
+      optOutId: prior?.optOutId || randomId('optout'),
+      builderKey,
+      level,
+      note: String(note || '').trim().slice(0, 500),
+      participant: normalizeHandle(participant || ''),
+      discord: discord && discord.id ? {id: String(discord.id), username: String(discord.username || '')} : null,
+      createdAt: prior?.createdAt || nowISOString(),
+      updatedAt: nowISOString(),
+      sentAt: null,
+      receipt: null,
+    };
+    state.optOuts[builderKey] = record;
+    return record;
+  },
+
   exportPayload(state, {kindFilter, buildKey} = {}) {
     const payload = {
       schema: 'steward-creator-participation-export/v1',
@@ -671,6 +708,7 @@ const StewardParticipation = {
       // The portrait each profile wears by this device's choice, reverts included: a
       // revert is a line the coordinator confirms, not a gap they have to infer.
       portraits: Object.values(state.portraits || {}),
+      optOuts: Object.values(state.optOuts || {}),
     };
     if (kindFilter === 'claim') payload.claims = payload.claims.filter((c) => c.buildKey === buildKey);
     if (kindFilter === 'request' && buildKey) payload.requests = payload.requests.filter((r) => r.buildKey === buildKey);
@@ -967,6 +1005,8 @@ const initCreatorsPage = async () => {
     if (prioritised) parts.push(`${prioritised} builds marked for photography`);
     const portraits = Object.values(state.portraits || {}).filter((p) => p.tile).length;
     if (portraits) parts.push(`${portraits} portrait${portraits === 1 ? '' : 's'} chosen`);
+    const optOuts = Object.keys(state.optOuts || {}).length;
+    if (optOuts) parts.push(`${optOuts} opt-out request${optOuts === 1 ? '' : 's'}`);
     parts.push(
       `${counts.requests} photo requests`,
       `${counts.submitted} already sent`,
@@ -2267,100 +2307,38 @@ const initCreatorsPage = async () => {
   // profile (a built claim on one of its builds, recorded in this browser) and only when
   // the manifest carries libraries to choose from -- a profile served against the v1
   // manifest shows no control at all. Preview mode: the choice lives on this device.
-  let pickerMounted = false;
-  function renderPortraitPick() {
-    const hero = $('builder-hero');
+  // Under the avatar: the way to the builder's own page (where the portrait is chosen and
+  // the opt-outs are asked for) and the one disclosure the page makes about the faces on
+  // it (FR-8). Both for every visitor; the page itself decides who may change anything.
+  function renderHeroDoor() {
     const avatar = $('hero-avatar');
-    if (!hero || !avatar || !thread) return;
+    if (!avatar || !thread) return;
+    const href = new URL(`profile/?builder=${thread.builderKey}`, base).href;
+    if (avatar.tagName === 'A') {
+      avatar.href = href;
+      avatar.setAttribute('aria-label', 'Your profile settings');
+    }
     let actions = $('hero-portrait-actions');
-    const standing = StewardParticipation.standingForBuilder(state, thread);
-    readPortraits().then((manifest) => {
-      const libraries = !!(manifest && manifest.libraries && typeof manifest.libraries === 'object');
-      if (!libraries) {
-        if (actions) actions.hidden = true;
-        return;
-      }
-      if (!actions) {
-        actions = node('div', null, 'hero-portrait-actions');
-        actions.id = 'hero-portrait-actions';
-        const pick = node('button', 'Choose a portrait', 'kin-open hero-portrait-pick');
-        pick.id = 'hero-portrait-pick';
-        pick.type = 'button';
-        pick.onclick = () => StewardPortraitPicker.open();
-        const note = node('p', '', 'muted hero-portrait-note');
-        note.id = 'hero-portrait-note';
-        // The one disclosure the page makes about the faces on it (FR-8), for every
-        // visitor: the portraits are painted, and the choice is the builder's.
-        const disclosure = node('p', "Portraits are painted by the archive's own models; builders choose theirs.", 'hero-portrait-disclosure');
-        disclosure.id = 'hero-portrait-disclosure';
-        actions.append(pick, note, disclosure);
-        avatar.insertAdjacentElement('afterend', actions);
-      }
-      actions.hidden = false;
-      const ready = !!standing && typeof StewardPortraitPicker === 'object';
-      $('hero-portrait-pick').hidden = !ready;
-      renderPortraitNote();
-      if (!ready) return;
-      if (!pickerMounted) {
-        const host = node('div');
-        host.id = 'portrait-picker-host';
-        document.body.append(host);
-        pickerMounted = StewardPortraitPicker.mount(host, {
-          manifest,
-          builderKey: thread.builderKey,
-          choice: StewardParticipation.portraitForBuilder(state, thread.builderKey),
-          onChoose: onPortraitChosen,
-          returnFocus: () => $('hero-portrait-pick'),
-        });
-      }
-    });
-  }
-
-  // The line under the avatar once a choice is recorded: where it lives, and the one
-  // action that gets it to the coordinator -- the same copied payload every claim rides.
-  function renderPortraitNote() {
-    const note = $('hero-portrait-note');
-    if (!note || !thread) return;
-    const choice = StewardParticipation.portraitForBuilder(state, thread.builderKey);
-    const recorded = !!choice;
-    note.replaceChildren();
-    if (recorded) {
-      note.append(choice.tile ? 'Portrait recorded on this device. ' : "Back to the archive's pick, recorded on this device. ");
-      const copy = node('button', 'Copy your payload', 'kin-open hero-portrait-copy');
-      copy.id = 'hero-portrait-copy';
-      copy.type = 'button';
-      copy.onclick = () => copyActivityPayload(exportPayload());
-      note.append(copy);
+    if (!actions) {
+      actions = node('div', null, 'hero-portrait-actions');
+      actions.id = 'hero-portrait-actions';
+      const door = node('a', 'Your profile', 'kin-open hero-profile-link');
+      door.id = 'hero-profile-link';
+      door.href = href;
+      const disclosure = node('p', "Portraits are painted by the archive's own models; builders choose theirs.", 'hero-portrait-disclosure');
+      disclosure.id = 'hero-portrait-disclosure';
+      actions.append(door, disclosure);
+      avatar.insertAdjacentElement('afterend', actions);
     }
-    note.hidden = !recorded;
+    actions.hidden = false;
   }
 
-  function onPortraitChosen(choice) {
-    if (!thread) return;
-    StewardParticipation.setPortrait(state, {
-      builderKey: thread.builderKey,
-      tile: choice ? choice.tile : null,
-      take: choice ? choice.take : null,
-      sha: choice ? choice.sha : null,
-      participant: state.participant,
-    });
-    saveState();
-    if (typeof StewardPortraits === 'object') StewardPortraits.setChoices(state.portraits || {});
-    if (typeof StewardPortraitPicker === 'object') {
-      StewardPortraitPicker.update({choice: StewardParticipation.portraitForBuilder(state, thread.builderKey)});
-    }
-    repaintPortraits();
-    updateParticipantSnapshot();
-    showToast(choice ? 'Portrait recorded on this device.' : "Back to the archive's pick.");
-  }
-
-  // Every face on the page, through the one resolver, after a choice on this device: the
-  // hero, the ribbon chips, the tree nodes and the pair card.
+  // Every face on the page, through the one resolver, when the published choices land
+  // after the first paint: the hero, the ribbon chips, the tree nodes and the pair card.
   function repaintPortraits() {
     const manifest = portraitManifest;
     if (!manifest) return;
     renderHeroAvatar();
-    renderPortraitNote();
     for (const holder of document.querySelectorAll('.top8-portrait[data-pair-portrait-key]')) {
       paintPortrait(holder, holder.dataset.pairPortraitKey, manifest, {sizes: '64px', fallback: emblemSpan});
     }
@@ -2374,7 +2352,7 @@ const initCreatorsPage = async () => {
     if (!hero || !text) return;
     renderHeroAliases();
     renderHeroAvatar();
-    renderPortraitPick();
+    renderHeroDoor();
     // The brand lockup in the header already says whose community this is.
     const eyebrow = document.querySelector('main .eyebrow');
     if (eyebrow) eyebrow.hidden = true;
@@ -2713,7 +2691,7 @@ const initCreatorsPage = async () => {
     // Offer a way out that does not require clearing site data by hand.
     if ($('forget-participation')) {
       $('forget-participation').onclick = () => {
-        if (!confirm('Forget every claim, request, portrait choice and handle stored in this browser?')) return;
+        if (!confirm('Forget every claim, request, portrait choice, opt-out request and handle stored in this browser?')) return;
         // Retention control: kinship tags name a second person, so they are the first
         // thing this has to clear, not an afterthought bolted on beside the claims.
         const fresh = StewardParticipation.forget();
@@ -2723,6 +2701,7 @@ const initCreatorsPage = async () => {
         state.kinshipTags = fresh.kinshipTags;
         state.priorities = fresh.priorities;
         state.portraits = fresh.portraits;
+        state.optOuts = fresh.optOuts;
         if (typeof StewardPortraits === 'object') StewardPortraits.setChoices(state.portraits);
         updateParticipantSnapshot();
         showToast('Local participation cleared.');
@@ -2846,4 +2825,4 @@ const initCreatorsPage = async () => {
 // #copy-activity, no #participant-handle and no directory to render, so booting the
 // directory/thread page there would throw on the first missing node. kinship.js is the
 // page script there, and it runs against the same globals.
-if (typeof document !== 'undefined' && document.documentElement.dataset.stewardPage !== 'kinship') initCreatorsPage();
+if (typeof document !== 'undefined' && !['kinship', 'profile'].includes(document.documentElement.dataset.stewardPage)) initCreatorsPage();

@@ -2003,6 +2003,17 @@ textarea:focus-visible,
   border-radius: 6px;
 }
 
+/* The avatar is the door to the builder's own page. */
+a.hero-avatar {
+  display: block;
+  overflow: hidden;
+}
+
+a.hero-avatar:focus-visible {
+  outline: 2px solid #ffc174;
+  outline-offset: 2px;
+}
+
 .hero-avatar img,
 .hero-avatar-fallback {
   display: block;
@@ -3323,6 +3334,10 @@ textarea:focus-visible,
   color: var(--outline);
 }
 
+.hero-portrait-actions .hero-profile-link {
+  font-size: 0.82rem;
+}
+
 .hero-portrait-note .hero-portrait-copy {
   margin: 0;
   padding: 0;
@@ -3787,4 +3802,254 @@ html.pp-open body {
 .pp-scrim[hidden],
 #portrait-picker[hidden] {
   display: none;
+}
+
+/* --------------------------------------------------------------------------
+   Your profile (#profile): the builder's own page. The face they wear, who they
+   are on Discord, the opt-out levels. Same stone as the builder page; nothing
+   collapses; every action says where its record lives.
+   -------------------------------------------------------------------------- */
+#profile .profile-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  margin: 14px 0 26px;
+  padding: 22px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-container-low);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+#profile .profile-face {
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+}
+
+#profile .profile-avatar,
+#profile .profile-avatar img,
+#profile .profile-avatar-fallback {
+  display: block;
+  width: 160px;
+  height: 160px;
+  border-radius: 6px;
+}
+
+#profile .profile-avatar img,
+#profile .profile-avatar-fallback {
+  object-fit: cover;
+  border: 1px solid var(--ember);
+  background: var(--surface-low);
+}
+
+#profile .profile-avatar-fallback {
+  display: grid;
+  place-items: center;
+}
+
+#profile .profile-avatar-fallback svg {
+  width: 56%;
+  height: auto;
+}
+
+#profile .profile-wide {
+  display: block;
+  width: 240px;
+  height: 240px;
+  object-fit: cover;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-low);
+}
+
+#profile .profile-text h1 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  margin: 0 0 6px;
+}
+
+#profile .profile-facts {
+  margin: 0 0 10px;
+  color: var(--parchment);
+}
+
+#profile .profile-block {
+  margin: 0 0 22px;
+  padding: 18px 20px 20px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-container-low);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+#profile .profile-block h2 {
+  font-size: 1.5rem;
+  margin: 0 0 10px;
+}
+
+#profile .profile-block .muted {
+  margin: 0 0 10px;
+}
+
+#profile .small {
+  font-size: 0.82rem;
+}
+
+#profile .profile-row {
+  margin: 0 0 8px;
+}
+
+#profile .profile-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--on-surface);
+}
+
+#profile .discord-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid var(--ember);
+}
+
+#profile button.plain {
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+#profile .portrait-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 4px 0 6px;
+}
+
+#profile .portrait-now {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+#profile .portrait-now figcaption {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--outline);
+}
+
+#profile .actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 6px 0 8px;
+}
+
+#profile .actions-row button {
+  margin: 0;
+  width: auto;
+}
+
+#profile button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#profile .optout-levels {
+  display: grid;
+  gap: 10px;
+  margin: 6px 0 14px;
+  padding: 0;
+  border: 0;
+}
+
+#profile .optout-level {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px 14px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-container);
+  cursor: pointer;
+}
+
+#profile .optout-level:has(input:checked) {
+  border-color: var(--flame);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+#profile .optout-level input {
+  width: 18px;
+  height: 18px;
+  margin: 3px 0 0;
+  accent-color: var(--flame);
+}
+
+#profile .optout-level strong {
+  display: block;
+  color: var(--on-surface);
+}
+
+#profile .optout-level small {
+  display: block;
+  margin-top: 2px;
+  color: var(--parchment);
+  font-size: 0.82rem;
+}
+
+#profile .optout-note {
+  display: block;
+  margin: 0 0 6px;
+  color: var(--parchment);
+  font-size: 0.86rem;
+}
+
+#profile .optout-note textarea {
+  margin-top: 6px;
+}
+
+#profile .profile-receipt {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--primary);
+}
+
+#profile .profile-about ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+#profile .profile-about li {
+  margin: 0 0 6px;
+}
+
+@media (max-width: 680px) {
+  #profile .profile-head {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
+  }
+
+  #profile .profile-wide {
+    display: none;
+  }
+
+  #profile .profile-avatar,
+  #profile .profile-avatar img,
+  #profile .profile-avatar-fallback {
+    width: 128px;
+    height: 128px;
+  }
 }

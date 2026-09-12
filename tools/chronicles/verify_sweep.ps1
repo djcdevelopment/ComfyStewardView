@@ -34,9 +34,8 @@ ExpectStatus '/' 404
 ExpectStatus '/chronicles' 308
 if (-not $SkipChronicles) {
     Check '/chronicles/' @('<h1', 'href="/valheim/"', 'href="/chronicles/guide/"', 'role="combobox"', 'id="suggestions"', 'id="portrait-manifest"') @('character', 'archetype', 'class="path"', 'cdn.tailwindcss', 'fonts.googleapis')
-    Check '/chronicles/portraits.json' @('"count"', '"tiles"', '"libraries"', '"viking96"', '"facets"') @('character', 'archetype') 'no-cache'
-    Check '/chronicles/img/portraits/p01.webp' @() @() 'immutable'
-    Check '/chronicles/img/portraits/p01.128.webp' @() @() 'immutable'
+    # Slate retired 2026-09-12: no slot tiles ship; viking96 is the default library.
+    Check '/chronicles/portraits.json' @('"count": 0', '"tiles"', '"libraries"', '"viking96"', '"facets"', '"default": true') @('character', 'archetype', '"slate48"') 'no-cache'
     # One painted take of the library, all three cuts, immutable like the slate tiles.
     try {
         $pm = (Invoke-WebRequest -Uri ($base + '/chronicles/portraits.json') -UseBasicParsing -TimeoutSec 30).Content | ConvertFrom-Json
@@ -91,8 +90,8 @@ if (-not $SkipViewer) {
 
 if (-not $SkipCreators) {
     "== creators"
-    Check '/valheim/creators/' @('creators.css?v=11', 'id="stats-link"', 'href="/chronicles/"', 'src="./portraits.js"', 'src="./portrait-picker.js"')
-    Check '/valheim/creators/creators.css?v=11' @('--flame', '@font-face', '#portrait-picker')
+    Check '/valheim/creators/' @('creators.css?v=12', 'id="stats-link"', 'href="/chronicles/"', 'src="./portraits.js"')
+    Check '/valheim/creators/creators.css?v=12' @('--flame', '@font-face', '#portrait-picker')
     Check '/valheim/creators/creators.js' @('Top 8', 'portraitIndex', 'StewardParticipation', 'buildKinshipTree')
     # The pair view is mounted by creators.js and drawn entirely by this script, so the
     # section itself cannot be probed in the served HTML -- the script's own presence and
@@ -106,13 +105,20 @@ if (-not $SkipCreators) {
     Check '/valheim/creators/stats/' @('Archive Statistics', 'href="/chronicles/"')
     # The kinship page is served from its own directory, so its assets climb one level.
     # The two banned words and the participation deep link all belong to other pages.
-    Check '/valheim/creators/kinship/' @('id="kin-tree"', '../creators.css?v=11', 'src="../portraits.js?v=11"', 'src="../kin-tree.js?v=11"', 'data-steward-page="kinship"', 'href="/chronicles/"') @('character', 'archetype', 'href="#participation-details"')
+    Check '/valheim/creators/kinship/' @('id="kin-tree"', '../creators.css?v=12', 'src="../portraits.js?v=12"', 'src="../kin-tree.js?v=12"', 'data-steward-page="kinship"', 'href="/chronicles/"') @('character', 'archetype', 'href="#participation-details"')
     Check '/valheim/creators/kinship.js' @('initKinshipPage', 'drawKinshipTree(')
+    # The builder's own page: the picker, sign-in (switched off until a client id is set), the
+    # opt-out levels. Linted like every other shell.
+    Check '/valheim/creators/profile/' @('data-steward-page="profile"', '../creators.css?v=12', 'src="../creators.js?v=12"', 'src="../portraits.js?v=12"', 'src="../portrait-picker.js?v=12"', 'src="../profile.js"', 'name="discord-client-id"', 'id="profile-optout"', 'value="erase"', 'href="/chronicles/"') @('character', 'archetype', 'submitted', 'href="#participation-details"')
+    Check '/valheim/creators/profile.js' @('initProfilePage', 'relay?wait=true', 'allowed_mentions') @('character', 'archetype', 'seed', 'gender', 'submitted')
     Check '/valheim/creators/directory.json' @('"builders"') @() 'no-cache'
     try {
         $d = (Invoke-WebRequest -Uri ($base + '/valheim/creators/directory.json') -UseBasicParsing -TimeoutSec 60).Content | ConvertFrom-Json
         $top = $d.builders | Sort-Object -Property albums -Descending | Select-Object -First 1
-        Check ('/valheim/creators/' + $top.builderKey + '/') @('../creators.css?v=11', 'src="../pair.js"', 'src="../kin-tree.js"', 'src="../portraits.js"', 'src="../portrait-picker.js"', 'href="/chronicles/"', 'id="builder-hero"', 'id="look-out"', 'id="thread-notes"')
+        Check ('/valheim/creators/' + $top.builderKey + '/') @('../creators.css?v=12', 'src="../pair.js"', 'src="../kin-tree.js"', 'src="../portraits.js"', 'src="../profile.js"', 'href="/chronicles/"', 'id="builder-hero"', '<a id="hero-avatar"', 'id="look-out"', 'id="thread-notes"')
+        # Every record wears a face by the archive's pick (or the builder's confirmed one).
+        $noface = @($d.builders | Where-Object { -not $_.portrait }).Count
+        if ($noface) { $script:fail++; "FAIL directory.json: $noface builder(s) carry no portrait" } else { "OK   directory.json: every builder carries a portrait" }
         Check ('/valheim/creators/threads/' + $top.builderKey + '.json') @('"contributors"')
         # A named anchor has to reach the same shell the bare page does.
         Check ('/valheim/creators/kinship/?builder=' + $top.builderKey) @('id="kin-tree"')

@@ -286,3 +286,51 @@ class BuildShipsLibraries(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SlateRetired(unittest.TestCase):
+    """--no-slate: the library is the whole manifest and the default; nothing of the slate
+    tree ships; the gateway page inlines no tiles and the resolver still has a pool."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        root = Path(cls.tmp.name)
+        cls.corpus, cls.catalog, concepts, cls.vocab = synth_corpus(root)
+        cls.library = root / "viking96"
+        build_manifest.build(manual_only(concepts), cls.catalog, cls.corpus, cls.vocab, cls.library, "viking96", "Viking", False)
+        cls.out = root / "site"
+        cls.manifest = build.build(SOURCE_BASE, cls.out, offline=FIXTURES, portraits_dir=build.NO_SLATE,
+                                   library_dirs=[cls.library])
+        cls.doc = json.loads((cls.out / "portraits.json").read_text(encoding="utf-8"))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_no_slate_row_and_no_slate_entry_ship(self):
+        self.assertEqual(self.doc["count"], 0)
+        self.assertEqual([t["library"] for t in self.doc["tiles"]], ["viking96", "viking96"])
+        self.assertEqual(self.doc["libraries"], {"viking96": {"label": "Viking", "framing": "waist-up", "default": True}})
+        self.assertFalse(list((self.out / "img" / "portraits").glob("p*.webp")), "a slate tile shipped")
+        self.assertEqual(self.manifest["assets"]["portraits"]["count"], 0)
+        index = (self.out / "index.html").read_text(encoding="utf-8")
+        self.assertIn('"count":0', index)
+        self.assertNotIn("carpenter_f_artisan", index, "the page still inlines only the default slice, which is now empty")
+
+    def test_the_default_can_be_named_and_must_exist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(SystemExit) as caught:
+                build.build(SOURCE_BASE, Path(tmp) / "site", offline=FIXTURES, portraits_dir=build.NO_SLATE,
+                            library_dirs=[self.library], default_library="nope")
+            self.assertIn("names no shipped library", str(caught.exception))
+            manifest = build.build(SOURCE_BASE, Path(tmp) / "site2", offline=FIXTURES, portraits_dir=self.portraits_for_default(tmp),
+                                   library_dirs=[self.library], default_library="viking96")
+            doc = json.loads((Path(tmp) / "site2" / "portraits.json").read_text(encoding="utf-8"))
+            self.assertEqual(doc["libraries"]["slate48"]["default"], False)
+            self.assertEqual(doc["libraries"]["viking96"]["default"], True)
+            self.assertEqual(doc["count"], 4, "slate rows still ship when the tree is given; only the default moved")
+            self.assertEqual(manifest["assets"]["portraits"]["count"], 4)
+
+    def portraits_for_default(self, tmp):
+        return synth_portraits(Path(tmp) / "portraits", count=4)

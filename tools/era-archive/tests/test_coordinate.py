@@ -501,8 +501,8 @@ class PortraitTests(CoordinateTestCase):
         project(document(), dest, WORLD, self.root)
         directory = json.loads((dest / "directory.json").read_text(encoding="utf-8"))
         thread = json.loads((dest / "threads" / f"{BUILDER}.json").read_text(encoding="utf-8"))
-        self.assertEqual({"tile": TILE, "take": "s4"}, directory["builders"][0]["portrait"])
-        self.assertEqual({"tile": TILE, "take": "s4"}, thread["portrait"])
+        self.assertEqual({"tile": TILE, "take": "s4", "by": "builder"}, directory["builders"][0]["portrait"])
+        self.assertEqual({"tile": TILE, "take": "s4", "by": "builder"}, thread["portrait"])
         raw = (dest / "directory.json").read_text(encoding="utf-8") + (dest / "threads" / f"{BUILDER}.json").read_text(encoding="utf-8")
         for leaked in (HANDLE, "sha-s4", "portrait-1", "chosenAt", "confirmedAt"):
             self.assertNotIn(leaked, raw, f"the public record carries {leaked}")
@@ -550,3 +550,50 @@ class PortraitTests(CoordinateTestCase):
         raw = (dest / "participation.json").read_text(encoding="utf-8")
         for key in ("portraitRecords", "confirmedPortraits", "portraitChoices", "sha"):
             self.assertNotIn(f'"{key}"', raw)
+
+
+class ArchivePickTests(CoordinateTestCase):
+    """Every builder wears a face: the archive's pick from the library, or the choice the
+    coordinator confirmed, and the record says which."""
+
+    def library(self):
+        path = self.root / "library.json"
+        path.write_text(json.dumps({"schema": "chronicles-portrait-library/v1", "library": "viking96", "tiles": [
+            {"id": "hunter_m_bowman", "tags": {"role": "hunter", "presentation": "man", "age": "adult"}, "takes": [{"id": "s1"}, {"id": "s2"}]},
+            {"id": "skald_f_harpist", "tags": {"role": "skald", "presentation": "woman", "age": "adult"}, "takes": [{"id": "s3"}]},
+            {"id": "carpenter_f_artisan", "tags": {"role": "carpenter", "presentation": "woman", "age": "adult"}, "takes": [{"id": "s4"}]},
+        ]}), encoding="utf-8")
+        return path
+
+    def test_without_a_library_nothing_changes(self):
+        self.seed()
+        dest = self.root / "projection"
+        project(document(), dest, WORLD, self.root)
+        self.assertNotIn("portrait", json.loads((dest / "directory.json").read_text(encoding="utf-8"))["builders"][0])
+
+    def test_the_archives_pick_rides_every_record_and_a_confirmed_choice_wins(self):
+        self.seed()
+        dest = self.root / "projection"
+        project(document(), dest, WORLD, self.root, portrait_library=self.library())
+        record = json.loads((dest / "directory.json").read_text(encoding="utf-8"))["builders"][0]
+        self.assertEqual("archive", record["portrait"]["by"])
+        self.assertEqual("viking96/carpenter_f_artisan", record["portrait"]["tile"],
+                         "600 saved pieces is an Established Builder, and the carpenter is that tier's one tile here")
+        self.assertEqual("s4", record["portrait"]["take"])
+        thread = json.loads((dest / "threads" / f"{BUILDER}.json").read_text(encoding="utf-8"))
+        self.assertEqual(record["portrait"], thread["portrait"])
+        # The same key gets the same face on the next projection.
+        dest2 = self.root / "projection2"
+        project(document(), dest2, WORLD, self.root, portrait_library=self.library())
+        self.assertEqual(record["portrait"], json.loads((dest2 / "directory.json").read_text(encoding="utf-8"))["builders"][0]["portrait"])
+        # A confirmed choice replaces the pick and says so.
+        self.ingest_portraits(portrait())
+        run("--output-root", self.root, "confirm-portrait", BUILDER)
+        dest3 = self.root / "projection3"
+        project(document(), dest3, WORLD, self.root, portrait_library=self.library())
+        self.assertEqual({"tile": TILE, "take": "s4", "by": "builder"},
+                         json.loads((dest3 / "directory.json").read_text(encoding="utf-8"))["builders"][0]["portrait"])
+
+    def ingest_portraits(self, *lines):
+        payload = {"schema": coordinate.EXPORT_SCHEMA, "participant": HANDLE, "portraits": list(lines)}
+        return run("--output-root", self.root, "ingest", write_payload(self.root, payload), "--portraits", manifest_file(self.root))

@@ -181,7 +181,7 @@ class HeroProjectionTests(unittest.TestCase):
             destination = Path(temp) / "projection"
             project(document, destination, "https://example.invalid/world")
             thread = (destination / key / "index.html").read_text(encoding="utf-8")
-        self.assertIn('href="../creators.css?v=11"', thread)
+        self.assertIn('href="../creators.css?v=12"', thread)
         self.assertIn('src="../creators.js"', thread)
         self.assertIn('src="../kin-tree.js"', thread)
         self.assertNotIn('"./kin-tree.js', thread)
