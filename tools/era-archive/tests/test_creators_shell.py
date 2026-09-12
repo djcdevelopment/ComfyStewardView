@@ -195,9 +195,8 @@ class ChroniclerStyleTests(unittest.TestCase):
         # FR-8: the one disclosure the profile makes about the faces on it, for every visitor.
         self.assertIn("Portraits are painted by the archive's own models; builders choose theirs.", creators)
         profile = (WEB / "profile.js").read_text(encoding="utf-8")
-        self.assertIn("standingForBuilder(state, thread)", profile)
         self.assertIn("StewardPortraitPicker.mount(", profile)
-        self.assertIn("'Portrait recorded on this device", profile)
+        self.assertIn("Recorded on this device and noted to the archive", profile)
         kinship = (WEB / "kinship.js").read_text(encoding="utf-8")
         self.assertIn("StewardPortraits.setPublished(", kinship)
         gallery_src = (Path(__file__).resolve().parents[1] / "gallery.py").read_text(encoding="utf-8")

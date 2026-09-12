@@ -4020,6 +4020,17 @@ html.pp-open body {
   margin-top: 6px;
 }
 
+#profile .optout-message-wrap {
+  margin: 4px 0 8px;
+}
+
+#profile .optout-message-wrap textarea {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
 #profile .profile-receipt {
   margin: 0;
   font-family: var(--font-mono);

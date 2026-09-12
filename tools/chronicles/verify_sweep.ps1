@@ -109,8 +109,10 @@ if (-not $SkipCreators) {
     Check '/valheim/creators/kinship.js' @('initKinshipPage', 'drawKinshipTree(')
     # The builder's own page: the picker, sign-in (switched off until a client id is set), the
     # opt-out levels. Linted like every other shell.
-    Check '/valheim/creators/profile/' @('data-steward-page="profile"', '../creators.css?v=12', 'src="../creators.js?v=12"', 'src="../portraits.js?v=12"', 'src="../portrait-picker.js?v=12"', 'src="../profile.js"', 'name="discord-client-id"', 'id="profile-optout"', 'value="erase"', 'href="/chronicles/"') @('character', 'archetype', 'submitted', 'href="#participation-details"')
-    Check '/valheim/creators/profile.js' @('initProfilePage', 'relay?wait=true', 'allowed_mentions') @('character', 'archetype', 'seed', 'gender', 'submitted')
+    Check '/valheim/creators/profile/' @('data-steward-page="profile"', '../creators.css?v=12', 'src="../creators.js?v=12"', 'src="../portraits.js?v=12"', 'src="../portrait-picker.js?v=12"', 'src="../profile.js"', 'id="profile-optout"', 'value="erase"', '@Tugcow', 'id="optout-message"', 'href="/chronicles/"') @('character', 'archetype', 'submitted', 'discord-client-id', 'href="#participation-details"')
+    Check '/valheim/creators/profile.js' @('initProfilePage', 'portrait-beacon.txt', "COORDINATOR_HANDLE = 'Tugcow'") @('character', 'archetype', 'seed', 'gender', 'submitted', 'discord.com')
+    # The beacon the profile page requests: a four-byte file whose query string the access log keeps.
+    Check '/valheim/creators/portrait-beacon.txt' @('ok')
     Check '/valheim/creators/directory.json' @('"builders"') @() 'no-cache'
     try {
         $d = (Invoke-WebRequest -Uri ($base + '/valheim/creators/directory.json') -UseBasicParsing -TimeoutSec 60).Content | ConvertFrom-Json

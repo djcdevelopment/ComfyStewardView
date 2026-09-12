@@ -209,12 +209,12 @@ try{
   results.kinship.gated=true;
   // The builder's own page and the portrait picker on it. Every builder wears a painted
   // face by the archive's pick; the avatar on the builder page is the door to the profile
-  // page, where a browser holding a built claim on the builder (seeded here the way the
-  // claim dialog writes it) may choose another: 96 portraits, Trade=Carpenter leaves four,
-  // +red hair leaves one, 24 trades stay in the menu with the empty ones dimmed, Choose
-  // dresses the page and the builder page, the archive's pick undresses. Sign-in ships
-  // switched off and the opt-out Send waits for a level. PICKER=1 runs it (any host whose
-  // portraits.json carries libraries); without it the leg records why it stood down.
+  // page, where anyone may try another: 96 portraits, Trade=Carpenter leaves four, +red
+  // hair leaves one, 24 trades stay in the menu with the empty ones dimmed, Choose dresses
+  // the page and the builder page and notes the choice by a beacon the front door logs, the
+  // archive's pick undresses. An opt-out level writes the message to paste to @Tugcow.
+  // PICKER=1 runs it (any host whose portraits.json carries libraries); without it the leg
+  // records why it stood down.
   if(process.env.PICKER==='1'){
     const threadUrl=new URL(photographed.builderKey+'/',gallery).href;
     await cdp('Page.navigate',{url:threadUrl});
@@ -223,30 +223,32 @@ try{
     if(!libraries){
       results.picker={status:'skipped',reason:'portraits.json carries no libraries on this host'};
     }else{
-      const door=await evaluate("({href:document.getElementById('hero-avatar').getAttribute('href')||'',tag:document.getElementById('hero-avatar').tagName,face:document.querySelector('#hero-avatar img').getAttribute('src'),disclosure:document.getElementById('hero-portrait-disclosure')?.textContent||'',link:document.getElementById('hero-profile-link')?.getAttribute('href')||''})");
+      const door=await evaluate("({href:document.getElementById('hero-avatar').getAttribute('href')||'',tag:document.getElementById('hero-avatar').tagName,face:document.querySelector('#hero-avatar img').getAttribute('src'),disclosure:document.getElementById('hero-portrait-disclosure')?.textContent||''})");
       if(door.tag!=='A'||!door.href.includes('profile/?builder='+photographed.builderKey))throw Error('The avatar is not the door to the profile page');
       if(!/painted by the archive/.test(door.disclosure))throw Error('The builder page carries no portrait disclosure line');
       if(!/\/img\/portraits\/viking96\//.test(door.face))throw Error('The builder page hero does not wear a painted portrait by default: '+door.face);
       const assigned=door.face;
-      // A stranger on the profile page: the sections, sign-in off, the picker gated, Send waiting.
       const profileUrl=new URL('profile/?builder='+photographed.builderKey,gallery).href;
       await cdp('Page.navigate',{url:profileUrl});
-      await wait("!document.getElementById('profile-portrait').hidden&&!!document.querySelector('#portrait-current img')");
-      results.profile=await evaluate("({title:document.getElementById('title').textContent,sections:['profile-who','profile-portrait','profile-optout','profile-about'].filter(id=>!document.getElementById(id).hidden).length,discordOff:!document.getElementById('discord-off').hidden,pickDisabled:document.getElementById('portrait-pick').disabled,gate:document.getElementById('portrait-gate').textContent,sendDisabled:document.getElementById('optout-send').disabled,levels:[...document.querySelectorAll('input[name=optout-level]')].map(i=>i.value),current:document.querySelector('#portrait-current img').getAttribute('src'),archive:document.querySelector('#portrait-archive img')?.getAttribute('src')||null,back:document.getElementById('profile-back-link').getAttribute('href')})");
-      if(results.profile.sections!==4)throw Error('The profile page is missing a section');
-      if(!results.profile.discordOff)throw Error('Discord sign-in reads as switched on with no client id');
-      if(!results.profile.pickDisabled||!results.profile.sendDisabled)throw Error('A stranger can choose a portrait or send a request');
+      await wait("!document.getElementById('profile-portrait').hidden&&!!document.querySelector('#portrait-current img')&&!document.getElementById('portrait-pick').disabled");
+      results.profile=await evaluate("({title:document.getElementById('title').textContent,sections:['profile-portrait','profile-optout','profile-about'].filter(id=>!document.getElementById(id).hidden).length,levels:[...document.querySelectorAll('input[name=optout-level]')].map(i=>i.value),messageHidden:document.getElementById('optout-message-wrap').hidden,current:document.querySelector('#portrait-current img').getAttribute('src'),archive:document.querySelector('#portrait-archive img')?.getAttribute('src')||null,back:document.getElementById('profile-back-link').getAttribute('href')})");
+      if(results.profile.sections!==3)throw Error('The profile page is missing a section');
       if(results.profile.levels.join()!=='none,name,erase')throw Error('Opt-out levels are not none, name, erase: '+results.profile.levels.join());
+      if(!results.profile.messageHidden)throw Error('The opt-out message shows before a level is picked');
       if(results.profile.current!==assigned||results.profile.archive!==assigned)throw Error('The profile page does not show the archive pick the builder page wears');
       if(await evaluate("/character|archetype|seed|gender|submitted/i.test(document.getElementById('profile').innerText)"))throw Error('The profile page says a banned word');
-      // Picking a level arms Send; nothing is sent by the smoke.
+      // A level writes the message to paste, names the coordinator, and notes itself by beacon.
       await evaluate("document.querySelector('input[name=optout-level][value=name]').click()");
-      if(await evaluate("document.getElementById('optout-send').disabled"))throw Error('Picking a level did not arm Send');
-      await screenshot('profile-stranger');
-      // Standing: a built claim on one of this builder's builds, seeded as the claim dialog writes it.
-      await evaluate(`(()=>{const now=new Date().toISOString();const state={schema:'steward-creator-participation-local/v1',createdAt:now,updatedAt:now,participant:'smoke',claims:{['${photographed.builderKey}'.repeat(2)]:{claimId:'claim_smoke',buildKey:'${photographed.builderKey}'.repeat(2),builderKey:'${photographed.builderKey}',buildLabel:'smoke',kind:'built',participant:'smoke',createdAt:now,deliveryStatus:'local'}},requests:{},kinshipTags:{},priorities:{},portraits:{},optOuts:{}};localStorage.setItem('creators-participation-v1',JSON.stringify(state));})()`);
-      await cdp('Page.reload',{});
-      await wait("!document.getElementById('profile-portrait').hidden&&!document.getElementById('portrait-pick').disabled");
+      await wait("!document.getElementById('optout-message-wrap').hidden&&document.getElementById('optout-message').value.length>0");
+      results.profile.message=await evaluate("document.getElementById('optout-message').value");
+      if(!/^@Tugcow /.test(results.profile.message)||!/Keep the pictures, drop my name/.test(results.profile.message)||!/Receipt: r-\d{8}-[0-9a-f]{8}/.test(results.profile.message))throw Error('The opt-out message is not the one to paste: '+results.profile.message);
+      if(!results.profile.message.includes(photographed.builderKey))throw Error('The opt-out message does not name the builder key');
+      // The beacon shows in resource timing once its response is in; wait for it.
+      await wait("performance.getEntriesByType('resource').some(e=>/portrait-beacon\.txt\?.*action=optout/.test(e.name))");
+      const beacons=await evaluate("performance.getEntriesByType('resource').map(e=>e.name).filter(n=>n.includes('portrait-beacon.txt'))");
+      if(!beacons.some(n=>/action=optout/.test(n)&&/level=name/.test(n)&&n.includes('builder='+photographed.builderKey)))throw Error('No opt-out beacon was requested: '+JSON.stringify(beacons));
+      await screenshot('profile-optout');
+      // Anyone may try a portrait: no claim, no sign-in.
       await evaluate("document.getElementById('portrait-pick').click()");
       await wait("!!document.querySelector('#portrait-picker:not([hidden]) .pp-tile')");
       results.picker=await evaluate("({count:document.getElementById('pp-count').textContent,dialog:document.getElementById('portrait-picker').getAttribute('aria-modal')})");
@@ -266,10 +268,12 @@ try{
       await screenshot('picker-preview');
       await evaluate("document.getElementById('pp-choose').click()");
       await wait("document.getElementById('portrait-picker').hidden&&/carpenter_f_artisan/.test(document.querySelector('#portrait-current img')?.src||'')");
-      results.picker.chosen=await evaluate("({current:document.querySelector('#portrait-current img').getAttribute('src'),note:document.getElementById('portrait-note').textContent,focus:document.activeElement.id,send:!document.getElementById('portrait-send').hidden})");
+      await wait("performance.getEntriesByType('resource').some(e=>/portrait-beacon\.txt\?.*action=choose/.test(e.name))");
+      results.picker.chosen=await evaluate("({current:document.querySelector('#portrait-current img').getAttribute('src'),note:document.getElementById('portrait-note').textContent,focus:document.activeElement.id,url:location.search,beacons:performance.getEntriesByType('resource').map(e=>e.name).filter(n=>n.includes('portrait-beacon.txt')&&/action=choose/.test(n))})");
       if(results.picker.chosen.focus!=='portrait-pick')throw Error('Focus did not return to the picker control');
-      if(!results.picker.chosen.note.includes('recorded on this device'))throw Error('The page does not say the portrait is recorded on this device');
-      if(!results.picker.chosen.send)throw Error('Send my choice did not appear after a choice');
+      if(!/noted to the archive · receipt r-/.test(results.picker.chosen.note))throw Error('The page does not say the choice was noted: '+results.picker.chosen.note);
+      if(!/portrait=viking96%2Fcarpenter_f_artisan/.test(results.picker.chosen.url))throw Error('The address bar does not carry the choice: '+results.picker.chosen.url);
+      if(!results.picker.chosen.beacons.some(n=>/tile=viking96%2Fcarpenter_f_artisan/.test(n)&&/take=s\d+/.test(n)&&/receipt=r-/.test(n)))throw Error('No choose beacon was requested: '+JSON.stringify(results.picker.chosen.beacons));
       await screenshot('profile-chosen');
       // The builder page wears it too, on this device.
       await cdp('Page.navigate',{url:threadUrl});

@@ -4,10 +4,6 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="creator-participation-endpoint" content="">
-    <!-- The Discord application this page signs in with (its public client id). Empty
-         means sign-in is switched off and every request goes out unsigned. The redirect
-         URI registered on the application must be this page's URL without a query. -->
-    <meta name="discord-client-id" content="">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23121820'/%3E%3Cpath d='M32 10L48 24V40L32 54L16 40V24L32 10Z' fill='%231a232e' stroke='%23f59e0b' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%23f59e0b'/%3E%3C/svg%3E">
     <title>Your profile · Comfy builders</title>
     <meta name="description" content="A builder's own page: the portrait their profile wears, and how to ask the archive to show less of them.">
@@ -60,22 +56,6 @@
         </div>
       </section>
 
-      <section id="profile-who" class="profile-block" hidden aria-labelledby="who-h">
-        <h2 id="who-h">Who you are</h2>
-        <div id="discord-off" class="profile-row" hidden>
-          <p class="muted">Sign-in with Discord isn't switched on yet. Requests from this page still go out — unsigned — and the coordinator checks them with you on Discord.</p>
-        </div>
-        <div id="discord-on" class="profile-row" hidden>
-          <button type="button" id="discord-signin" class="primary">Sign in with Discord</button>
-          <p id="discord-identity" class="profile-identity" hidden>
-            <img id="discord-avatar" class="discord-avatar" alt="" width="28" height="28" hidden>
-            <span>Signed in as <strong id="discord-name"></strong></span>
-            <button type="button" id="discord-signout" class="kin-open plain">sign out</button>
-          </p>
-        </div>
-        <p class="muted small">Discord tells us who you are on Discord, not which builder you are. The coordinator confirms that before anything changes on your page.</p>
-      </section>
-
       <section id="profile-portrait" class="profile-block" hidden aria-labelledby="portrait-h">
         <h2 id="portrait-h">Your portrait</h2>
         <div class="portrait-pair">
@@ -91,16 +71,15 @@
         <div class="actions-row">
           <button type="button" id="portrait-pick" class="primary">Choose a portrait</button>
           <button type="button" id="portrait-archive-pick">Use the archive's pick</button>
-          <button type="button" id="portrait-send" hidden>Send my choice</button>
         </div>
         <p id="portrait-gate" class="muted small"></p>
         <p id="portrait-note" class="muted small" hidden></p>
-        <p class="muted small">Portraits are painted by the archive's own models; builders choose theirs.</p>
+        <p class="muted small">Portraits are painted by the archive's own models; builders choose theirs. A choice is recorded on this device and noted to the archive; the coordinator publishes it for everyone.</p>
       </section>
 
       <section id="profile-optout" class="profile-block" hidden aria-labelledby="optout-h">
         <h2 id="optout-h">Your name and your builds</h2>
-        <p class="muted">The archive shows what the saved world holds. If you would rather it showed less of you, ask here; the coordinator confirms every request on Discord before a page changes.</p>
+        <p class="muted">The archive shows what the saved world holds. If you would rather it showed less of you, pick a level: the page writes the message, you paste it to <strong>@Tugcow</strong> on Discord, and nothing changes until it is confirmed there.</p>
         <fieldset class="optout-levels">
           <legend class="visually-hidden">What should the archive show</legend>
           <label class="optout-level"><input type="radio" name="optout-level" value="none" checked>
@@ -113,9 +92,13 @@
         <label class="optout-note">Anything the coordinator should know (optional)
           <textarea id="optout-note" rows="3" maxlength="500" placeholder="Which name, which builds, or why."></textarea>
         </label>
-        <div class="actions-row">
-          <button type="button" id="optout-send" class="primary" disabled>Send request</button>
-          <button type="button" id="optout-copy">Copy your payload</button>
+        <div id="optout-message-wrap" class="optout-message-wrap" hidden>
+          <label class="optout-note">Your message — paste it to @Tugcow on Discord
+            <textarea id="optout-message" rows="7" readonly spellcheck="false"></textarea>
+          </label>
+          <div class="actions-row">
+            <button type="button" id="optout-copy" class="primary">Copy message</button>
+          </div>
         </div>
         <p id="optout-receipt" class="profile-receipt" hidden></p>
       </section>
@@ -123,9 +106,9 @@
       <section id="profile-about" class="profile-block profile-about" hidden aria-labelledby="about-h">
         <h2 id="about-h">What this page is not</h2>
         <ul class="muted">
-          <li>Not an account. There is nothing to log in to; a Discord sign-in only puts your Discord name on a request.</li>
-          <li>Nothing here is stored on a server by this page. Your choices live in this browser until a request carries them.</li>
-          <li>Every request is confirmed by the coordinator on Discord before a public page changes. See <a href="/chronicles/guide/#claims">how claims work</a>.</li>
+          <li>Not an account. There is nothing to log in to, and anyone can try a portrait on any builder's page — it is worn on this device until the coordinator publishes it.</li>
+          <li>Nothing here is stored on a server by this page. A choice is noted to the archive as a request line in the front door's own log, which is also where the coordinator watches for abuse.</li>
+          <li>Every request is confirmed by the coordinator (@Tugcow) on Discord before a public page changes. See <a href="/chronicles/guide/#claims">how claims work</a>.</li>
         </ul>
       </section>
 
@@ -133,7 +116,7 @@
         <div class="codex">
           <section>
             <h3>Recorded on this device</h3>
-            <p>Choices and requests are kept in this browser and sent as a receipt; the archive itself changes only when the coordinator confirms.</p>
+            <p>Choices and requests are kept in this browser and noted to the archive with a receipt; the archive itself changes only when the coordinator confirms.</p>
           </section>
           <section>
             <h3>Independent identities</h3>
@@ -145,16 +128,5 @@
 
     <div id="toast" role="status" aria-live="polite"></div>
 
-    <section id="activity-modal" class="modal" hidden>
-      <div class="sheet">
-        <h2>Your payload</h2>
-        <p class="muted">Send this payload to the coordinator on Discord and quote the receipt, if there is one.</p>
-        <textarea id="activity-payload" rows="14" readonly></textarea>
-        <div class="actions-row">
-          <button type="button" id="activity-copy">Copy JSON</button>
-          <button type="button" id="activity-close">Close</button>
-        </div>
-      </div>
-    </section>
   </body>
 </html>

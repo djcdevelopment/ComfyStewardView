@@ -366,6 +366,8 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
     # A four-byte file whose query string is the search log: Caddy already records every
     # request as JSON with its URI, so this needs no service, no write path and no store.
     (destination/"search-beacon.txt").write_text("ok\n",encoding="utf-8")
+    # The profile page's note to the archive: a GET whose query string the access log keeps.
+    (destination/"portrait-beacon.txt").write_text("ok\n",encoding="utf-8")
     write_participation_snapshot()
     # Whitelist above deliberately excludes raw character IDs, names from signs, coordinates,
     # source paths, inventories, world seed, snapshot hashes and private identity-review evidence.

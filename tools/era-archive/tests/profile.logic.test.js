@@ -1,7 +1,7 @@
 'use strict';
-// The profile page's pure pieces (web/profile.js): the Discord fragment parser, the receipt
-// id, the relay message, and the opt-out record in the store. Run with:
-//   node --test tools/era-archive/tests/profile.logic.test.js
+// The profile page's pure pieces (web/profile.js): the receipt id, the beacon URL the front
+// door logs, the message a builder pastes to the coordinator, and the opt-out record in the
+// store. Run with: node --test tools/era-archive/tests/profile.logic.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -10,21 +10,7 @@ const profile = require(path.join(__dirname, '..', 'web', 'profile.js'));
 const {StewardParticipation} = require(path.join(__dirname, '..', 'web', 'creators.js'));
 
 const KEY = '5897d38e2a065e36a6895e70a2194738';
-
-test('the fragment parser keeps a token only for its own round trip and returns the builder', () => {
-  const hash = `#access_token=tok123&token_type=Bearer&expires_in=604800&scope=identify&state=n0nce.${KEY}`;
-  const grant = profile.parseDiscordFragment(hash, 'n0nce');
-  assert.equal(grant.token, 'tok123');
-  assert.equal(grant.tokenType, 'Bearer');
-  assert.equal(grant.builderKey, KEY);
-  assert.equal(grant.expiresIn, 604800);
-  assert.equal(profile.parseDiscordFragment(hash, 'other'), null, 'a nonce that is not ours');
-  assert.equal(profile.parseDiscordFragment(hash, null), null, 'no nonce remembered');
-  assert.equal(profile.parseDiscordFragment('#state=n0nce.' + KEY, 'n0nce'), null, 'no token');
-  assert.equal(profile.parseDiscordFragment('#access_token=t&state=n0nce.notakey', 'n0nce'), null, 'a key that is not one');
-  assert.equal(profile.parseDiscordFragment('#access_token=t&state=n0nce', 'n0nce').builderKey, null);
-  assert.equal(profile.parseDiscordFragment('', 'n0nce'), null);
-});
+const BASE = new URL('https://example.invalid/valheim/creators/');
 
 test('the receipt id is the day plus eight hex digits, stable for the same who/when/what', () => {
   const a = profile.receiptId(KEY, '2026-09-12T11:30:00.000Z', 'optout');
@@ -32,49 +18,58 @@ test('the receipt id is the day plus eight hex digits, stable for the same who/w
   assert.equal(a, profile.receiptId(KEY, '2026-09-12T11:30:00.000Z', 'optout'));
   assert.notEqual(a, profile.receiptId(KEY, '2026-09-12T11:30:00.000Z', 'portrait'));
   assert.notEqual(a, profile.receiptId('a'.repeat(32), '2026-09-12T11:30:00.000Z', 'optout'));
-  assert.equal(profile.fnv1a64('a'), profile.fnv1a64('a'));
-  assert.notEqual(profile.fnv1a64('a'), profile.fnv1a64('b'));
 });
 
-test('the relay message is one embed, no mentions, the builder, the request, who sent it and the receipt', () => {
+test('the beacon carries only the archive tokens on its query string, under the creators root', () => {
+  const choose = profile.beaconUrl(BASE, {action: 'choose', builderKey: KEY, tile: 'viking96/jarl_m_chieftain', take: 's7', receipt: 'r-20260912-deadbeef'});
+  assert.equal(choose.pathname, '/valheim/creators/portrait-beacon.txt');
+  assert.equal(choose.searchParams.get('action'), 'choose');
+  assert.equal(choose.searchParams.get('builder'), KEY);
+  assert.equal(choose.searchParams.get('tile'), 'viking96/jarl_m_chieftain');
+  assert.equal(choose.searchParams.get('take'), 's7');
+  assert.equal(choose.searchParams.get('receipt'), 'r-20260912-deadbeef');
+  assert.equal([...choose.searchParams.keys()].length, 5);
+  const revert = profile.beaconUrl(BASE, {action: 'revert', builderKey: KEY, tile: null, take: null, receipt: 'r-1'});
+  assert.deepEqual([...revert.searchParams.keys()], ['action', 'builder', 'receipt']);
+  const optout = profile.beaconUrl(BASE, {action: 'optout', builderKey: KEY, level: 'erase', receipt: 'r-2'});
+  assert.deepEqual([...optout.searchParams.keys()], ['action', 'builder', 'level', 'receipt']);
+  // The note never rides the beacon: there is no key for it.
+  assert.equal(optout.searchParams.get('note'), null);
+});
+
+test('the message names the coordinator, the receipt, the builder, the request and the note, in that order', () => {
   const builder = {builderKey: KEY, displayName: 'Tugcow'};
-  const optout = profile.relayMessage({kind: 'optout', builder, level: 'name', note: 'please', discord: {id: '42', username: 'tug'},
-    receipt: 'r-20260912-deadbeef', pageUrl: 'https://example.invalid/profile/?builder=' + KEY});
-  assert.deepEqual(optout.allowed_mentions, {parse: []});
-  assert.equal(optout.embeds.length, 1);
-  const fields = Object.fromEntries(optout.embeds[0].fields.map((f) => [f.name, f.value]));
-  assert.match(fields.Builder, /Tugcow/);
-  assert.match(fields.Builder, new RegExp(KEY));
-  assert.equal(fields.Request, 'Keep the pictures, drop my name');
-  assert.match(fields.Discord, /tug \(`42`\)/);
-  assert.equal(fields.Receipt, '`r-20260912-deadbeef`');
-  assert.equal(fields.Note, 'please');
-  const unsigned = profile.relayMessage({kind: 'portrait', builder: {builderKey: KEY}, discord: null, receipt: 'r', portrait: {tile: 'viking96/jarl_m_chieftain', take: 's7'}});
-  const f2 = Object.fromEntries(unsigned.embeds[0].fields.map((f) => [f.name, f.value]));
-  assert.equal(f2.Discord, 'unsigned');
-  assert.match(f2.Builder, /^Builder 5897d38e/);
-  assert.equal(f2.Request, 'Portrait: viking96/jarl_m_chieftain · s7');
-  assert.equal(f2.Note, undefined);
-  const revert = profile.relayMessage({kind: 'portrait', builder, discord: null, receipt: 'r', portrait: {tile: null}});
-  assert.match(Object.fromEntries(revert.embeds[0].fields.map((f) => [f.name, f.value])).Request, /archive's pick/);
-  // The words the archive never uses are not in anything the relay says.
-  for (const doc of [optout, unsigned, revert]) assert.doesNotMatch(JSON.stringify(doc), /character|archetype|seed|gender|submitted/i);
+  const text = profile.requestMessage({kind: 'optout', builder, level: 'name', note: '  please  ', receipt: 'r-20260912-deadbeef',
+    pageUrl: 'https://example.invalid/valheim/creators/profile/?builder=' + KEY});
+  const lines = text.split('\n');
+  assert.equal(lines[0], '@Tugcow — a request from the Valheim Chronicles archive');
+  assert.equal(lines[1], 'Receipt: r-20260912-deadbeef');
+  assert.equal(lines[2], `Builder: Tugcow (${KEY})`);
+  assert.equal(lines[3], 'Request: Keep the pictures, drop my name');
+  assert.equal(lines[4], 'Note: please');
+  assert.match(lines[5], /^Page: https:\/\/example\.invalid\/valheim\/creators\/profile\/\?builder=/);
+  assert.equal(lines.length, 6);
+  const erase = profile.requestMessage({kind: 'optout', builder: {builderKey: KEY}, level: 'erase', receipt: 'r'});
+  assert.match(erase, /Builder: Builder 5897d38e \(/);
+  assert.match(erase, /Request: Erase every reference to me and don't use my builds in any process/);
+  assert.doesNotMatch(erase, /Note:/);
+  const portrait = profile.requestMessage({kind: 'portrait', builder, receipt: 'r', portrait: {tile: 'viking96/jarl_m_chieftain', take: 's7'}});
+  assert.match(portrait, /Request: portrait viking96\/jarl_m_chieftain · s7/);
+  for (const doc of [text, erase, portrait]) assert.doesNotMatch(doc, /character|archetype|seed|gender|submitted/i);
+  assert.equal(profile.COORDINATOR_HANDLE, 'Tugcow');
 });
 
 test('setOptOut keeps one request per profile, refuses unknown levels, clears on none, and rides the export', () => {
   const state = StewardParticipation.defaultState('2026-09-12T00:00:00Z');
   assert.equal(StewardParticipation.setOptOut(state, {builderKey: KEY, level: 'maybe'}), null);
   assert.equal(StewardParticipation.setOptOut(state, {builderKey: 'nope', level: 'name'}), null);
-  const rec = StewardParticipation.setOptOut(state, {builderKey: KEY, level: 'name', note: '  which name  ', participant: ' Skald ', discord: {id: 42, username: 'tug'}});
+  const rec = StewardParticipation.setOptOut(state, {builderKey: KEY, level: 'name', note: '  which name  ', participant: ' Skald '});
   assert.equal(rec.level, 'name');
   assert.equal(rec.note, 'which name');
   assert.equal(rec.participant, 'Skald');
-  assert.deepEqual(rec.discord, {id: '42', username: 'tug'});
-  assert.equal(rec.sentAt, null);
-  const again = StewardParticipation.setOptOut(state, {builderKey: KEY, level: 'erase', discord: null});
+  const again = StewardParticipation.setOptOut(state, {builderKey: KEY, level: 'erase'});
   assert.equal(again.optOutId, rec.optOutId, 'the same profile keeps one record');
   assert.equal(again.level, 'erase');
-  assert.equal(again.discord, null);
   assert.equal(StewardParticipation.optOutForBuilder(state, KEY).level, 'erase');
   assert.deepEqual(StewardParticipation.exportPayload(state).optOuts.map((o) => o.level), ['erase']);
   assert.equal(StewardParticipation.setOptOut(state, {builderKey: KEY, level: 'none'}), null);
