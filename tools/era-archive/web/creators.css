@@ -1248,6 +1248,24 @@ fieldset input {
 button.inert {
   opacity: 0.62;
   border-style: dashed;
+  cursor: not-allowed;
+}
+
+/* The line under a card's controls that says why a control is inert -- the whole width
+   of the row, under the buttons, read before anyone clicks. width: 0 with min-width: 100%
+   keeps the sentence from sizing the column: the buttons set the row's width and the
+   sentence wraps inside it (the details grid gives this column `auto`, and a long line
+   would otherwise squeeze the credits beside it to a strip). */
+.actions-row .actions-note {
+  flex-basis: 100%;
+  width: 0;
+  min-width: 100%;
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.work-details .actions-row .actions-note {
+  text-align: right;
 }
 
 .modal,

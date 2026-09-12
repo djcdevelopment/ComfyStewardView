@@ -9,7 +9,7 @@ const path = require('node:path');
 const {
   SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, compareBuilders, matchScore,
   computeTopEight, portraitIndex, eraBounds, heroAliases,
-  majorityOwner, tagCandidates, buildKinshipTree, mergeKinshipTags, kinshipTagRecord, StewardParticipation,
+  majorityOwner, tagCandidates, leadingBuilderNote, buildKinshipTree, mergeKinshipTags, kinshipTagRecord, StewardParticipation,
   KINSHIP_TAG_IDS, pickMosaicAlbums, distinctAttributions,
 } = require(path.join(__dirname, '..', 'web', 'creators.js'));
 
@@ -871,4 +871,30 @@ test('tagCandidates lists the other credited builders in credit order, with shar
   assert.deepEqual(tagCandidates({contributors: [{builderKey: me, share: 1}]}, me), []);
   assert.deepEqual(tagCandidates({}, me), []);
   assert.deepEqual(tagCandidates(null, me), []);
+});
+
+test('leadingBuilderNote names the rule and the fact about this build that applies it', () => {
+  const me = 'a'.repeat(32);
+  const other = 'b'.repeat(32);
+  const third = 'c'.repeat(32);
+  const names = (key) => ({[other]: 'Laughingman', [third]: 'Bocci'}[key] || 'Recorded builder');
+  const rule = "Tags come from a build's leading builder";
+  // Somebody else leads: say who, with their share.
+  assert.equal(leadingBuilderNote({contributors: [{builderKey: other, share: 0.426}, {builderKey: third, share: 0.325}, {builderKey: me, share: 0}]}, me, names),
+    `${rule} — here that's Laughingman (42.6%).`);
+  // The builder is on top but under a quarter.
+  assert.equal(leadingBuilderNote({contributors: [{builderKey: me, share: 0.2}, {builderKey: other, share: 0.1}]}, me, names),
+    `${rule}, and no one holds a quarter of this one.`);
+  // A tie at the top.
+  assert.equal(leadingBuilderNote({contributors: [{builderKey: me, share: 0.4}, {builderKey: other, share: 0.4}]}, me, names),
+    `${rule}, and this one has no single leader.`);
+  // A legacy import with no shares at all.
+  assert.equal(leadingBuilderNote({contributors: [{builderKey: me, share: null}, {builderKey: other, share: null}]}, me, names),
+    `${rule}, and this build's shares were never recorded.`);
+  // Every note agrees with majorityOwner: whenever the owner is null and there is someone
+  // to tag, the note explains it; whenever the owner is set, the note is not needed.
+  for (const album of [
+    {contributors: [{builderKey: me, share: 0.44}, {builderKey: other, share: 0.246}]},
+    {contributors: [{builderKey: me, share: 0.778}]},
+  ]) assert.notEqual(majorityOwner(album, me), null);
 });

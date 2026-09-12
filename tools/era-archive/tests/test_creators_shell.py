@@ -275,12 +275,19 @@ class ChroniclerStyleTests(unittest.TestCase):
             self.assertIn(element.split('"')[1], js, f"creators.js does not address {element}")
         self.assertEqual(list(gallery.KINSHIP_TAGS), kin.tag_checkbox_values(self.index),
                          "the build card's boxes and gallery.py's allowlist have drifted")
-        # The gate is the kinship page's: the leading builder, holding a built claim; the
-        # reason for an inert control is spoken, not tucked in a tooltip.
+        # The gate is the kinship page's -- the leading builder, holding a built claim --
+        # but never a dead click (Derek, on his own page: "that button is doing nothing").
+        # Without the claim, the click opens the claim dialog and the tag dialog follows;
+        # when the build is not this builder's to tag, the reason stands under the row.
+        self.assertIn("openClaimDialog(album, targetBuilderKey, {kind: 'built', then: () => openTagDialog(album, targetBuilderKey, {afterClaim: true})})", js)
+        self.assertIn("if (afterClaim) await copyActivityPayload(exportPayload('claim'))", js,
+                      "a cancelled tag after a chained claim still hands the claim over")
+        self.assertIn("node('p', note, 'muted actions-note')", js)
         for line in ("Nobody else is recorded on this build.",
-                     "Tags come from a build's leading builder.",
-                     "Claim this build before tagging basemates."):
+                     "Tags come from a build's leading builder",
+                     "the claim comes first; tagging opens the moment it is recorded"):
             self.assertIn(line, js)
+        self.assertIn(".actions-row .actions-note", self.css)
         self.assertIn("exportPayload('kinship')", js, "a recorded tag hands over the kinship payload for the build")
         self.assertIn("'chip kin-chip pending'", js, "a tag recorded on this device shows beside the credit")
         self.assertNotIn("submitted", self.index)
@@ -296,7 +303,7 @@ class ChroniclerStyleTests(unittest.TestCase):
 
     def test_stylesheet_href_is_cache_busted_and_still_rewritable(self):
         for name, content in (("index.html", self.index), ("stats.html", self.stats)):
-            self.assertIn('href="./creators.css?v=14"', content, name)
+            self.assertIn('href="./creators.css?v=15"', content, name)
         self.assertIn('src="./creators.js"', self.index)
         # pair.js and kin-tree.js ride beside creators.js and wear the same cache policy it
         # does: unversioned here, where the stylesheet carries the bust for the whole shell.
@@ -320,9 +327,9 @@ class ChroniclerStyleTests(unittest.TestCase):
         js = (WEB / "creators.js").read_text(encoding="utf-8")
         self.assertIn("!['kinship', 'profile'].includes(document.documentElement.dataset.stewardPage)", js)
         self.assertIn('<html lang="en" data-steward-page="kinship">', self.kinship)
-        self.assertIn('src="./creators.js?v=14"', self.kinship)
-        self.assertIn('src="./portraits.js?v=14"', self.kinship)
-        self.assertIn('src="./kin-tree.js?v=14"', self.kinship)
+        self.assertIn('src="./creators.js?v=15"', self.kinship)
+        self.assertIn('src="./portraits.js?v=15"', self.kinship)
+        self.assertIn('src="./kin-tree.js?v=15"', self.kinship)
         self.assertIn('src="./kinship.js"', self.kinship)
         self.assertNotIn("data-steward-page", self.index,
                          "the directory shell is the default route, not a named one")
@@ -344,7 +351,7 @@ class ChroniclerStyleTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             receipt = project(document, dest, "https://example.invalid/world")
             thread = (dest / key / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=14"', thread)
+            self.assertIn('href="../creators.css?v=15"', thread)
             self.assertIn('src="../creators.js"', thread)
             # The pair view's script and the tree's get the same climb. A thread page is
             # one directory down, so a surviving "./pair.js would 404 on every profile.
@@ -356,7 +363,7 @@ class ChroniclerStyleTests(unittest.TestCase):
             self.assertIn("pair.js", paths, "the projection does not ship the pair view's script")
             self.assertIn("kin-tree.js", paths, "the projection does not ship the tree's script")
             stats = (dest / "stats" / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=14"', stats)
+            self.assertIn('href="../creators.css?v=15"', stats)
 
 
 if __name__ == "__main__":

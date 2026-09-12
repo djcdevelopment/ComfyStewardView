@@ -300,6 +300,21 @@ function majorityOwner(album, builderKey) {
   return 'largest';
 }
 
+// Why a tag is not on offer to this builder on this build, said in place before any
+// click: the rule (tags come from a build's leading builder, as majorityOwner reads it)
+// and the fact about this build that applies it -- who leads instead, that nobody holds
+// a quarter, that the top share is tied, or that a legacy import recorded no shares.
+function leadingBuilderNote(album, builderKey, nameOf = (key) => key) {
+  const rule = "Tags come from a build's leading builder";
+  const shares = ((album && album.contributors) || []).filter((c) => c && c.share != null);
+  if (!shares.length) return `${rule}, and this build's shares were never recorded.`;
+  const top = Math.max(...shares.map((c) => c.share));
+  const leaders = shares.filter((c) => c.share === top);
+  if (leaders.length > 1) return `${rule}, and this one has no single leader.`;
+  if (leaders[0].builderKey === builderKey) return `${rule}, and no one holds a quarter of this one.`;
+  return `${rule} — here that's ${nameOf(leaders[0].builderKey)} (${(100 * top).toFixed(1)}%).`;
+}
+
 // Who a builder can tag on one of their builds: the other people credited on it, in
 // credit order, each with their share and whether a bed of theirs was saved inside. A
 // tag is one builder's word about another, so the list is the build's own contributors
@@ -761,7 +776,7 @@ if (typeof module !== 'undefined') {
     SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, computeTopEight,
     portraitIndex, eraBounds, heroAliases, pickMosaicAlbums, distinctAttributions,
     nowISOString, randomId, normalizeHandle, submitPayload,
-    KINSHIP_TAGS, KINSHIP_TAG_IDS, majorityOwner, tagCandidates, buildKinshipTree, mergeKinshipTags,
+    KINSHIP_TAGS, KINSHIP_TAG_IDS, majorityOwner, tagCandidates, leadingBuilderNote, buildKinshipTree, mergeKinshipTags,
     kinshipTagRecord, StewardParticipation,
   };
 }
@@ -2135,27 +2150,33 @@ const initCreatorsPage = async () => {
     }
 
     // Tagging the people credited beside you on this build, from the card itself rather
-    // than the kinship page. The same gate as there: the build's leading builder, holding
-    // a built claim in this browser. Inert rather than absent when it cannot act, with the
-    // reason in a toast -- the tap has to be answered on a phone.
+    // than the kinship page. The same gate as there -- the build's leading builder,
+    // holding a built claim in this browser -- but never a dead click: without the claim
+    // the click opens the claim dialog and the tag dialog follows the moment the claim is
+    // recorded; and when the build is not this builder's to tag, the control is inert and
+    // the reason stands under it before anyone clicks (a toast at the foot of the window
+    // is missed, which read as the button doing nothing).
     if (!current || current.kind !== 'disavow') {
       const others = tagCandidates(album, targetBuilderKey);
-      const why = !others.length ? 'Nobody else is recorded on this build.'
-        : majorityOwner(album, targetBuilderKey) === null ? "Tags come from a build's leading builder."
-        : !standing ? 'Claim this build before tagging basemates.'
+      const nameOf = (key) => buildersByKey.get(key)?.displayName || 'Recorded builder';
+      const note = !others.length ? 'Nobody else is recorded on this build.'
+        : majorityOwner(album, targetBuilderKey) === null ? leadingBuilderNote(album, targetBuilderKey, nameOf)
         : null;
       const tagBtn = node('button', 'Tag another basemate', 'album-tag-btn');
-      if (why) {
+      if (note) {
         tagBtn.classList.add('inert');
         tagBtn.setAttribute('aria-disabled', 'true');
-        tagBtn.title = why.replace(/\.$/, '');
+        tagBtn.title = note.replace(/\.$/, '');
+        tagBtn.onclick = () => showToast(note);
+      } else {
+        tagBtn.onclick = () => {
+          selectedAlbum = album;
+          if (standing) return openTagDialog(album, targetBuilderKey);
+          openClaimDialog(album, targetBuilderKey, {kind: 'built', then: () => openTagDialog(album, targetBuilderKey, {afterClaim: true})});
+        };
       }
-      tagBtn.onclick = () => {
-        if (why) return showToast(why);
-        selectedAlbum = album;
-        openTagDialog(album, targetBuilderKey);
-      };
       row.append(tagBtn);
+      if (note) row.append(node('p', note, 'muted actions-note'));
     }
     return row;
   }
@@ -2585,7 +2606,10 @@ const initCreatorsPage = async () => {
   // One dialog, two kinds. The fields are identical -- a handle, an optional note -- and
   // so is what happens to them, so a second modal would have been a second copy of the
   // clipboard fallback, the handle validation and the delivery wording to keep honest.
-  function openClaimDialog(album, targetBuilderKey, {kind = 'built'} = {}) {
+  // `then` chains the tag dialog behind a built claim made from the card's tag control:
+  // the claim's own payload hand-over is skipped, because the kinship payload the tag
+  // dialog hands over carries the standing claim (and its cancel hands the claim over).
+  function openClaimDialog(album, targetBuilderKey, {kind = 'built', then = null} = {}) {
     const disavowing = kind === 'disavow';
     selectedAlbum = album;
     // The shell carries both kinds' guidance copy; the mode picks which one is shown.
@@ -2595,7 +2619,7 @@ const initCreatorsPage = async () => {
     }
     $('claim-title').textContent = disavowing ? 'Not my build' : 'Claim build';
     $('claim-confirm').textContent = disavowing ? "This isn't mine" : 'I built this';
-    $('claim-build-label').textContent = `${album.label} · era ${album.era}`;
+    $('claim-build-label').textContent = `${album.label} · era ${album.era}` + (then ? ' — the claim comes first; tagging opens the moment it is recorded.' : '');
     $('claim-handle').value = state.participant || '';
     $('claim-note').value = '';
     $('claim-confirm').onclick = async () => {
@@ -2636,13 +2660,16 @@ const initCreatorsPage = async () => {
       // Without an ingestion endpoint a claim reaches nobody on its own, so the claim
       // is not finished until the volunteer sends the payload. Say that, and hand them
       // the payload the same way the photo-request path already does.
-      if (deliveryStatus === 'submitted') {
+      if (then) {
+        showToast('Build claim recorded — now the tag.');
+      } else if (deliveryStatus === 'submitted') {
         showToast(disavowing ? 'Disavowal sent.' : 'Build claim sent.');
       } else {
         await copyActivityPayload(exportPayload('claim'));
       }
       refreshAlbumCard(album, targetBuilderKey);
       refreshThreadParticipationLine();
+      if (then) then();
     };
     $('claim-cancel').onclick = () => closeModal(claimModal);
     openModal(claimModal);
@@ -2652,7 +2679,7 @@ const initCreatorsPage = async () => {
   // picked from the card's own credits (kinship.js does it the other way round, one Tag
   // button per co-builder with a build select). The record, the store and the payload the
   // coordinator ingests are the same either way.
-  function openTagDialog(album, targetBuilderKey) {
+  function openTagDialog(album, targetBuilderKey, {afterClaim = false} = {}) {
     if (!tagModal) return;
     const select = $('kin-tag-with');
     const boxes = [...tagModal.querySelectorAll('input[name="kin-tag"]')];
@@ -2732,7 +2759,12 @@ const initCreatorsPage = async () => {
       refreshAlbumCard(album, targetBuilderKey);
       refreshThreadParticipationLine();
     };
-    $('kin-tag-cancel').onclick = () => closeModal(tagModal);
+    $('kin-tag-cancel').onclick = async () => {
+      closeModal(tagModal);
+      // The claim this dialog was chained behind skipped its own hand-over, expecting to
+      // ride out with the tag; no tag, so it goes out on its own now.
+      if (afterClaim) await copyActivityPayload(exportPayload('claim'));
+    };
     openModal(tagModal);
   }
 
