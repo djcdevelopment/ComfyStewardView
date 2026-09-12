@@ -186,7 +186,7 @@ assert context_dir.is_relative_to(catalog.resolve())
 shutil.rmtree(context_dir);context_dir.mkdir()
 for name in settings['contextFiles']:
     os.replace(staging/'context'/name,context_dir/name);(context_dir/name).chmod(0o444)
-staging.rmdir()
+(staging/'context').rmdir();staging.rmdir()
 
 manifest=json.loads((context_dir/'manifest.json').read_text(encoding='utf-8'))
 assert manifest['schemaVersion']==3 and manifest['kind']=='steward-terrain-context'

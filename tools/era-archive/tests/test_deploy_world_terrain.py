@@ -54,6 +54,7 @@ class DeployWorldTerrainTests(unittest.TestCase):
         compile(MODULE.REMOTE, "<deploy-world-terrain-remote>", "exec")
         self.assertIn("copy_function=os.link", MODULE.REMOTE)
         self.assertIn("os.replace(candidate,path)", MODULE.REMOTE)
+        self.assertIn("(staging/'context').rmdir();staging.rmdir()", MODULE.REMOTE)
         self.assertIn("'catalogTransferred':False", MODULE.REMOTE)
         self.assertIn("'imageBuilt':False", MODULE.REMOTE)
         self.assertNotIn("docker','build", MODULE.REMOTE)
