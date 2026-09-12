@@ -90,8 +90,8 @@ if (-not $SkipViewer) {
 
 if (-not $SkipCreators) {
     "== creators"
-    Check '/valheim/creators/' @('creators.css?v=12', 'id="stats-link"', 'href="/chronicles/"', 'src="./portraits.js"')
-    Check '/valheim/creators/creators.css?v=12' @('--flame', '@font-face', '#portrait-picker')
+    Check '/valheim/creators/' @('creators.css?v=13', 'id="stats-link"', 'href="/chronicles/"', 'src="./portraits.js"')
+    Check '/valheim/creators/creators.css?v=13' @('--flame', '@font-face', '#portrait-picker')
     Check '/valheim/creators/creators.js' @('Top 8', 'portraitIndex', 'StewardParticipation', 'buildKinshipTree')
     # The pair view is mounted by creators.js and drawn entirely by this script, so the
     # section itself cannot be probed in the served HTML -- the script's own presence and
@@ -105,11 +105,11 @@ if (-not $SkipCreators) {
     Check '/valheim/creators/stats/' @('Archive Statistics', 'href="/chronicles/"')
     # The kinship page is served from its own directory, so its assets climb one level.
     # The two banned words and the participation deep link all belong to other pages.
-    Check '/valheim/creators/kinship/' @('id="kin-tree"', '../creators.css?v=12', 'src="../portraits.js?v=12"', 'src="../kin-tree.js?v=12"', 'data-steward-page="kinship"', 'href="/chronicles/"') @('character', 'archetype', 'href="#participation-details"')
+    Check '/valheim/creators/kinship/' @('id="kin-tree"', '../creators.css?v=13', 'src="../portraits.js?v=13"', 'src="../kin-tree.js?v=13"', 'data-steward-page="kinship"', 'href="/chronicles/"') @('character', 'archetype', 'href="#participation-details"')
     Check '/valheim/creators/kinship.js' @('initKinshipPage', 'drawKinshipTree(')
     # The builder's own page: the picker, sign-in (switched off until a client id is set), the
     # opt-out levels. Linted like every other shell.
-    Check '/valheim/creators/profile/' @('data-steward-page="profile"', '../creators.css?v=12', 'src="../creators.js?v=12"', 'src="../portraits.js?v=12"', 'src="../portrait-picker.js?v=12"', 'src="../profile.js"', 'id="profile-optout"', 'value="erase"', '@Tugcow', 'id="optout-message"', 'href="/chronicles/"') @('character', 'archetype', 'submitted', 'discord-client-id', 'href="#participation-details"')
+    Check '/valheim/creators/profile/' @('data-steward-page="profile"', '../creators.css?v=13', 'src="../creators.js?v=13"', 'src="../portraits.js?v=13"', 'src="../portrait-picker.js?v=13"', 'src="../profile.js"', 'id="profile-optout"', 'value="erase"', '@Tugcow', 'id="optout-message"', 'href="/chronicles/"') @('character', 'archetype', 'submitted', 'discord-client-id', 'href="#participation-details"')
     Check '/valheim/creators/profile.js' @('initProfilePage', 'portrait-beacon.txt', "COORDINATOR_HANDLE = 'Tugcow'") @('character', 'archetype', 'seed', 'gender', 'submitted', 'discord.com')
     # The beacon the profile page requests: a four-byte file whose query string the access log keeps.
     Check '/valheim/creators/portrait-beacon.txt' @('ok')
@@ -117,7 +117,7 @@ if (-not $SkipCreators) {
     try {
         $d = (Invoke-WebRequest -Uri ($base + '/valheim/creators/directory.json') -UseBasicParsing -TimeoutSec 60).Content | ConvertFrom-Json
         $top = $d.builders | Sort-Object -Property albums -Descending | Select-Object -First 1
-        Check ('/valheim/creators/' + $top.builderKey + '/') @('../creators.css?v=12', 'src="../pair.js"', 'src="../kin-tree.js"', 'src="../portraits.js"', 'href="/chronicles/"', 'id="builder-hero"', '<a id="hero-avatar"', 'id="look-out"', 'id="thread-notes"')
+        Check ('/valheim/creators/' + $top.builderKey + '/') @('../creators.css?v=13', 'src="../pair.js"', 'src="../kin-tree.js"', 'src="../portraits.js"', 'href="/chronicles/"', 'id="builder-hero"', '<a id="hero-avatar"', 'id="look-out"', 'id="thread-notes"')
         # Every record wears a face by the archive's pick (or the builder's confirmed one).
         $noface = @($d.builders | Where-Object { -not $_.portrait }).Count
         if ($noface) { $script:fail++; "FAIL directory.json: $noface builder(s) carry no portrait" } else { "OK   directory.json: every builder carries a portrait" }

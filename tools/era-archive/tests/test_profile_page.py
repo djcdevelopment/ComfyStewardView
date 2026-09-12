@@ -37,8 +37,8 @@ class ProfileProjectionTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             receipt = project(shared_document(), dest, "https://example.invalid/world")
             page = (dest / "profile" / "index.html").read_text(encoding="utf-8")
-            for marker in ('href="../creators.css?v=12"', 'src="../creators.js?v=12"', 'src="../portraits.js?v=12"',
-                           'src="../portrait-picker.js?v=12"', 'src="../profile.js"',
+            for marker in ('href="../creators.css?v=13"', 'src="../creators.js?v=13"', 'src="../portraits.js?v=13"',
+                           'src="../portrait-picker.js?v=13"', 'src="../profile.js"',
                            'data-steward-page="profile"', 'id="profile-optout"', 'id="optout-message"'):
                 self.assertIn(marker, page, f"projected profile page lost {marker}")
             for stale in ('"./creators.', '"./portraits.js', '"./portrait-picker.js', '"./profile.js'):

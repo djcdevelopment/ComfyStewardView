@@ -1980,15 +1980,17 @@ textarea:focus-visible,
 /* --------------------------------------------------------------------------
    Builder hero: the profile card at the top of a thread page. Portrait, name,
    aliases, tier, era span, the counters this page already had, and the
-   builder's own signature creations.
+   builder's own signature creations. The card is as tall as its text column --
+   name, facts, the profile line -- and the portrait is sized to that, so the
+   page's own content starts within the first screen.
    -------------------------------------------------------------------------- */
 .builder-hero {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
-  margin: 18px 0 26px;
-  padding: 22px;
+  margin: 12px 0 20px;
+  padding: 18px;
   border: 1px solid var(--outline-variant);
   border-radius: 6px;
   background: var(--surface-container-low);
@@ -1998,8 +2000,8 @@ textarea:focus-visible,
 .hero-avatar,
 .hero-avatar img,
 .hero-avatar-fallback {
-  width: 160px;
-  height: 160px;
+  width: 120px;
+  height: 120px;
   border-radius: 6px;
 }
 
@@ -3295,20 +3297,15 @@ a.hero-avatar:focus-visible {
    the profile wears. The narrowing wears the era viewer's drawer contracts by name
    (.panel, .grp, .ck[aria-pressed], .ck.zero dimmed and kept, Clear all).
    -------------------------------------------------------------------------- */
-/* Under the avatar, in its column: the hero grid is avatar | text, and a third child
-   would otherwise auto-place into the text column and push the name down a row. */
+/* The last line of the text column: the door to the builder's own page and the
+   disclosure, on one line that wraps. It used to stack under the portrait in its own
+   column, which made the card twice as tall as the words in it. */
 .hero-portrait-actions {
-  grid-column: 1;
-  grid-row: 2;
-  display: grid;
-  gap: 6px;
-  justify-items: start;
-  width: 160px;
-}
-
-.builder-hero .hero-text {
-  grid-column: 2;
-  grid-row: 1 / span 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-top: 4px;
 }
 
 .hero-portrait-actions .hero-portrait-pick {
@@ -3789,10 +3786,6 @@ html.pp-open body {
   #portrait-picker .pp-preview-avatar {
     width: 96px;
     height: 96px;
-  }
-
-  .hero-portrait-actions {
-    width: 96px;
   }
 }
 

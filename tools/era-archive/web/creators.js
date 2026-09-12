@@ -2234,7 +2234,7 @@ const initCreatorsPage = async () => {
   // the hero, the ribbon, the tree and the pair card agree by construction, and a portrait
   // chosen on this device shows in all four. A slate tile serves its 512 with the 128 as
   // the small candidate, as it always did; a painted portrait serves its bust cuts -- the
-  // avatar is a 160-px square, and a waist-up frame shrunk into it would be all mantle.
+  // avatar is a 120-px square, and a waist-up frame shrunk into it would be all mantle.
   function portraitSources(manifest, key) {
     if (typeof StewardPortraits !== 'object') return null;
     const face = StewardPortraits.portraitFor(key, manifest);
@@ -2274,7 +2274,7 @@ const initCreatorsPage = async () => {
     // Optional read: the portrait lane deploys separately, and a builder page must open
     // whether or not it has. Same semantics the directory's optional data already uses.
     readPortraits().then((manifest) => paintPortrait(holder, thread.builderKey, manifest, {
-      sizes: '(max-width:680px) 96px, 160px',
+      sizes: '(max-width:680px) 96px, 120px',
       fallback: emblemFallback,
     }));
   }
@@ -2310,9 +2310,13 @@ const initCreatorsPage = async () => {
   // Under the avatar: the way to the builder's own page (where the portrait is chosen and
   // the opt-outs are asked for) and the one disclosure the page makes about the faces on
   // it (FR-8). Both for every visitor; the page itself decides who may change anything.
+  // The door to the builder's own page and the disclosure, the last line of the text
+  // column. Appended on every call because renderHeroCard moves the name and the facts
+  // to the end of that column, and this line belongs under them.
   function renderHeroDoor() {
     const avatar = $('hero-avatar');
-    if (!avatar || !thread) return;
+    const text = $('builder-hero')?.querySelector('.hero-text');
+    if (!avatar || !text || !thread) return;
     const href = new URL(`profile/?builder=${thread.builderKey}`, base).href;
     if (avatar.tagName === 'A') {
       avatar.href = href;
@@ -2328,8 +2332,8 @@ const initCreatorsPage = async () => {
       const disclosure = node('p', "Portraits are painted by the archive's own models; builders choose theirs.", 'hero-portrait-disclosure');
       disclosure.id = 'hero-portrait-disclosure';
       actions.append(door, disclosure);
-      avatar.insertAdjacentElement('afterend', actions);
     }
+    text.append(actions);
     actions.hidden = false;
   }
 
@@ -2352,12 +2356,12 @@ const initCreatorsPage = async () => {
     if (!hero || !text) return;
     renderHeroAliases();
     renderHeroAvatar();
-    renderHeroDoor();
     // The brand lockup in the header already says whose community this is.
     const eyebrow = document.querySelector('main .eyebrow');
     if (eyebrow) eyebrow.hidden = true;
     const ordered = [$('title'), $('hero-aliases'), $('intro')].filter(Boolean);
     text.append(...ordered);
+    renderHeroDoor();
     hero.hidden = false;
     if ($('look-out')) $('look-out').hidden = false;
   }

@@ -92,6 +92,13 @@ try{
   if(!results.thread.title.startsWith(results.thread.heading))throw Error('Thread page still carries the shared directory title');
   if(!results.thread.image||!results.thread.description)throw Error('Thread page would unfurl bare in Discord');
   await wait("[...document.querySelectorAll('.photos img')].filter(i=>{const r=i.getBoundingClientRect();return i.loading!=='lazy'||(r.width>0&&r.top<innerHeight)}).every(i=>i.complete&&i.naturalWidth>0)");await screenshot('creator-thread');
+  // The hero card is as tall as its words: the profile line sits in the text column under
+  // the facts, not under the portrait in its own column, so nothing but the name, the
+  // aliases and the facts sets the card's height (the padding is 18 px a side).
+  await wait("!document.getElementById('hero-portrait-actions')?.hidden");
+  results.hero=await evaluate("(()=>{const h=document.getElementById('builder-hero').getBoundingClientRect(),t=document.querySelector('#builder-hero .hero-text').getBoundingClientRect();return {height:Math.round(h.height),text:Math.round(t.height),lineInText:!!document.querySelector('#builder-hero .hero-text > #hero-portrait-actions'),contentTop:Math.round(document.getElementById('content').getBoundingClientRect().top+scrollY)};})()");
+  if(!results.hero.lineInText)throw Error('The profile line is not the last line of the hero text column');
+  if(results.hero.height-results.hero.text>40)throw Error('The hero card is taller than its words again: '+results.hero.height+'px for '+results.hero.text+'px of text');
   // The one-story page (pass 3): the carousel of photographed builds sits under the hero
   // with its banner and its details article, the attribution sentence is said once, every
   // Details drop-down in the rest table starts folded, and the notes strip renders.
