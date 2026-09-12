@@ -118,6 +118,54 @@ try{
   await screenshot('claim-modal');
   await evaluate("document.getElementById('claim-cancel').click()");
   await wait("!document.getElementById('claim-modal').classList.contains('open')");
+  // Tag another basemate, from the card. Before a claim the control is inert and says why;
+  // a claim made through the dialog (no endpoint, so it falls through to the payload box)
+  // frees it; the dialog lists this build's other contributors with basemate ticked;
+  // Record tag closes it, hands over the kinship payload, and a dashed "recorded" chip
+  // appears beside the tagged credit. The ledger is cleared at the end of the leg.
+  results.tag=await evaluate("(()=>{const b=document.querySelector('#work .work-details button.album-tag-btn');if(!b)return null;const credits=document.querySelectorAll('#work .work-details .credits a.credit[data-builder-key]').length;return {label:b.textContent,inert:b.classList.contains('inert'),aria:b.getAttribute('aria-disabled'),credits};})()");
+  if(!results.tag)throw Error('The stage card carries no Tag another basemate control');
+  if(results.tag.label!=='Tag another basemate')throw Error('The tag control is not labelled Tag another basemate: '+results.tag.label);
+  if(await evaluate("!!document.querySelector('#work .work-details button.album-tag-btn') && [...document.querySelectorAll('#work .work-details .actions-row button')].some(b=>/payload/i.test(b.textContent))"))throw Error('The card still offers a payload copy');
+  if(results.tag.credits>1&&!results.tag.inert)throw Error('The tag control is live on a build this browser has never claimed');
+  if(results.tag.credits>1){
+    await evaluate("document.querySelector('#work .work-details button.album-tag-btn').click()");
+    await wait("/Claim this build before tagging basemates|leading builder/.test(document.getElementById('toast').textContent)");
+    results.tag.gateToast=await evaluate("document.getElementById('toast').textContent");
+    if(/leading builder/.test(results.tag.gateToast)){
+      results.tag.skipped='the photographed builder is not the leading builder on the stage build';
+    }else{
+      await evaluate("document.querySelector('#work .work-details button.primary').click()");
+      await wait("document.getElementById('claim-modal').classList.contains('open')");
+      await evaluate("document.getElementById('claim-handle').value='smoke';document.getElementById('claim-confirm').click()");
+      await wait("!document.getElementById('claim-modal').classList.contains('open')&&document.getElementById('activity-modal').classList.contains('open')");
+      await evaluate("document.getElementById('activity-close').click()");
+      await wait("!document.getElementById('activity-modal').classList.contains('open')&&!!document.querySelector('#work .work-details button.album-tag-btn:not(.inert)')");
+      await evaluate("document.querySelector('#work .work-details button.album-tag-btn').click()");
+      await wait("document.getElementById('kin-tag-modal').classList.contains('open')");
+      results.tag.dialog=await evaluate("({options:document.querySelectorAll('#kin-tag-with option').length,basemate:document.querySelector('#kin-tag-modal input[value=basemate]').checked,ticked:[...document.querySelectorAll('#kin-tag-modal input[name=kin-tag]:checked')].map(i=>i.value),label:document.getElementById('kin-tag-build-label').textContent,with:document.getElementById('kin-tag-with').value,banned:/character|archetype|seed|gender|submitted/i.test(document.getElementById('kin-tag-modal').innerText)})");
+      if(results.tag.dialog.options!==results.tag.credits-1)throw Error('The dialog does not list this build\'s other contributors: '+results.tag.dialog.options+' of '+(results.tag.credits-1));
+      if(results.tag.dialog.ticked.join()!=='basemate')throw Error('basemate is not the one ticked box on opening: '+results.tag.dialog.ticked.join());
+      if(results.tag.dialog.banned)throw Error('The tag dialog says a banned word');
+      await screenshot('build-tag-dialog');
+      await evaluate("document.getElementById('kin-tag-confirm').click()");
+      await wait("!document.getElementById('kin-tag-modal').classList.contains('open')&&document.getElementById('activity-modal').classList.contains('open')");
+      results.tag.payload=await evaluate("(()=>{try{const d=JSON.parse(document.getElementById('activity-payload').value);return {schema:d.schema,tags:(d.kinshipTags||[]).map(t=>t.tags.join('+')),claims:(d.claims||[]).length};}catch(e){return {error:String(e)};}})()");
+      if(results.tag.payload.tags.join()!=='basemate')throw Error('The handed-over payload does not carry the one basemate tag: '+JSON.stringify(results.tag.payload));
+      await evaluate("document.getElementById('activity-close').click()");
+      await wait("!!document.querySelector('#work .work-details .credits .kin-chip.pending')");
+      results.tag.chip=await evaluate("document.querySelector('#work .work-details .credits .kin-chip.pending').textContent");
+      results.tag.ledger=await evaluate("(()=>{const s=JSON.parse(localStorage.getItem('creators-participation-v1')||'{}');return Object.values(s.kinshipTags||{}).map(t=>({tags:t.tags,contributor:t.contributorKey}));})()");
+      if(results.tag.ledger.length!==1||results.tag.ledger[0].contributor!==results.tag.dialog.with)throw Error('The ledger does not hold the one tag for the picked contributor: '+JSON.stringify(results.tag.ledger));
+      await evaluate("document.querySelector('#work .work-details').scrollIntoView({block:'center'})");
+      await screenshot('build-tag');
+      await evaluate("localStorage.removeItem('creators-participation-v1')");
+      await cdp('Page.navigate',{url:new URL(photographed.builderKey+'/',gallery).href});
+      await wait("document.querySelectorAll('.photos img').length>0");
+    }
+  }else{
+    results.tag.skipped='the stage build has no other contributor to tag';
+  }
   // Manifest download must target this exact builder's own thread file, not a shared one.
   results.manifest=await evaluate("document.getElementById('manifest-download')?.getAttribute('href')");
   if(!results.manifest||!results.manifest.endsWith(photographed.builderKey+'.json'))throw Error('Manifest download link missing or targets the wrong builder');

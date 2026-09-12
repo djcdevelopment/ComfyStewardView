@@ -14,7 +14,7 @@
     <meta property="og:description" content="Search the community archive for your own builds across every era.">
     <meta name="twitter:card" content="summary">
     <!-- /per-thread head -->
-    <link rel="stylesheet" href="./creators.css?v=13">
+    <link rel="stylesheet" href="./creators.css?v=14">
     <script src="./creators.js" defer></script>
     <script src="./portraits.js" defer></script>
     <script src="./kin-tree.js" defer></script>
@@ -242,6 +242,44 @@
         <div class="actions-row">
           <button type="button" id="request-cancel">Cancel</button>
           <button type="button" id="request-confirm" class="primary">Submit request</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="kin-tag-modal" class="modal" hidden>
+      <div class="sheet">
+        <h2 id="kin-tag-title">Tag a basemate</h2>
+        <p id="kin-tag-build-label" class="muted"></p>
+        <label>Who you built with
+          <select id="kin-tag-with"></select>
+        </label>
+        <fieldset>
+          <legend>Relationship</legend>
+          <label><input name="kin-tag" type="checkbox" value="basemate"> Basemate</label>
+          <label><input name="kin-tag" type="checkbox" value="collab"> Collabing</label>
+          <label><input name="kin-tag" type="checkbox" value="helping-hand"> Helping hand</label>
+          <label><input name="kin-tag" type="checkbox" value="visitor"> Visitor</label>
+        </fieldset>
+        <fieldset>
+          <legend>Role on this build</legend>
+          <label><input name="kin-tag" type="checkbox" value="mason"> Mason</label>
+          <label><input name="kin-tag" type="checkbox" value="roof"> Roof</label>
+          <label><input name="kin-tag" type="checkbox" value="fields"> Fields</label>
+          <label><input name="kin-tag" type="checkbox" value="portal"> Portal</label>
+          <label><input name="kin-tag" type="checkbox" value="defense"> Defense</label>
+          <label><input name="kin-tag" type="checkbox" value="interior"> Interior</label>
+        </fieldset>
+        <label>Note (optional)
+          <textarea id="kin-tag-note" maxlength="200" rows="3" placeholder="How you built together, in a sentence."></textarea>
+        </label>
+        <p class="muted">A self-reported tag, not verified — credited builders are derived from the
+          saved world, and tagging does not change them.</p>
+        <p class="muted">Confirming records the tag on this device and copies a payload to your
+          clipboard. <strong>Send it on to finish</strong> — nothing reaches the archive on its own.</p>
+        <p class="muted" id="kin-tag-inline"></p>
+        <div class="actions-row">
+          <button type="button" id="kin-tag-cancel">Cancel</button>
+          <button type="button" id="kin-tag-confirm" class="primary">Record tag</button>
         </div>
       </div>
     </section>

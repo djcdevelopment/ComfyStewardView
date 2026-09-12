@@ -9,7 +9,7 @@ const path = require('node:path');
 const {
   SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, compareBuilders, matchScore,
   computeTopEight, portraitIndex, eraBounds, heroAliases,
-  majorityOwner, buildKinshipTree, mergeKinshipTags, kinshipTagRecord, StewardParticipation,
+  majorityOwner, tagCandidates, buildKinshipTree, mergeKinshipTags, kinshipTagRecord, StewardParticipation,
   KINSHIP_TAG_IDS, pickMosaicAlbums, distinctAttributions,
 } = require(path.join(__dirname, '..', 'web', 'creators.js'));
 
@@ -843,4 +843,32 @@ test('setPortrait records one choice per profile, a revert is a record, and both
   // A ledger saved before the map existed loads with an empty one.
   const storage = {getItem: () => JSON.stringify({...state, portraits: undefined}), setItem() {}, removeItem() {}};
   assert.deepEqual(StewardParticipation.load(storage).portraits, {});
+});
+
+test('tagCandidates lists the other credited builders in credit order, with share and bed, and nobody else', () => {
+  const me = 'a'.repeat(32);
+  const loanati = 'b'.repeat(32);
+  const atlas = 'c'.repeat(32);
+  const legacy = 'd'.repeat(32);
+  const album = {
+    buildKey: 'f'.repeat(64),
+    contributors: [
+      {builderKey: loanati, share: 0.246},
+      {builderKey: me, share: 0.44},
+      {builderKey: atlas, share: 0.075},
+      {builderKey: legacy, share: null},
+      {builderKey: null, share: 0.1},
+      null,
+    ],
+    residents: [{builderKey: loanati}, {builderKey: me}],
+  };
+  assert.deepEqual(tagCandidates(album, me), [
+    {builderKey: loanati, share: 0.246, resident: true},
+    {builderKey: atlas, share: 0.075, resident: false},
+    {builderKey: legacy, share: null, resident: false},
+  ]);
+  // A solo build offers nobody; a bare album offers nobody rather than throwing.
+  assert.deepEqual(tagCandidates({contributors: [{builderKey: me, share: 1}]}, me), []);
+  assert.deepEqual(tagCandidates({}, me), []);
+  assert.deepEqual(tagCandidates(null, me), []);
 });

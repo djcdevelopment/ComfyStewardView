@@ -300,6 +300,22 @@ function majorityOwner(album, builderKey) {
   return 'largest';
 }
 
+// Who a builder can tag on one of their builds: the other people credited on it, in
+// credit order, each with their share and whether a bed of theirs was saved inside. A
+// tag is one builder's word about another, so the list is the build's own contributors
+// and nobody else -- a name the saved world never put on this build has no evidence
+// behind a tag here. The builder is left out (nobody tags themselves) and so is any
+// contributor the import left keyless.
+function tagCandidates(album, builderKey) {
+  const residents = new Set(((album && album.residents) || []).map((r) => r && r.builderKey).filter(Boolean));
+  const out = [];
+  for (const c of (album && album.contributors) || []) {
+    if (!c || !/^[0-9a-f]{32}$/.test(String(c.builderKey)) || c.builderKey === builderKey) continue;
+    out.push({builderKey: c.builderKey, share: c.share == null ? null : c.share, resident: residents.has(c.builderKey)});
+  }
+  return out;
+}
+
 const emptyKinshipTree = () => ({anchor: null, eras: [], branches: [], majorityBuilds: [], coBuilderCount: 0});
 
 // One pass over every album on the thread, and over each album's contributors: the
@@ -745,7 +761,7 @@ if (typeof module !== 'undefined') {
     SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, computeTopEight,
     portraitIndex, eraBounds, heroAliases, pickMosaicAlbums, distinctAttributions,
     nowISOString, randomId, normalizeHandle, submitPayload,
-    KINSHIP_TAGS, KINSHIP_TAG_IDS, majorityOwner, buildKinshipTree, mergeKinshipTags,
+    KINSHIP_TAGS, KINSHIP_TAG_IDS, majorityOwner, tagCandidates, buildKinshipTree, mergeKinshipTags,
     kinshipTagRecord, StewardParticipation,
   };
 }
@@ -817,6 +833,7 @@ const initCreatorsPage = async () => {
   const claimModal = $('claim-modal');
   const requestModal = $('request-modal');
   const activityModal = $('activity-modal');
+  const tagModal = $('kin-tag-modal');
   const photoViewerModal = $('photo-viewer-modal');
   let selectedAlbum = null;
   let lastFocusedBeforeViewer = null;
@@ -1413,7 +1430,7 @@ const initCreatorsPage = async () => {
     // the archive derives no credit from a nearby structure and this line must not read as
     // though it did.
     //
-    // class `resident`, deliberately NOT `credit`: renderConfirmedTagChips() selects
+    // class `resident`, deliberately NOT `credit`: renderTagChips() selects
     // `.credits a.credit[data-builder-key]` and would otherwise park a kinship chip -- a
     // tag one builder wrote about another's work on this build -- beside a name that is
     // here only because of a bed.
@@ -1450,23 +1467,30 @@ const initCreatorsPage = async () => {
   // clear every `.kin-chip` on the page, which was harmless while the album cards were
   // the only thing wearing one -- and destructive the moment the pair view started
   // drawing laurel chips of its own, because participation.json lands after the mount.
-  function renderConfirmedTagChips(doc) {
+  // Kinship tags beside the credit they are about: the coordinator-confirmed ones as
+  // solid chips, and the ones recorded on this device and not yet confirmed as dashed
+  // "recorded" chips, so a tag made from the card is seen to have taken. mergeKinshipTags
+  // keeps a tag that has since been confirmed from drawing twice.
+  function renderTagChips(doc) {
     for (const stale of document.querySelectorAll('article.album .kin-chip')) stale.remove();
-    const tags = doc?.confirmedTags;
-    if (!Array.isArray(tags) || !tags.length) return;
-    const labels = new Map([...KINSHIP_TAGS.relationship, ...KINSHIP_TAGS.role]);
-    for (const tag of tags) {
+    const confirmed = Array.isArray(doc?.confirmedTags) ? doc.confirmedTags : [];
+    const pairs = new Map();
+    for (const tag of [...confirmed, ...Object.values(state.kinshipTags || {})]) {
       if (!tag || !/^[0-9a-f]{64}$/.test(String(tag.buildKey))) continue;
       if (!/^[0-9a-f]{32}$/.test(String(tag.contributorKey))) continue;
+      pairs.set(`${tag.buildKey}:${tag.contributorKey}`, tag);
+    }
+    if (!pairs.size) return;
+    const labels = new Map([...KINSHIP_TAGS.relationship, ...KINSHIP_TAGS.role]);
+    for (const tag of pairs.values()) {
       const album = document.querySelector(`article.album[data-build-key="${tag.buildKey}"]`);
       if (!album) continue;
       const credit = album.querySelector(`.credits a.credit[data-builder-key="${tag.contributorKey}"]`);
       if (!credit) continue;
+      const merged = mergeKinshipTags(confirmed, state.kinshipTags, tag.buildKey, tag.contributorKey);
       const chips = [];
-      for (const id of tag.tags || []) {
-        if (!labels.has(id)) continue;
-        chips.push(node('span', labels.get(id), 'chip kin-chip confirmed'));
-      }
+      for (const id of merged.confirmed) if (labels.has(id)) chips.push(node('span', labels.get(id), 'chip kin-chip confirmed'));
+      for (const id of merged.pending) if (labels.has(id)) chips.push(node('span', `${labels.get(id)} · recorded`, 'chip kin-chip pending'));
       if (chips.length) credit.after(...chips);
     }
   }
@@ -1890,7 +1914,7 @@ const initCreatorsPage = async () => {
     for (const tile of document.querySelectorAll('#work .work-tile')) {
       tile.setAttribute('aria-pressed', String(tile.dataset.buildKey === album.buildKey));
     }
-    renderConfirmedTagChips(externalParticipation);
+    renderTagChips(externalParticipation);
   }
 
   function renderWorkCarousel() {
@@ -2110,15 +2134,29 @@ const initCreatorsPage = async () => {
       row.append(reqBtn);
     }
 
-    const exportBtn = node('button', 'Copy this build payload');
-    exportBtn.onclick = async () => {
-      await copyActivityPayload(StewardParticipation.buildPayload(state, {
-        builderKey: targetBuilderKey,
-        buildKey: album.buildKey,
-        buildLabel: album.label,
-      }));
-    };
-    row.append(exportBtn);
+    // Tagging the people credited beside you on this build, from the card itself rather
+    // than the kinship page. The same gate as there: the build's leading builder, holding
+    // a built claim in this browser. Inert rather than absent when it cannot act, with the
+    // reason in a toast -- the tap has to be answered on a phone.
+    if (!current || current.kind !== 'disavow') {
+      const others = tagCandidates(album, targetBuilderKey);
+      const why = !others.length ? 'Nobody else is recorded on this build.'
+        : majorityOwner(album, targetBuilderKey) === null ? "Tags come from a build's leading builder."
+        : !standing ? 'Claim this build before tagging basemates.'
+        : null;
+      const tagBtn = node('button', 'Tag another basemate', 'album-tag-btn');
+      if (why) {
+        tagBtn.classList.add('inert');
+        tagBtn.setAttribute('aria-disabled', 'true');
+        tagBtn.title = why.replace(/\.$/, '');
+      }
+      tagBtn.onclick = () => {
+        if (why) return showToast(why);
+        selectedAlbum = album;
+        openTagDialog(album, targetBuilderKey);
+      };
+      row.append(tagBtn);
+    }
     return row;
   }
 
@@ -2172,6 +2210,7 @@ const initCreatorsPage = async () => {
     // A photographed build lives on the carousel stage; repaint the stage in place.
     if (existing.classList.contains('work-details')) { paintWorkStage(); return; }
     existing.replaceWith(buildAlbumCard(album, targetBuilderKey, {expanded: existing.dataset.expanded === 'true'}));
+    renderTagChips(externalParticipation);
   }
 
   function renderManifestAction() {
@@ -2520,14 +2559,14 @@ const initCreatorsPage = async () => {
         more.hidden = shown >= rest.length;
       };
       table.append(more);
-      more.onclick = () => { appendRows(); renderConfirmedTagChips(externalParticipation); };
+      more.onclick = () => { appendRows(); renderTagChips(externalParticipation); };
       appendRows();
       block.append(table);
       $('content').append(block);
     }
     renderThreadNotes();
     // If participation.json already landed there are albums to hang its chips on now.
-    renderConfirmedTagChips(externalParticipation);
+    renderTagChips(externalParticipation);
     openRequestShortcutIfLinked();
     // A shared pair link lands under the work and the tree now; bring the pair up unless
     // a #hash has already claimed the scroll.
@@ -2607,6 +2646,94 @@ const initCreatorsPage = async () => {
     };
     $('claim-cancel').onclick = () => closeModal(claimModal);
     openModal(claimModal);
+  }
+
+  // The kinship page's tag dialog, on the build card: the build is fixed and the person is
+  // picked from the card's own credits (kinship.js does it the other way round, one Tag
+  // button per co-builder with a build select). The record, the store and the payload the
+  // coordinator ingests are the same either way.
+  function openTagDialog(album, targetBuilderKey) {
+    if (!tagModal) return;
+    const select = $('kin-tag-with');
+    const boxes = [...tagModal.querySelectorAll('input[name="kin-tag"]')];
+    const others = tagCandidates(album, targetBuilderKey);
+    if (!others.length) return showToast('Nobody else is recorded on this build.');
+    const nameOf = (key) => buildersByKey.get(key)?.displayName || '';
+    select.replaceChildren(...others.map((other) => {
+      let text = nameOf(other.builderKey) || 'Recorded builder';
+      if (other.share != null) text += ` (${(100 * other.share).toFixed(1)}%)`;
+      if (other.resident) text += ' · slept here';
+      const el = node('option', text);
+      el.value = other.builderKey;
+      return el;
+    }));
+    select.value = others[0].builderKey;
+    $('kin-tag-build-label').textContent = `${album.label} · era ${album.era}`;
+    $('kin-tag-inline').textContent = '';
+
+    // The person changes, the boxes follow: a tag already recorded for the pair on this
+    // device comes back to be amended; otherwise `basemate` starts ticked, because that is
+    // the word on the control they pressed, and it is theirs to untick.
+    const sync = () => {
+      const contributorKey = select.value;
+      const pending = StewardParticipation.tagFor(state, album.buildKey, contributorKey);
+      const chosen = new Set(pending ? pending.tags || [] : ['basemate']);
+      for (const box of boxes) box.checked = chosen.has(box.value);
+      $('kin-tag-note').value = pending?.note || '';
+      // The note is the only field that can carry a name the saved world never recorded,
+      // so for an unnamed contributor it asks for one -- and promises nothing about
+      // publishing it, because nothing is published without a coordinator.
+      $('kin-tag-note').placeholder = nameOf(contributorKey)
+        ? 'How you built together, in a sentence.'
+        : 'Know who this is? Put the name here for the coordinator.';
+    };
+    select.onchange = sync;
+    sync();
+
+    $('kin-tag-confirm').onclick = async () => {
+      const contributorKey = select.value;
+      const claim = standingForBuild(album.buildKey);
+      if (!claim) {
+        $('kin-tag-inline').textContent = 'Claim this build before tagging basemates.';
+        return;
+      }
+      const tags = boxes.filter((box) => box.checked).map((box) => box.value);
+      let record;
+      try {
+        record = kinshipTagRecord({
+          buildKey: album.buildKey,
+          era: album.era,
+          builderKey: targetBuilderKey,
+          contributorKey,
+          tags,
+          note: $('kin-tag-note').value.trim(),
+          participant: state.participant,
+          claimId: claim.claimId,
+        });
+      } catch {
+        $('kin-tag-inline').textContent = 'Choose at least one tag.';
+        return;
+      }
+      let deliveryStatus = 'queued';
+      try {
+        await submitPayload(endpoint, {schema: 'steward-creator-participation-event/v1', eventType: 'kinshipTag', kinshipTag: record});
+        deliveryStatus = 'submitted';
+      } catch {
+        // keep local state regardless of endpoint availability
+      }
+      record.deliveryStatus = deliveryStatus;
+      StewardParticipation.putKinshipTag(state, record);
+      saveState();
+      closeModal(tagModal);
+      // As with a claim: without an ingestion endpoint the tag reaches nobody on its own,
+      // so hand over the kinship payload for this build the same way.
+      if (deliveryStatus === 'submitted') showToast('Kinship tag sent.');
+      else await copyActivityPayload(exportPayload('kinship'));
+      refreshAlbumCard(album, targetBuilderKey);
+      refreshThreadParticipationLine();
+    };
+    $('kin-tag-cancel').onclick = () => closeModal(tagModal);
+    openModal(tagModal);
   }
 
   function openRequestDialog(album, targetBuilderKey, claimId) {
@@ -2800,7 +2927,7 @@ const initCreatorsPage = async () => {
       readOptional('participation.json').then((doc) => {
         externalParticipation = doc;
         updateParticipantSnapshot();
-        renderConfirmedTagChips(doc);
+        renderTagChips(doc);
         if (pairMounted) StewardPair.update({confirmedTags: doc?.confirmedTags || []});
       });
       return;

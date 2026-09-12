@@ -158,6 +158,13 @@ strictly largest known share still counts from 0.25 up as `largest`. A tie, a sh
 a quarter, and a legacy import (which carries no share at all) own nothing. A tag never
 edits the credited contributors — those come from the pieces and nothing else moves them.
 
+A tag is made in either of two places with the same record: on the kinship page (a Tag
+button beside a co-builder, with a build select) or on the build card of a builder's page
+(**Tag another basemate**, with the person picked from that build's own credits; `basemate`
+starts ticked because that is the word on the control). A tag recorded on this device and
+not yet confirmed shows beside the credit as a dashed "recorded" chip; a confirmed one as a
+solid chip.
+
 A claim carries `kind`: `built` ("I built this") or `disavow` ("Not mine"). One record per
 build either way — a disavowal replaces a claim and a claim replaces a disavowal — because
 both are the same person saying the same kind of thing about the same build. A ledger

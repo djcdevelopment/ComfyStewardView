@@ -248,12 +248,42 @@ class ChroniclerStyleTests(unittest.TestCase):
             self.assertNotIn(moved, kinship, f"kinship.js still declares {moved}")
 
     def test_the_confirmed_tag_sweep_is_scoped_to_the_album_cards(self):
-        # renderConfirmedTagChips() clears before it draws, because participation.json and
-        # the thread land in either order. Unscoped, that sweep also deleted the pair
-        # view's own laurel chips -- which are drawn at mount, i.e. always first.
+        # renderTagChips() clears before it draws, because participation.json and the
+        # thread land in either order. Unscoped, that sweep also deleted the pair view's
+        # own laurel chips -- which are drawn at mount, i.e. always first.
         js = (WEB / "creators.js").read_text(encoding="utf-8")
         self.assertIn("'article.album .kin-chip'", js,
-                      "the confirmed-tag sweep would clear kinship chips outside the albums")
+                      "the tag sweep would clear kinship chips outside the albums")
+
+    def test_the_build_card_tags_a_basemate_from_its_own_credits(self):
+        # Derek, 2026-09-12: the card's fourth control is "Tag another basemate", not the
+        # per-build payload copy (every action hands its payload over on confirm already).
+        # The dialog is the kinship page's, with the person picked from this build's
+        # contributors -- the same closed vocabulary on the boxes, so the coordinator's
+        # ingest reads a tag made here exactly as one made there.
+        import test_kinship_page as kin
+        import gallery
+        js = (WEB / "creators.js").read_text(encoding="utf-8")
+        self.assertIn("node('button', 'Tag another basemate', 'album-tag-btn')", js)
+        self.assertNotIn("Copy this build payload", js)
+        self.assertNotIn("Copy this build payload", self.index)
+        self.assertIn('<section id="kin-tag-modal" class="modal" hidden>', self.index)
+        self.assertIn('<h2 id="kin-tag-title">Tag a basemate</h2>', self.index)
+        for element in ('id="kin-tag-build-label"', 'id="kin-tag-with"', 'id="kin-tag-note"',
+                        'id="kin-tag-inline"', 'id="kin-tag-cancel"', 'id="kin-tag-confirm"'):
+            self.assertIn(element, self.index, f"index.html lacks {element}")
+            self.assertIn(element.split('"')[1], js, f"creators.js does not address {element}")
+        self.assertEqual(list(gallery.KINSHIP_TAGS), kin.tag_checkbox_values(self.index),
+                         "the build card's boxes and gallery.py's allowlist have drifted")
+        # The gate is the kinship page's: the leading builder, holding a built claim; the
+        # reason for an inert control is spoken, not tucked in a tooltip.
+        for line in ("Nobody else is recorded on this build.",
+                     "Tags come from a build's leading builder.",
+                     "Claim this build before tagging basemates."):
+            self.assertIn(line, js)
+        self.assertIn("exportPayload('kinship')", js, "a recorded tag hands over the kinship payload for the build")
+        self.assertIn("'chip kin-chip pending'", js, "a tag recorded on this device shows beside the credit")
+        self.assertNotIn("submitted", self.index)
 
     def test_the_participation_surface_speaks_of_builders_not_characters(self):
         # A builder is a person, not a game object and not a class. The participation
@@ -266,7 +296,7 @@ class ChroniclerStyleTests(unittest.TestCase):
 
     def test_stylesheet_href_is_cache_busted_and_still_rewritable(self):
         for name, content in (("index.html", self.index), ("stats.html", self.stats)):
-            self.assertIn('href="./creators.css?v=13"', content, name)
+            self.assertIn('href="./creators.css?v=14"', content, name)
         self.assertIn('src="./creators.js"', self.index)
         # pair.js and kin-tree.js ride beside creators.js and wear the same cache policy it
         # does: unversioned here, where the stylesheet carries the bust for the whole shell.
@@ -290,9 +320,9 @@ class ChroniclerStyleTests(unittest.TestCase):
         js = (WEB / "creators.js").read_text(encoding="utf-8")
         self.assertIn("!['kinship', 'profile'].includes(document.documentElement.dataset.stewardPage)", js)
         self.assertIn('<html lang="en" data-steward-page="kinship">', self.kinship)
-        self.assertIn('src="./creators.js?v=13"', self.kinship)
-        self.assertIn('src="./portraits.js?v=13"', self.kinship)
-        self.assertIn('src="./kin-tree.js?v=13"', self.kinship)
+        self.assertIn('src="./creators.js?v=14"', self.kinship)
+        self.assertIn('src="./portraits.js?v=14"', self.kinship)
+        self.assertIn('src="./kin-tree.js?v=14"', self.kinship)
         self.assertIn('src="./kinship.js"', self.kinship)
         self.assertNotIn("data-steward-page", self.index,
                          "the directory shell is the default route, not a named one")
@@ -314,7 +344,7 @@ class ChroniclerStyleTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             receipt = project(document, dest, "https://example.invalid/world")
             thread = (dest / key / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=13"', thread)
+            self.assertIn('href="../creators.css?v=14"', thread)
             self.assertIn('src="../creators.js"', thread)
             # The pair view's script and the tree's get the same climb. A thread page is
             # one directory down, so a surviving "./pair.js would 404 on every profile.
@@ -326,7 +356,7 @@ class ChroniclerStyleTests(unittest.TestCase):
             self.assertIn("pair.js", paths, "the projection does not ship the pair view's script")
             self.assertIn("kin-tree.js", paths, "the projection does not ship the tree's script")
             stats = (dest / "stats" / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=13"', stats)
+            self.assertIn('href="../creators.css?v=14"', stats)
 
 
 if __name__ == "__main__":
