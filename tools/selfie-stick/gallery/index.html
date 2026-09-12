@@ -83,30 +83,105 @@
         --font-body:'Plus Jakarta Sans',system-ui,sans-serif;
         --font-mono:'JetBrains Mono',ui-monospace,Menlo,monospace}
  *{box-sizing:border-box}
- html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-body);-webkit-text-size-adjust:100%}
+ html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-body);-webkit-text-size-adjust:100%;color-scheme:dark}
  a{color:inherit}
  header{position:sticky;top:0;z-index:20;background:rgba(14,20,28,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
  .topline{display:flex;align-items:center;gap:10px;padding:9px 12px}
  .topline b{font-family:var(--font-display);font-weight:600;font-size:16px;letter-spacing:.02em;white-space:nowrap}
- .topline .sub{font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+ .subline{padding:6px 12px 0;font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  .filt{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;background:var(--panel);border:1px solid rgba(217,119,6,.5);color:var(--fg);border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;padding:8px 13px;text-decoration:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
  .filt:hover{border-color:var(--bronze)}
- .filt .arr{transition:transform .2s;opacity:.65;font-weight:400}
+ .filt .arr{transition:transform .2s;opacity:.65;font-weight:400;font-size:11px}
  header.open #expbtn{background:var(--flame);border-color:var(--flame);color:#2a1700}
- header.open #expbtn .arr{transform:rotate(180deg)}
  .fbadge{display:none;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:4px;background:var(--accent);color:#2a1700;font-family:var(--font-mono);font-size:11px;font-weight:700;line-height:1}
  header.open .fbadge{background:#2a1700;color:var(--accent)}
- .panel{display:none;padding:4px 12px 12px;max-height:60vh;overflow:auto}
- header.open .panel{display:block}
- .facet{margin:10px 0 2px;font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+ /* Active filters, one chip each, in the header -- the count badge used to be the
+    only trace of them once the panel was closed. */
+ .chips{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none}
+ .chips::-webkit-scrollbar{display:none}
+ .hc{flex:0 0 auto;display:inline-flex;align-items:center;gap:4px;padding:4px 4px 4px 9px;border:1px solid var(--flame);border-radius:4px;background:rgba(245,158,11,.14);color:var(--accent);font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;white-space:nowrap}
+ .hc .fk{opacity:.6}
+ .hc .x{background:none;border:0;color:inherit;font:inherit;font-size:14px;line-height:1;padding:0 4px;cursor:pointer;opacity:.7}
+ .hc .x:hover{opacity:1}
+ .clrall{flex:0 0 auto;background:none;border:0;color:var(--mut);font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;text-decoration:underline dotted;cursor:pointer;padding:4px 6px}
+ .clrall:hover{color:var(--fg)}
+ /* Sort and era are dropdowns: one line each in the header, the choices behind a click. */
+ .dd{position:relative;flex:0 0 auto}
+ #sortdd{margin-left:auto}
+ .ddbtn .k{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);font-weight:400}
+ .ddbtn .v{font-family:var(--font-mono);font-size:12px;letter-spacing:.04em;color:var(--accent)}
+ #erabtn{padding:6px 13px}
+ .dd.open .ddbtn{border-color:var(--flame)}
+ .dd.open .arr{transform:rotate(180deg)}
+ .dd.static .arr{display:none}
+ .dd.static .ddbtn{cursor:default}
+ .menu{display:none;position:absolute;top:calc(100% + 6px);left:0;min-width:210px;background:var(--panel);border:1px solid var(--line-warm);border-radius:6px;box-shadow:0 12px 32px rgba(0,0,0,.5);padding:4px;z-index:5}
+ #eradd .menu{left:auto;right:0}
+ .dd.open .menu{display:block}
+ .mi{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;box-sizing:border-box;text-align:left;background:none;border:0;border-radius:4px;color:var(--fg);font:inherit;font-size:13px;padding:8px 10px;cursor:pointer;text-decoration:none}
+ #eramenu .mi{font-family:var(--font-mono);letter-spacing:.04em}
+ .mi:hover{background:rgba(255,255,255,.06)}
+ .mi.cur{color:var(--accent);font-weight:600;cursor:default}
+ .mi .ico{visibility:hidden}
+ .mi.cur .ico{visibility:visible}
+ .mi.more{border-top:1px solid var(--line);margin-top:4px;border-radius:0 0 4px 4px;color:var(--mut);font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:10px 10px 8px}
+ .links{display:flex;gap:4px;flex:0 0 auto}
+ .navlink{display:inline-flex;align-items:center;gap:6px;padding:8px 9px;border-radius:4px;font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);text-decoration:none;white-space:nowrap}
+ .navlink:hover{color:var(--accent);background:rgba(255,255,255,.04)}
+ .navlink .emblem{flex:0 0 auto;opacity:.9}
+ /* The filter drawer. It slides in over the grid; the page behind stays where it was,
+    so closing it lands the visitor exactly where they were scrolling. */
+ .scrim{position:fixed;inset:0;z-index:30;background:rgba(6,10,15,.6);opacity:0;visibility:hidden;transition:opacity .2s,visibility 0s .2s}
+ .drawer{position:fixed;top:0;bottom:0;left:0;width:min(400px,92vw);z-index:31;display:flex;flex-direction:column;background:var(--bg);border-right:1px solid var(--line-warm);box-shadow:8px 0 32px rgba(0,0,0,.5);transform:translateX(-102%);visibility:hidden;transition:transform .22s ease,visibility 0s .22s}
+ body.dopen .scrim{opacity:1;visibility:visible;transition-delay:0s}
+ body.dopen .drawer{transform:none;visibility:visible;transition-delay:0s}
+ @media (prefers-reduced-motion:reduce){.drawer,.scrim{transition:none}}
+ .dhead{display:flex;align-items:center;justify-content:space-between;padding:12px 10px 8px 14px;border-bottom:1px solid var(--line)}
+ .dhead b{font-family:var(--font-display);font-weight:600;font-size:16px;letter-spacing:.02em}
+ .dx{background:none;border:0;color:var(--mut);font-size:18px;line-height:1;padding:6px 10px;cursor:pointer}
+ .dx:hover{color:var(--fg)}
+ .dsearch{padding:10px 14px 4px}
+ #q{width:100%;box-sizing:border-box;background:#090f16;border:1px solid var(--line);color:var(--fg);border-radius:4px;padding:8px 10px;font:inherit;font-size:13px;-webkit-appearance:none}
+ #q::placeholder{color:#8a8f99}
+ #q:focus{outline:none;border-color:var(--flame)}
+ .panel{flex:1;min-height:0;overflow:auto;padding:2px 14px 14px;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+ .facet{margin:10px 0 6px;font-family:var(--font-mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+ .facet .fm{float:right;text-transform:none;letter-spacing:.04em;opacity:.6}
  .checks{display:flex;flex-wrap:wrap;gap:6px}
- .ck{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid rgba(245,158,11,.25);border-radius:4px;padding:5px 11px;font-family:var(--font-mono);font-size:12px;letter-spacing:.04em;cursor:pointer;user-select:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+ .ck{display:inline-flex;align-items:center;gap:6px;background:var(--panel);border:1px solid rgba(245,158,11,.25);border-radius:4px;padding:5px 11px;font-family:var(--font-mono);font-size:12px;letter-spacing:.04em;color:var(--fg);cursor:pointer;user-select:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
+ .ck:hover{border-color:var(--flame)}
  .ck.on{background:rgba(245,158,11,.18);border-color:var(--flame);color:var(--accent);font-weight:600}
- .ck input{display:none}
  .ck .cnt{opacity:.55;font-variant-numeric:tabular-nums}
  .ck.on .cnt{opacity:.8}
- .panel .clr{margin-top:10px;background:none;border:1px solid var(--line);color:var(--mut);border-radius:4px;padding:6px 12px;font-size:12px;cursor:pointer}
- .sortrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+ /* A count of zero dims the option rather than removing it: the row stays where the
+    eye left it, and a click still works (it just shows nothing). */
+ .ck.zero{opacity:.4}
+ .ck.zero.on{opacity:1}
+ .grp.empty{display:none}
+ .rows{display:flex;flex-direction:column;gap:2px}
+ .ck.row{width:100%;justify-content:flex-start;gap:8px;padding:7px 10px;border-color:transparent;background:none;box-shadow:none;text-align:left;font-family:var(--font-body);font-size:13px;letter-spacing:0}
+ .ck.row:hover{background:rgba(255,255,255,.04);border-color:transparent}
+ .ck.row.on{background:rgba(245,158,11,.14);border-color:var(--flame)}
+ .ck.row .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .ck.row .meta{font-family:var(--font-mono);font-size:11px;opacity:.5;white-space:nowrap}
+ .ck.row .cnt{font-family:var(--font-mono);font-size:11px;min-width:28px;text-align:right}
+ /* Lists show eight rows until asked; a selected row is never hidden, so a drill-in
+    from a deep link is always visible without a scroll. */
+ .list.collapsed .rows .row:nth-child(n+9):not(.on){display:none}
+ .ck.miss{display:none}
+ .more{margin-top:6px;background:none;border:0;color:var(--accent);font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;cursor:pointer;padding:4px 0}
+ .fogrow{margin-top:16px;width:100%;gap:10px;padding:8px 10px;background:none;border-color:var(--line);box-shadow:none;font-family:var(--font-body);font-size:13px;letter-spacing:0}
+ .fogrow .sw{flex:0 0 auto;position:relative;width:28px;height:16px;border-radius:8px;background:var(--line);transition:background .15s}
+ .fogrow .sw::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:6px;background:var(--fg);transition:left .15s}
+ .fogrow .t{flex:1;text-align:left}
+ .fogrow.on{background:none;font-weight:400}
+ .fogrow.on .sw{background:var(--flame)}
+ .fogrow.on .sw::after{left:14px}
+ .dfoot{display:flex;gap:8px;align-items:center;padding:10px 14px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--panel)}
+ .dfoot .clr{flex:0 0 auto;background:none;border:1px solid var(--line);color:var(--mut);border-radius:4px;padding:9px 12px;font-size:12px;cursor:pointer}
+ .dfoot .clr:hover{color:var(--fg)}
+ .dfoot .act.pri{flex:1;justify-content:center;padding:10px 13px;background:var(--flame);border-color:var(--flame);color:#2a1700;font-weight:700}
+ .dfoot .act.pri:hover{background:var(--accent);border-color:var(--accent)}
  main{padding:8px}
  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
  .cell{position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;background:#000;cursor:pointer}
@@ -136,9 +211,8 @@
  .act:hover{border-color:var(--accent)}
  .hint{font-size:12px;color:var(--mut);line-height:1.5}
  .empty{color:var(--mut);text-align:center;padding:50px 10px;font-size:14px}
- .psize{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;letter-spacing:.05em;color:var(--mut)}
- .psize input{width:56px;background:#090f16;border:1px solid var(--line);color:var(--fg);border-radius:4px;padding:6px 8px;font-family:var(--font-mono);font-size:13px;text-align:center}
- .psize input:focus{outline:none;border-color:var(--flame)}
+ .pager .perpage{display:inline-flex;align-items:center;gap:6px;margin-left:8px}
+ .pager select{background:var(--panel);border:1px solid var(--line);color:var(--fg);border-radius:4px;padding:6px 8px;font-family:var(--font-mono);font-size:11px;letter-spacing:.05em}
  .pager{display:flex;align-items:center;justify-content:center;gap:12px;padding:18px 10px 6px;font-family:var(--font-mono);font-size:11px;letter-spacing:.05em;color:var(--mut)}
  .pager button{background:var(--panel);border:1px solid var(--line);color:var(--fg);border-radius:4px;padding:7px 15px;font-family:var(--font-mono);font-size:11px;letter-spacing:.05em;cursor:pointer}
  .pager button:disabled{opacity:.4;cursor:default}
@@ -177,31 +251,60 @@
  #lb .pv{left:0}#lb .nx{right:0}
  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--flame);color:#2a1700;font-size:13px;font-weight:600;padding:8px 16px;border-radius:4px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none}
  .toast.show{opacity:1}
- /* The archive's front door. The viewer is copied verbatim into eight
-    directories, so every href it carries has to be root-absolute. */
- .filt.home .emblem{flex:0 0 auto;opacity:.9}
- .filt.home:hover .emblem{opacity:1}
- @media (max-width:640px){.filt.home span{display:none}.filt.home{padding:8px 10px}}
+ /* A phone keeps the controls and drops their words: the badge carries the filter
+    count, the sort is its icon, the era is its name, Builders waits in the era menu. */
+ @media (max-width:640px){
+   .topline{padding:8px 10px;gap:6px}
+   .filt{padding:8px 10px}
+   .chips{display:none}
+   #sortbtn .k,#sortbtn .v,#sortbtn .arr{display:none}
+   #erabtn .k{display:none}
+   .navlink.builders{display:none}
+   .navlink.chron span{display:none}
+   .subline{padding:6px 10px 0}
+ }
 </style>
 </head>
 <body>
+<!-- The archive's front door and its neighbours. The viewer is copied verbatim into
+     nine directories, so every href it carries has to be root-absolute. -->
 <header id=hdr>
  <div class=topline>
-  <button class=filt id=expbtn>
+  <button class=filt id=expbtn aria-expanded=false aria-controls=drawer>
    <svg width=14 height=14 viewBox="0 0 16 16" fill=none stroke=currentColor stroke-width=1.5 stroke-linejoin=round><path d="M1.5 3h13l-5 6v4l-3 1.4V9z"/></svg>
-   Filters<span class=fbadge id=fbadge></span><span class=arr>▾</span>
+   Filters<span class=fbadge id=fbadge></span>
   </button>
-  <a class="filt home" href="/chronicles/">
-   <svg class=emblem width=14 height=14 viewBox="0 0 64 64" fill=none stroke=currentColor stroke-width=5 stroke-linejoin=round><path d="M32 10L48 24V40L32 54L16 40V24L32 10Z"/><circle cx=32 cy=32 r=5 fill=currentColor stroke=none/></svg>
-   <span>Chronicles</span>
-  </a>
-  <b id=worldTitle>Valheim</b>
-  <a href="/valheim/creators/" class="filt">Builders across eras</a>
-  <span class=sub id=sub>loading…</span>
-  <label class=psize>Page size <input id=psize type=number min=1 value=100></label>
+  <div class=chips id=chips></div>
+  <div class=dd id=sortdd>
+   <button class="filt ddbtn" id=sortbtn aria-haspopup=menu aria-expanded=false aria-label="Sort">
+    <svg width=14 height=14 viewBox="0 0 16 16" fill=none stroke=currentColor stroke-width=1.5 stroke-linecap=round><path d="M2 4h12M4 8h8M6 12h4"/></svg>
+    <span class=k>sort ·</span><span class=v id=sortlbl>every build</span><span class=arr>▾</span>
+   </button>
+   <div class=menu id=sortmenu role=menu></div>
+  </div>
+  <div class=dd id=eradd>
+   <button class="filt ddbtn" id=erabtn aria-haspopup=menu aria-expanded=false aria-label="Era">
+    <span class=k>era</span><b id=worldTitle>Valheim</b><span class=arr>▾</span>
+   </button>
+   <div class=menu id=eramenu role=menu></div>
+  </div>
+  <nav class=links>
+   <a class="navlink chron" href="/chronicles/">
+    <svg class=emblem width=14 height=14 viewBox="0 0 64 64" fill=none stroke=currentColor stroke-width=5 stroke-linejoin=round><path d="M32 10L48 24V40L32 54L16 40V24L32 10Z"/><circle cx=32 cy=32 r=5 fill=currentColor stroke=none/></svg>
+    <span>Chronicles</span>
+   </a>
+   <a class="navlink builders" href="/valheim/creators/">Builders</a>
+  </nav>
  </div>
- <div class=panel id=panel></div>
 </header>
+<div class=subline><span id=sub>loading…</span></div>
+<div class=scrim id=scrim></div>
+<aside class=drawer id=drawer role=dialog aria-modal=true aria-labelledby=dtitle aria-hidden=true>
+ <div class=dhead><b id=dtitle>Filters</b><button type=button class=dx id=dclose aria-label="Close filters">×</button></div>
+ <div class=dsearch><input id=q type=search placeholder="Search filters…" autocomplete=off aria-label="Search filters"></div>
+ <div class=panel id=panel></div>
+ <div class=dfoot><button type=button class=clr id=clrbtn>Clear all</button><button type=button class="act pri" id=showbtn>Show</button></div>
+</aside>
 
 <main id=main><div class=empty>loading…</div></main>
 
@@ -236,6 +339,14 @@ let ERAS=null, pinned=null;   // the auto score is the most useful first impress
 const byRun={};        // run id -> every frame of that capture run
 const byCluster={};    // structure key -> every frame of that build
 const byArea={};       // area key -> every frame in that 2 km neighbourhood
+let per=100;           // page size; the pager's <select> is re-rendered with it, so the value lives here
+// The filter drawer's option elements, built once; LABEL maps a facet value back to
+// its display text for the header chips. lastSig gates the live recount.
+let OPTS=[], LABEL={}, lastSig='', drawerBuilt=false, lastFocus=null;
+const FACETS=[['region','Region'],['perspective','Perspective'],['kind','Kind of place'],
+              ['environment','Weather'],['area','Areas'],['structure','Builds']];
+const SORTS=[['showcase','every build'],['best','auto scored'],['absolute','raw score'],['recent','newest'],
+             ['rank','by rank'],['pieces','biggest build'],['height','tallest'],['stars','starred first'],['light','by time of day']];
 
 // Four names, hand-picked long before anyone dumped the list the game actually
 // has -- comfy-camera-proof-envs.json is written at the top of every plan run
@@ -264,6 +375,7 @@ const ICON={
   pin:'M8 14.5S3 9.9 3 6.4a5 5 0 0 1 10 0c0 3.5-5 8.1-5 8.1z M8 7.9a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z',
   home:'M2.5 7.2 8 2.5l5.5 4.7 M4 6.6v7h8v-7',
   camera:'M2 5h2.5l1-1.5h5L11.5 5H14v8H2z M8 11a2.4 2.4 0 1 0 0-4.8 2.4 2.4 0 0 0 0 4.8z',
+  check:'M3 8.5l3 3 7-7',
 };
 const svg=k=>`<svg class=ico width=14 height=14 viewBox="0 0 16 16" fill=none `+
   `stroke=currentColor stroke-width=1.5 stroke-linejoin=round><path d="${ICON[k]}"/></svg>`;
@@ -292,9 +404,10 @@ async function boot(){
   if(DB.world){ $('worldTitle').textContent=DB.world; document.title=`${DB.world} — what people built`; }
 
   for(const r of DB.images){
+    r._sk=structKey(r); r._ak=areaKey(r);   // the live recount walks every frame per click
     (byRun[r.run]=byRun[r.run]||[]).push(r);
-    (byCluster[structKey(r)]=byCluster[structKey(r)]||[]).push(r);
-    const a=areaKey(r); if(a) (byArea[a]=byArea[a]||[]).push(r);
+    (byCluster[r._sk]=byCluster[r._sk]||[]).push(r);
+    if(r._ak) (byArea[r._ak]=byArea[r._ak]||[]).push(r);
   }
 
   // Instrument side-files: depth/luma geometry and the judge's one-liners.
@@ -314,7 +427,7 @@ async function boot(){
   document.body.classList.add('canstar');
 
   applyHash();
-  buildPanel(); render();
+  buildDrawer(); buildMenus(); render();
 }
 
 // #build=182 / #area=7 -- what makes a drill-in a link rather than a button.
@@ -329,7 +442,7 @@ function applyHash(){
   else { sel.area.add('a'+id); sort='showcase'; }
 }
 function routeFromHash(){
-  applyHash(); page=0; closeLb(); buildPanel(); render();
+  applyHash(); page=0; closeLb(); render();
 }
 addEventListener('popstate', routeFromHash);
 addEventListener('hashchange', routeFromHash);
@@ -338,69 +451,157 @@ function facetValues(key){
   const f={};
   for(const r of DB.images){
     let v,t;
-    if(key==='structure'){ v=structKey(r); t=structOf(r); }
-    else if(key==='area'){ v=areaKey(r); t=r.area_label; }
+    if(key==='structure'){ v=r._sk; t=structOf(r); }
+    else if(key==='area'){ v=r._ak; t=r.area_label; }
     else { v=r[key]; t=v; }
     if(v==null||t==null) continue;
-    (f[v]=f[v]||{n:0,t:t}).n++;
+    if(!f[v]){
+      // "Sky Island · 8,026": the piece count is what tells two builds of one name
+      // apart, so it stays -- as a second column of the row, not part of the name.
+      const m=/^(.*?)(?: · ([\d,]+))?$/.exec(String(t));
+      f[v]={n:0,t:m[1],meta:m[2]||''};
+    }
+    f[v].n++;
   }
   return Object.entries(f).sort((a,b)=>b[1].n-a[1].n);
 }
 
-function buildPanel(){
-  const facets=[['region','Region'],['perspective','Perspective'],
-                ['kind','Kind of place'],['environment','Weather'],
-                ['area','Area'],['structure','Structure']];
-  let h='';
-  if(ERAS&&ERAS.eras&&ERAS.eras.length>1){
-    h+=`<div class=facet>Era</div><div class=checks>`;
-    for(const e of ERAS.eras){
-      const on=e.slug===ERAS.current;
-      h+=on ? `<label class="ck on" style="pointer-events:none">${e.label}</label>`
-            : `<a class=ck href="${e.href}">${e.label}</a>`;
-    }
-    h+='</div>';
-  }
-  for(const [key,label] of facets){
+// The drawer is built once, from every value the index holds -- 480-odd options for
+// era 17. Nothing rebuilds it afterwards: a click patches counts and states in place
+// (syncPanel), so the search text, the scroll position and an opened "Show all"
+// survive every selection. The old panel capped Area and Structure at 40 chips and
+// had to smuggle a drill-in's selection past the cap; a list that collapses in CSS
+// and exempts .on rows needs neither.
+function buildDrawer(){
+  let h=''; OPTS=[]; LABEL={};
+  for(const [key,label] of FACETS){
     const vals=facetValues(key);
+    LABEL[key]={}; for(const [v,o] of vals) LABEL[key][v]=o;
     if(vals.length<2&&!sel[key].size) continue;    // a one-value facet is not a filter
-    // Only the 40 commonest values get a chip, and a drill-in can select a build
-    // far outside that -- 478 has six frames against the top structure's dozens.
-    // Without this the filter is on, invisible, and only "clear filters" escapes.
-    const shown=vals.slice(0,40);
-    for(const e of vals) if(sel[key].has(e[0])&&!shown.includes(e)) shown.push(e);
-    h+=`<div class=facet>${label}</div><div class=checks>`;
-    for(const [v,{n,t}] of shown){
-      h+=`<label class=ck data-k="${esc(key)}" data-v="${esc(v)}"><input type=checkbox>${esc(t)} <span class=cnt>${n}</span></label>`;
+    const list=key==='area'||key==='structure';
+    h+=`<section class="grp${list?' list collapsed':''}" data-k="${key}"><div class=facet>${label}`+
+       (list?`<span class=fm>${vals.length} ${label.toLowerCase()}</span>`:'')+`</div><div class="${list?'rows':'checks'}">`;
+    for(const [v,{n,t,meta}] of vals){
+      h+=`<button type=button class="ck${list?' row':''}" data-k="${esc(key)}" data-v="${esc(v)}" aria-pressed=false>`+
+         `<span class=t>${esc(t)}</span>${list&&meta?`<span class=meta>· ${esc(meta)}</span>`:''}`+
+         `<span class=cnt>${n}</span></button>`;
     }
-    h+='</div>';
+    h+='</div>'+(list&&vals.length>8?`<button type=button class=more>Show all ${vals.length}</button>`:'')+'</section>';
   }
-  // Whiteout fog frames are hidden, not deleted: the chip says how many and
-  // one click brings them back. The detector is an instrument, not a verdict.
-  const nfog=DB.images.reduce((a,r)=>a+(r.fog?1:0),0);
-  if(nfog) h+=`<div class=facet>Hidden</div><div class=checks>`+
-    `<label class="ck${showFog?' on':''}" id=fogchip>fog <span class=cnt>${nfog}</span></label></div>`;
-  h+=`<div class=facet>Sort</div><div class="checks sortrow">`;
-  for(const [k,l] of [['showcase','every build'],['best','auto scored'],['absolute','raw score'],['recent','newest'],['rank','by rank'],['pieces','biggest build'],['height','tallest'],['stars','starred first'],['light','by time of day']])
-    h+=`<label class=ck data-sort="${k}"${sort===k?' style="pointer-events:none"':''}>${l}</label>`;
-  h+=`</div><button class=clr id=clrbtn>clear filters</button>`;
+  // Whiteout fog frames are hidden, not deleted: the row says how many the current
+  // filters would let back in, and one click does it. The detector is an
+  // instrument, not a verdict. An era with no flagged frames gets no row.
+  if(DB.images.some(r=>r.fog))
+    h+=`<button type=button class="ck fogrow" id=fogchip aria-pressed=false><span class=sw></span>`+
+       `<span class=t>Include fog-hidden frames</span><span class=cnt id=fogcnt>0</span></button>`;
   $('panel').innerHTML=h;
-
   $('panel').querySelectorAll('.ck[data-k]').forEach(el=>{
     const k=el.dataset.k,v=el.dataset.v;
-    if(sel[k].has(v)) el.classList.add('on');
-    el.onclick=e=>{ e.preventDefault(); sel[k].has(v)?sel[k].delete(v):sel[k].add(v);
-      el.classList.toggle('on'); page=0; render(); };
+    OPTS.push({el,k,v,cnt:el.querySelector('.cnt'),text:el.querySelector('.t').textContent.toLowerCase()});
+    el.onclick=()=>{ sel[k].has(v)?sel[k].delete(v):sel[k].add(v); page=0; render(); };
   });
-  $('panel').querySelectorAll('.ck[data-sort]').forEach(el=>{
-    el.classList.toggle('on', el.dataset.sort===sort);
-    el.onclick=()=>{ sort=el.dataset.sort; page=0; buildPanel(); render(); };
+  $('panel').querySelectorAll('.more').forEach(b=>b.onclick=()=>{
+    const s=b.closest('.list'); s.dataset.x='1'; s.classList.remove('collapsed'); b.remove(); });
+  if($('fogchip')) $('fogchip').onclick=()=>{ showFog=!showFog; page=0; render(); };
+  drawerBuilt=true; lastSig='';
+}
+
+// Live counts: each option says how many frames a click on it would show, given
+// everything ELSE that is selected. One pass with a six-bit mask of the facets each
+// frame passes; an option counts the frames that fail at most its own facet. Under a
+// millisecond for 3,400 frames, so it runs on every selection change.
+function counts(){
+  const c={}; for(const [k] of FACETS) c[k]=new Map(); let nfog=0;
+  const add=(k,v)=>{ if(v!=null) c[k].set(v,(c[k].get(v)||0)+1); };
+  for(const r of DB.images){
+    let m=0;
+    if(!sel.region.size||sel.region.has(r.region)) m|=1;
+    if(!sel.perspective.size||sel.perspective.has(r.perspective)) m|=2;
+    if(!sel.kind.size||sel.kind.has(r.kind)) m|=4;
+    if(!sel.environment.size||sel.environment.has(r.environment)) m|=8;
+    if(!sel.area.size||sel.area.has(r._ak)) m|=16;
+    if(!sel.structure.size||sel.structure.has(r._sk)) m|=32;
+    if(r.fog){ if(m===63) nfog++; if(!showFog) continue; }
+    if((m|1)===63) add('region',r.region);
+    if((m|2)===63) add('perspective',r.perspective);
+    if((m|4)===63) add('kind',r.kind);
+    if((m|8)===63) add('environment',r.environment);
+    if((m|16)===63) add('area',r._ak);
+    if((m|32)===63) add('structure',r._sk);
+  }
+  return {c,nfog};
+}
+
+function syncPanel(){
+  if(!drawerBuilt) return;
+  const sig=FACETS.map(([k])=>[...sel[k]].join(',')).join('|')+'|'+showFog;
+  if(sig===lastSig) return; lastSig=sig;
+  const {c,nfog}=counts();
+  for(const o of OPTS){
+    const n=c[o.k].get(o.v)||0, on=sel[o.k].has(o.v);
+    o.cnt.textContent=n; o.el.classList.toggle('zero',!n); o.el.classList.toggle('on',on);
+    o.el.setAttribute('aria-pressed',on);
+  }
+  if($('fogchip')){ $('fogcnt').textContent=nfog; $('fogchip').classList.toggle('on',showFog); $('fogchip').setAttribute('aria-pressed',showFog); }
+}
+
+// The search narrows every group by text. A selected option is never hidden by it,
+// and a list under search shows all of its hits rather than eight.
+function applySearch(){
+  const q=$('q').value.trim().toLowerCase();
+  for(const o of OPTS) o.el.classList.toggle('miss',!!q&&!o.text.includes(q)&&!sel[o.k].has(o.v));
+  $('panel').querySelectorAll('.grp').forEach(s=>{
+    s.classList.toggle('empty',!!q&&!s.querySelector('.ck:not(.miss)'));
+    if(s.classList.contains('list')) s.classList.toggle('collapsed',!q&&!s.dataset.x);
+    const m=s.querySelector('.more'); if(m) m.style.display=q?'none':'';
   });
-  if($('fogchip')) $('fogchip').onclick=()=>{ showFog=!showFog; page=0; buildPanel(); render(); };
-  // Clearing filters returns to the front door, not to a filterless list of all
-  // 2,081 frames -- a drill-in switched the sort off showcase, and leaving it off
-  // is how someone ends up back in the wall of variants they just escaped.
-  $('clrbtn').onclick=()=>goHome(false);
+}
+
+// Everything in the header that follows the state: the badge, one chip per selected
+// value, the sort label, and the drawer's footer button. Weather and kind chips carry
+// their facet because "Clear" and "build" say nothing alone; a place name says enough,
+// and a build keeps its piece count for the same reason the row does.
+function syncHeader(){
+  const active=Object.values(sel).reduce((a,s)=>a+s.size,0);
+  $('fbadge').style.display=active?'inline-flex':'none';
+  $('fbadge').textContent=active;
+  let h='';
+  for(const [k] of FACETS) for(const v of sel[k]){
+    const o=(LABEL[k]&&LABEL[k][v])||{t:v,meta:''};
+    const pre=k==='environment'?'weather · ':k==='kind'?'kind · ':'';
+    h+=`<span class=hc>${pre?`<span class=fk>${pre}</span>`:''}${esc(o.t)}`+
+       (k==='structure'&&o.meta?`<span class=fk> · ${esc(o.meta)}</span>`:'')+
+       `<button type=button class=x data-k="${esc(k)}" data-v="${esc(v)}" aria-label="Remove ${esc(o.t)}">×</button></span>`;
+  }
+  if(active) h+=`<button type=button class=clrall id=clrall>clear all</button>`;
+  $('chips').innerHTML=h;
+  $('chips').querySelectorAll('.x').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.k; sel[k].delete(b.dataset.v); page=0;
+    // A #build= or #area= link put this filter on; taking the chip off should not
+    // leave the address promising a scope the page no longer has.
+    if((k==='structure'||k==='area')&&!sel.structure.size&&!sel.area.size&&location.hash)
+      try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){}
+    render();
+  });
+  if($('clrall')) $('clrall').onclick=()=>goHome(false);
+  $('sortlbl').textContent=(SORTS.find(s=>s[0]===sort)||SORTS[0])[1];
+  $('sortmenu').querySelectorAll('.mi').forEach(m=>{ const c=m.dataset.sort===sort; m.classList.toggle('cur',c); m.setAttribute('aria-checked',c); });
+  $('showbtn').textContent=`Show ${view.length.toLocaleString()} ${sort==='showcase'?'builds':'photographs'}`;
+}
+
+// Sort is a radio menu. Era is a menu of LINKS: each published era is a complete
+// standalone copy of this page at its own path, so nothing carries across and a
+// filter chip was the wrong shape for it. The publisher writes eras.json with
+// absolute hrefs under the route; absent, the era button is just the title.
+function buildMenus(){
+  $('sortmenu').innerHTML=SORTS.map(([k,l])=>`<button type=button class=mi role=menuitemradio data-sort="${k}">${l}${svg('check')}</button>`).join('');
+  $('sortmenu').querySelectorAll('.mi').forEach(m=>m.onclick=()=>{ sort=m.dataset.sort; page=0; closeMenus(); render(); });
+  const eras=(ERAS&&ERAS.eras)||[];
+  if(eras.length<2){ $('eradd').classList.add('static'); $('erabtn').removeAttribute('aria-haspopup'); return; }
+  $('eramenu').innerHTML=eras.map(e=>e.slug===ERAS.current
+      ?`<span class="mi cur" role=menuitem aria-current=page>${esc(e.label)}${svg('check')}</span>`
+      :`<a class=mi role=menuitem href="${esc(e.href)}">${esc(e.label)}${svg('check')}</a>`).join('')
+    +`<a class="mi more" role=menuitem href="/valheim/creators/">Builders across eras<span>›</span></a>`;
 }
 
 // The aesthetic head scores a landscape above a room every time: measured over
@@ -490,9 +691,6 @@ function render(){
   page=Math.min(page,pages-1);
   const slice=view.slice(page*n,page*n+n);
 
-  const active=Object.values(sel).reduce((a,s)=>a+s.size,0);
-  $('fbadge').style.display=active?'inline-flex':'none';
-  $('fbadge').textContent=active;
   $('sub').textContent = sort==='showcase'
     ? `${view.length} builds · ${DB.n.toLocaleString()} photographs`
     : `${view.length} of ${DB.n} photographs · ${DB.runs} setups`;
@@ -501,7 +699,8 @@ function render(){
     ? `<div class=grid>${slice.map(cellHtml).join('')}</div>` +
       `<div class=pager><button id=pp ${page?'':'disabled'}>‹ prev</button>` +
       `<span>${page+1} / ${pages}</span>` +
-      `<button id=pn ${page<pages-1?'':'disabled'}>next ›</button></div>`
+      `<button id=pn ${page<pages-1?'':'disabled'}>next ›</button>` +
+      `<label class=perpage>per page <select id=psize>${[50,100,200].map(x=>`<option${x===per?' selected':''}>${x}</option>`).join('')}</select></label></div>`
     : '<div class=empty>nothing matches those filters</div>';
 
   $('main').querySelectorAll('.cell').forEach(el=>{
@@ -514,6 +713,8 @@ function render(){
   });
   if($('pp')) $('pp').onclick=()=>{page--;render();window.scrollTo(0,0);};
   if($('pn')) $('pn').onclick=()=>{page++;render();window.scrollTo(0,0);};
+  if($('psize')) $('psize').onchange=e=>{per=+e.target.value;page=0;render();window.scrollTo(0,0);};
+  syncHeader(); syncPanel();
 }
 
 function cellHtml(r,i){
@@ -671,7 +872,7 @@ function drillTo(key, value, keepId){
   // the neighbours. Dropping into 87 frames -- eight of each of twelve builds --
   // would be the repetition problem again, one level up.
   sort = key==='area' ? 'showcase' : 'best';
-  page=0; buildPanel(); render();
+  page=0; render();
   const j=view.findIndex(v=>v.id===keepId);
   if(j>=0){ page=Math.floor(j/pageSize()); render(); openLb(j); } else closeLb();
   const cid=value.replace(/^[ca]/,'');
@@ -679,15 +880,16 @@ function drillTo(key, value, keepId){
   // build and return to the showcase they were browsing.
   try{ history.pushState(null,'',key==='structure'?`#build=${cid}`:`#area=${cid}`); }catch(e){}
 }
-function pageSize(){ return Math.max(1,parseInt($('psize').value)||100); }
+function pageSize(){ return per; }
 // Clearing filters returns to the front door, not to a filterless list of all
 // 2,081 frames -- a drill-in switched the sort off showcase, and leaving it off
 // is how someone ends up back in the wall of variants they just escaped.
 function goHome(close){
   for(const k in sel) sel[k].clear();
   sort='showcase'; page=0; pinned=null;
+  if($('q').value){ $('q').value=''; applySearch(); }
   try{ history.pushState(null,'',location.pathname+location.search); }catch(e){}
-  buildPanel(); render();
+  render();
   if(close) closeLb();
 }
 function closeLb(){ $('lb').classList.remove('show'); }
@@ -732,11 +934,65 @@ let tt;
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show');
   clearTimeout(tt); tt=setTimeout(()=>t.classList.remove('show'),2200); }
 
-$('expbtn').onclick=()=>$('hdr').classList.toggle('open');
-$('psize').oninput=()=>{page=0;render();};
+// ---- drawer, menus, keys ----
+const dopen=()=>document.body.classList.contains('dopen');
+function openDrawer(){
+  if(dopen()) return;
+  closeMenus(); lastFocus=document.activeElement;
+  document.body.classList.add('dopen'); $('hdr').classList.add('open');
+  $('expbtn').setAttribute('aria-expanded','true'); $('drawer').setAttribute('aria-hidden','false');
+  // The search is the first thing worth typing into -- except on a phone, where
+  // focusing it raises the keyboard over half the drawer.
+  (matchMedia('(max-width:640px)').matches?$('dclose'):$('q')).focus({preventScroll:true});
+  // A deep link selects a build or an area before the drawer is ever opened; show it.
+  const on=$('panel').querySelector('.row.on'); if(on&&!$('q').value) on.scrollIntoView({block:'nearest'});
+}
+function closeDrawer(){
+  if(!dopen()) return;
+  document.body.classList.remove('dopen'); $('hdr').classList.remove('open');
+  $('expbtn').setAttribute('aria-expanded','false');
+  const f=lastFocus&&lastFocus!==document.body&&document.contains(lastFocus)&&!$('drawer').contains(lastFocus)?lastFocus:$('expbtn');
+  f.focus({preventScroll:true}); $('drawer').setAttribute('aria-hidden','true'); lastFocus=null;
+}
+$('expbtn').onclick=()=>dopen()?closeDrawer():openDrawer();
+$('dclose').onclick=closeDrawer; $('scrim').onclick=closeDrawer; $('showbtn').onclick=closeDrawer;
+$('clrbtn').onclick=()=>goHome(false);
+$('q').oninput=applySearch;
+// The scrim takes the wheel so the grid does not scroll under the drawer. No body
+// scroll-lock: that shifts the sticky header by a scrollbar's width on every open.
+for(const ev of ['wheel','touchmove']) $('scrim').addEventListener(ev,e=>e.preventDefault(),{passive:false});
+
+function closeMenus(){ document.querySelectorAll('.dd.open').forEach(d=>{ d.classList.remove('open'); d.querySelector('.ddbtn').setAttribute('aria-expanded','false'); }); }
+function toggleMenu(id){
+  const d=$(id), was=d.classList.contains('open'); closeMenus();
+  if(was||d.classList.contains('static')) return;
+  d.classList.add('open'); d.querySelector('.ddbtn').setAttribute('aria-expanded','true');
+  const first=d.querySelector('a.mi,button.mi'); if(first) first.focus();
+}
+$('sortbtn').onclick=()=>toggleMenu('sortdd'); $('erabtn').onclick=()=>toggleMenu('eradd');
+// .dd, not .dd.open: a pointerdown on the button itself must not close-then-reopen.
+document.addEventListener('pointerdown',e=>{ if(!e.target.closest('.dd')) closeMenus(); });
+$('drawer').addEventListener('keydown',e=>{            // Tab stays inside the drawer
+  if(e.key!=='Tab') return;
+  const f=[...$('drawer').querySelectorAll('button,input,a[href]')].filter(x=>x.offsetParent!==null);
+  const a=f[0], z=f[f.length-1];
+  if(e.shiftKey&&document.activeElement===a){ e.preventDefault(); z.focus(); }
+  else if(!e.shiftKey&&document.activeElement===z){ e.preventDefault(); a.focus(); }
+});
+// Escape peels one layer at a time: lightbox, then an open menu, then a typed
+// search, then the drawer.
 document.addEventListener('keydown',e=>{
-  if(!$('lb').classList.contains('show')) return;
-  if(e.key==='Escape') closeLb();
+  const lb=$('lb').classList.contains('show');
+  if(e.key==='Escape'){
+    if(lb) return closeLb();
+    if(document.querySelector('.dd.open')) return closeMenus();
+    if(dopen()){
+      if(e.target===$('q')&&$('q').value){ $('q').value=''; applySearch(); return; }
+      return closeDrawer();
+    }
+    return;
+  }
+  if(!lb) return;
   if(e.key==='ArrowLeft') step(-1);
   if(e.key==='ArrowRight') step(1);
 });

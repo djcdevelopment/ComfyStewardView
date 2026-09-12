@@ -1,0 +1,28 @@
+{
+  "schema": "steward-viewer-push/v1",
+  "pushedAt": "2026-09-12T04:42:41.878013+00:00",
+  "mode": "push",
+  "remote_root": "/srv/sites/valheim",
+  "ssh_target": "fx99",
+  "pushed_sha": "b901a91e5666a0deffa7eb148608a99a8b0bbda39d4b8813197cbb61619671d6",
+  "local_sha": "b901a91e5666a0deffa7eb148608a99a8b0bbda39d4b8813197cbb61619671d6",
+  "viewer": "C:\\work\\ComfyStewardView\\tools\\selfie-stick\\gallery\\index.html",
+  "retained": [
+    {
+      "sha12": "5c17abbed13d",
+      "bytes": 38039
+    },
+    {
+      "sha12": "824d662bcce1",
+      "bytes": 36786
+    }
+  ],
+  "dirs": [
+    {
+      "dir": "/srv/sites/valheim/era7",
+      "previous_sha12": "31ef8c5f6c5c",
+      "new_sha12": "b901a91e5666",
+      "ok": true
+    }
+  ]
+}

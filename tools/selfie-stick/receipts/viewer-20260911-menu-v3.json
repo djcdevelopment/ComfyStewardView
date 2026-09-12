@@ -1,0 +1,80 @@
+{
+  "schema": "steward-viewer-push/v1",
+  "pushedAt": "2026-09-12T04:43:41.548056+00:00",
+  "mode": "push",
+  "remote_root": "/srv/sites/valheim",
+  "ssh_target": "fx99",
+  "pushed_sha": "796b8a2041dfab8395d547a7e297acb082540fd830e765c64f98f411ed9bd461",
+  "local_sha": "796b8a2041dfab8395d547a7e297acb082540fd830e765c64f98f411ed9bd461",
+  "viewer": "C:\\work\\ComfyStewardView\\tools\\selfie-stick\\gallery\\index.html",
+  "retained": [
+    {
+      "sha12": "31ef8c5f6c5c",
+      "bytes": 42076
+    },
+    {
+      "sha12": "5c17abbed13d",
+      "bytes": 38039
+    },
+    {
+      "sha12": "824d662bcce1",
+      "bytes": 36786
+    }
+  ],
+  "dirs": [
+    {
+      "dir": "/srv/sites/valheim",
+      "previous_sha12": "31ef8c5f6c5c",
+      "new_sha12": "796b8a2041df",
+      "ok": true
+    },
+    {
+      "dir": "/srv/sites/valheim/era10",
+      "previous_sha12": "31ef8c5f6c5c",
+      "new_sha12": "796b8a2041df",
+      "ok": true
+    },
+    {
+      "dir": "/srv/sites/valheim/era11",
+      "previous_sha12": "31ef8c5f6c5c",
+      "new_sha12": "796b8a2041df",
+      "ok": true
+    },
+    {
+      "dir": "/srv/sites/valheim/era12",
+      "previous_sha12": "31ef8c5f6c5c",
+      "new_sha12": "796b8a2041df",
+      "ok": true
+    },
+    {
+      "dir": "/srv/sites/valheim/era14",
+      "previous_sha12": "31ef8c5f6c5c",
+      "new_sha12": "796b8a2041df",
+      "ok": true
+    },
+    {
+      "dir": "/srv/sites/valheim/era16",
+      "previous_sha12": "31ef8c5f6c5c",
+      "new_sha12": "796b8a2041df",
+      "ok": true
+    },
+    {
+      "dir": "/srv/sites/valheim/era7",
+      "previous_sha12": "b901a91e5666",
+      "new_sha12": "796b8a2041df",
+      "ok": true
+    },
+    {
+      "dir": "/srv/sites/valheim/era8",
+      "previous_sha12": "31ef8c5f6c5c",
+      "new_sha12": "796b8a2041df",
+      "ok": true
+    },
+    {
+      "dir": "/srv/sites/valheim/era9",
+      "previous_sha12": "31ef8c5f6c5c",
+      "new_sha12": "796b8a2041df",
+      "ok": true
+    }
+  ]
+}
