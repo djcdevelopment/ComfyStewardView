@@ -5,9 +5,9 @@ multi-era world catalog. The migrated selfie-stick helpers have a pinned Baselin
 source receipt in `../selfie-stick/source-provenance.json`. Baseline retains discovery
 and historical evidence; it is not an executable dependency.
 
-The first release processes Eras 7, 8, 9, 10, 11, 12 and 14. It preserves the active
-Era 17 gallery and world view, and the archived Era 16 photo URLs. A current-client
-Era 14 run has now produced native 4K photographs and all three terrain caches.
+The archive processes Eras 7, 8, 9, 10, 11, 12, 14 and 16. It preserves the active
+Era 17 gallery and world view. Current-client terrain sessions produce source-bound
+terrain caches without modifying the frozen historical saves.
 The [quiet AM4 campaign](QUIET-CAPTURE.md) runs capture batches locally without
 requiring historical runtime parity or transferring images while OMEN is gaming.
 The older publication-review contract below is separate from this capture route.
@@ -352,12 +352,20 @@ all historical eras using an explicit current geometry artifact and SHA-256. Its
 non-finite positions are retained in the archive and recorded in an input receipt;
 they can be excluded from spatial export only when absent from exact membership.
 The exporter still rejects mismatched geometry and invalid transforms.
+Use `--eras era16` with the current `ready-inputs.json` as the base to append a newly
+processed era without re-exporting the existing eras. `prepare_world_era.py` then
+turns that one ready input into a self-contained incremental catalog package.
 
 For terrain regenerated in a current client, `terrain_provenance.py` binds an
 observed `steward-terrain-generation/v1` receipt to the context. It checks the original
 DB and all four source hashes (FWL, map, height and forest caches). The public viewer
 labels that terrain as regenerated; it does not present it as historical terrain.
 Eras without terrain begin in Heatmap mode and cannot submit biome-filtered queries.
+`omen_terrain_cache.py` accepts both legacy PNG caches and Valheim 1.0's gzip-compressed
+RGBA/half-float minimap caches. The latter are seed-checked against the archived FWL,
+converted to the established north-up PNG contract, and retain hashes for every raw
+input. `--recover-valheim-data` promotes a completed parked session without relaunching
+the game.
 
 When an AM4 photo campaign already owns the current client, install
 `am4_terrain_cache.py` as a separate worker. Give it the campaign `status.json`, the
@@ -388,6 +396,10 @@ replaces only `steward-world` on 7081, preserving its environment and a stopped 
 container for rollback. Neither changes Funnel routing or `/steward` on 7080.
 
 `deploy_world.py` is the bundle lane: use it only when the immutable era catalog changes.
+For the common catalog-expansion case, `deploy_world_era.py` adds one verified
+`prepare_world_era.py` package instead. It transfers only that era and the thin JAR,
+hard-link clones the live immutable catalog, and performs the same candidate-before-swap
+checks without building an image.
 For Java-only releases, package the lab and pass Maven's small `target/original-*.jar` to
 `deploy_world_code.py`. The code lane uploads only that thin application JAR, places it
 ahead of the live image's dependency JAR on the classpath, reuses the verified read-only

@@ -12,6 +12,28 @@ import duckdb
 from archive import artifact,checked_file,digest,load,now,save,sql_path
 
 
+def validate_cache_mode(metadata, has_context):
+    schema=metadata.get('schemaVersion')
+    if schema not in (4,5):raise ValueError('Unsupported public cache schema')
+    terrain=metadata.get('terrainAvailable',bool(metadata.get('biomeMaskSha256')))
+    if has_context:
+        if not terrain or not metadata.get('biomeMaskSha256'):
+            raise ValueError('Terrain requires a biome-classified public cache')
+    elif schema!=5 or terrain or metadata.get('biomeMaskSha256'):
+        raise ValueError('Terrain-free publication requires an explicitly unclassified cache')
+
+
+def context_records(manifest):
+    records=list(manifest.get('variants') or [])
+    heightfield=manifest.get('heightfield')
+    if heightfield:
+        if manifest.get('schemaVersion')!=3:raise ValueError('Heightfield requires terrain context schema 3')
+        records.append(heightfield)
+    elif manifest.get('schemaVersion')==3:
+        raise ValueError('Terrain context schema 3 requires a heightfield')
+    return records
+
+
 def add_ready(root, spec):
     slug=spec['slug'];snapshot=int(spec['snapshotId'])
     if slug!='era'+str(int(slug.removeprefix('era'))):raise ValueError('Invalid era slug')
@@ -28,18 +50,16 @@ def add_ready(root, spec):
     output=dest/'public.duckdb';shutil.copyfile(cache,output)
     if digest(cache)!=digest(output):raise ValueError('Cache transfer mismatch')
     context_output=None
+    validate_cache_mode(metadata,bool(spec.get('context')))
     if spec.get('context'):
-        if metadata['schemaVersion']!=4:raise ValueError('Terrain requires a biome-classified public cache')
         context=Path(spec['context']);context_manifest=load(context/'manifest.json')
         if context_manifest['snapshot']['id']!=snapshot or context_manifest['snapshot']['sha256']!=metadata['snapshotHash']:
             raise ValueError('Context identity mismatch')
         context_output=dest/'context';context_output.mkdir()
         shutil.copyfile(context/'manifest.json',context_output/'manifest.json')
-        for variant in context_manifest['variants']:
-            path=checked_file(context,{'path':variant['file'],'sha256':variant['sha256'],'bytes':variant['bytes']})
-            shutil.copyfile(path,context_output/variant['file'])
-    elif metadata['schemaVersion']!=5 or metadata.get('biomeMaskSha256'):
-        raise ValueError('Terrain-free publication requires an explicitly unclassified cache')
+        for record in context_records(context_manifest):
+            path=checked_file(context,{'path':record['file'],'sha256':record['sha256'],'bytes':record['bytes']})
+            shutil.copyfile(path,context_output/record['file'])
     raster=Path(spec['artifacts'])/str(snapshot);manifest=load(raster/'manifest.json')
     if manifest['snapshot']['fileHash']!=metadata['snapshotHash']:raise ValueError('Raster identity mismatch')
     raster_output=dest/'artifacts'/str(snapshot);raster_output.mkdir(parents=True)

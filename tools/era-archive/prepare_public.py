@@ -8,6 +8,16 @@ import duckdb
 from archive import REPO, artifact, checked_file, digest, load, save, sql_path
 
 
+def selected_eras(archive, requested):
+    if not requested:
+        return archive['eras']
+    by_slug={era['slug']:era for era in archive['eras']}
+    missing=[slug for slug in requested if slug not in by_slug]
+    if missing:raise ValueError('Unknown requested eras: '+', '.join(missing))
+    if len(set(requested))!=len(requested):raise ValueError('Duplicate requested era')
+    return [by_slug[slug] for slug in requested]
+
+
 def spatial_inputs(root, dest, era, membership):
     inputs=era['ingestion']['artifacts']
     geometry=checked_file(root,inputs['geometry'])
@@ -46,6 +56,7 @@ def main():
     parser.add_argument('--java',type=Path,required=True);parser.add_argument('--jar',type=Path,required=True)
     parser.add_argument('--piece-geometry',type=Path,required=True)
     parser.add_argument('--piece-geometry-sha256',required=True)
+    parser.add_argument('--eras',nargs='+',help='Export only these eras and append them to the base ready inputs')
     args=parser.parse_args();root=args.output_root.resolve();dest=args.destination.resolve()
     dest.mkdir(parents=True,exist_ok=True)
     if digest(args.piece_geometry)['sha256']!=args.piece_geometry_sha256:raise ValueError('Geometry catalog hash mismatch')
@@ -53,7 +64,7 @@ def main():
     if digest(catalog)!=digest(args.piece_geometry):raise ValueError('Geometry artifact copy mismatch')
     archive=load(root/'catalog.json');analyses={e['slug']:e for e in load(root/'analysis/catalog.json')['eras']}
     terrains=load(args.terrain_inputs);ready=load(args.base_ready_inputs)
-    for era in archive['eras']:
+    for era in selected_eras(archive,args.eras):
         slug=era['slug'];target=dest/slug;target.mkdir(exist_ok=True)
         analysis=analyses[slug]
         if analysis['sourceKey']!=era['sourceKey']:raise ValueError('Membership source mismatch')

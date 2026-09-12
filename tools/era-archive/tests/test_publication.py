@@ -7,11 +7,40 @@ import duckdb
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from archive import artifact, load, save, sql_path
-from prepare_public import spatial_inputs
+from prepare_public import selected_eras, spatial_inputs
 from terrain_provenance import annotate
+from world_bundle import context_records, validate_cache_mode
 
 
 class PublicationTests(unittest.TestCase):
+    def test_incremental_public_export_selects_requested_eras_in_request_order(self):
+        archive={'eras':[{'slug':'era7'},{'slug':'era16'}]}
+        self.assertEqual(['era16'],[era['slug'] for era in selected_eras(archive,['era16'])])
+        with self.assertRaisesRegex(ValueError,'Unknown requested eras'):
+            selected_eras(archive,['era99'])
+        with self.assertRaisesRegex(ValueError,'Duplicate requested era'):
+            selected_eras(archive,['era16','era16'])
+
+    def test_world_bundle_accepts_schema_five_with_or_without_terrain(self):
+        validate_cache_mode({'schemaVersion':5,'terrainAvailable':True,
+                             'biomeMaskSha256':'a'*64},True)
+        validate_cache_mode({'schemaVersion':5,'terrainAvailable':False,
+                             'biomeMaskSha256':''},False)
+        with self.assertRaisesRegex(ValueError,'biome-classified'):
+            validate_cache_mode({'schemaVersion':5,'terrainAvailable':False,
+                                 'biomeMaskSha256':''},True)
+        with self.assertRaisesRegex(ValueError,'explicitly unclassified'):
+            validate_cache_mode({'schemaVersion':5,'terrainAvailable':True,
+                                 'biomeMaskSha256':'a'*64},False)
+
+    def test_schema_three_context_includes_its_heightfield_in_the_bundle(self):
+        manifest={'schemaVersion':3,'variants':[{'file':'terrain.png'}],
+                  'heightfield':{'file':'terrain-height.r16'}}
+        self.assertEqual(['terrain.png','terrain-height.r16'],
+                         [record['file'] for record in context_records(manifest)])
+        with self.assertRaisesRegex(ValueError,'requires a heightfield'):
+            context_records({'schemaVersion':3,'variants':[]})
+
     def inputs(self, root, include_bad_member=False):
         cache=root/'source.duckdb';geometry=root/'geometry.parquet';members=root/'membership.parquet'
         with duckdb.connect(str(cache)) as con:
