@@ -701,7 +701,7 @@ const initCreatorsPage = async () => {
   const isThread = Boolean(builderKey);
   const base = new URL(isThread ? '../' : './', location.href);
 
-  // A shared pair link: ?kin=<co-builder>&build=<one of the builds they share>&view=…
+  // A shared pair link: ?kin=<co-builder>&build=<one of the builds they share>
   // Validated here, once, against the same hex shapes the rest of the page uses, so a
   // hand-edited or truncated key never reaches a selector or a fetch. Anything that does
   // not match is dropped rather than corrected -- a half-read link should open the plain
@@ -714,7 +714,6 @@ const initCreatorsPage = async () => {
   const initialPair = {
     kin: hexParam('kin', /^[a-f0-9]{32}$/),
     build: hexParam('build', /^[a-f0-9]{64}$/),
-    view: ['photos', 'viewer'].includes(pairQuery.get('view')) ? pairQuery.get('view') : null,
   };
   const endpoint = document.querySelector('meta[name="creator-participation-endpoint"]')?.content?.trim() || '';
   const state = StewardParticipation.load();
@@ -2230,7 +2229,10 @@ const initCreatorsPage = async () => {
   // The card may be several "Show more albums" pages down inside its era, so open that
   // era and page until it exists. The loop is capped and stops the moment there is no
   // more paging to do: a buildKey that belongs to no album on this thread must not spin.
-  function revealAlbum(buildKey) {
+  // `scroll: false` turns the carousel without moving the visitor -- the pair view uses it
+  // when a ledger row is picked, so the photograph is waiting when they scroll back up.
+  // A jump to the rest table always scrolls: the row is nowhere the visitor can see.
+  function revealAlbum(buildKey, {scroll = true} = {}) {
     if (!/^[a-f0-9]{64}$/.test(String(buildKey || ''))) return null;
     // A photographed build is on the carousel: turn the stage to it.
     const shot = workAlbums.findIndex((a) => a.buildKey === buildKey);
@@ -2239,7 +2241,7 @@ const initCreatorsPage = async () => {
       workPhoto = 0;
       paintWorkStage();
       const stage = $('work-stage');
-      if (stage) stage.scrollIntoView({block: 'start'});
+      if (stage && scroll) stage.scrollIntoView({block: 'start'});
       return stage ? stage.querySelector('article.album') : null;
     }
     const find = () => document.querySelector(`article.album[data-build-key="${buildKey}"]`);
@@ -2274,8 +2276,7 @@ const initCreatorsPage = async () => {
       participation: state,
       confirmedTags: externalParticipation?.confirmedTags || [],
       portraits: portraitManifest,
-      initial: {kin: initialPair.kin, build: initialPair.build, view: initialPair.view},
-      openPhoto: openPhotoViewer,
+      initial: {kin: initialPair.kin, build: initialPair.build},
       revealAlbum,
       base,
       kinshipHref: (key) => new URL(`kinship/?builder=${key}`, base),

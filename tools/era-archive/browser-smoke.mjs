@@ -145,11 +145,27 @@ try{
     if(results.tree.active!==results.tree.pressed)throw Error('The lit branch and the pressed chip disagree');
     if(results.tree.moreOpen!==false)throw Error('Pair view detail did not start folded');
     await screenshot('pair-view');
-    await evaluate("document.getElementById('pair-tab-viewer').click()");
-    // A pairing whose shared builds are all legacy gallery imports has no world viewer to
-    // open; a muted note saying so is the honest answer there, not a missing link.
-    await wait("!!document.querySelector('#pair-viewer a[target=\"_blank\"], #pair-viewer .muted')");
-    results.pair.viewer=await evaluate("document.querySelector('#pair-viewer a[target=\"_blank\"]')?'world-viewer':'no-world-viewer-note'");
+    // Slim pair (pass 3b): no tab strip and no second photograph -- the standing chip sits
+    // in the head row, the ally and the reverse link share a row, the ledger runs full
+    // width. Picking a photographed row turns the work carousel to that build without
+    // moving the page; the Details fold stays put.
+    results.pair.slim=await evaluate("({modes:!!document.getElementById('pair-modes'),photos:!!document.getElementById('pair-photos'),standing:!!document.querySelector('#pair-view #pair-head #pair-standing'),who:!!document.querySelector('#pair-view #pair-who #pair-ally')&&!!document.querySelector('#pair-view #pair-who #pair-reverse')})");
+    if(results.pair.slim.modes||results.pair.slim.photos)throw Error('Pair view still draws the tab strip or the photograph panel');
+    if(!results.pair.slim.standing||!results.pair.slim.who)throw Error('Pair view lost its head row or its who row');
+    const pickable=await evaluate("(()=>{const rows=[...document.querySelectorAll('#pair-ledger tbody tr')];const tiles=new Set([...document.querySelectorAll('#work .work-tile')].map(t=>t.dataset.buildKey));const row=rows.find(r=>r.getAttribute('aria-selected')!=='true'&&tiles.has(r.dataset.buildKey));return row?row.dataset.buildKey:null})()");
+    if(pickable){
+      // "Did not move" is measured where the visitor is looking: the pair view's place in
+      // the viewport, with the view scrolled into it as a visitor would have. scrollY itself
+      // may shift, because the carousel above changes height when it turns and the
+      // browser's scroll anchoring keeps the pair view where it was.
+      const before=await evaluate("(()=>{const v=document.getElementById('pair-view');v.scrollIntoView({block:'start'});scrollBy(0,-40);return Math.round(v.getBoundingClientRect().top)})()");
+      await evaluate(`document.querySelector('#pair-ledger tr[data-build-key="${pickable}"] .pair-ledger-pick').click()`);
+      results.pair.pick=await evaluate(`({selected:document.querySelector('#pair-ledger tr[aria-selected="true"]')?.dataset.buildKey,tile:document.querySelector('#work .work-tile[aria-pressed="true"]')?.dataset.buildKey,top:Math.round(document.getElementById('pair-view').getBoundingClientRect().top),before:${before},url:location.search})`);
+      if(results.pair.pick.selected!==pickable)throw Error('Ledger pick did not select the row');
+      if(results.pair.pick.tile!==pickable)throw Error('Ledger pick did not turn the carousel to the build');
+      if(Math.abs(results.pair.pick.top-results.pair.pick.before)>2)throw Error('Ledger pick moved the pair view in the viewport');
+      if(/[?&]view=/.test(results.pair.pick.url))throw Error('Pair view still writes ?view=');
+    }else results.pair.pick='skipped: no photographed shared build besides the open one';
     // A shared ?kin= link must open on that pairing, not on whichever one leads the
     // ribbon -- the second chip proves it, because the first is what an unlinked page
     // would have selected anyway.

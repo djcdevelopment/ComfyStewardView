@@ -2217,8 +2217,21 @@ textarea:focus-visible,
   margin: 0 0 4px;
 }
 
+/* The status line and the standing badge share a row under the title; the badge is a
+   statement about the pair, set to the right of the line that counts it. */
+#pair-view .pair-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--outline-variant);
+}
+
 #pair-view .pair-status {
-  margin: 0 0 8px;
+  margin: 0;
   color: var(--parchment);
   font-family: var(--font-mono);
   font-size: 0.78rem;
@@ -2226,39 +2239,8 @@ textarea:focus-visible,
   letter-spacing: 0.04em;
 }
 
-/* Underlined tabs, the same pair the kinship page wears. */
-#pair-view .pair-modes {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  margin: 14px 0 12px;
-  border-bottom: 1px solid var(--outline-variant);
-}
-
-#pair-view .pair-tab {
-  padding: 9px 4px;
-  background: none;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  box-shadow: none;
-  color: var(--parchment);
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-#pair-view .pair-tab[aria-selected="true"] {
-  color: var(--primary);
-  border-bottom-color: var(--flame);
-}
-
-/* The standing badge ends the tab row rather than joining it: it is a statement about
-   the pair, not a third thing to press. */
 #pair-view .pair-standing {
-  margin-left: auto;
-  align-self: center;
+  flex: none;
 }
 
 #pair-view .pair-standing[data-standing="confirmed"] {
@@ -2300,115 +2282,16 @@ textarea:focus-visible,
   color: var(--primary);
 }
 
-#pair-view .pair-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 24px;
-  align-items: start;
-}
-
 #pair-view .pair-h {
   font-family: var(--font-display);
   font-size: 1rem;
   margin: 0 0 8px;
 }
 
-/* ---- the photograph ---- */
-
-#pair-view .pair-frame {
-  position: relative;
-  overflow: hidden;
-  border: 1px solid var(--outline-variant);
-  border-radius: 6px;
-  background: var(--surface-low);
-}
-
-#pair-view .pair-photo {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-}
-
-#pair-view .pair-photo img {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-}
-
-#pair-view .pair-badges {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  display: flex;
-  gap: 6px;
-  pointer-events: none;
-}
-
-#pair-view .pair-badge {
-  background: var(--surface-low);
-  border-color: var(--ember);
-  color: var(--primary);
-}
-
-/* The caption is lifted off the photograph by a gradient rather than a bar, so the
-   bottom of the frame stays part of the image. With no photograph under it, it drops
-   out of the frame and loses the gradient with it. */
-#pair-view .pair-caption.is-over {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 48px 16px 12px;
-  background: linear-gradient(to top, rgba(9, 15, 22, 0.94), rgba(9, 15, 22, 0));
-}
-
-#pair-view .pair-caption.is-below {
-  padding: 12px 2px 0;
-}
-
-#pair-view .pair-build-name {
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  margin: 0;
-}
-
-#pair-view .pair-build-pieces {
-  margin: 2px 0 0;
-  font-family: var(--font-mono);
-  font-size: 0.74rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--outline);
-}
-
-#pair-view .pair-slab {
-  display: grid;
-  align-content: center;
-  justify-items: start;
-  gap: 6px;
-  min-height: 200px;
-  padding: 18px;
-}
-
-#pair-view .pair-slab-title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 1.2rem;
-}
-
-#pair-view .pair-slab .muted {
-  margin: 0;
-  max-width: 46ch;
-}
-
+/* The Show button in the facts table: a small forged button, not the album primary. */
 #pair-view .pair-find {
-  margin-top: 6px;
-  padding: 8px 12px;
-  font-size: 0.82rem;
+  padding: 6px 10px;
+  font-size: 0.78rem;
 }
 
 /* ---- laurels, hearth, affinity, facts ---- */
@@ -2497,38 +2380,7 @@ textarea:focus-visible,
   font-size: 0.86rem;
 }
 
-/* ---- world viewer panel ---- */
-
-#pair-view .pair-viewer-note {
-  margin: 0 0 14px;
-  color: var(--parchment);
-  max-width: 62ch;
-}
-
-/* The forged button, as a link: `button.primary` is an element selector and a world
-   viewer that opens in a new tab has to be an anchor. */
-#pair-view a.button {
-  display: inline-block;
-  padding: 11px 14px;
-  border: 1px solid rgba(217, 119, 6, 0.5);
-  border-radius: 4px;
-  background: var(--surface-container);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  text-decoration: none;
-}
-
-#pair-view a.button.primary {
-  background: var(--flame);
-  border-color: var(--flame);
-  color: var(--surface-low);
-  font-weight: 700;
-}
-
-#pair-view a.button.primary:hover {
-  background: var(--tertiary);
-  border-color: var(--tertiary);
-  text-decoration: none;
-}
+/* ---- piece allotment ---- */
 
 #pair-view .pair-bar {
   display: flex;
@@ -2597,33 +2449,31 @@ textarea:focus-visible,
   color: var(--tertiary);
 }
 
-/* ---- sidebar ---- */
+/* ---- the ally row ---- */
 
-#pair-view .pair-side {
-  display: grid;
-  gap: 14px;
-  align-content: start;
+/* The other half of the pair on the left, the way to their side of it on the right. */
+#pair-view .pair-who {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
 }
 
 #pair-view .pair-ally {
-  padding: 16px 18px 18px;
-  border: 1px solid var(--outline-variant);
-  border-radius: 6px;
-  background: var(--surface-container);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  min-width: 0;
 }
 
 #pair-view .pair-ally-head {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 12px;
 }
 
 #pair-view .pair-portrait {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   flex: none;
   display: block;
   overflow: hidden;
@@ -2654,6 +2504,11 @@ textarea:focus-visible,
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 4px;
+}
+
+#pair-view .pair-reverse {
+  flex: none;
+  margin: 0;
 }
 
 #pair-view .pair-unnamed {
@@ -2695,23 +2550,17 @@ textarea:focus-visible,
   color: var(--parchment);
 }
 
-#pair-view .pair-switch {
-  padding: 8px 12px;
-  font-size: 0.82rem;
-  justify-self: start;
-}
+/* ---- the ledger ---- */
 
 #pair-view .pair-ledger-wrap {
-  margin: 0;
+  margin: 16px 0 0;
 }
 
-/* The museum ledger sets `white-space: nowrap`, which is right for a full-width stats
-   page and wrong inside a 340px aside: five columns pushed Status off the edge, so the
-   one word saying which build is being viewed could only be reached by scrolling
-   sideways. Cells wrap here instead. */
+/* The museum ledger sets `white-space: nowrap`; the pair's Split cell names two builders
+   and two shares, so cells wrap here instead of pushing Status off the edge on a phone. */
 #pair-view #pair-ledger {
   white-space: normal;
-  font-size: 0.72rem;
+  font-size: 0.76rem;
 }
 
 #pair-view #pair-ledger th,
@@ -2758,14 +2607,11 @@ textarea:focus-visible,
 }
 
 #pair-view .pair-download {
-  justify-self: start;
+  display: inline-block;
+  margin: 10px 0 0;
 }
 
 @media (max-width: 980px) {
-  #pair-view .pair-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   #pair-view .pair-facts {
     grid-template-columns: 140px minmax(0, 1fr);
   }
@@ -2776,13 +2622,9 @@ textarea:focus-visible,
     padding: 14px 14px 16px;
   }
 
-  #pair-view .pair-modes {
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
-  #pair-view .pair-standing {
-    margin-left: 0;
+  #pair-view .pair-who {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   #pair-view .pair-facts {

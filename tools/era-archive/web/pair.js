@@ -342,7 +342,7 @@ const PAIR_TERRAIN_WORDS = {
 
 const pairState = {
   host: null, ctx: null, coBuilders: [], allyKey: null, buildKey: null,
-  view: 'photos', open: false, model: null, onClick: null, onKeydown: null,
+  open: false, model: null, onClick: null,
 };
 
 /* ---- small makers ---- */
@@ -521,7 +521,7 @@ function pairRebuildModel(preferredBuildKey) {
   return model;
 }
 
-/* ---- header, tabs, pills ---- */
+/* ---- header, the who row, pills ---- */
 
 function pairTitleEl() {
   const h = pairNode('h3', 'Kinship with ', 'pair-title');
@@ -538,29 +538,13 @@ function pairStatusText() {
   ];
   const eras = pairEraRange(model.eras);
   if (eras) parts.push(eras);
-  parts.push(model.standing === 'confirmed' ? 'Confirmed kin' : 'Recorded kin');
   return parts.join(' · ');
 }
 
-// The one live region in the whole view. Every other repaint is silent on purpose: a
-// screen reader that announced each chip and each table cell as the data landed would
-// bury the one sentence that says what this pair is.
 function pairStatusEl() {
   const p = pairNode('p', pairStatusText(), 'pair-status');
   p.id = 'pair-status';
-  p.setAttribute('aria-live', 'polite');
   return p;
-}
-
-function pairTabEl(view, label) {
-  const tab = pairButton(label, 'pair-tab', 'view');
-  tab.id = `pair-tab-${view}`;
-  tab.dataset.pairView = view;
-  tab.setAttribute('role', 'tab');
-  tab.setAttribute('aria-selected', String(pairState.view === view));
-  tab.setAttribute('aria-controls', view === 'photos' ? 'pair-photos' : 'pair-viewer');
-  tab.tabIndex = pairState.view === view ? 0 : -1;
-  return tab;
 }
 
 function pairPaintStanding(chip) {
@@ -579,18 +563,35 @@ function pairStandingEl() {
   return chip;
 }
 
-function pairModesEl() {
-  const wrap = pairNode('div', null, 'pair-modes');
-  wrap.id = 'pair-modes';
-  wrap.setAttribute('role', 'tablist');
-  wrap.setAttribute('aria-label', 'How to look at this shared build');
-  wrap.append(pairTabEl('photos', 'Photographs'), pairTabEl('viewer', 'World viewer'), pairStandingEl());
-  return wrap;
+// The status line and the standing chip on one row. Until pass 3 this row was a
+// PHOTOGRAPHS / WORLD VIEWER tab strip over a second photograph of the build; the page's
+// carousel shows the photographs now and every build on the page carries its own world
+// viewer link, so the pair view keeps to the pairing. The row is the one live region in
+// the whole view: the sentence that says what this pair is, and the word for its
+// standing. Every other repaint is silent on purpose -- a screen reader that announced
+// each chip and each table cell as the data landed would bury that sentence.
+function pairHeadEl() {
+  const head = pairNode('div', null, 'pair-head');
+  head.id = 'pair-head';
+  head.setAttribute('aria-live', 'polite');
+  head.append(pairStatusEl(), pairStandingEl());
+  return head;
+}
+
+// Who the other half is, and the way to see the pair from their side, on one row.
+function pairWhoEl() {
+  const who = pairNode('div', null, 'pair-who');
+  who.id = 'pair-who';
+  const reverse = pairNode('a', 'See this pair from their side', 'kin-open pair-reverse');
+  reverse.id = 'pair-reverse';
+  reverse.href = `${pairBuilderHref(pairState.model.ally.builderKey)}?kin=${pairState.model.anchor.builderKey}`;
+  who.append(pairAllyCardEl(), reverse);
+  return who;
 }
 
 // Three at most: the pills are a shortcut to the biggest shared works, and the full list
-// is the ledger in the sidebar. A pair with forty shared builds would otherwise open on
-// four lines of tablets before the photograph.
+// is the ledger above. A pair with forty shared builds would otherwise open Details on
+// four lines of tablets.
 function pairPillsEl() {
   const wrap = pairNode('div', null, 'pair-pills');
   wrap.id = 'pair-pills';
@@ -603,55 +604,7 @@ function pairPillsEl() {
   return wrap;
 }
 
-/* ---- photographs panel ---- */
-
-function pairEmptyPhotoEl(build) {
-  const slab = pairNode('div', null, 'pair-slab');
-  const rejected = build.photoStatus === 'rejected';
-  slab.append(pairNode('p', rejected ? 'Photographed, but no frame was kept' : 'Not photographed yet', 'pair-slab-title'));
-  slab.append(pairNode('p', rejected
-    ? 'Every frame came back fogged, blocked, or near-identical to a neighbouring build. This one is queued for another attempt.'
-    : 'No photograph of this build has been taken. The saved world still holds every piece of it.', 'muted'));
-  slab.append(pairButton('Find this build in the albums', 'pair-find', 'reveal'));
-  return slab;
-}
-
-function pairHeroEl() {
-  const build = pairState.model.activeBuild;
-  const hero = pairNode('div', null, 'pair-hero');
-  hero.id = 'pair-hero';
-  const frame = pairNode('div', null, 'pair-frame');
-  const photo = build.photos[0];
-  if (photo) {
-    const btn = pairButton(null, 'pair-photo', 'photo');
-    btn.setAttribute('aria-label', `View image: ${photo.label || build.label}`);
-    const img = document.createElement('img');
-    img.src = photo.large || photo.thumb;
-    img.alt = photo.label || build.label;
-    // Not lazy: there is exactly one of these per pair and it is the thing the panel is
-    // for. The album grids below stay lazy -- forty thumbnails is a different question.
-    img.decoding = 'async';
-    btn.append(img);
-    frame.append(btn);
-  } else {
-    frame.append(pairEmptyPhotoEl(build));
-  }
-  const badges = pairNode('div', null, 'pair-badges');
-  if (build.era != null) badges.append(pairNode('span', `Era ${build.era}`, 'chip pair-badge'));
-  badges.append(pairNode('span', pairPlural(build.photoCount, 'photograph'), 'chip pair-badge'));
-  frame.append(badges);
-
-  // The name belongs on the photograph, under its own gradient. With nothing to lay it
-  // over it drops below the frame instead -- an unlit gradient band across a slab that
-  // already says why there is no picture is just a black stripe.
-  const caption = pairNode('div', null, `pair-caption ${photo ? 'is-over' : 'is-below'}`);
-  caption.append(pairNode('h4', build.label, 'pair-build-name'));
-  caption.append(pairNode('p', `${build.pieces.toLocaleString()} construction pieces`, 'pair-build-pieces'));
-  if (photo) frame.append(caption);
-  hero.append(frame);
-  if (!photo) hero.append(caption);
-  return hero;
-}
+/* ---- the Details fold: laurels, hearth, affinity, facts ---- */
 
 function pairChipRowEl(labelNodes, worn) {
   const row = pairNode('div', null, 'pair-chip-row');
@@ -755,6 +708,9 @@ function pairFactsEl() {
   pairFact(dl, 'Era', build.era == null ? 'Not recorded' : String(build.era));
   pairFact(dl, 'Contributors', build.contributorCount.toLocaleString());
   pairFact(dl, 'Photographs', build.photoCount.toLocaleString());
+  // Where the page shows this build: the carousel when it has been photographed, the
+  // rest table otherwise. The button takes the visitor there.
+  pairFact(dl, 'On this page', pairButton(build.photoCount ? 'Show on the carousel' : 'Show in the rest', 'pair-find', 'reveal'));
   pairFact(dl, 'Terrain', `${pairTerrainWords(build.terrainStatus)}.`);
   pairFact(dl, 'Leading contributor', pairLeadEl(build));
   if (build.galleryUrl) {
@@ -772,18 +728,7 @@ function pairFactsEl() {
   return dl;
 }
 
-function pairPhotosPanelEl() {
-  const panel = pairNode('div', null, 'pair-panel');
-  panel.id = 'pair-photos';
-  panel.setAttribute('role', 'tabpanel');
-  panel.setAttribute('aria-labelledby', 'pair-tab-photos');
-  panel.hidden = pairState.view !== 'photos';
-  // The photograph alone. Laurels, hearth, affinity and the facts wait under Details.
-  panel.append(pairHeroEl());
-  return panel;
-}
-
-/* ---- world viewer panel ---- */
+/* ---- piece allotment ---- */
 
 function pairSegEl(segment) {
   const model = pairState.model;
@@ -838,30 +783,7 @@ function pairAllotmentEl() {
   return wrap;
 }
 
-function pairViewerPanelEl() {
-  const build = pairState.model.activeBuild;
-  const panel = pairNode('div', null, 'pair-panel');
-  panel.id = 'pair-viewer';
-  panel.setAttribute('role', 'tabpanel');
-  panel.setAttribute('aria-labelledby', 'pair-tab-viewer');
-  panel.hidden = pairState.view !== 'viewer';
-  panel.append(pairNode('p',
-    `The world viewer draws the saved-world construction map with ${build.label} selected. ${pairTerrainWords(build.terrainStatus)}.`,
-    'pair-viewer-note'));
-  if (build.worldUrl) {
-    const open = pairNode('a', build.era == null ? 'Open the world viewer' : `Open era ${build.era} in the world viewer`, 'button primary');
-    open.id = 'pair-viewer-open';
-    open.href = build.worldUrl;
-    open.target = '_blank';
-    open.rel = 'noopener';
-    panel.append(open);
-  } else {
-    panel.append(pairNode('p', 'This era has no world viewer', 'muted'));
-  }
-  return panel;
-}
-
-/* ---- sidebar ---- */
+/* ---- the ally, Details, the ledger ---- */
 
 function pairMetricEl(label, value, note, id) {
   const cell = pairNode('div', null, 'pair-metric');
@@ -903,7 +825,7 @@ function pairAllyCardEl() {
 }
 
 // The five tiles the ally card used to carry. They live under Details now: the status
-// line above the photograph already says shared builds and shared pieces in words.
+// line at the top already says shared builds and shared pieces in words.
 function pairMetricsEl() {
   const model = pairState.model;
   const metrics = pairNode('div', null, 'pair-metrics');
@@ -936,8 +858,9 @@ function pairMoreOpen() {
   return current ? current.open : false;
 }
 
+// The row Details describe is the tinted one (aria-selected); the word says only
+// whether the build has been photographed.
 function pairLedgerStatus(row) {
-  if (row.buildKey === pairState.buildKey) return 'Viewing now';
   return row.photographed ? 'Photographed' : 'Recorded';
 }
 
@@ -1027,41 +950,20 @@ function pairKinshipHref() {
   }
 }
 
-function pairSwitchEl() {
-  const button = pairButton(pairState.view === 'photos' ? 'Switch to World viewer' : 'Switch to Photographs',
-    'pair-switch', 'switch');
-  button.id = 'pair-switch';
-  return button;
-}
-
-function pairSideEl() {
-  const aside = pairNode('aside', null, 'pair-side');
-  aside.id = 'pair-side';
-  const reverse = pairNode('a', 'See this pair from their side', 'kin-open pair-reverse');
-  reverse.id = 'pair-reverse';
-  reverse.href = `${pairBuilderHref(pairState.model.ally.builderKey)}?kin=${pairState.model.anchor.builderKey}`;
-  aside.append(pairAllyCardEl(), reverse, pairSwitchEl(), pairLedgerEl(), pairDownloadEl());
-  return aside;
-}
-
 /* ---- assembly ---- */
 
+// Top to bottom: the title, the status line with the standing chip, the ally with the
+// reverse link, the shared-builds ledger, its download, and Details folded.
 function pairRenderAll() {
   const host = pairState.host;
-  const layout = pairNode('div', null, 'pair-layout');
-  const main = pairNode('div', null, 'pair-main');
-  main.append(pairPhotosPanelEl(), pairViewerPanelEl());
-  layout.append(main, pairSideEl());
-  host.replaceChildren(pairTitleEl(), pairStatusEl(), pairModesEl(), layout, pairMoreEl({open: pairMoreOpen()}));
+  host.replaceChildren(pairTitleEl(), pairHeadEl(), pairWhoEl(), pairLedgerEl(), pairDownloadEl(), pairMoreEl({open: pairMoreOpen()}));
   host.hidden = false;
 }
 
-// Only what the active build decides. The sidebar card, the ledger table and the title
+// Only what the active build decides. The ally row, the ledger table and the title
 // belong to the pair, not to the build, so picking another build leaves them alone --
 // and leaves the scroll position and the focused ledger button where they were.
 function pairRenderActiveBuild() {
-  pairSwap('pair-photos', pairPhotosPanelEl());
-  pairSwap('pair-viewer', pairViewerPanelEl());
   pairSwap('pair-more', pairMoreEl({open: pairMoreOpen()}));
   pairPaintLedgerRows();
   const download = pairQuery('#pair-download');
@@ -1075,13 +977,13 @@ function pairEmit() {
     detail: {
       ally: pairState.open ? pairState.allyKey : null,
       build: pairState.open ? pairState.buildKey : null,
-      view: pairState.view,
     },
   }));
 }
 
-// Keeps kin/build/view in the address bar without adding a history entry per click, and
-// keeps every other param and the hash: #request and ?q= are other people's state.
+// Keeps kin/build in the address bar without adding a history entry per click, and keeps
+// every other param and the hash: #request and ?q= are other people's state. A `view=`
+// from a link shared before pass 3 is dropped: there is one view now.
 // A build that is simply the pair's largest is not written at all -- it is what the view
 // opens on anyway, and an invalid one falls back to it and so leaves no trace.
 function pairSyncUrl() {
@@ -1093,29 +995,9 @@ function pairSyncUrl() {
   else params.delete('kin');
   if (pairState.open && pairState.buildKey && pairState.buildKey !== fallback) params.set('build', pairState.buildKey);
   else params.delete('build');
-  if (pairState.open && pairState.view === 'viewer') params.set('view', 'viewer');
-  else params.delete('view');
+  params.delete('view');
   const query = params.toString();
   history.replaceState(null, '', `${location.pathname}${query ? `?${query}` : ''}${location.hash || ''}`);
-}
-
-function pairSetView(view) {
-  const next = view === 'viewer' ? 'viewer' : 'photos';
-  if (next === pairState.view) return;
-  pairState.view = next;
-  for (const tab of pairState.host.querySelectorAll('#pair-modes [role="tab"]')) {
-    const selected = tab.dataset.pairView === next;
-    tab.setAttribute('aria-selected', String(selected));
-    tab.tabIndex = selected ? 0 : -1;
-  }
-  const photos = pairQuery('#pair-photos');
-  const viewer = pairQuery('#pair-viewer');
-  if (photos) photos.hidden = next !== 'photos';
-  if (viewer) viewer.hidden = next !== 'viewer';
-  const toggle = pairQuery('#pair-switch');
-  if (toggle) toggle.textContent = next === 'photos' ? 'Switch to World viewer' : 'Switch to Photographs';
-  pairSyncUrl();
-  pairEmit();
 }
 
 function pairSetBuild(buildKey) {
@@ -1125,46 +1007,23 @@ function pairSetBuild(buildKey) {
   pairRenderActiveBuild();
   pairSyncUrl();
   pairEmit();
+  // The page owns the pictures now: a photographed build picked here turns the carousel
+  // above to it without moving the visitor -- the photograph is there when they scroll
+  // back up. A build that was never photographed has nothing to turn to.
+  if (pairState.model.activeBuild.photoCount && typeof pairState.ctx.revealAlbum === 'function') {
+    pairState.ctx.revealAlbum(buildKey, {scroll: false});
+  }
 }
 
 function pairOnClick(event) {
   const target = event.target && event.target.closest ? event.target.closest('[data-pair-action]') : null;
   if (!target || !pairState.host || !pairState.host.contains(target)) return;
   const action = target.dataset.pairAction;
-  if (action === 'view') return pairSetView(target.dataset.pairView);
-  if (action === 'switch') return pairSetView(pairState.view === 'photos' ? 'viewer' : 'photos');
   if (action === 'build') return pairSetBuild(target.dataset.buildKey);
-  if (action === 'photo') {
-    const photo = pairState.model.activeBuild.photos[0];
-    if (!photo) return undefined;
-    // The viewer hands focus back to whatever held it when it opened, so make sure that
-    // is this button and not the body -- not every browser focuses a button on click.
-    target.focus();
-    if (typeof pairState.ctx.openPhoto === 'function') pairState.ctx.openPhoto(photo);
-    return undefined;
-  }
   if (action === 'reveal' && typeof pairState.ctx.revealAlbum === 'function') {
     pairState.ctx.revealAlbum(pairState.buildKey);
   }
   return undefined;
-}
-
-const PAIR_TAB_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
-
-function pairOnKeydown(event) {
-  if (!PAIR_TAB_KEYS.has(event.key)) return;
-  const tabs = [...pairState.host.querySelectorAll('#pair-modes [role="tab"]')];
-  const at = tabs.indexOf(document.activeElement);
-  if (at < 0) return;
-  let next = at;
-  if (event.key === 'Home') next = 0;
-  else if (event.key === 'End') next = tabs.length - 1;
-  else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (at - 1 + tabs.length) % tabs.length;
-  else next = (at + 1) % tabs.length;
-  event.preventDefault();
-  pairSetView(tabs[next].dataset.pairView);
-  const moved = pairQuery(`#${tabs[next].id}`);
-  if (moved) moved.focus();
 }
 
 /* ---- names and portraits, repainted in place ---- */
@@ -1201,12 +1060,12 @@ function pairPaintPortraits() {
  * Unmounts any prior instance first. Opens on `ctx.initial.kin` when that key is a
  * co-builder and on rank 1 otherwise; leaves the host hidden and returns when the anchor
  * has no co-builder at all -- a solo builder has no pair to draw and gets no empty panel
- * saying so. Writes kin/build/view into the URL with replaceState, keeping every other
- * param and the hash.
+ * saying so. Writes kin/build into the URL with replaceState, keeping every other param
+ * and the hash.
  *
  * @param {HTMLElement} host the section creators.js appended after the Top 8 ribbon
  * @param {object} ctx thread, builderFor, participation, confirmedTags, portraits,
- *   initial {kin, build, view}, openPhoto, revealAlbum, base, kinshipHref
+ *   initial {kin, build}, revealAlbum(buildKey, {scroll}), base, kinshipHref
  */
 function pairMount(host, ctx) {
   pairUnmount();
@@ -1226,7 +1085,6 @@ function pairMount(host, ctx) {
     return;
   }
   pairState.allyKey = wanted;
-  pairState.view = initial.view === 'viewer' ? 'viewer' : 'photos';
   if (!pairRebuildModel(initial.build || null)) {
     host.hidden = true;
     pairState.allyKey = null;
@@ -1234,9 +1092,7 @@ function pairMount(host, ctx) {
   }
   pairState.open = true;
   pairState.onClick = pairOnClick;
-  pairState.onKeydown = pairOnKeydown;
   host.addEventListener('click', pairState.onClick);
-  host.addEventListener('keydown', pairState.onKeydown);
   pairRenderAll();
   pairSyncUrl();
   // The ribbon cannot know which chip mount settled on -- an invalid ?kin= falls back to
@@ -1296,13 +1152,9 @@ function pairUpdate(patch) {
   if (Array.isArray(patch.confirmedTags)) {
     pairState.ctx.confirmedTags = patch.confirmedTags;
     if (!pairRebuildModel(pairState.buildKey)) return;
+    // The chip is inside the live head row, so a tag arriving after mount is heard.
     const standing = pairQuery('#pair-standing');
     if (standing) pairPaintStanding(standing);
-    // The status line ends on the same word the badge carries. Repainting one and not the
-    // other left the sentence saying "Recorded kin" beside a badge reading "Confirmed
-    // kin" -- and this is the one region a screen reader is listening to.
-    const status = pairQuery('#pair-status');
-    if (status) status.textContent = pairStatusText();
     pairSwap('pair-laurels', pairLaurelsEl());
     pairPaintLedgerRows();
     const tags = pairQuery('#pair-metric-tags');
@@ -1325,7 +1177,6 @@ function pairUnmount() {
   const host = pairState.host;
   if (host) {
     if (pairState.onClick) host.removeEventListener('click', pairState.onClick);
-    if (pairState.onKeydown) host.removeEventListener('keydown', pairState.onKeydown);
     host.replaceChildren();
     host.hidden = true;
   }
@@ -1334,11 +1185,9 @@ function pairUnmount() {
   pairState.coBuilders = [];
   pairState.allyKey = null;
   pairState.buildKey = null;
-  pairState.view = 'photos';
   pairState.open = false;
   pairState.model = null;
   pairState.onClick = null;
-  pairState.onKeydown = null;
 }
 
 // Only when creators.js handed over everything the model reads. A profile page whose

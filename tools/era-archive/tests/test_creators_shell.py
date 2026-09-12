@@ -172,6 +172,28 @@ class ChroniclerStyleTests(unittest.TestCase):
         self.assertIn("pairNode('summary', 'Details')", pair)
         self.assertIn("pairMoreEl({open: pairMoreOpen()})", pair)
 
+    def test_the_pair_view_keeps_to_the_pairing(self):
+        # Pass 3b: the page's carousel shows the photographs and every build carries its
+        # own world-viewer link, so the pair view has no tab strip, no second photograph
+        # and no view state. Title, status + standing on one row, the ally + the reverse
+        # link on one row, the ledger full width, Details folded.
+        pair = (WEB / "pair.js").read_text(encoding="utf-8")
+        for marker in ("pairNode('div', null, 'pair-head')", "pairNode('div', null, 'pair-who')",
+                       "pairHeadEl(), pairWhoEl(), pairLedgerEl(), pairDownloadEl(), pairMoreEl(",
+                       "revealAlbum(buildKey, {scroll: false})", "pairFact(dl, 'On this page'"):
+            self.assertIn(marker, pair, f"the slim pair view lost {marker}")
+        for gone in ("pair-tab-viewer", "Switch to World viewer", "pairState.view", "pairSetView(",
+                     "'pair-layout'", "openPhoto", "Viewing now"):
+            self.assertNotIn(gone, pair, f"the pair view grew {gone} back")
+        creators = (WEB / "creators.js").read_text(encoding="utf-8")
+        self.assertIn("function revealAlbum(buildKey, {scroll = true} = {})", creators)
+        self.assertNotIn("initialPair.view", creators)
+        css = (WEB / "creators.css").read_text(encoding="utf-8")
+        for gone in (".pair-modes", ".pair-layout", ".pair-side", ".pair-switch", ".pair-frame", ".pair-slab"):
+            self.assertNotIn(gone, css, f"creators.css still styles {gone}")
+        self.assertIn("#pair-view .pair-head {", css)
+        self.assertIn("#pair-view .pair-who {", css)
+
     def test_the_tree_drawing_is_shared_by_both_pages(self):
         tree = (WEB / "kin-tree.js").read_text(encoding="utf-8")
         kinship = (WEB / "kinship.js").read_text(encoding="utf-8")
@@ -204,7 +226,7 @@ class ChroniclerStyleTests(unittest.TestCase):
 
     def test_stylesheet_href_is_cache_busted_and_still_rewritable(self):
         for name, content in (("index.html", self.index), ("stats.html", self.stats)):
-            self.assertIn('href="./creators.css?v=9"', content, name)
+            self.assertIn('href="./creators.css?v=10"', content, name)
         self.assertIn('src="./creators.js"', self.index)
         # pair.js and kin-tree.js ride beside creators.js and wear the same cache policy it
         # does: unversioned here, where the stylesheet carries the bust for the whole shell.
@@ -219,8 +241,8 @@ class ChroniclerStyleTests(unittest.TestCase):
         js = (WEB / "creators.js").read_text(encoding="utf-8")
         self.assertIn("dataset.stewardPage !== 'kinship'", js)
         self.assertIn('<html lang="en" data-steward-page="kinship">', self.kinship)
-        self.assertIn('src="./creators.js?v=9"', self.kinship)
-        self.assertIn('src="./kin-tree.js?v=9"', self.kinship)
+        self.assertIn('src="./creators.js?v=10"', self.kinship)
+        self.assertIn('src="./kin-tree.js?v=10"', self.kinship)
         self.assertIn('src="./kinship.js"', self.kinship)
         self.assertNotIn("data-steward-page", self.index,
                          "the directory shell is the default route, not a named one")
@@ -242,7 +264,7 @@ class ChroniclerStyleTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             receipt = project(document, dest, "https://example.invalid/world")
             thread = (dest / key / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=9"', thread)
+            self.assertIn('href="../creators.css?v=10"', thread)
             self.assertIn('src="../creators.js"', thread)
             # The pair view's script and the tree's get the same climb. A thread page is
             # one directory down, so a surviving "./pair.js would 404 on every profile.
@@ -254,7 +276,7 @@ class ChroniclerStyleTests(unittest.TestCase):
             self.assertIn("pair.js", paths, "the projection does not ship the pair view's script")
             self.assertIn("kin-tree.js", paths, "the projection does not ship the tree's script")
             stats = (dest / "stats" / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=9"', stats)
+            self.assertIn('href="../creators.css?v=10"', stats)
 
 
 if __name__ == "__main__":
