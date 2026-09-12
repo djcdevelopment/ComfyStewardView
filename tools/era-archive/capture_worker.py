@@ -201,10 +201,8 @@ class Worker:
                            **current,changedFromSeed=bool(seed) and current['sha256']!=seed['sha256'])
         return receipt
 
-    def attempt(self, builds, group, attempt_number):
-        self.check_runtime()
-        dest=self.root/'runs'/f'{group}-attempt-{attempt_number:02d}'
-        dest.mkdir(parents=True,exist_ok=False)
+    def prepare_scratch(self, dest):
+        """Per-attempt disposable save tree: verified world/character/terrain copies plus the prefs seed."""
         saves=dest/'xdg/unity3d/IronGate/Valheim';worlds=saves/'worlds_local'
         worlds.mkdir(parents=True);(saves/'characters_local').mkdir()
         for kind in ('db','fwl'):
@@ -232,6 +230,31 @@ class Worker:
             prefs_copy=saves/'prefs';shutil.copy2(prefs['path'],prefs_copy);prefs_copy.chmod(0o600)
         unknown=dest/'xdg/unity3d/unknown';unknown.mkdir(parents=True)
         os.symlink('../IronGate/Valheim',unknown/'unknown')
+        return saves,prefs
+
+    def launch_game(self, dest):
+        """Start the client against the scratch tree; returns the stdout handle the caller closes."""
+        command=['./start_game_bepinex.sh','-console','-screen-fullscreen','1','-screen-width',str(self.plan['width']),
+                 '-screen-height',str(self.plan['height']),'-monitor','1']
+        env=os.environ.copy();env.update(DISPLAY=':0',SDL_VIDEODRIVER='x11',XDG_CONFIG_HOME=str(dest/'xdg'))
+        log=(dest/'stdout.log').open('wb')
+        self.process=subprocess.Popen(command,cwd=self.game,env=env,stdin=subprocess.DEVNULL,
+                                      stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+        write(dest/'launch.json',{'pid':self.process.pid,'command':command,'xdgConfigHome':str(dest/'xdg')})
+        return log
+
+    def collect_logs(self, dest, saves):
+        for src,name in ((self.game/'BepInEx/LogOutput.log','BepInEx.log'),(saves/'Player.log','Player.log'),
+                         (self.cfg/'shotplan-receipts.jsonl','receipts.jsonl')):
+            if src.exists():shutil.copy2(src,dest/name)
+        request=self.cfg/'orbit-request.json'
+        if request.exists():request.rename(dest/'completed-orbit-request.json')
+
+    def attempt(self, builds, group, attempt_number):
+        self.check_runtime()
+        dest=self.root/'runs'/f'{group}-attempt-{attempt_number:02d}'
+        dest.mkdir(parents=True,exist_ok=False)
+        saves,prefs=self.prepare_scratch(dest)
         reason='operator-stop' if self.stopped() else self.limit()
         if reason:
             write(dest/'result.json',{'success':False,'reason':reason,'launched':False})
@@ -246,13 +269,7 @@ class Worker:
         write(dest/'dispatch.json',{'sourceKey':self.plan['sourceKey'],'builds':builds,'runtimeMode':'current-client'})
         self.state['activeAttempt']=dest.relative_to(self.root).as_posix()
         write(self.root/'state.json',self.state)
-        command=['./start_game_bepinex.sh','-console','-screen-fullscreen','1','-screen-width',str(self.plan['width']),
-                 '-screen-height',str(self.plan['height']),'-monitor','1']
-        env=os.environ.copy();env.update(DISPLAY=':0',SDL_VIDEODRIVER='x11',XDG_CONFIG_HOME=str(dest/'xdg'))
-        log=(dest/'stdout.log').open('wb')
-        self.process=subprocess.Popen(command,cwd=self.game,env=env,stdin=subprocess.DEVNULL,
-                                      stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
-        write(dest/'launch.json',{'pid':self.process.pid,'command':command,'xdgConfigHome':str(dest/'xdg')})
+        log=self.launch_game(dest)
         last_progress=time.monotonic();last_count=0;reason='process-exit'
         try:
             while self.process.poll() is None:
@@ -267,11 +284,7 @@ class Worker:
         finally:
             self.stop_game();log.close()
             self.harvest(self.read_receipts(allowed))
-            for src,name in ((self.game/'BepInEx/LogOutput.log','BepInEx.log'),(saves/'Player.log','Player.log'),
-                             (self.cfg/'shotplan-receipts.jsonl','receipts.jsonl')):
-                if src.exists():shutil.copy2(src,dest/name)
-            request=self.cfg/'orbit-request.json'
-            if request.exists():request.rename(dest/'completed-orbit-request.json')
+            self.collect_logs(dest,saves)
             self.process=None
         success=all(s['shotKey'] in self.state['completed'] for s in allowed.values())
         activation='Starting ConnectPortals coroutine with cache' in (dest/'BepInEx.log').read_text(errors='replace')
