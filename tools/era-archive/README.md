@@ -179,8 +179,10 @@ band the Top 8 ranking — I for 1–2, II for 3–5, III for 6–8 — and a co
 the first eight still gets a pair view, just no tier. A pair is **confirmed kin** once a
 coordinator has confirmed a tag naming both of them on a build they share, in either
 direction, and **recorded kin** otherwise: the saved world shows they built together,
-which is a real thing to say and is nobody's claim about anybody. The ally, the active
-build and the mode ride in the URL as `?kin=&build=&view=`, so a pair is a link.
+which is a real thing to say and is nobody's claim about anybody. The ally and the active
+build ride in the URL as `?kin=&build=`, so a pair is a link (a `?view=` from a link shared
+before pass 3 is dropped: the pair view keeps to the pairing -- the page's carousel shows
+the photographs and every build carries its own world-viewer link).
 
 `gallery.py` publishes `participation.json` beside the directory: schema
 `steward-creator-participation-public/v1`, carrying the counts (`participants`, `claims`,
