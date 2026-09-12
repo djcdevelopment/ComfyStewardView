@@ -52,7 +52,7 @@ def main() -> int:
     # live thread is the local one with the live record's portrait (or none), serialised
     # the way archive.save() writes every file, so its sha256 must equal the receipt's.
     # Only a thread that fails that proof is fetched and compared with both stripped.
-    def expected_live_bytes(t_local, key):
+    def expected_live_bytes(t_local, key, newline):
         doc = {k: v for k, v in t_local.items() if k != "portrait"}
         if live_portrait.get(key):
             # `portrait` is written after the counts and before `eras`, as gallery.py does.
@@ -60,15 +60,20 @@ def main() -> int:
             doc["portrait"] = live_portrait[key]
             if eras is not None:
                 doc["eras"] = eras
-        return (json.dumps(doc, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
+        # archive.save() writes text on the projecting machine, so a Windows projection
+        # carries CRLF; the local file says which line ending the live one has.
+        text = json.dumps(doc, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
+        return text.replace("\n", newline).encode("utf-8")
 
     changed = []
     portrait_only = []
     fetched = 0
     for p in differing:
-        t_local = json.loads((root / p).read_text(encoding="utf-8"))
+        raw = (root / p).read_bytes()
+        t_local = json.loads(raw.decode("utf-8"))
         key = p[len("threads/"):-len(".json")]
-        if hashlib.sha256(expected_live_bytes(t_local, key)).hexdigest() == live_sha[p]:
+        newline = "\r\n" if b"\r\n" in raw else "\n"
+        if hashlib.sha256(expected_live_bytes(t_local, key, newline)).hexdigest() == live_sha[p]:
             portrait_only.append(p)
             continue
         fetched += 1
