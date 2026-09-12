@@ -9,6 +9,7 @@ import re
 import shutil
 from archive import REPO, artifact, load, now, save
 import portrait_assign
+import stats
 
 # The closed kinship tag vocabulary, identical to KINSHIP_TAGS in
 # tools/era-archive/web/creators.js and to the checkbox values in web/kinship.html. A tag
@@ -351,11 +352,21 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
     # link climbs one level -- the same rewrite the thread pages get, plus kinship.html's
     # own page script. stats.html also keeps a copy at the root because that URL is already
     # published; kinship has no such history and gets the directory form only.
+    # stats.html is a template: every figure on it is computed here from the same document
+    # the directory came from, under the same qualifying rule, so the page can never
+    # describe a population the directory beside it does not publish.
+    figures = stats.compute(
+        document,
+        qualifies=lambda b, c: is_qualifying_album(b, c, min_build_pieces, min_builder_pieces, min_builder_share),
+        thresholds=(min_build_pieces, min_builder_pieces, min_builder_share),
+    )
     for source_name, folder, keep_at_root in (("stats.html", "stats", True), ("kinship.html", "kinship", False), ("profile.html", "profile", False)):
         source = REPO / "tools/era-archive/web" / source_name
         if not source.exists():
             continue
         content = source.read_text(encoding="utf-8")
+        if source_name == "stats.html":
+            content = stats.render(figures, content)
         folder_dir = destination / folder
         folder_dir.mkdir(parents=True, exist_ok=True)
         (folder_dir / "index.html").write_text(
