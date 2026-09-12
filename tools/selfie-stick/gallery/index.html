@@ -763,6 +763,7 @@ function openLb(i){
   else if(r.shot_distance_m!=null) bits.push(`shot from ${Math.round(r.shot_distance_m)} m`);
   // The winner's name carries its whole move history (detail1~up20~up20): one chain, not one per round.
   if(r.refine&&r.refine.path&&r.refine.path.length>1) bits.push(`refined: planned → ${r.refine.path[r.refine.path.length-1].split('~').slice(1).join(' → ')}`);
+  if(r.request) bits.push(`requested by ${esc(r.request.requestedBy||'Anonymous')}${r.request.note?': '+esc(r.request.note):''}`);
   if(r.perspective) bits.push(r.perspective);
   if(r.fog) bits.push('flagged: fog whiteout');
   // Instruments, when this frame has been measured. Depth is geometry (does

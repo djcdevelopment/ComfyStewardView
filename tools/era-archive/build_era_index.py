@@ -96,7 +96,8 @@ def main() -> int:
                 "label": photo.get("label"),
                 # A refined frame is still the planned shot as far as the chip row is concerned:
                 # the moves (up20, o45, ...) belong in the caption, not in fourteen variant chips.
-                "variant": (photo.get("refine") or {}).get("planned") or photo.get("shot"),
+                "variant": "request" if photo.get("request") else
+                           (photo.get("refine") or {}).get("planned") or photo.get("shot"),
                 "perspective": "orbit",
                 "source": "orbit",
                 "published": True,
@@ -133,6 +134,9 @@ def main() -> int:
             if photo.get("refine"):
                 record["refine"] = {k: photo["refine"][k] for k in ("planned", "path", "rounds")
                                     if photo["refine"].get(k) is not None}
+            if photo.get("request"):
+                record["request"] = {k: photo["request"][k] for k in ("id", "at", "requestedBy", "note")
+                                     if photo["request"].get(k) is not None}
             if build.get("pieces") is not None:
                 record["pieces"] = build["pieces"]
             if "aesthetic" in frame:

@@ -252,8 +252,14 @@ def collect(root, slug, base, quality=None, gate=True, refine=None):
                 **({"camera": camera_facts(receipt)} if camera_facts(receipt) else {}),
                 **({"pose": camera_pose(receipt)} if camera_pose(receipt) else {}),
                 **({"refine": shot["refine"]} if shot.get("refine") else {}),
+                # A viewer asked for this camera (requests root, prepare_requests): publish who
+                # and why with the frame. The pose above is where the game actually put it.
+                **({"request": {k: shot["request"].get(k) for k in ("id", "at", "requestedBy", "note")}}
+                   if shot.get("request") else {}),
                 **({"aesthetic": frame["aesthetic"]} if "aesthetic" in frame else {}),
             })
+            if shot.get("request"):
+                counts["requested"] += 1
             pose = camera_pose(receipt)
             if pose:
                 cameras[identifier] = {"buildKey": build["buildKey"], "shot": name, **pose}
