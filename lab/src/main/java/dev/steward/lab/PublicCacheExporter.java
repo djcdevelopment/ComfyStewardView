@@ -343,7 +343,7 @@ public final class PublicCacheExporter {
         root.path("proceduralVocabulary").forEach(value -> vocabulary.add(value.asText()));
         Set<String> expectedVocabulary = Set.of("box", "sloped-panel-26", "sloped-panel-45",
             "triangular-prism", "stepped-stair", "cylinder-12", "arch-12", "ring-12",
-            "plane-double-sided");
+            "plane-double-sided", "wisp-fountain", "standing-brazier");
         if (!vocabulary.equals(expectedVocabulary)) {
             throw new IllegalArgumentException("Prefab representation procedural vocabulary is incomplete");
         }
@@ -546,16 +546,18 @@ public final class PublicCacheExporter {
 
     private static void requirePrimitiveKind(String value, String name) {
         if (!Set.of("box", "sloped-panel-26", "sloped-panel-45", "triangular-prism",
-                "stepped-stair", "cylinder-12", "arch-12", "ring-12", "plane-double-sided").contains(value)) {
+                "stepped-stair", "cylinder-12", "wisp-fountain", "standing-brazier",
+                "arch-12", "ring-12", "plane-double-sided").contains(value)) {
             throw new IllegalArgumentException("Invalid procedural primitive for " + name + ": " + value);
         }
     }
 
     static String geometryPrimitive(String prefabName, String family) {
         if ("roof".equals(family)) return ScenePackage.roofPrimitive(prefabName);
+        if ("light".equals(family)) return ScenePackage.lightPrimitive(prefabName);
         return switch (family) {
             case "stair" -> "stepped-stair";
-            case "pole", "light" -> "cylinder-12";
+            case "pole" -> "cylinder-12";
             case "portal" -> "ring-12";
             default -> "box";
         };

@@ -322,8 +322,34 @@ function proceduralMesh(kind) {
       const a=i*Math.PI*2/sides,b=(i+1)*Math.PI*2/sides;
       const p0=[Math.cos(a)*.5,-.5,Math.sin(a)*.5],p1=[Math.cos(b)*.5,-.5,Math.sin(b)*.5];
       const p2=[p1[0],.5,p1[2]],p3=[p0[0],.5,p0[2]];
-      quad(p0,p1,p2,p3); tri([0,.5,0],p3,p2); tri([0,-.5,0],p1,p0);
+      quad(p1,p0,p3,p2); tri([0,.5,0],p2,p3); tri([0,-.5,0],p0,p1);
     }
+  };
+  const frustum = (y0,y1,x0,z0,x1,z1,c0=[0,0],c1=[0,0]) => {
+    const sides=8, phase=Math.PI/8, lower=[], upper=[];
+    for(let i=0;i<sides;i++){
+      const angle=phase+i*Math.PI*2/sides;
+      lower.push([c0[0]+Math.cos(angle)*x0,y0,c0[1]+Math.sin(angle)*z0]);
+      upper.push([c1[0]+Math.cos(angle)*x1,y1,c1[1]+Math.sin(angle)*z1]);
+    }
+    for(let i=0;i<sides;i++){
+      const next=(i+1)%sides;
+      quad(lower[next],lower[i],upper[i],upper[next]);
+      tri([c1[0],y1,c1[1]],upper[next],upper[i]);
+      tri([c0[0],y0,c0[1]],lower[i],lower[next]);
+    }
+  };
+  // A Wisp Fountain is a tall carved stone spire, not a lamp post. Three offset octagonal
+  // tiers preserve the measured envelope while giving its broad foot, tapered body and lean.
+  const wispFountain = () => {
+    frustum(-.5,-.18,.50,.50,.38,.37,[-.02,0],[0,0]);
+    frustum(-.18,.20,.38,.37,.25,.27,[0,0],[.04,-.02]);
+    frustum(.20,.50,.25,.27,.15,.17,[.04,-.02],[.13,.05]);
+  };
+  const standingBrazier = () => {
+    frustum(-.5,-.30,.12,.12,.12,.12);
+    frustum(-.30,.30,.14,.14,.48,.48);
+    frustum(.30,.50,.50,.50,.44,.44);
   };
   const ring = (arch=false) => {
     const sides=arch?12:16, start=arch?0:-Math.PI, span=arch?Math.PI:Math.PI*2;
@@ -338,6 +364,8 @@ function proceduralMesh(kind) {
   if (kind === 'sloped-panel-26' || kind === 'sloped-panel-45') slopedPanel();
   else if (kind === 'triangular-prism') triangularPrism();
   else if (kind === 'cylinder-12') cylinder();
+  else if (kind === 'wisp-fountain') wispFountain();
+  else if (kind === 'standing-brazier') standingBrazier();
   else if (kind === 'ring-12') ring(false);
   else if (kind === 'arch-12') ring(true);
   else if (kind === 'stepped-stair') for(let i=0;i<5;i++) box([-.5+i*.2,-.5,-.5],[ -.3+i*.2,-.3+i*.2,.5]);

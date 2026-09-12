@@ -762,9 +762,10 @@ public final class ScenePackage {
     static String primitiveKind(String prefabName, String family, Kind quality) {
         if (quality == Kind.PIVOT || quality == Kind.CONTEXT) return "box";
         if ("roof".equals(family)) return roofPrimitive(prefabName);
+        if ("light".equals(family)) return lightPrimitive(prefabName);
         return switch (family == null ? "" : family) {
             case "stair" -> "stepped-stair";
-            case "pole", "light" -> "cylinder-12";
+            case "pole" -> "cylinder-12";
             case "portal" -> "ring-12";
             default -> "box";
         };
@@ -783,9 +784,23 @@ public final class ScenePackage {
         return "box";
     }
 
+    /** Light is a behavior family, not a shape. Promote only audited exact prefabs and keep
+     * genuinely pole-like torches cylindrical; a conservative box is safer for lanterns,
+     * hearths and unknown fixtures than the old five-metre cylinder fallback. */
+    static String lightPrimitive(String prefabName) {
+        String name = prefabName == null ? "" : prefabName.toLowerCase(java.util.Locale.ROOT);
+        if (name.equals("piece_wisplure")) return "wisp-fountain";
+        if (name.equals("piece_brazierfloor01") || name.equals("piece_brazierfloor02")) {
+            return "standing-brazier";
+        }
+        if (name.equals("piece_groundtorch_wood")) return "cylinder-12";
+        return "box";
+    }
+
     private static String normalizePrimitiveKind(String value) {
         return Set.of("box", "sloped-panel-26", "sloped-panel-45", "triangular-prism",
-            "stepped-stair", "cylinder-12", "arch-12", "ring-12", "plane-double-sided")
+            "stepped-stair", "cylinder-12", "wisp-fountain", "standing-brazier",
+            "arch-12", "ring-12", "plane-double-sided")
             .contains(value) ? value : "box";
     }
 
@@ -814,6 +829,7 @@ public final class ScenePackage {
         return switch (kind) {
             case "triangular-prism" -> 8;
             case "cylinder-12" -> 48;
+            case "wisp-fountain", "standing-brazier" -> 96;
             case "ring-12", "arch-12" -> 96;
             case "stepped-stair" -> 60;
             case "plane-double-sided" -> 4;

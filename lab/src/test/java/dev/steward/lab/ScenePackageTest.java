@@ -274,6 +274,15 @@ class ScenePackageTest {
         assertEquals("box", ScenePackage.roofPrimitive("unknown_roof_shape"));
     }
 
+    @Test void mapsLightBehaviorToAuditedFixtureShapes() {
+        assertEquals("wisp-fountain", ScenePackage.lightPrimitive("piece_wisplure"));
+        assertEquals("standing-brazier", ScenePackage.lightPrimitive("piece_brazierfloor01"));
+        assertEquals("standing-brazier", ScenePackage.lightPrimitive("piece_brazierfloor02"));
+        assertEquals("cylinder-12", ScenePackage.lightPrimitive("piece_groundtorch_wood"));
+        assertEquals("box", ScenePackage.lightPrimitive("piece_dvergr_lantern"));
+        assertEquals("box", ScenePackage.lightPrimitive(null));
+    }
+
     @Test void suppliesAUsefulDenseHomeFrameForWidelySeparatedElevation() throws Exception {
         Path cache = temporary.resolve("home-frame.duckdb");
         createFixture(cache, 0);

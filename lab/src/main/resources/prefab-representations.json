@@ -2,7 +2,7 @@
   "schema": "steward-prefab-representations/v2",
   "gameVersion": "0.221.12",
   "policy": "Exact prefab names only. Procedural templates are catalog data, never runtime substring matches. Context is hidden by default; compounds require a promoted runtime-renderer receipt.",
-  "proceduralVocabulary": ["box", "sloped-panel-26", "sloped-panel-45", "triangular-prism", "stepped-stair", "cylinder-12", "arch-12", "ring-12", "plane-double-sided"],
+  "proceduralVocabulary": ["box", "sloped-panel-26", "sloped-panel-45", "triangular-prism", "stepped-stair", "cylinder-12", "wisp-fountain", "standing-brazier", "arch-12", "ring-12", "plane-double-sided"],
   "defaults": {
     "structure": {"template": "box", "surfaceClass": "structure", "confidence": "metadata"},
     "context": {"template": "box", "surfaceClass": "context", "confidence": "metadata"}

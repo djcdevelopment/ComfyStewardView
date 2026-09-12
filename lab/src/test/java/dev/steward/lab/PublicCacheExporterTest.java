@@ -119,6 +119,17 @@ class PublicCacheExporterTest {
         assertEquals("box", PublicCacheExporter.geometryPrimitive("wood_roof_ocorner", "roof"));
     }
 
+    @Test void exportsPrefabSpecificLightPrimitives() {
+        assertEquals("wisp-fountain",
+            PublicCacheExporter.geometryPrimitive("piece_wisplure", "light"));
+        assertEquals("standing-brazier",
+            PublicCacheExporter.geometryPrimitive("piece_brazierfloor01", "light"));
+        assertEquals("cylinder-12",
+            PublicCacheExporter.geometryPrimitive("piece_groundtorch_wood", "light"));
+        assertEquals("box",
+            PublicCacheExporter.geometryPrimitive("piece_dvergr_lantern", "light"));
+    }
+
     @Test void spatialPackageOpensWithoutTerrainAndCannotClaimBiomes() throws Exception {
         Path output = temporary.resolve("spatial.duckdb");
         PublicCacheExporter.export(sourceCache(), output, 107, null, buildingGeometry(false),
@@ -243,8 +254,10 @@ class PublicCacheExporterTest {
         ObjectNode root = mapper.createObjectNode();
         root.put("schema", "steward-prefab-representations/v2").put("gameVersion", "test");
         for (String kind : new String[]{"box", "sloped-panel-26", "sloped-panel-45",
-                "triangular-prism", "stepped-stair", "cylinder-12", "arch-12", "ring-12",
-                "plane-double-sided"}) root.withArray("proceduralVocabulary").add(kind);
+                "triangular-prism", "stepped-stair", "cylinder-12", "wisp-fountain",
+                "standing-brazier", "arch-12", "ring-12", "plane-double-sided"}) {
+            root.withArray("proceduralVocabulary").add(kind);
+        }
         ObjectNode compound = root.withArray("representations").addObject();
         compound.put("name", "piece_wall").put("hash", 1).put("semanticClass", "structure")
             .put("strategy", "runtime-compound").put("authority", "test-runtime")
