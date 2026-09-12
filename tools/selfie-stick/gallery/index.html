@@ -720,7 +720,7 @@ function render(){
 function cellHtml(r,i){
   const col=ENVCOLOR[r.environment]||'#8a8a99';
   const cap = r.pieces
-    ? `${r.pieces.toLocaleString()} pieces · ${Math.round(r.height_m)} m tall` +
+    ? `${r.pieces.toLocaleString()} pieces` + (r.height_m ? ` · ${Math.round(r.height_m)} m tall` : '') +
       (r.builders>1?` · ${r.builders} builders`:'')
     : 'unmatched shot';
   return `<div class=cell data-i="${i}">
@@ -761,7 +761,8 @@ function openLb(i){
   if(r.time_of_day!=null) bits.push(clockOf(r.time_of_day)+' in-game');
   if(r.camera) bits.push(`camera ${Math.round(r.camera.distance_m)} m · ${Math.round(r.camera.elevation_deg)}° above · bearing ${Math.round(r.camera.bearing_deg)}°`);
   else if(r.shot_distance_m!=null) bits.push(`shot from ${Math.round(r.shot_distance_m)} m`);
-  if(r.refine&&r.refine.path&&r.refine.path.length>1) bits.push(`refined: ${r.refine.path.map(s=>s.split('~').slice(1).join(' → ')||'planned').join(' → ')}`);
+  // The winner's name carries its whole move history (detail1~up20~up20): one chain, not one per round.
+  if(r.refine&&r.refine.path&&r.refine.path.length>1) bits.push(`refined: planned → ${r.refine.path[r.refine.path.length-1].split('~').slice(1).join(' → ')}`);
   if(r.perspective) bits.push(r.perspective);
   if(r.fog) bits.push('flagged: fog whiteout');
   // Instruments, when this frame has been measured. Depth is geometry (does

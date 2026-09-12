@@ -94,7 +94,9 @@ def main() -> int:
                 "cluster_id": build_key[:12],
                 "build_key": build_key,
                 "label": photo.get("label"),
-                "variant": photo.get("shot"),
+                # A refined frame is still the planned shot as far as the chip row is concerned:
+                # the moves (up20, o45, ...) belong in the caption, not in fourteen variant chips.
+                "variant": (photo.get("refine") or {}).get("planned") or photo.get("shot"),
                 "perspective": "orbit",
                 "source": "orbit",
                 "published": True,
