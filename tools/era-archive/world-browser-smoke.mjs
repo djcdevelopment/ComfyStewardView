@@ -86,6 +86,12 @@ try{
     const back=new URL(await evaluate("document.querySelector('[data-return-map]').href"));
     if(back.searchParams.get('era')!==item.era||back.searchParams.get('build')!==item.buildKey)throw Error('Return from scene lost era/build scope');
     if(!['ready','ok'].includes(scene.status)||scene.pieces!==item.pieces||scene.validationErrors.length)throw Error('Scene validation failed: '+JSON.stringify(scene));
+    let terrainModes=[];
+    if(scene.terrain?.available){
+      if(scene.terrainMode!=='ghost')throw Error(`Terrain did not default to basement-safe Ghost mode: ${scene.terrainMode}`);
+      terrainModes=await evaluate("['solid','off','ghost'].map(mode=>window.__stewardSceneControls.setTerrainMode(mode))");
+      if(terrainModes.join(',')!=='solid,off,ghost'||await evaluate("window.__stewardSceneReceipt.terrainMode")!=='ghost')throw Error('Terrain controls failed');
+    }
     await screenshot(item.era+'-scene');
     await evaluate("document.getElementById('save-image').click()");
     let exported=false;
@@ -98,7 +104,7 @@ try{
       await new Promise(r=>setTimeout(r,125));
     }
     if(!exported)throw Error('PNG export did not finish before leaving the scene');
-    results.builds.push({era:item.era,buildKey:item.buildKey,inspect,scene});
+    results.builds.push({era:item.era,buildKey:item.buildKey,inspect,scene,terrainModes});
   }
   await cdp('Page.navigate',{url:url('',{era:'era14'}).href});
   await wait("[...document.querySelectorAll('.context-raster')].some(i=>i.complete&&i.naturalWidth>0)");

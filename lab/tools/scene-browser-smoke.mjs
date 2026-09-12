@@ -164,9 +164,13 @@ try {
         window.__stewardSceneControls.frameAll();
         const all=window.__stewardSceneReceipt.cameraFrame;
         window.__stewardSceneControls.resetCamera();
+        const terrainBefore=window.__stewardSceneReceipt.terrainMode;
+        const terrainModes=window.__stewardSceneReceipt.terrain?.available
+          ? ['solid','off','ghost'].map(mode => window.__stewardSceneControls.setTerrainMode(mode)) : [];
         return {surface,before,hidden,restored,context,contextShown,withContext,fly,all,
           reset:window.__stewardSceneReceipt.cameraMode,
-          home:window.__stewardSceneReceipt.cameraFrame};
+          home:window.__stewardSceneReceipt.cameraFrame,terrainBefore,terrainModes,
+          terrainAfter:window.__stewardSceneReceipt.terrainMode};
       })()`,
       returnByValue:true
     });
@@ -271,6 +275,10 @@ try {
         exercise.withContext !== exercise.before + 1)) failures.push('context default/toggle contract failed');
     if (exercise?.fly !== 'fly' || exercise?.reset !== 'orbit') failures.push('camera exercise failed');
     if (exercise?.all !== 'all' || exercise?.home !== 'home') failures.push('home/frame-all camera exercise failed');
+    if (receipt.terrain?.available && (exercise?.terrainBefore !== 'ghost' ||
+        exercise?.terrainModes?.join(',') !== 'solid,off,ghost' || exercise?.terrainAfter !== 'ghost')) {
+      failures.push('terrain mode exercise failed');
+    }
     if (exercise?.orbitMove?.after?.mode !== 'orbit' || !(exercise?.orbitMove?.metres > 0) ||
         !(exercise?.orbitMove?.rightMetres > 0) || !(exercise?.orbitMove?.rightDot > 0) ||
         !/WASD move/.test(exercise?.orbitMove?.help || '')) failures.push('orbit WASD movement failed');

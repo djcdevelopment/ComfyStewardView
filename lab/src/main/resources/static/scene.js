@@ -454,15 +454,28 @@ async function main() {
   }
   let terrainVB=null, terrainIB=null, terrainIndexCount=0, waterVB=null, waterIB=null;
   if (terrainData && manifest.terrain?.available) {
-    const terrainValues = new Float32Array(terrainData.length / 3 * 7);
+    const terrainValues = new Float32Array(terrainData.length / 3 * 10);
     const sea = Number(manifest.terrain.seaLevelLocalY);
-    for(let source=0,target=0;source<terrainData.length;source+=3,target+=7){
+    for(let source=0,target=0;source<terrainData.length;source+=3,target+=10){
       const x=terrainData[source],y=terrainData[source+1],z=terrainData[source+2];
       const water=y<sea, contour=Math.abs(y/10-Math.round(y/10))<.045;
       const color=water?[.12,.25,.34,1]:contour?[.31,.34,.32,1]:[.43,.45,.41,1];
-      terrainValues.set([x,y,z,...color],target);
+      terrainValues.set([x,y,z,0,1,0,...color],target);
     }
     const columns=manifest.terrain.columns,rows=manifest.terrain.rows, indices=[];
+    const terrainPosition=(row,column) => {
+      const offset=(row*columns+column)*10;
+      return [terrainValues[offset],terrainValues[offset+1],terrainValues[offset+2]];
+    };
+    for(let row=0;row<rows;row++) for(let column=0;column<columns;column++){
+      const left=Math.max(0,column-1),right=Math.min(columns-1,column+1);
+      const above=Math.max(0,row-1),below=Math.min(rows-1,row+1);
+      const across=sub(terrainPosition(row,right),terrainPosition(row,left));
+      const down=sub(terrainPosition(below,column),terrainPosition(above,column));
+      let normal=norm(cross(across,down));
+      if(normal[1]<0) normal=scale(normal,-1);
+      terrainValues.set(normal,(row*columns+column)*10+3);
+    }
     for(let row=0;row<rows-1;row++) for(let column=0;column<columns-1;column++){
       const a=row*columns+column,b=a+1,c=a+columns,d=c+1;
       indices.push(a,c,b,b,c,d);
@@ -545,6 +558,16 @@ async function main() {
       out.color=input.color; return out;
     }
     @fragment fn gridFS(input:GridOut)->@location(0) vec4f { return input.color; }
+    struct TerrainIn { @location(0) position:vec3f, @location(1) normal:vec3f, @location(7) color:vec4f }
+    struct TerrainOut { @builtin(position) position:vec4f, @location(0) color:vec4f }
+    @vertex fn terrainVS(input:TerrainIn)->TerrainOut {
+      let diffuse=0.34+0.66*max(dot(normalize(input.normal),vec3f(-.4629,.8230,.3292)),0);
+      let linearColor=pow(input.color.rgb,vec3f(2.2));
+      var out:TerrainOut; out.position=camera.viewProjection*vec4f(input.position,1);
+      out.color=vec4f(linearToSrgb(linearColor*diffuse),input.color.a); return out;
+    }
+    @fragment fn terrainFS(input:TerrainOut)->@location(0) vec4f { return vec4f(input.color.rgb,1); }
+    @fragment fn terrainGhostFS(input:TerrainOut)->@location(0) vec4f { return vec4f(input.color.rgb,.28); }
   `});
   const instanceLayout = { arrayStride:80, stepMode:'instance', attributes:[
     {shaderLocation:2,offset:0,format:'float32x4'}, {shaderLocation:3,offset:16,format:'float32x4'},
@@ -589,10 +612,21 @@ async function main() {
     depthStencil:{format:'depth24plus',depthWriteEnabled:false,depthCompare:'less-equal'},
     multisample:{count:sampleCount} });
   const terrainPipeline = device.createRenderPipeline({ layout:pipelineLayout,
-    vertex:{module:shader,entryPoint:'gridVS',buffers:[{arrayStride:28,attributes:[
-      {shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x4'}]}]},
-    fragment:{module:shader,entryPoint:'gridFS',targets:[{format}]}, primitive:{topology:'triangle-list'},
+    vertex:{module:shader,entryPoint:'terrainVS',buffers:[{arrayStride:40,attributes:[
+      {shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x3'},
+      {shaderLocation:7,offset:24,format:'float32x4'}]}]},
+    fragment:{module:shader,entryPoint:'terrainFS',targets:[{format}]}, primitive:{topology:'triangle-list'},
     depthStencil, multisample:{count:sampleCount} });
+  const terrainGhostPipeline = device.createRenderPipeline({ layout:pipelineLayout,
+    vertex:{module:shader,entryPoint:'terrainVS',buffers:[{arrayStride:40,attributes:[
+      {shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x3'},
+      {shaderLocation:7,offset:24,format:'float32x4'}]}]},
+    fragment:{module:shader,entryPoint:'terrainGhostFS',targets:[{format,blend:{
+      color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha',operation:'add'},
+      alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}}}]},
+    primitive:{topology:'triangle-list'},
+    depthStencil:{format:'depth24plus',depthWriteEnabled:false,depthCompare:'less-equal'},
+    multisample:{count:sampleCount} });
   const waterPipeline = device.createRenderPipeline({ layout:pipelineLayout,
     vertex:{module:shader,entryPoint:'gridVS',buffers:[{arrayStride:28,attributes:[
       {shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x4'}]}]},
@@ -612,6 +646,9 @@ async function main() {
   device.queue.writeBuffer(cameraBuffer,64,lightViewProjection);
 
   let surface = 'shaded', cameraMode = 'orbit';
+  let terrainMode = terrainVB
+    ? (['ghost','solid','off'].includes(params.get('terrain')) ? params.get('terrain') : 'ghost')
+    : 'off';
   let orbitYaw = -35 * Math.PI / 180, orbitPitch = -28 * Math.PI / 180;
   let orbitDistance = homeRadius * 2.45, orbitTarget = [...homeTarget];
   let flyPosition = add(homeTarget,[0,0,homeRadius * 2.45]), flyYaw = Math.PI, flyPitch = 0;
@@ -666,11 +703,14 @@ async function main() {
     }], depthStencilAttachment:{view:depthTexture.createView(),depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'} });
     pass.setBindGroup(0,bindGroup);
     let draws=0;
-    if(terrainVB){
-      pass.setPipeline(terrainPipeline);pass.setVertexBuffer(0,terrainVB);pass.setIndexBuffer(terrainIB,'uint32');
+    if(terrainVB && terrainMode!=='off'){
+      pass.setPipeline(terrainMode==='solid' ? terrainPipeline : terrainGhostPipeline);
+      pass.setVertexBuffer(0,terrainVB);pass.setIndexBuffer(terrainIB,'uint32');
       pass.drawIndexed(terrainIndexCount);draws++;
-      pass.setPipeline(waterPipeline);pass.setVertexBuffer(0,waterVB);pass.setIndexBuffer(waterIB,'uint16');
-      pass.drawIndexed(6);draws++;
+      if(terrainMode==='solid'){
+        pass.setPipeline(waterPipeline);pass.setVertexBuffer(0,waterVB);pass.setIndexBuffer(waterIB,'uint16');
+        pass.drawIndexed(6);draws++;
+      }
     }else{
       pass.setPipeline(gridPipeline);pass.setVertexBuffer(0,gridVB);pass.draw(grid.values.length / 7);draws++;
     }
@@ -712,11 +752,11 @@ async function main() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `steward-build-${manifest.snapshotId}-${manifest.pieces}-${surface}.png`;
+      anchor.download = `steward-build-${manifest.snapshotId}-${manifest.pieces}-${surface}-${terrainMode}.png`;
       document.body.appendChild(anchor); anchor.click(); anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
       document.getElementById('image-help').textContent =
-        `${fmtBytes(blob.size)} PNG | current ${surface} view saved`;
+        `${fmtBytes(blob.size)} PNG | current ${surface}, ${terrainMode} terrain view saved`;
       statusNode.textContent = `PNG READY | ${fmt(manifest.pieces)} PIECES | ${canvas.width} x ${canvas.height}`;
       publish({ imageBytes:blob.size, imageType:blob.type, imageCanvas:[canvas.width,canvas.height] });
       return { bytes:blob.size, type:blob.type, width:canvas.width, height:canvas.height };
@@ -730,6 +770,19 @@ async function main() {
     document.querySelectorAll('[data-surface]').forEach(button =>
       button.setAttribute('aria-pressed', String(button.dataset.surface === surface)));
     render(); publish({ surface, drawCalls:lastDrawCalls, visibleGroups:visible.size });
+  }
+  function setTerrainMode(value) {
+    terrainMode = terrainVB && ['ghost','solid','off'].includes(value) ? value : 'off';
+    document.querySelectorAll('[data-terrain]').forEach(button => {
+      button.disabled = !terrainVB;
+      button.setAttribute('aria-pressed',String(button.dataset.terrain === terrainMode));
+    });
+    document.getElementById('terrain-controls-section').hidden = !terrainVB;
+    document.getElementById('metric-terrain').textContent = terrainVB
+      ? `${manifest.terrain.spacingM.toFixed(1)} m · ${titleCase(manifest.terrain.provenance)} · ${titleCase(terrainMode)}`
+      : 'Grid fallback';
+    render(); publish({ terrainMode, drawCalls:lastDrawCalls, visibleGroups:visible.size });
+    return terrainMode;
   }
   function setCameraMode(value, requestLock = false) {
     value = value === 'fly' ? 'fly' : 'orbit';
@@ -797,6 +850,8 @@ async function main() {
 
   document.querySelectorAll('[data-surface]').forEach(button =>
     button.addEventListener('click', () => setSurface(button.dataset.surface)));
+  document.querySelectorAll('[data-terrain]').forEach(button =>
+    button.addEventListener('click', () => setTerrainMode(button.dataset.terrain)));
   document.querySelectorAll('[data-camera]').forEach(button =>
     button.addEventListener('click', () => setCameraMode(button.dataset.camera, button.dataset.camera === 'fly')));
   document.getElementById('frame-home').addEventListener('click', resetCamera);
@@ -957,7 +1012,8 @@ async function main() {
     `${fmt(coverage.measuredEnvelope)} measured envelope · ${fmt(coverage.runtimeCompoundProxy)} runtime compound proxy · ` +
     `${fmt(coverage.estimatedEnvelope)} estimated envelope · ${fmt(coverage.pivotMarker)} pivot marker${coverage.pivotMarker === 1 ? '' : 's'}. ` +
     `${fmt(coverage.hiddenContextPieces)} context piece${coverage.hiddenContextPieces === 1 ? '' : 's'} hidden by default.`;
-  updateCameraHelp(); setSurface(params.get('surface') === 'wire' ? 'wire' : 'shaded'); resetCamera();
+  updateCameraHelp(); setSurface(params.get('surface') === 'wire' ? 'wire' : 'shaded');
+  setTerrainMode(terrainMode); resetCamera();
   const exactLens = queryVector('cameraLens'), exactAim = queryVector('cameraAim');
   if (exactLens && exactAim) setExactCamera(exactLens, exactAim, Number(params.get('cameraFov')) || 65);
   await device.queue.onSubmittedWorkDone(); await frame(); await frame();
@@ -976,7 +1032,7 @@ async function main() {
     instanceSha256:manifest.instanceSha256, adapter:adapterInfo,
     adapterClassification:adapterClass, features:[...adapter.features].sort(),
     canvas:[canvas.width,canvas.height], startupMs:+startup.toFixed(2),
-    drawCalls:lastDrawCalls, visibleGroups:visible.size, surface, cameraMode, pointerLocked:false,
+    drawCalls:lastDrawCalls, visibleGroups:visible.size, surface, terrainMode, cameraMode, pointerLocked:false,
     cameraFrame, fullRadiusM:radius, home:manifest.home,
     viewMatrixSha256:viewHash, representationQuality:coverage, lod:manifest.lod, terrain:manifest.terrain,
     drawGroups:manifest.drawGroups.map(group => ({name:group.name, pieces:group.pieces,
@@ -1038,7 +1094,7 @@ async function main() {
     });
     render(); publish({ drawCalls:lastDrawCalls, visibleGroups:visible.size });
   }
-  window.__stewardSceneControls = { render, benchmark, setSurface, setCameraMode, resetCamera,
+  window.__stewardSceneControls = { render, benchmark, setSurface, setTerrainMode, setCameraMode, resetCamera,
     frameAll, captureImage, saveImage, cameraState, setGroupVisible, setOnlyGroup,
     restoreDefaultGroups, setExactCamera };
   if (params.get('benchmark') === '1') benchmark().catch(fail);
