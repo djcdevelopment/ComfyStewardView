@@ -64,8 +64,12 @@ world view, served by the `steward-world` container on AM4 port 7081.
   refresh, done — no `mvnw package`.
 - **On AM4**: `.\tools\Push-StewardWorldUi.ps1` copies the static files into the running release's
   `/ui` override and verifies by hashing what the server returns. Seconds, no restart.
-- Only run `tools\era-archive\deploy_world.py` when **Java** or the era bundle changed. That one
-  re-transfers ~640 MB of bundle and rebuilds the image.
+- When **Java** changes, package the lab and run `tools\era-archive\deploy_world_code.py` with
+  Maven's `target\original-steward-spatial-lab-*.jar`. It uploads the ~300 KB application
+  overlay, reuses the live read-only catalog and runtime image, and performs a candidate/rollback
+  swap without building an image.
+- Only run `tools\era-archive\deploy_world.py` when the **era bundle** changes. That is the
+  intentionally heavy lane which transfers the full checked catalog and establishes a new base.
 
 `deploy_world.py` creates the `/ui` override empty inside each release directory, so a fresh release
 always starts on the UI its own jar shipped and a pushed override cannot outlive the code it was

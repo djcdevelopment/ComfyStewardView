@@ -387,6 +387,14 @@ to existing gallery pages. The latter tests a separate candidate on AM4:7083, th
 replaces only `steward-world` on 7081, preserving its environment and a stopped prior
 container for rollback. Neither changes Funnel routing or `/steward` on 7080.
 
+`deploy_world.py` is the bundle lane: use it only when the immutable era catalog changes.
+For Java-only releases, package the lab and pass Maven's small `target/original-*.jar` to
+`deploy_world_code.py`. The code lane uploads only that thin application JAR, places it
+ahead of the live image's dependency JAR on the classpath, reuses the verified read-only
+catalog mount, and runs the same candidate-before-swap rollback discipline without an
+image build. Static-only changes still go through `tools/Push-StewardWorldUi.ps1` and do
+not restart the container.
+
 ```powershell
 python -m unittest discover -s tools/era-archive/tests -v
 python -m unittest discover -s lab/tools/tests -v
