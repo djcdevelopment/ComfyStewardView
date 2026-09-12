@@ -308,6 +308,27 @@ function proceduralMesh(kind) {
     const e=[-.5,highBottom,-.5],f=[.5,highBottom,-.5],g=[.5,lowBottom,.5],h=[-.5,lowBottom,.5];
     quad(a,b,c,d); quad(h,g,f,e); quad(e,f,b,a); quad(d,c,g,h); quad(b,f,g,c); quad(e,a,d,h);
   };
+  // A placed stair climbs toward prefab-local -Z. The old proxy climbed across +X, making
+  // connected flights turn sideways even though their saved Euler transforms were correct.
+  const solidStair = () => {
+    for(let i=0;i<5;i++){
+      const z1=.5-i*.2,z0=z1-.2;
+      box([-.5,-.5,z0],[.5,-.3+i*.2,z1]);
+    }
+  };
+  const openStair = () => {
+    for(let i=0;i<5;i++){
+      const z1=.5-i*.2,z0=z1-.2,y=-.3+i*.2;
+      box([-.5,y-.08,z0],[.5,y,z1]);
+    }
+    const stringer = (x0,x1) => {
+      const lowY=-.43,highY=.37,half=.055,zLow=.5,zHigh=-.5;
+      const a=[x0,lowY-half,zLow],b=[x1,lowY-half,zLow],c=[x1,lowY+half,zLow],d=[x0,lowY+half,zLow];
+      const e=[x0,highY-half,zHigh],f=[x1,highY-half,zHigh],g=[x1,highY+half,zHigh],h=[x0,highY+half,zHigh];
+      quad(a,b,c,d);quad(f,e,h,g);quad(e,a,d,h);quad(b,f,g,c);quad(d,c,g,h);quad(e,f,b,a);
+    };
+    stringer(-.43,-.33);stringer(.33,.43);
+  };
   const triangularPrism = () => {
     const p0=[-.5,-.5],p1=[.5,-.5],p2=[.5,.5];
     tri([p0[0],p0[1],.5],[p1[0],p1[1],.5],[p2[0],p2[1],.5]);
@@ -385,7 +406,8 @@ function proceduralMesh(kind) {
   else if (kind === 'wisp-glow') wispGlow();
   else if (kind === 'ring-12') ring(false);
   else if (kind === 'arch-12') ring(true);
-  else if (kind === 'stepped-stair') for(let i=0;i<5;i++) box([-.5+i*.2,-.5,-.5],[ -.3+i*.2,-.3+i*.2,.5]);
+  else if (kind === 'open-stepped-stair') openStair();
+  else if (kind === 'solid-stepped-stair' || kind === 'stepped-stair') solidStair();
   else if (kind === 'plane-double-sided') { quad([-.5,0,-.5],[.5,0,-.5],[.5,0,.5],[-.5,0,.5]); quad([-.5,0,.5],[.5,0,.5],[.5,0,-.5],[-.5,0,-.5]); }
   else box();
   return { vertices:new Float32Array(vertices), triangles:new Uint16Array(triangles), lines:new Uint16Array(lines) };

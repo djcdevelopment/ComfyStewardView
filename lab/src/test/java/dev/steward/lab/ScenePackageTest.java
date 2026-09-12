@@ -276,6 +276,45 @@ class ScenePackageTest {
         assertEquals("box", ScenePackage.roofPrimitive("unknown_roof_shape"));
     }
 
+    @Test void mapsOnlyAuditedStraightStairsAndKeepsCornersOutOfTheStraightProxy() {
+        assertEquals("open-stepped-stair", ScenePackage.stairPrimitive("wood_stair"));
+        assertEquals("open-stepped-stair", ScenePackage.stairPrimitive("wood_stepladder"));
+        assertEquals("solid-stepped-stair", ScenePackage.stairPrimitive("stone_stair"));
+        assertEquals("solid-stepped-stair", ScenePackage.stairPrimitive("blackmarble_stair"));
+        assertEquals("box", ScenePackage.stairPrimitive("blackmarble_stair_corner"));
+        assertEquals("box", ScenePackage.stairPrimitive("piece_dvergr_spiralstair"));
+        assertEquals("box", ScenePackage.stairPrimitive("unknown_stair_shape"));
+    }
+
+    @Test void codeOnlyPackagingReplacesTheLegacyFamilyWideStairToken() throws Exception {
+        Path cache = temporary.resolve("legacy-stair-token.duckdb");
+        createFixture(cache, 0);
+        try (var connection = DriverManager.getConnection("jdbc:duckdb:" + cache);
+             var statement = connection.createStatement()) {
+            statement.executeUpdate("ALTER TABLE prefab_geometry ADD primitive_kind VARCHAR");
+            statement.executeUpdate("ALTER TABLE prefab_geometry ADD surface_class VARCHAR");
+            statement.executeUpdate("ALTER TABLE prefab_geometry ADD confidence VARCHAR");
+            statement.executeUpdate("INSERT INTO prefab_geometry VALUES " +
+                "(4,'wood_stair','stair','snap+mesh',2.0957,1.1799,2.002,0,.46,-.039," +
+                "'stepped-stair','structure','measured')");
+            statement.executeUpdate("INSERT INTO zdo VALUES " +
+                "(7,20,1,0,1,'wood_stair',4,'BUILDING','meadows',true,0,90,0)");
+        }
+        ObjectMapper mapper = new ObjectMapper();
+        ScenePackage.Result result = new ScenePackage(
+            new SnapshotRepository(cache, new LensRegistry(), mapper, true), mapper).buildV3(
+                7, "build-density", -10, 10, -10, 10, List.of(), false, "test",
+                "candidate", false, false, null);
+
+        JsonNode stairs = null;
+        for (JsonNode group : result.manifest().withArray("drawGroups")) {
+            if ("stair".equals(group.path("name").asText())) stairs = group;
+        }
+        assertNotNull(stairs);
+        assertEquals("open-stepped-stair", stairs.path("primitiveKind").asText());
+        assertEquals(1, stairs.path("pieces").asInt());
+    }
+
     @Test void mapsLightBehaviorToAuditedFixtureShapes() {
         assertEquals("wisp-fountain", ScenePackage.lightPrimitive("piece_wisplure"));
         assertEquals("standing-brazier", ScenePackage.lightPrimitive("piece_brazierfloor01"));

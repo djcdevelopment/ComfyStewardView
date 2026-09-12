@@ -119,6 +119,15 @@ class PublicCacheExporterTest {
         assertEquals("box", PublicCacheExporter.geometryPrimitive("wood_roof_ocorner", "roof"));
     }
 
+    @Test void exportsPrefabSpecificStairPrimitives() {
+        assertEquals("open-stepped-stair",
+            PublicCacheExporter.geometryPrimitive("wood_stair", "stair"));
+        assertEquals("solid-stepped-stair",
+            PublicCacheExporter.geometryPrimitive("stone_stair", "stair"));
+        assertEquals("box",
+            PublicCacheExporter.geometryPrimitive("blackmarble_stair_corner", "stair"));
+    }
+
     @Test void exportsPrefabSpecificLightPrimitives() {
         assertEquals("wisp-fountain",
             PublicCacheExporter.geometryPrimitive("piece_wisplure", "light"));
@@ -254,7 +263,8 @@ class PublicCacheExporterTest {
         ObjectNode root = mapper.createObjectNode();
         root.put("schema", "steward-prefab-representations/v2").put("gameVersion", "test");
         for (String kind : new String[]{"box", "sloped-panel-26", "sloped-panel-45",
-                "triangular-prism", "stepped-stair", "cylinder-12", "wisp-fountain",
+                "triangular-prism", "stepped-stair", "open-stepped-stair", "solid-stepped-stair",
+                "cylinder-12", "wisp-fountain",
                 "standing-brazier", "wisp-glow", "arch-12", "ring-12", "plane-double-sided"}) {
             root.withArray("proceduralVocabulary").add(kind);
         }

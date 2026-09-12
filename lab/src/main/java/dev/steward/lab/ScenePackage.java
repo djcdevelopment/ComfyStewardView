@@ -704,10 +704,16 @@ public final class ScenePackage {
             ? piece.prefabName : piece.family;
         Kind quality = "family_median".equals(piece.geometrySource) ? Kind.ESTIMATED : Kind.MEASURED;
         boolean wispFountain = isWispFountain(piece);
+        String primitive = piece.primitiveKind == null
+            ? primitiveKind(piece.prefabName, piece.family, quality)
+            : normalizePrimitiveKind(piece.primitiveKind);
+        // Older public caches used one family-wide stair token. Resolve the audited exact-name
+        // stair shape at package time so a code-only release can correct it without republishing
+        // every immutable era database.
+        if ("stair".equals(piece.family)) primitive = stairPrimitive(piece.prefabName);
         return List.of(new Visual(piece.zdoIndex, group, "structure", true,
             wispFountain ? WISP_STONE_COLOR : color(piece.family), linear, center, quality,
-            piece.primitiveKind == null ? primitiveKind(piece.prefabName, piece.family, quality)
-                : normalizePrimitiveKind(piece.primitiveKind),
+            primitive,
             piece.confidence == null ? confidence(piece.geometrySource) : piece.confidence,
             wispFountain ? "stone" :
                 (piece.surfaceClass == null ? surfaceClass(piece.family) : piece.surfaceClass)));
@@ -787,7 +793,7 @@ public final class ScenePackage {
         if ("roof".equals(family)) return roofPrimitive(prefabName);
         if ("light".equals(family)) return lightPrimitive(prefabName);
         return switch (family == null ? "" : family) {
-            case "stair" -> "stepped-stair";
+            case "stair" -> stairPrimitive(prefabName);
             case "pole" -> "cylinder-12";
             case "portal" -> "ring-12";
             default -> "box";
@@ -807,6 +813,21 @@ public final class ScenePackage {
         return "box";
     }
 
+    /** Straight stairs rise toward prefab-local -Z. Wood flights expose treads and stringers;
+     * masonry flights keep solid risers. Corners, spirals and unknown names retain their measured
+     * envelope until they receive their own audited procedural or compound representation. */
+    static String stairPrimitive(String prefabName) {
+        String name = prefabName == null ? "" : prefabName.toLowerCase(java.util.Locale.ROOT);
+        return switch (name) {
+            case "wood_stair", "wood_stepladder", "goblin_stairs", "goblin_stepladder",
+                 "dvergrprops_wood_stair", "ashwood_stair" -> "open-stepped-stair";
+            case "blackmarble_stair", "stone_stair", "piece_grausten_stonestair",
+                 "piece_grausten_stone_ladder", "ashland_stair", "ashland_steepstair",
+                 "ashlands_stairsbroad", "blackmarble_creep_stair" -> "solid-stepped-stair";
+            default -> "box";
+        };
+    }
+
     /** Light is a behavior family, not a shape. Promote only audited exact prefabs and keep
      * genuinely pole-like torches cylindrical; a conservative box is safer for lanterns,
      * hearths and unknown fixtures than the old five-metre cylinder fallback. */
@@ -822,7 +843,7 @@ public final class ScenePackage {
 
     private static String normalizePrimitiveKind(String value) {
         return Set.of("box", "sloped-panel-26", "sloped-panel-45", "triangular-prism",
-            "stepped-stair", "cylinder-12", "wisp-fountain", "standing-brazier",
+            "stepped-stair", "open-stepped-stair", "solid-stepped-stair", "cylinder-12", "wisp-fountain", "standing-brazier",
             "wisp-glow", "arch-12", "ring-12", "plane-double-sided")
             .contains(value) ? value : "box";
     }
@@ -855,7 +876,8 @@ public final class ScenePackage {
             case "wisp-fountain", "standing-brazier" -> 96;
             case "wisp-glow" -> 48;
             case "ring-12", "arch-12" -> 96;
-            case "stepped-stair" -> 60;
+            case "stepped-stair", "solid-stepped-stair" -> 60;
+            case "open-stepped-stair" -> 84;
             case "plane-double-sided" -> 4;
             default -> 12;
         };
