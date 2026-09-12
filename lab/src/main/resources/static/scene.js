@@ -68,7 +68,7 @@ function sceneRequestUrl() {
   if (params.get('override') === 'true' || params.get('override') === '1') query.set('override', 'true');
   // An exact camera (a photograph's receipt) needs the selection origin to be placed. These
   // are end-of-era worlds the community released, so the server hands it over on request.
-  if (queryVector('cameraLens') && queryVector('cameraAim')) query.set('camera', 'true');
+  if ((queryVector('cameraLens') && queryVector('cameraAim')) || (params.get('era') && params.get('build'))) query.set('camera', 'true');
   if (params.get('rnd') === '1') {
     query.set('rnd', 'true');
     query.set('presentation', params.get('presentation') === 'baseline' ? 'baseline' : 'candidate');
@@ -545,6 +545,39 @@ async function main() {
     document.getElementById('image-help').textContent = error.message;
     statusNode.textContent = `PNG FAILED | ${error.message}`;
   }));
+
+  // A picked camera becomes a shotplan row. The page sends the selection origin it was given
+  // and the camera in scene-local terms; the server undoes the mirror, validates the pose
+  // against the build's pieces, and appends the row to a ledger an operator shoots from.
+  const requestSection = document.getElementById('request-section');
+  const requestButton = document.getElementById('request-shot');
+  const requestHelp = document.getElementById('request-help');
+  const requestable = Array.isArray(manifest.rndCameraOrigin) && manifest.rndCameraOrigin.length === 3
+    && params.get('era') && params.get('build');
+  if (requestable) {
+    requestSection.hidden = false; requestButton.disabled = false;
+    requestButton.addEventListener('click', async () => {
+      requestButton.disabled = true;
+      try {
+        const eye = cameraMode === 'fly' ? [...flyPosition] : orbitEye();
+        const forward = cameraMode === 'fly' ? forwardVector() : norm(sub(orbitTarget, orbitEye()));
+        const body = { era:params.get('era'), build:params.get('build'), snapshot:Number(params.get('snapshot')),
+          origin:manifest.rndCameraOrigin, eye, forward, fov:cameraFov,
+          note:document.getElementById('request-note').value, identify:false, website:'' };
+        const response = await fetch(new URL('api/shot-request', APP_BASE), { method:'POST',
+          headers:{ 'Content-Type':'application/json', Accept:'application/json' }, body:JSON.stringify(body) });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || result.error || `Request failed (${response.status})`);
+        requestHelp.textContent = `Requested as ${result.requestId}: lens ${result.lens.map(v => v.toFixed(1)).join(', ')} · `
+          + `yaw ${result.yaw} · pitch ${result.pitch}. It will be shot in the next requests session.`;
+        publish({ shotRequest:result.requestId });
+      } catch (error) {
+        requestHelp.textContent = error.message;
+      } finally {
+        requestButton.disabled = false;
+      }
+    });
+  }
   document.getElementById('families-all').addEventListener('click', () => {
     manifest.drawGroups.forEach((_,index) => visible.add(index));
     document.querySelectorAll('#families input').forEach(input => { input.checked = true; });

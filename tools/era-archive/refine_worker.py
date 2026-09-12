@@ -187,6 +187,40 @@ def prepare_all(root, from_root):
     print(f'prepared {len(builds)} builds in {root}')
 
 
+def prepare_requests(root, from_root, ledger_path):
+    """campaign.json = the requested poses from a viewer ledger (steward-shot-request/v1), one
+    shot per request, keyed to the source campaign's builds. The ledger row's cluster_id is a
+    placeholder; the build's own local cluster id goes in its place so the receipts join."""
+    root = Path(root); src = read(Path(from_root) / 'campaign.json')
+    by_key = {b['buildKey']: b for b in src['builds']}
+    builds, requests, skipped = {}, [], []
+    for line in Path(ledger_path).read_text(encoding='utf-8').splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        entry = json.loads(line)
+        if entry.get('schema') != 'steward-shot-request/v1' or entry.get('era') != src['era']:
+            skipped.append((entry.get('id'), 'wrong schema or era')); continue
+        build = by_key.get(entry.get('build'))
+        if build is None:
+            skipped.append((entry.get('id'), 'build not in campaign')); continue
+        fields = entry['tsv'].split('\t')
+        if len(fields) < 12:
+            skipped.append((entry.get('id'), 'short row')); continue
+        fields[0] = str(build['localClusterId']); name = fields[1]
+        record = builds.setdefault(build['buildKey'], {**{k: v for k, v in build.items() if k != 'shots'}, 'shots': []})
+        record['shots'].append({'shotKey': shot_key(src['sourceKey'], build['buildKey'], name), 'shot': name,
+                                'tsv': '\t'.join(fields),
+                                'request': {k: entry.get(k) for k in ('id', 'at', 'requestedBy', 'note', 'camera')}})
+        requests.append(entry['id'])
+    if not builds:
+        raise ValueError('no usable requests in the ledger' + (f' ({skipped})' if skipped else ''))
+    write_campaign(root, src, list(builds.values()), {'fromRoot': str(Path(from_root).resolve()),
+                                                       'ledger': str(Path(ledger_path).resolve()),
+                                                       'requests': requests, 'skipped': skipped, 'mode': 'requests'})
+    print(f'prepared {len(requests)} request(s) across {len(builds)} build(s) in {root}; skipped {len(skipped)}')
+
+
 def write_campaign(root, src, builds, refine):
     plan = {k: v for k, v in src.items() if k != 'builds'}
     plan['builds'] = builds
@@ -362,6 +396,29 @@ class RefineWorker(Worker):
             moves.append('aim')
         return moves
 
+    def request_build(self, judge, build):
+        """A requested pose is the photographer's choice: shoot it, judge it (veto only), record it."""
+        cid, key = build['localClusterId'], build['buildKey']
+        for shot in build['shots']:
+            allowed = {(cid, shot['shot']): shot}
+            name = self.next_plan_name(key, 'rq')
+            self.feed_plan(name, [shot['tsv']])
+            receipts = self.wait_plan(name, allowed, timeout=240)
+            entry = self.judge_shot(judge, {'name': shot['shot'], 'shotKey': shot['shotKey'],
+                                            'receipt': receipts.get((cid, shot['shot']))})
+            rid = (shot.get('request') or {}).get('id') or shot['shot']
+            self.results[rid] = {'buildKey': key, 'localClusterId': cid, 'shot': shot['shot'], 'request': shot.get('request'),
+                                 'file': entry.get('file'), 'shotKey': shot['shotKey'], 'vetoes': entry['vetoes'],
+                                 'score': entry['score'],
+                                 'pose': ({k: entry['receipt'].get(k) for k in ('lens', 'placed', 'aim', 'yaw', 'pitch', 'clearance')}
+                                          if entry['receipt'] else None)}
+            self.journal('decision', build=key[:8], round=0, incumbent=shot['shot'], winner=shot['shot'],
+                         reason='requested pose' + (' (vetoed: ' + ','.join(entry['vetoes']) + ')' if entry['vetoes'] else ''),
+                         candidates=[], needs=None, request=rid)
+        write(self.root / 'requests-result.json', {'schema': 'steward-shot-requests-result/v1',
+                                                   'sourceKey': self.plan['sourceKey'], 'era': self.plan['era'],
+                                                   'requests': self.results})
+
     def refine_build(self, judge, build, rounds):
         import frame_judge
         cid, key, label = build['localClusterId'], build['buildKey'], f'Build {build["buildKey"][:8]}'
@@ -467,6 +524,13 @@ class RefineWorker(Worker):
         self.write_summary()
 
     def write_summary(self):
+        if any('request' in r and 'incumbent' not in r for r in self.results.values()):
+            lines = ['| request | build | shot | vetoes | score | file |', '|---|---|---|---|---|---|']
+            for rid, r in self.results.items():
+                score = '-' if r['score'] is None else f"{r['score']:.6f}"
+                lines.append(f"| {rid} | {r['buildKey'][:8]} | {r['shot']} | {','.join(r['vetoes']) or '-'} | {score} | {r.get('file') or '-'} |")
+            (self.root / 'refine-summary.md').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+            return
         lines = ['| build | shot | needs | inc score | inc live | inc luma | winner | win score | Δ | rounds | vetoes |',
                  '|---|---|---|---|---|---|---|---|---|---|---|']
         fmt = lambda v, p=4: '-' if v is None else f'{v:.{p}f}'
@@ -491,11 +555,15 @@ class RefineWorker(Worker):
             self.launch()
             try:
                 self.wait_world()
+                requests_mode = (self.plan.get('refine') or {}).get('mode') == 'requests'
                 for build in self.plan['builds'][:builds_n]:
                     if self.stopped():
                         self.journal('operator_stop')
                         break
-                    self.refine_build(judge, build, rounds)
+                    if requests_mode or rounds == 0:
+                        self.request_build(judge, build)
+                    else:
+                        self.refine_build(judge, build, rounds)
             finally:
                 self.finish()
             self.status('refine-complete', builds=len(self.results))
@@ -507,6 +575,7 @@ if __name__ == '__main__':
     parser.add_argument('--prepare', action='store_true', help='write campaign.json/all-shots.tsv for the sample (before install)')
     parser.add_argument('--from-root', type=Path, help='installed campaign root to sample builds and poses from')
     parser.add_argument('--framing', type=Path, help='master_detail JSON whose lowest liveTileShare picks the sample; omit for every build')
+    parser.add_argument('--requests', type=Path, help='viewer shot-request ledger (steward-shot-request/v1 JSONL): shoot the requested poses, no fan')
     parser.add_argument('--builds', type=int, default=8)
     parser.add_argument('--rounds', type=int, default=2)
     parser.add_argument('--threads', type=int, default=8)
@@ -515,7 +584,9 @@ if __name__ == '__main__':
     if args.prepare:
         if not args.from_root:
             parser.error('--prepare needs --from-root')
-        if args.framing:
+        if args.requests:
+            prepare_requests(args.root, args.from_root, args.requests)
+        elif args.framing:
             prepare(args.root, args.from_root, args.framing, args.builds)
         else:
             prepare_all(args.root, args.from_root)

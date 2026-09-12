@@ -207,6 +207,9 @@ final class DiscordFeedbackService {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(value);
     }
 
+    /** The display label a ledger line carries for an identified requester. */
+    String label(DiscordIdentity identity) { return identityLabel(identity); }
+
     private static String identityLabel(DiscordIdentity identity) {
         return cap(identity.displayName() + " (`@" + identity.username() + "` · " + identity.id() + ")", 1_024);
     }

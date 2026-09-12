@@ -42,6 +42,8 @@ public final class LabServer {
     private final SlidingWindowRateLimiter queryRate = new SlidingWindowRateLimiter(30, Duration.ofMinutes(1));
     private final SlidingWindowRateLimiter sceneRate = new SlidingWindowRateLimiter(6, Duration.ofMinutes(1));
     private final SlidingWindowRateLimiter feedbackRate = new SlidingWindowRateLimiter(3, Duration.ofMinutes(10));
+    private final SlidingWindowRateLimiter shotRequestRate = new SlidingWindowRateLimiter(6, Duration.ofMinutes(10));
+    private final ShotRequestLedger shotRequests;
     private final Semaphore querySlots = new Semaphore(2);
     private final Semaphore sceneSlots = new Semaphore(1);
     private final Javalin app;
@@ -57,6 +59,7 @@ public final class LabServer {
         this.terrainContext = terrainContext;
         this.eraCatalog = config.eraCatalog()==null ? null : new EraCatalog(config.eraCatalog(),mapper,lenses);
         this.feedback = new DiscordFeedbackService(config.feedback(), mapper);
+        this.shotRequests = new ShotRequestLedger(config.publicMode() ? config.shotRequests() : null, mapper);
         this.scenes = new ScenePackage(snapshots, mapper,
             config.publicMode() ? null : config.fidelityCandidates());
         this.fidelity = config.publicMode() ? null : new FidelityWorkbench(config, mapper);
@@ -135,6 +138,7 @@ public final class LabServer {
             app.get("/api/auth/session", this::authSession);
             app.post("/api/auth/logout", this::logout);
             app.post("/api/feedback", this::submitFeedback);
+            app.post("/api/shot-request", this::submitShotRequest);
         } else {
             app.get("/rnd/fidelity", ctx -> rndResource(ctx, "/rnd/fidelity.html", "text/html; charset=utf-8"));
             app.get("/rnd/fidelity.js", ctx -> rndResource(ctx, "/rnd/fidelity.js", "text/javascript; charset=utf-8"));
@@ -192,6 +196,7 @@ public final class LabServer {
         result.put("feedbackEnabled", config.publicMode() && config.feedback().feedbackEnabled());
         result.put("discordIdentityEnabled", config.publicMode() && config.feedback().identityEnabled());
         result.put("sceneAvailable", config.publicMode());
+        result.put("shotRequestsEnabled", shotRequests.enabled());
         result.put("terrainAvailable", terrainContext != null);
         boolean suppliedContext = terrainContext != null || config.contextImage() != null;
         result.put("contextAvailable", suppliedContext);
@@ -491,6 +496,59 @@ public final class LabServer {
         DiscordFeedbackService.DiscordIdentity identity = feedback.identity(ctx.cookie("steward_identity"));
         String id = feedback.submit(request, identity);
         ctx.json(Map.of("ok", true, "feedbackId", id));
+    }
+
+    /**
+     * A camera picked in the scene becomes one shotplan row in the ledger. Same-origin, rate
+     * limited, the era and snapshot must be the published ones, the build must have pieces, and
+     * the camera must sit near them. Nothing is shot here; an operator-run session reads the
+     * ledger and feeds the rows to the capture mod later.
+     */
+    private void submitShotRequest(Context ctx) throws Exception {
+        requireSameOrigin(ctx);
+        if (!shotRequests.enabled()) throw new IllegalStateException("Shot requests are not enabled here");
+        SlidingWindowRateLimiter.Result allowance = shotRequestRate.acquire(clientKey(ctx));
+        if (!allowance.allowed()) {
+            rateLimited(ctx, allowance.retryAfterSeconds(), "Please wait a little before requesting more shots");
+            return;
+        }
+        ShotRequestLedger.Request request = ctx.bodyAsClass(ShotRequestLedger.Request.class);
+        if (request.era() == null || request.era().isBlank()) throw new IllegalArgumentException("An era is required");
+        EraCatalog.Era era = eraCatalog == null ? null : eraCatalog.ready(request.era());
+        long published = era == null ? config.snapshotId() : era.snapshotId();
+        if (request.snapshot() != published) throw new IllegalArgumentException("Snapshot does not belong to the selected era");
+        SnapshotRepository repository = (era == null ? snapshots : era.snapshots()).forBuild(request.build());
+        ShotRequestLedger.Bounds bounds;
+        try (var connection = repository.open(); var query = connection.prepareStatement(
+                "SELECT min(x),max(x),min(y),max(y),min(z),max(z),count(*) FROM zdo WHERE snapshot_id=?")) {
+            query.setLong(1, published);
+            try (var row = query.executeQuery()) {
+                row.next();
+                bounds = new ShotRequestLedger.Bounds(row.getDouble(1), row.getDouble(2), row.getDouble(3),
+                    row.getDouble(4), row.getDouble(5), row.getDouble(6), row.getLong(7));
+            }
+        }
+        ShotRequestLedger.Row row = ShotRequestLedger.toRow(request, bounds);
+        DiscordFeedbackService.DiscordIdentity identity = feedback.identity(ctx.cookie("steward_identity"));
+        if (request.identify() && identity == null) throw new DiscordFeedbackService.IdentityRequiredException();
+        String requestedBy = request.identify() ? feedback.label(identity) : "Anonymous";
+        ObjectNode line = shotRequests.append(request, row, requestedBy, config.releaseVersion());
+        if (config.feedback().feedbackEnabled()) {
+            try {
+                ObjectNode context = mapper.createObjectNode();
+                context.put("world", request.era() + " · snapshot #" + published);
+                context.put("view", "Shot request " + row.id() + " for build " + request.build().substring(0, 8));
+                context.put("selection", row.tsv());
+                context.put("release", config.releaseVersion());
+                feedback.submit(new DiscordFeedbackService.FeedbackRequest(
+                    "Shot request " + row.id() + (line.get("note").asText().isBlank() ? "" : ": " + line.get("note").asText()),
+                    request.identify(), null, context), identity);
+            } catch (Exception notify) {
+                log.warn("Shot request {} ledgered but Discord notification failed: {}", row.id(), notify.toString());
+            }
+        }
+        ctx.json(Map.of("ok", true, "requestId", row.id(), "tsv", row.tsv(),
+            "lens", row.lens(), "aim", row.aim(), "yaw", row.yaw(), "pitch", row.pitch()));
     }
 
     private void submitRender(Context ctx) throws Exception {

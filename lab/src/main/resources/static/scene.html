@@ -47,6 +47,13 @@
       <p id="image-help" class="control-help">Captures the current camera, surface, and visible families.</p>
     </section>
 
+    <section class="control-section request-section" id="request-section" hidden>
+      <h2>Photograph</h2>
+      <div class="button-row"><button type="button" id="request-shot" disabled>Request this shot</button></div>
+      <input type="text" id="request-note" maxlength="280" placeholder="Note for the photographer (optional)" autocomplete="off">
+      <p id="request-help" class="control-help">Fly to the view you want. The pose becomes one row the capture mod can shoot in the real world; an operator runs requests in batches.</p>
+    </section>
+
     <section class="control-section family-section">
       <div class="section-heading"><h2>Layers</h2><button type="button" id="families-all" class="text-button">Show all</button></div>
       <div id="families" class="families"></div>

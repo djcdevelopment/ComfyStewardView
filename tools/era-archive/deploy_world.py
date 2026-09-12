@@ -69,6 +69,10 @@ dockerfile=dest/'Dockerfile';dockerfile.write_text('FROM '+base+'\nCOPY steward-
 # directory this run just proved absent, so a release always starts on the UI its own jar shipped
 # and a stale override cannot outlive the code it was tuned against.
 ui=dest/'ui';ui.mkdir()
+# Viewer shot requests: the one writable path the public container gets, and it lives beside the
+# releases rather than inside one so a request outlives the release it was made against. The
+# server only ever appends JSONL there; a requests session on this host reads it.
+requests_dir=root/'shot-requests';requests_dir.mkdir(exist_ok=True)
 image='steward-world:'+settings['release'];run('docker','build','-q','-t',image,str(dest))
 catalog=json.loads((dest/'catalog/catalog.json').read_text());default=next(e for e in catalog['eras'] if e['slug']==catalog['defaultEra'])
 assert default['status']=='ready'
@@ -77,12 +81,12 @@ with socket.socket() as probe:probe.bind(('127.0.0.1',7083))
 def start(name,port):
     return run('docker','run','-d','--name',name,'--restart','unless-stopped','--read-only','--memory','3g','--cpus','2',
         '--cap-drop','ALL','--security-opt','no-new-privileges:true','--tmpfs','/tmp:rw,exec,nosuid,size=512m',
-        '--env-file',str(envfile),'-v',str(dest/'catalog')+':/catalog:ro','-v',str(ui)+':/ui:ro','-p','127.0.0.1:'+str(port)+':8091','--entrypoint','java',image,
+        '--env-file',str(envfile),'-v',str(dest/'catalog')+':/catalog:ro','-v',str(ui)+':/ui:ro','-v',str(requests_dir)+':/requests:rw','-p','127.0.0.1:'+str(port)+':8091','--entrypoint','java',image,
         '-Xms256m','-Xmx1g','-Djava.awt.headless=true','-jar','/app/steward-spatial-lab.jar','serve','--public','--bind','0.0.0.0',
         '--port','8091','--cache','/catalog/'+default['cache'],'--artifacts','/catalog/'+default['artifacts'],
         *(['--context-manifest','/catalog/'+default['contextManifest']] if default.get('contextManifest') else []),'--era-catalog','/catalog/catalog.json',
         '--snapshot',str(default['snapshotId']),'--public-url',environment.get('PUBLIC_URL','https://am4.tail8e749c.ts.net/world/'),
-        '--release-version',settings['release'],'--static-dir','/ui','--no-browser')
+        '--release-version',settings['release'],'--static-dir','/ui','--shot-requests','/requests/shot-requests.jsonl','--no-browser')
 def get(port,path):
     with urllib.request.urlopen('http://127.0.0.1:'+str(port)+path,timeout=10) as response:return json.load(response)
 def healthy(port):
