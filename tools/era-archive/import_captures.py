@@ -21,13 +21,25 @@ Each photograph carries the receipt fields that describe how the shot had to be 
 scores 4.821 against 5.470 for a planned pose -- the largest per-frame penalty measured on
 this corpus, and the same magnitude as shooting in fog.
 
+A refine root (refine_worker.py) adds two things. `--refine refine.json` publishes each
+build's judged winner instead of its planned pose -- the candidates are journalled under
+their own shot keys, so the winner is just another completed entry -- and hands the builds
+the loop could not fix (`needs`: aim, demist, sky) to the re-shoot worklist for the planner.
+The camera itself is published: relative facts for captions (distance, elevation,
+bearing, fov) and the absolute pose (lens, aim, yaw, pitch) so the 3D view can open at
+the photograph's camera. These are end-of-era worlds the community itself released, so a
+camera position gives nothing away. `--cameras cameras-<era>.json` collects the poses in
+one file for the world view's bundle.
+
 Usage:
   python import_captures.py --root <campaign root> --base https://host/valheim/era14/
                             [--out captures-<era>.json] [--worklist derivatives.json]
+                            [--refine refine.json --cameras cameras-<era>.json]
 """
 import argparse
 import collections
 import json
+import math
 from pathlib import Path
 import re
 
@@ -56,6 +68,56 @@ def shot_distance(receipt):
         return round(sum((float(lens[k]) - float(aim[k])) ** 2 for k in "xyz") ** 0.5, 3)
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def camera_facts(receipt):
+    """Relative camera facts for the public manifest. Bearing is the direction the camera
+    stands from its aim (degrees clockwise from +Z, the runner's yaw convention); elevation
+    is the angle above the aim. Neither says where the build is."""
+    lens = receipt.get("lens")
+    aim = receipt.get("aim")
+    if not isinstance(lens, dict) or not isinstance(aim, dict):
+        return None
+    try:
+        dx, dy, dz = (float(lens[k]) - float(aim[k]) for k in "xyz")
+    except (KeyError, TypeError, ValueError):
+        return None
+    horiz = math.hypot(dx, dz)
+    facts = {"distance_m": round(math.sqrt(dx * dx + dy * dy + dz * dz), 1),
+             "elevation_deg": round(math.degrees(math.atan2(dy, horiz)), 1),
+             "bearing_deg": round(math.degrees(math.atan2(dx, dz)) % 360.0, 1)}
+    if receipt.get("fov") is not None:
+        facts["fov_deg"] = receipt["fov"]
+    return facts
+
+
+def camera_pose(receipt):
+    """The absolute pose: where the lens was, what it aimed at, and how it looked."""
+    pose = {k: receipt.get(k) for k in ("lens", "aim", "yaw", "pitch", "fov", "placed")}
+    return pose if isinstance(pose["lens"], dict) and isinstance(pose["aim"], dict) else None
+
+
+def apply_refine(plan, refine):
+    """Swap each build's planned shot for its judged winner; return the builds the loop
+    could not fix, keyed by buildKey -> needs."""
+    if refine.get("schema") not in ("steward-refine/v1", "steward-refine/v2"):
+        raise SystemExit(f"unsupported refine schema: {refine.get('schema')}")
+    if refine.get("sourceKey") != plan["sourceKey"]:
+        raise SystemExit("refine.json belongs to another campaign")
+    needs = {}
+    for build in plan["builds"]:
+        record = refine["builds"].get(build["buildKey"])
+        if not record:
+            continue
+        if record.get("needs"):
+            needs[build["buildKey"]] = record["needs"]
+        if record.get("winnerShotKey") and record.get("winner"):
+            metrics = (record.get("metrics") or {}).get(record["winner"], {})
+            build["shots"] = [{"shotKey": record["winnerShotKey"], "shot": record["winner"],
+                               "refine": {"planned": record.get("incumbent"), "path": record.get("path"),
+                                          "rounds": record.get("rounds"), "score": metrics.get("score"),
+                                          "vetoes": metrics.get("vetoes")}}]
+    return needs
 
 
 def receipt_reject(receipt):
@@ -115,23 +177,32 @@ def parse_args():
     p.add_argument("--worklist", type=Path, default=None,
                    help="also write the source PNG -> derivative id list for the "
                         "thumbnail step, which runs on the capture host")
+    p.add_argument("--refine", type=Path, default=None,
+                   help="refine.json from refine_worker.py: publish each build's judged "
+                        "winner instead of its planned pose, and send the builds the loop "
+                        "could not fix (needs aim/demist/sky) to the re-shoot worklist")
+    p.add_argument("--cameras", type=Path, default=None,
+                   help="also collect the absolute camera pose per photograph (lens, aim, "
+                        "yaw, pitch, fov) in one file for the world view's bundle")
     return p.parse_args()
 
 
 def photo_id(slug, build_key, shot):
-    """Stable, and inside import_legacy's [A-Za-z0-9_-]+ guard."""
-    return f"{slug}-{build_key[:12]}-{shot}"
+    """Stable, and inside import_legacy's [A-Za-z0-9_-]+ guard. The refine loop names
+    candidates `detail1~o45~lo12`; the tilde becomes a dash here and nowhere else."""
+    return f"{slug}-{build_key[:12]}-{shot.replace('~', '-')}"
 
 
-def collect(root, slug, base, quality=None, gate=True):
+def collect(root, slug, base, quality=None, gate=True, refine=None):
     plan = read(root / "campaign.json")
     state = read(root / "state.json")
     if state["sourceKey"] != plan["sourceKey"]:
         raise SystemExit("state.json belongs to another campaign")
     completed = state["completed"]
+    needs = apply_refine(plan, refine) if refine else {}
 
     verdicts = (quality or {}).get("frames", {})
-    builds, worklist, rejects = {}, [], []
+    builds, worklist, rejects, cameras = {}, [], [], {}
     counts = collections.Counter()
     for build in plan["builds"]:
         photos = []
@@ -151,6 +222,11 @@ def collect(root, slug, base, quality=None, gate=True):
             reason = receipt_reject(receipt) or (
                 frame.get("reason") if frame.get("verdict", "keep") != "keep" else None)
             stage = "receipt" if receipt_reject(receipt) else "frame"
+            if not reason and build["buildKey"] in needs:
+                # The loop shot the planned pose, judged it, and could not move it anywhere
+                # useful: the aim is off the mass, the build is in mist, or it points at sky.
+                # That is a planner problem, so the album goes to the re-shoot list, not live.
+                reason, stage = "refine: needs-" + needs[build["buildKey"]], "refine"
             if reason:
                 counts["rejected"] += 1
                 counts["rejected_" + stage] += 1
@@ -173,8 +249,14 @@ def collect(root, slug, base, quality=None, gate=True):
                 "sha256": entry["sha256"],
                 "capture": {k: receipt.get(k) for k in RECEIPT_FIELDS if k in receipt}
                            | ({"shot_distance_m": distance} if distance is not None else {}),
+                **({"camera": camera_facts(receipt)} if camera_facts(receipt) else {}),
+                **({"pose": camera_pose(receipt)} if camera_pose(receipt) else {}),
+                **({"refine": shot["refine"]} if shot.get("refine") else {}),
                 **({"aesthetic": frame["aesthetic"]} if "aesthetic" in frame else {}),
             })
+            pose = camera_pose(receipt)
+            if pose:
+                cameras[identifier] = {"buildKey": build["buildKey"], "shot": name, **pose}
             worklist.append({"id": identifier, "source": entry["file"],
                              "sha256": entry["sha256"],
                              "dimensions": entry["metadata"]["dimensions"]})
@@ -208,7 +290,8 @@ def collect(root, slug, base, quality=None, gate=True):
             if not kept:
                 continue
             counts["retired_albums"] += 1
-    return plan, builds, worklist, counts, rejects
+    counts["needs"] = len(needs)
+    return plan, builds, worklist, counts, rejects, cameras, needs
 
 
 def main():
@@ -222,8 +305,9 @@ def main():
     quality = read(args.quality) if args.quality else None
     if quality and quality.get("era") not in (None, slug):
         raise SystemExit(f"quality file is for {quality['era']}, not {slug}")
-    plan, builds, worklist, counts, rejects = collect(root, slug, base, quality,
-                                                     gate=not args.keep_rejects)
+    refine = read(args.refine) if args.refine else None
+    plan, builds, worklist, counts, rejects, cameras, needs = collect(
+        root, slug, base, quality, gate=not args.keep_rejects, refine=refine)
 
     out = args.out or root / f"captures-{slug}.json"
     write(out, {
@@ -245,6 +329,7 @@ def main():
         "rejectedBuilds": sorted(r["buildKey"] for r in rejects if r["kept"] == 0),
         "gate": {"applied": not args.keep_rejects,
                  "quality": str(args.quality) if args.quality else None},
+        "refined": bool(refine),
         "builds": builds,
     })
     print(f"{counts['albums']:,} albums, {counts['photographs']:,} photographs, "
@@ -267,7 +352,18 @@ def main():
     if counts["retired_albums"]:
         print(f"  {counts['retired_albums']:,} retired build(s) still hold journalled "
               f"photographs; they are excluded from this manifest by design")
+    if refine:
+        moved = sum(1 for b in plan["builds"] for s in b["shots"]
+                    if s.get("refine") and s["refine"].get("planned") != s["shot"])
+        print(f"  refine: {moved:,} album(s) publish a judged winner instead of the planned pose; "
+              f"{counts['needs']:,} build(s) need the planner ({collections.Counter(needs.values())})")
     print(out)
+
+    if args.cameras:
+        write(args.cameras, {"schema": "steward-photo-cameras/v1", "era": slug,
+                             "sourceKey": plan["sourceKey"], "snapshotId": plan["snapshotId"],
+                             "world": plan["world"], "cameras": cameras})
+        print(args.cameras)
 
     if args.rejects:
         write(args.rejects, {"schema": "steward-frame-rejects/v1", "era": slug,
@@ -279,6 +375,9 @@ def main():
                              # that is being captured against right now.
                              "reshoot": sorted(r["buildKey"] for r in rejects
                                                if r["kept"] == 0),
+                             # What the refine loop said each unfixable build needs. The
+                             # planner reads this; the camera loop cannot act on it.
+                             "needs": needs,
                              "builds": rejects})
         print(args.rejects)
 

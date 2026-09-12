@@ -66,6 +66,9 @@ function sceneRequestUrl() {
   if (params.get('biomes')) query.set('biomes', params.get('biomes'));
   for (const key of ['era','build']) if (params.get(key)) query.set(key, params.get(key));
   if (params.get('override') === 'true' || params.get('override') === '1') query.set('override', 'true');
+  // An exact camera (a photograph's receipt) needs the selection origin to be placed. These
+  // are end-of-era worlds the community released, so the server hands it over on request.
+  if (queryVector('cameraLens') && queryVector('cameraAim')) query.set('camera', 'true');
   if (params.get('rnd') === '1') {
     query.set('rnd', 'true');
     query.set('presentation', params.get('presentation') === 'baseline' ? 'baseline' : 'candidate');
@@ -73,6 +76,26 @@ function sceneRequestUrl() {
   const url = new URL('api/scene', APP_BASE);
   url.search = query.toString();
   return url;
+}
+
+// A gallery link knows the era and the build, not the snapshot or the bounds: resolve them
+// here so scene.html?era=&build=&cameraLens=&cameraAim= opens without lab.js in the middle.
+async function resolveSharedBounds() {
+  if (params.has('snapshot') && params.has('minX') && params.has('maxX') && params.has('minZ') && params.has('maxZ')) return;
+  const era = params.get('era'), build = params.get('build');
+  if (!era || !build) return;
+  const eras = await (await fetch(new URL('api/eras', APP_BASE), { headers:{ Accept:'application/json' } })).json();
+  const entry = (eras.eras || []).find(candidate => candidate.slug === era);
+  if (!entry) throw new Error(`The era "${era}" is not published here.`);
+  const bounds = new URL('api/build', APP_BASE);
+  bounds.search = new URLSearchParams({ era, build, snapshot:String(entry.snapshotId) }).toString();
+  const box = await (await fetch(bounds, { headers:{ Accept:'application/json' } })).json();
+  if (!Number.isFinite(box.minX) || !(box.pieces > 0)) throw new Error('The build has no published pieces.');
+  const pad = 8;
+  params.set('snapshot', String(entry.snapshotId));
+  params.set('minX', String(box.minX - pad)); params.set('maxX', String(box.maxX + pad));
+  params.set('minZ', String(box.minZ - pad)); params.set('maxZ', String(box.maxZ + pad));
+  if (!params.get('lens')) params.set('lens', 'build-density');
 }
 
 async function fetchScene() {
@@ -212,6 +235,7 @@ function titleCase(value) {
 
 async function main() {
   if (!navigator.gpu) throw new Error('WebGPU is unavailable. Use a current hardware-accelerated browser.');
+  await resolveSharedBounds();
   const { manifest, bytes:instanceData } = await fetchScene();
   const radius = Math.max(Number(manifest.radiusM) || 1, 1);
   const homeTarget = Array.isArray(manifest.home?.target) && manifest.home.target.length === 3 &&

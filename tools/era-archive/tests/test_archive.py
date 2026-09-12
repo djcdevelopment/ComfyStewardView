@@ -169,7 +169,7 @@ class ArchiveTest(unittest.TestCase):
                 "k%d" % (n + 1): {"file": "images/%d.png" % n, "sha256": "s%d" % n,
                                   "metadata": {"dimensions": [3840, 2160]}, "receipt": r}
                 for n, r in enumerate(receipts)}})
-            _, builds, worklist, counts, rejects = import_captures.collect(root, "era14", "https://h/e14/")
+            _, builds, worklist, counts, rejects, *_ = import_captures.collect(root, "era14", "https://h/e14/")
             self.assertEqual(2, counts["photographs"])
             self.assertEqual(2, counts["rejected"])
             # A rejected frame never reaches the encoder, not just the manifest.
@@ -179,7 +179,7 @@ class ArchiveTest(unittest.TestCase):
             self.assertEqual({"view obstructed", "camera never found a clear ray"},
                              {f["reason"] for f in rejects[0]["frames"]})
             # --keep-rejects measures without withholding.
-            _, builds, worklist, counts, _ = import_captures.collect(
+            _, builds, worklist, counts, _, *_ = import_captures.collect(
                 root, "era14", "https://h/e14/", gate=False)
             self.assertEqual((4, 4, 2), (len(worklist), len(builds["a" * 64]), counts["rejected"]))
 

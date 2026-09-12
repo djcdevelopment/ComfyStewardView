@@ -759,7 +759,9 @@ function openLb(i){
   if(r.aesthetic!=null) bits.push('aesthetic '+r.aesthetic.toFixed(2));
   if(r.score!=null) bits.push('structure score '+r.score.toFixed(2));
   if(r.time_of_day!=null) bits.push(clockOf(r.time_of_day)+' in-game');
-  if(r.shot_distance_m!=null) bits.push(`shot from ${Math.round(r.shot_distance_m)} m`);
+  if(r.camera) bits.push(`camera ${Math.round(r.camera.distance_m)} m · ${Math.round(r.camera.elevation_deg)}° above · bearing ${Math.round(r.camera.bearing_deg)}°`);
+  else if(r.shot_distance_m!=null) bits.push(`shot from ${Math.round(r.shot_distance_m)} m`);
+  if(r.refine&&r.refine.path&&r.refine.path.length>1) bits.push(`refined: ${r.refine.path.map(s=>s.split('~').slice(1).join(' → ')||'planned').join(' → ')}`);
   if(r.perspective) bits.push(r.perspective);
   if(r.fog) bits.push('flagged: fog whiteout');
   // Instruments, when this frame has been measured. Depth is geometry (does
@@ -817,9 +819,18 @@ function openLb(i){
   // (~/am4bot/bot.py:1440). That API stopped on 2026-06-25 and the page later moved to
   // FX99, which has no /api route -- so the sign-in gate could never succeed and the
   // buttons never rendered. One claim surface is better than two, so they are gone.
-  $('lbhint').innerHTML = r.cluster_id!=null
+  // The camera is a public fact of a public world: open the 3D scene at exactly this
+  // pose (scene.js applies cameraLens/cameraAim/cameraFov), so the frame and the
+  // envelope boxes can be compared by anyone.
+  const view3d = (DB.worldUrl&&DB.era&&r.build_key&&r.pose&&r.pose.lens&&r.pose.aim)
+    ? `${DB.worldUrl}/scene.html?era=${encodeURIComponent(DB.era)}&build=${encodeURIComponent(r.build_key)}`
+      + `&cameraLens=${[r.pose.lens.x,r.pose.lens.y,r.pose.lens.z].map(v=>(+v).toFixed(2)).join(',')}`
+      + `&cameraAim=${[r.pose.aim.x,r.pose.aim.y,r.pose.aim.z].map(v=>(+v).toFixed(2)).join(',')}`
+      + `&cameraFov=${r.pose.fov||65}`
+    : null;
+  $('lbhint').innerHTML = (r.cluster_id!=null
     ? `<a href="/valheim/creators/">claim this build or ask for more shots on the builders page</a>`
-    : '';
+    : '') + (view3d ? ` · <a href="${esc(view3d)}" target=_blank rel=noopener>open the 3D scene at this camera</a>` : '');
   $('lbstar').onclick=()=>toggleStar(r.id,true);
   if($('actall')) $('actall').onclick=()=>drillTo('structure', structKey(r), r.id);
   if($('actarea')) $('actarea').onclick=()=>drillTo('area', 'a'+r.area_id, r.id);

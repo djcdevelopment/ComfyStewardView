@@ -50,6 +50,9 @@ def main() -> int:
     p.add_argument("--depth", type=Path, default=None,
                    help="depth-<era>.json; also copied beside index.json by the caller")
     p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--world-url", default=None,
+                   help="origin of the world viewer (https://host/world); with it the gallery "
+                        "can open a photograph's camera in the 3D scene")
     args = p.parse_args()
 
     manifests = [read(path) for path in args.captures]
@@ -89,6 +92,7 @@ def main() -> int:
             record = {
                 "id": photo["id"],
                 "cluster_id": build_key[:12],
+                "build_key": build_key,
                 "label": photo.get("label"),
                 "variant": photo.get("shot"),
                 "perspective": "orbit",
@@ -114,6 +118,19 @@ def main() -> int:
                     pass
             if capture.get("clearance") and capture["clearance"] != "planned":
                 record["clearance"] = capture["clearance"]
+            # The camera, two ways: relative facts for a caption ("42 m, 20 deg above,
+            # bearing 225") and the absolute pose so the world view can open at it. These
+            # are end-of-era worlds the community released; a pose gives nothing away.
+            if photo.get("camera"):
+                record["camera"] = photo["camera"]
+            if photo.get("pose"):
+                record["pose"] = {k: photo["pose"][k] for k in ("lens", "aim", "yaw", "pitch", "fov")
+                                  if photo["pose"].get(k) is not None}
+            # How the refine loop arrived at this frame, when it did: the planned shot it
+            # replaced and the moves taken (e.g. detail1 -> detail1~o45 -> detail1~o45~lo12).
+            if photo.get("refine"):
+                record["refine"] = {k: photo["refine"][k] for k in ("planned", "path", "rounds")
+                                    if photo["refine"].get(k) is not None}
             if build.get("pieces") is not None:
                 record["pieces"] = build["pieces"]
             if "aesthetic" in frame:
@@ -129,6 +146,8 @@ def main() -> int:
     document = {
         "generated": int(time.time()),
         "world": manifest.get("world"),
+        "era": manifest.get("era"),
+        "worldUrl": args.world_url.rstrip("/") if args.world_url else None,
         "n": len(images),
         "runs": 1,
         "joined": len(images),

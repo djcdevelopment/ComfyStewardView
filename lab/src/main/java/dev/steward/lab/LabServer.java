@@ -401,8 +401,12 @@ public final class LabServer {
         boolean rnd = !config.publicMode() && booleanQuery(ctx, "rnd");
         String presentation = rnd && "baseline".equalsIgnoreCase(ctx.queryParam("presentation"))
             ? "baseline" : "candidate";
+        // camera=true asks for the selection origin so a photograph's receipt camera can be placed
+        // exactly (scene.js setExactCamera). The era worlds are end-of-era public releases, so the
+        // origin is not a secret; the flag only keeps the default manifest as small as it was.
+        boolean exposeOrigin = booleanQuery(ctx, "camera");
         ScenePackage.Result scene = new ScenePackage(repository(ctx), mapper, config.publicMode() ? null : config.fidelityCandidates()).build(snapshot, lens, minX, maxX, minZ, maxZ,
-            biomeQuery(ctx), booleanQuery(ctx, "override"), config.releaseVersion(), presentation, rnd);
+            biomeQuery(ctx), booleanQuery(ctx, "override"), config.releaseVersion(), presentation, rnd, exposeOrigin);
         ctx.contentType(ScenePackage.CONTENT_TYPE);
         ctx.header("X-Steward-Scene-Pieces", Integer.toString(scene.pieces()));
         ctx.header("X-Steward-Scene-Instances", Integer.toString(scene.renderInstances()));

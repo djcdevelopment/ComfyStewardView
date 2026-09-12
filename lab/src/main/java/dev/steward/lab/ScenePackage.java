@@ -71,7 +71,7 @@ public final class ScenePackage {
             double minX, double maxX, double minZ, double maxZ,
             List<String> biomes, boolean forced, String release) throws Exception {
         return build(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes, forced,
-            release, "candidate", false, false, null);
+            release, "candidate", false, false, null, false);
     }
 
     /** Private Creator/DM package. Public scene v2 remains anonymous and origin-free. */
@@ -79,7 +79,7 @@ public final class ScenePackage {
             double minX, double maxX, double minZ, double maxZ,
             List<String> biomes, String release, String producerRevision) throws Exception {
         return build(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes, false,
-            release, "candidate", false, true, producerRevision);
+            release, "candidate", false, true, producerRevision, false);
     }
 
     Result build(long snapshotId, String lensId,
@@ -87,14 +87,24 @@ public final class ScenePackage {
             List<String> biomes, boolean forced, String release,
             String presentationVariant, boolean exposeRndCameraOrigin) throws Exception {
         return build(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes, forced,
-            release, presentationVariant, exposeRndCameraOrigin, false, null);
+            release, presentationVariant, exposeRndCameraOrigin, false, null, false);
+    }
+
+    /** As above, but also emit the selection origin for a caller that wants to place an exact
+     *  camera without switching to the R&D candidate representations. */
+    public Result build(long snapshotId, String lensId,
+            double minX, double maxX, double minZ, double maxZ,
+            List<String> biomes, boolean forced, String release,
+            String presentationVariant, boolean exposeRndCameraOrigin, boolean exposeCameraOrigin) throws Exception {
+        return build(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes, forced,
+            release, presentationVariant, exposeRndCameraOrigin, false, null, exposeCameraOrigin);
     }
 
     private Result build(long snapshotId, String lensId,
             double minX, double maxX, double minZ, double maxZ,
             List<String> biomes, boolean forced, String release,
             String presentationVariant, boolean exposeRndCameraOrigin,
-            boolean authoring, String producerRevision) throws Exception {
+            boolean authoring, String producerRevision, boolean exposeCameraOrigin) throws Exception {
         boolean baseline = "baseline".equals(presentationVariant);
         if (!baseline && !"candidate".equals(presentationVariant)) {
             throw new IllegalArgumentException("presentation must be candidate or baseline");
@@ -230,7 +240,7 @@ public final class ScenePackage {
             manifest.put("identityBytes", identityBytes.length);
             manifest.put("identitySha256", identitySha);
         }
-        if (exposeRndCameraOrigin) {
+        if (exposeRndCameraOrigin || exposeCameraOrigin) {
             ArrayNode cameraOrigin = manifest.putArray("rndCameraOrigin");
             cameraOrigin.add(origin[0]).add(origin[1]).add(origin[2]);
         }
