@@ -28,7 +28,7 @@ import numpy as np
 from PIL import Image
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 STYLE_ID = "muted-topographic-v1"
 BIOME_CLASSIFICATION = "comfy-era17-territories-v1"
 BIOME_DISPLAY_CLASSIFICATION = "plurality-lasso-r3-v1"
@@ -450,7 +450,7 @@ def render_context(
         height_image: Image.Image,
         forest_image: Image.Image,
         delta_sum: np.ndarray,
-        paint_sum: np.ndarray) -> tuple[Image.Image, Image.Image, dict[str, int]]:
+        paint_sum: np.ndarray) -> tuple[Image.Image, Image.Image, dict[str, int], np.ndarray]:
     base_height = decode_height(height_image)
     final_height = resize_float(base_height, DETAIL_SIZE, Image.Resampling.BILINEAR)
     # A 6 m display cell covers 36 one-metre terrain vertices. Untouched
@@ -537,7 +537,7 @@ def render_context(
         "paintedPixels": int(np.count_nonzero(total_paint > 0.001)),
         "heightEditedPixels": int(np.count_nonzero(np.abs(delta_sum) > 0.0001)),
     }
-    return detail, Image.fromarray(topographic_rgba, mode="RGBA"), stats
+    return detail, Image.fromarray(topographic_rgba, mode="RGBA"), stats, final_height
 
 
 def save_png_atomic(image: Image.Image, path: Path) -> None:
@@ -569,6 +569,33 @@ def variant_record(identifier: str, path: Path, size: int, pixel_meters: float) 
         "width": size,
         "height": size,
         "displayPixelMeters": pixel_meters,
+        "sha256": sha256_file(path),
+        "bytes": path.stat().st_size,
+    }
+
+
+def save_heightfield_atomic(height: np.ndarray, path: Path) -> None:
+    """Write the final edited elevation as deterministic little-endian uint16 tiles.
+
+    The file remains a flat row-major array so it can be memory mapped cheaply. The
+    manifest supplies the 256 px logical tile size used by range/crop readers.
+    """
+    encoded = np.rint(np.clip(height, 0.0, 511.9921875) * 128.0).astype("<u2")
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    encoded.tofile(temporary)
+    os.replace(temporary, path)
+
+
+def heightfield_record(path: Path) -> dict[str, object]:
+    return {
+        "file": path.name,
+        "width": DETAIL_SIZE,
+        "height": DETAIL_SIZE,
+        "tileSize": 256,
+        "pixelMeters": DETAIL_PIXEL_METERS,
+        "encoding": "uint16-le",
+        "metersPerUnit": 1.0 / 128.0,
+        "offsetMeters": 0.0,
         "sha256": sha256_file(path),
         "bytes": path.stat().st_size,
     }
@@ -634,7 +661,7 @@ def main() -> int:
             f"Decoded {edit_stats['compilerPayloadCount']:,} terrain compilers, "
             f"{edit_stats['heightRecordCount']:,} height and "
             f"{edit_stats['paintRecordCount']:,} paint records", flush=True)
-        detail, topographic_detail, render_stats = render_context(
+        detail, topographic_detail, render_stats, final_height = render_context(
             map_image, height_image, forest_image, delta_sum, paint_sum)
         overview = detail.resize((TEXTURE_SIZE, TEXTURE_SIZE), Image.Resampling.LANCZOS)
         topographic_overview = topographic_detail.resize(
@@ -650,12 +677,14 @@ def main() -> int:
         topographic_overview_path = output_dir / "topographic-overview.png"
         biome_mask_path = output_dir / "biome-mask.png"
         biome_display_mask_path = output_dir / "biome-display-mask.png"
+        heightfield_path = output_dir / "terrain-height.r16"
         save_png_atomic(detail, detail_path)
         save_png_atomic(overview, overview_path)
         save_png_atomic(topographic_detail, topographic_detail_path)
         save_png_atomic(topographic_overview, topographic_overview_path)
         save_indexed_png_atomic(biome_mask, biome_mask_path)
         save_indexed_png_atomic(biome_display_mask, biome_display_mask_path)
+        save_heightfield_atomic(final_height, heightfield_path)
 
         source_hashes = {
             "worldFile": {"file": world_file.name, "sha256": sha256_file(world_file)},
@@ -690,6 +719,7 @@ def main() -> int:
                 variant_record("biome-mask", biome_mask_path, TEXTURE_SIZE, SOURCE_PIXEL_METERS),
                 variant_record("biome-display-mask", biome_display_mask_path, TEXTURE_SIZE, SOURCE_PIXEL_METERS),
             ],
+            "heightfield": heightfield_record(heightfield_path),
             "biomes": {
                 "classification": BIOME_CLASSIFICATION,
                 "maskVariant": "biome-mask",

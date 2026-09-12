@@ -10,6 +10,7 @@ const pilotOnly = process.argv.includes('--pilot-only');
 const includeLarge = process.argv.includes('--large');
 const includeFidelity = process.argv.includes('--fidelity');
 const includeMixed = process.argv.includes('--mixed');
+const includeEra12 = process.argv.includes('--era12');
 const startupLimit = Number(process.env.SCENE_STARTUP_LIMIT_MS || 2000);
 const largeStartupLimit = Number(process.env.SCENE_LARGE_STARTUP_LIMIT_MS || 10000);
 const p95Limit = Number(process.env.SCENE_FRAME_P95_LIMIT_MS || 20);
@@ -33,7 +34,11 @@ const cases = [
       biomes:'meadows',override:true,scope:'world-biome'} }] : []),
   ...(includeMixed ? [{ name:'mixed-user-scope-18843', pieces:18843, minimumGroups:10, large:true,
     query:{snapshot:107,lens:'build-density',minX:-3128.071439644744,maxX:-1920.0844678891362,
-      minZ:1488.4434962007863,maxZ:2968.2389431801175,override:true,capture:1} }] : [])
+      minZ:1488.4434962007863,maxZ:2968.2389431801175,override:true,capture:1} }] : []),
+  ...(includeEra12 ? [{ name:'era12-user-build-673', pieces:673, expectedUnresolvedCompounds:2,
+    query:{snapshot:1006,lens:'build-density',minX:985.3031616210938,maxX:1040.9097900390625,
+      minZ:5025.17138671875,maxZ:5083.59619140625,era:'era12',
+      build:'4055dbf57d33e8e8e898eb85bcb01cc8bb42b4cf2763100aee966d2d62077e2a'} }] : [])
 ];
 
 class CdpClient {
@@ -224,7 +229,11 @@ try {
     if (receipt.exact !== true) failures.push('scene is not exact');
     if (receipt.scopeKind !== (sceneCase.scopeKind || 'area')) failures.push(`scope kind ${receipt.scopeKind}`);
     if (receipt.forced !== Boolean(sceneCase.query.override)) failures.push(`forced receipt ${receipt.forced}`);
-    if (receipt.schema !== 'steward-scene-browser/v2') failures.push(`browser schema ${receipt.schema}`);
+    if (receipt.schema !== 'steward-scene-browser/v3' || receipt.packageVersion !== 3) {
+      failures.push(`browser/package schema ${receipt.schema}/${receipt.packageVersion}`);
+    }
+    if (!['detail','standard','overview'].includes(receipt.lod?.name)) failures.push('adaptive LOD receipt is missing');
+    if (!receipt.terrain || !['selection-grid','none'].includes(receipt.terrain.fallback)) failures.push('terrain receipt is missing');
     if (!(receipt.renderInstances >= receipt.pieces)) failures.push('render instance count is below exact membership');
     if (receipt.instanceBytes !== receipt.renderInstances * 80) failures.push('instance byte count mismatch');
     if (!/^[0-9a-f]{64}$/.test(receipt.instanceSha256 || '')) failures.push('instance checksum is missing');

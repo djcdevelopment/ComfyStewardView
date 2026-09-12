@@ -410,8 +410,22 @@ public final class LabServer {
         // exactly (scene.js setExactCamera). The era worlds are end-of-era public releases, so the
         // origin is not a secret; the flag only keeps the default manifest as small as it was.
         boolean exposeOrigin = booleanQuery(ctx, "camera");
-        ScenePackage.Result scene = new ScenePackage(repository(ctx), mapper, config.publicMode() ? null : config.fidelityCandidates()).build(snapshot, lens, minX, maxX, minZ, maxZ,
-            biomeQuery(ctx), booleanQuery(ctx, "override"), config.releaseVersion(), presentation, rnd, exposeOrigin);
+        ScenePackage builder = new ScenePackage(repository(ctx), mapper,
+            config.publicMode() ? null : config.fidelityCandidates());
+        int format = (int) longQuery(ctx, "format", false, 2);
+        ScenePackage.Result scene;
+        if (format == 3) {
+            EraCatalog.Era selected = era(ctx);
+            TerrainContext selectedTerrain = selected == null ? terrainContext : selected.context();
+            scene = builder.buildV3(snapshot, lens, minX, maxX, minZ, maxZ,
+                biomeQuery(ctx), booleanQuery(ctx, "override"), config.releaseVersion(),
+                presentation, rnd, exposeOrigin, selectedTerrain);
+        } else if (format == 2) {
+            scene = builder.build(snapshot, lens, minX, maxX, minZ, maxZ,
+                biomeQuery(ctx), booleanQuery(ctx, "override"), config.releaseVersion(), presentation, rnd, exposeOrigin);
+        } else {
+            throw new IllegalArgumentException("format must be 2 or 3");
+        }
         ctx.contentType(ScenePackage.CONTENT_TYPE);
         ctx.header("X-Steward-Scene-Pieces", Integer.toString(scene.pieces()));
         ctx.header("X-Steward-Scene-Instances", Integer.toString(scene.renderInstances()));

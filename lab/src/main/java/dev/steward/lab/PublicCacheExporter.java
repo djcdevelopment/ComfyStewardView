@@ -30,8 +30,9 @@ import java.util.UUID;
 
 /** Builds the smallest self-contained DuckDB needed by the public Build density experience. */
 public final class PublicCacheExporter {
-    static final int SCHEMA_VERSION = 4;
+    static final int SCHEMA_VERSION = 5;
     static final int SPATIAL_SCHEMA_VERSION = 5;
+    static final int LEGACY_TERRAIN_SCHEMA_VERSION = 4;
 
     private PublicCacheExporter() {}
 
@@ -134,20 +135,23 @@ public final class PublicCacheExporter {
                 "prefab_hash INTEGER PRIMARY KEY, prefab_name VARCHAR NOT NULL, family VARCHAR NOT NULL, " +
                 "geometry_source VARCHAR NOT NULL, extent_x DOUBLE NOT NULL, extent_y DOUBLE NOT NULL, " +
                 "extent_z DOUBLE NOT NULL, center_x DOUBLE NOT NULL, center_y DOUBLE NOT NULL, " +
-                "center_z DOUBLE NOT NULL)");
+                "center_z DOUBLE NOT NULL, primitive_kind VARCHAR NOT NULL, surface_class VARCHAR NOT NULL, " +
+                "confidence VARCHAR NOT NULL)");
             insertCatalog(connection, catalog);
             statement.execute("CREATE TABLE public_cache.prefab_representation (" +
                 "prefab_hash INTEGER PRIMARY KEY, prefab_name VARCHAR NOT NULL, semantic_class VARCHAR NOT NULL, " +
                 "strategy VARCHAR NOT NULL, authority VARCHAR NOT NULL, default_visible BOOLEAN NOT NULL, " +
                 "marker_axis DOUBLE NOT NULL, primitive_count INTEGER NOT NULL, animation_axis VARCHAR, " +
                 "animation_pivot_x DOUBLE NOT NULL, animation_pivot_y DOUBLE NOT NULL, " +
-                "animation_pivot_z DOUBLE NOT NULL)");
+                "animation_pivot_z DOUBLE NOT NULL, template VARCHAR NOT NULL, " +
+                "surface_class VARCHAR NOT NULL, confidence VARCHAR NOT NULL)");
             statement.execute("CREATE TABLE public_cache.prefab_representation_primitive (" +
                 "prefab_hash INTEGER NOT NULL, ordinal INTEGER NOT NULL, animated BOOLEAN NOT NULL, " +
                 "m00 DOUBLE NOT NULL, m01 DOUBLE NOT NULL, m02 DOUBLE NOT NULL, m03 DOUBLE NOT NULL, " +
                 "m10 DOUBLE NOT NULL, m11 DOUBLE NOT NULL, m12 DOUBLE NOT NULL, m13 DOUBLE NOT NULL, " +
                 "m20 DOUBLE NOT NULL, m21 DOUBLE NOT NULL, m22 DOUBLE NOT NULL, m23 DOUBLE NOT NULL, " +
                 "m30 DOUBLE NOT NULL, m31 DOUBLE NOT NULL, m32 DOUBLE NOT NULL, m33 DOUBLE NOT NULL, " +
+                "primitive_kind VARCHAR NOT NULL, " +
                 "PRIMARY KEY (prefab_hash, ordinal))");
             insertRepresentations(connection, representations);
             statement.execute("CREATE TABLE public_cache.zdo AS SELECT " +
@@ -300,7 +304,8 @@ public final class PublicCacheExporter {
                     extents[0] + extents[1] + extents[2] <= 0) {
                 throw new IllegalArgumentException("Invalid extents for " + name);
             }
-            result.add(new Geometry(hash, name, family, source, extents, center));
+            result.add(new Geometry(hash, name, family, source, extents, center,
+                geometryPrimitive(family), geometrySurface(family), geometryConfidence(source)));
         }
         if (result.size() == 0) throw new IllegalArgumentException("Piece geometry catalog has no pieces");
         return result;
@@ -308,7 +313,7 @@ public final class PublicCacheExporter {
 
     private static void insertCatalog(Connection connection, GeometryCatalog catalog) throws Exception {
         try (PreparedStatement insert = connection.prepareStatement(
-                "INSERT INTO public_cache.prefab_geometry VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                "INSERT INTO public_cache.prefab_geometry VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             for (Geometry geometry : catalog.rows) {
                 insert.setInt(1, geometry.hash);
                 insert.setString(2, geometry.name);
@@ -320,6 +325,9 @@ public final class PublicCacheExporter {
                 insert.setDouble(8, geometry.center[0]);
                 insert.setDouble(9, geometry.center[1]);
                 insert.setDouble(10, geometry.center[2]);
+                insert.setString(11, geometry.primitiveKind);
+                insert.setString(12, geometry.surfaceClass);
+                insert.setString(13, geometry.confidence);
                 insert.addBatch();
             }
             insert.executeBatch();
@@ -328,8 +336,16 @@ public final class PublicCacheExporter {
 
     private static RepresentationCatalog readRepresentations(Path path, ObjectMapper mapper) throws Exception {
         JsonNode root = mapper.readTree(path.toFile());
-        if (!"steward-prefab-representations/v1".equals(root.path("schema").asText())) {
+        if (!"steward-prefab-representations/v2".equals(root.path("schema").asText())) {
             throw new IllegalArgumentException("Unsupported prefab representation schema");
+        }
+        Set<String> vocabulary = new HashSet<>();
+        root.path("proceduralVocabulary").forEach(value -> vocabulary.add(value.asText()));
+        Set<String> expectedVocabulary = Set.of("box", "sloped-panel-26", "sloped-panel-45",
+            "triangular-prism", "stepped-stair", "cylinder-12", "arch-12", "ring-12",
+            "plane-double-sided");
+        if (!vocabulary.equals(expectedVocabulary)) {
+            throw new IllegalArgumentException("Prefab representation procedural vocabulary is incomplete");
         }
         JsonNode rows = root.path("representations");
         if (!rows.isArray() || rows.isEmpty()) {
@@ -390,7 +406,10 @@ public final class PublicCacheExporter {
                         Math.abs(matrix[11]) > 0.0001 || Math.abs(matrix[15] - 1) > 0.0001) {
                     throw new IllegalArgumentException("Primitive matrix is not affine: " + name);
                 }
-                primitives.add(new Primitive(ordinal++, primitive.path("animated").asBoolean(false), matrix));
+                String primitiveKind = primitive.path("kind").asText("box");
+                requirePrimitiveKind(primitiveKind, name);
+                primitives.add(new Primitive(ordinal++, primitive.path("animated").asBoolean(false), matrix,
+                    primitiveKind));
             }
             if (primitives.size() > 32) {
                 throw new IllegalArgumentException("Representation exceeds the 32-box cap: " + name);
@@ -407,8 +426,19 @@ public final class PublicCacheExporter {
             }
             double[] animationPivot = row.has("animationPivot")
                 ? vector(row, "animationPivot") : new double[3];
+            String template = row.path("template").asText("box");
+            requirePrimitiveKind(template, name);
+            String surfaceClass = row.path("surfaceClass").asText(
+                "context".equals(semanticClass) ? "context" : "structure");
+            String confidence = row.path("confidence").asText(
+                "runtime-compound".equals(strategy) ? "audited" : "metadata");
+            if (!surfaceClass.matches("[a-z][a-z0-9-]{0,31}") ||
+                    !Set.of("audited", "measured", "derived", "estimated", "metadata", "marker").contains(confidence)) {
+                throw new IllegalArgumentException("Invalid representation surface/confidence for " + name);
+            }
             result.add(new Representation(hash, name, semanticClass, strategy, authority,
-                defaultVisible, markerAxis, animationAxis, animationPivot, List.copyOf(primitives)));
+                defaultVisible, markerAxis, animationAxis, animationPivot, template, surfaceClass,
+                confidence, List.copyOf(primitives)));
         }
         return result;
     }
@@ -473,10 +503,10 @@ public final class PublicCacheExporter {
     private static void insertRepresentations(Connection connection,
             RepresentationCatalog catalog) throws Exception {
         try (PreparedStatement insert = connection.prepareStatement(
-                "INSERT INTO public_cache.prefab_representation VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                "INSERT INTO public_cache.prefab_representation VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
              PreparedStatement primitiveInsert = connection.prepareStatement(
                 "INSERT INTO public_cache.prefab_representation_primitive VALUES " +
-                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
             for (Representation row : catalog.rows) {
                 insert.setInt(1, row.hash);
                 insert.setString(2, row.name);
@@ -490,12 +520,16 @@ public final class PublicCacheExporter {
                 insert.setDouble(10, row.animationPivot[0]);
                 insert.setDouble(11, row.animationPivot[1]);
                 insert.setDouble(12, row.animationPivot[2]);
+                insert.setString(13, row.template);
+                insert.setString(14, row.surfaceClass);
+                insert.setString(15, row.confidence);
                 insert.addBatch();
                 for (Primitive primitive : row.primitives) {
                     primitiveInsert.setInt(1, row.hash);
                     primitiveInsert.setInt(2, primitive.ordinal);
                     primitiveInsert.setBoolean(3, primitive.animated);
                     for (int i = 0; i < 16; i++) primitiveInsert.setDouble(4 + i, primitive.matrix[i]);
+                    primitiveInsert.setString(20, primitive.kind);
                     primitiveInsert.addBatch();
                 }
             }
@@ -508,6 +542,42 @@ public final class PublicCacheExporter {
         String value = node.path(field).asText("").trim();
         if (value.isEmpty()) throw new IllegalArgumentException("Missing geometry field: " + field);
         return value;
+    }
+
+    private static void requirePrimitiveKind(String value, String name) {
+        if (!Set.of("box", "sloped-panel-26", "sloped-panel-45", "triangular-prism",
+                "stepped-stair", "cylinder-12", "arch-12", "ring-12", "plane-double-sided").contains(value)) {
+            throw new IllegalArgumentException("Invalid procedural primitive for " + name + ": " + value);
+        }
+    }
+
+    private static String geometryPrimitive(String family) {
+        return switch (family) {
+            case "roof" -> "sloped-panel-45";
+            case "stair" -> "stepped-stair";
+            case "pole", "light" -> "cylinder-12";
+            case "portal" -> "ring-12";
+            default -> "box";
+        };
+    }
+
+    private static String geometrySurface(String family) {
+        return switch (family) {
+            case "roof" -> "roofing";
+            case "floor", "wall", "beam", "pole", "fence", "stair", "door", "gate" -> "structure";
+            case "window" -> "glazing";
+            case "light" -> "emissive-fixture";
+            default -> "object";
+        };
+    }
+
+    private static String geometryConfidence(String source) {
+        return switch (source) {
+            case "mesh", "snap+mesh" -> "measured";
+            case "snap" -> "derived";
+            case "family_median" -> "estimated";
+            default -> "unknown";
+        };
     }
 
     private static double[] vector(JsonNode node, String field) {
@@ -560,12 +630,14 @@ public final class PublicCacheExporter {
     }
 
     private record Geometry(int hash, String name, String family, String source,
-            double[] extents, double[] center) {}
+            double[] extents, double[] center, String primitiveKind, String surfaceClass,
+            String confidence) {}
 
-    private record Primitive(int ordinal, boolean animated, double[] matrix) {}
+    private record Primitive(int ordinal, boolean animated, double[] matrix, String kind) {}
     private record Representation(int hash, String name, String semanticClass, String strategy,
             String authority, boolean defaultVisible, double markerAxis, String animationAxis,
-            double[] animationPivot, List<Primitive> primitives) {}
+            double[] animationPivot, String template, String surfaceClass, String confidence,
+            List<Primitive> primitives) {}
 
     private static final class GeometryCatalog {
         private final java.util.List<Geometry> rows = new java.util.ArrayList<>();

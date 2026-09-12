@@ -156,6 +156,43 @@ class ScenePackageTest {
         assertEquals(1, counts.get(13L));
     }
 
+    @Test void versionThreeCarriesAnonymousExactMembershipAndAdaptiveContract() throws Exception {
+        Path cache = temporary.resolve("scene-v3.duckdb");
+        createFixture(cache, 0);
+        ObjectMapper mapper = new ObjectMapper();
+        ScenePackage scenes = new ScenePackage(
+            new SnapshotRepository(cache, new LensRegistry(), mapper, true), mapper);
+
+        ScenePackage.Result result = scenes.buildV3(7, "build-density", -10, 10, -10, 10,
+            List.of(), false, "test-release", "candidate", false, false, null);
+        ByteBuffer packageBytes = ByteBuffer.wrap(result.bytes()).order(ByteOrder.LITTLE_ENDIAN);
+        packageBytes.position(4);
+        assertEquals(3, packageBytes.getInt());
+        packageBytes.getInt();
+        int dataOffset = packageBytes.getInt();
+        ObjectNode manifest = result.manifest();
+        assertEquals("steward-zdo-scene/v3", manifest.path("schema").asText());
+        assertEquals("detail", manifest.path("lod").path("name").asText());
+        assertEquals(4, manifest.path("lod").path("msaaSamples").asInt());
+        assertEquals("selection-grid", manifest.path("terrain").path("fallback").asText());
+        assertEquals(result.renderInstances() * 4, manifest.path("pieceOrdinalBytes").asInt());
+        assertEquals(result.bytes().length,
+            dataOffset + manifest.path("instanceBytes").asInt() + manifest.path("pieceOrdinalBytes").asInt());
+        packageBytes.position(dataOffset + manifest.path("instanceBytes").asInt());
+        boolean[] represented = new boolean[result.pieces()];
+        for (int index = 0; index < result.renderInstances(); index++) {
+            int ordinal = packageBytes.getInt();
+            assertTrue(ordinal >= 0 && ordinal < represented.length);
+            represented[ordinal] = true;
+        }
+        for (boolean present : represented) assertTrue(present);
+        for (var group : manifest.withArray("drawGroups")) {
+            assertTrue(group.path("primitiveKind").isTextual());
+            assertTrue(group.path("confidence").isTextual());
+            assertTrue(group.path("surfaceClass").isTextual());
+        }
+    }
+
     @Test void privateSceneIncludesRealSignCategoryWithoutChangingPublicMembership() throws Exception {
         Path cache = temporary.resolve("sign-authoring.duckdb");
         createFixture(cache, 0);

@@ -40,7 +40,7 @@ class PublicCacheExporterTest {
 
         assertTrue(Files.isRegularFile(output));
         ObjectNode metadata = (ObjectNode) mapper.readTree(output.resolveSibling("public.duckdb.json").toFile());
-        assertEquals(4, metadata.path("schemaVersion").asInt());
+        assertEquals(5, metadata.path("schemaVersion").asInt());
         assertEquals(3, metadata.path("buildingCount").asInt());
         assertEquals(2, metadata.path("geometryCatalogRows").asInt());
         assertEquals(2, metadata.path("knownGeometryRows").asInt());
@@ -71,16 +71,35 @@ class PublicCacheExporterTest {
                 assertTrue(row.next());
                 assertEquals(2, row.getInt(1));
             }
-            try (var row = statement.executeQuery("SELECT strategy, default_visible FROM " +
+            try (var row = statement.executeQuery(
+                    "SELECT primitive_kind, surface_class, confidence FROM prefab_geometry WHERE prefab_hash=2")) {
+                assertTrue(row.next());
+                assertEquals("sloped-panel-45", row.getString(1));
+                assertEquals("roofing", row.getString(2));
+                assertEquals("estimated", row.getString(3));
+            }
+            try (var row = statement.executeQuery("SELECT strategy, default_visible, template, confidence FROM " +
                     "prefab_representation WHERE prefab_hash=1")) {
                 assertTrue(row.next());
                 assertEquals("runtime-compound", row.getString(1));
                 assertTrue(row.getBoolean(2));
+                assertEquals("box", row.getString(3));
+                assertEquals("audited", row.getString(4));
             }
         }
 
         TerrainContext context = TerrainContext.load(contextManifest, mapper, 107, "a".repeat(64), "ComfyEra17");
         repository.validatePublicRelease(context);
+        try (var connection = DriverManager.getConnection("jdbc:duckdb:" + output);
+             var statement = connection.createStatement()) {
+            statement.execute("UPDATE release_metadata SET schema_version=4");
+        }
+        repository.validatePublicRelease(context);
+        try (var connection = DriverManager.getConnection("jdbc:duckdb:" + output);
+             var statement = connection.createStatement()) {
+            statement.execute("UPDATE release_metadata SET schema_version=3");
+        }
+        assertThrows(IllegalArgumentException.class, () -> repository.validatePublicRelease(context));
     }
 
     @Test void rejectsNullableOrMismatchedGeometryInsteadOfPublishingIt() throws Exception {
@@ -214,16 +233,19 @@ class PublicCacheExporterTest {
     private Path representations() throws Exception {
         Path path = temporary.resolve("prefab-representations.json");
         ObjectNode root = mapper.createObjectNode();
-        root.put("schema", "steward-prefab-representations/v1").put("gameVersion", "test");
+        root.put("schema", "steward-prefab-representations/v2").put("gameVersion", "test");
+        for (String kind : new String[]{"box", "sloped-panel-26", "sloped-panel-45",
+                "triangular-prism", "stepped-stair", "cylinder-12", "arch-12", "ring-12",
+                "plane-double-sided"}) root.withArray("proceduralVocabulary").add(kind);
         ObjectNode compound = root.withArray("representations").addObject();
         compound.put("name", "piece_wall").put("hash", 1).put("semanticClass", "structure")
             .put("strategy", "runtime-compound").put("authority", "test-runtime")
             .put("defaultVisible", true).put("markerAxis", .35).put("animationAxis", "z");
         compound.putArray("animationPivot").add(0).add(1).add(0);
-        compound.withArray("primitives").addObject().put("animated", false).putArray("matrix")
+        compound.withArray("primitives").addObject().put("animated", false).put("kind", "box").putArray("matrix")
             .add(2).add(0).add(0).add(0).add(0).add(4).add(0).add(0)
             .add(0).add(0).add(.2).add(0).add(0).add(2).add(0).add(1);
-        compound.withArray("primitives").addObject().put("animated", true).putArray("matrix")
+        compound.withArray("primitives").addObject().put("animated", true).put("kind", "cylinder-12").putArray("matrix")
             .add(.2).add(0).add(0).add(0).add(0).add(.2).add(0).add(0)
             .add(0).add(0).add(3).add(0).add(0).add(4).add(0).add(1);
         ObjectNode context = root.withArray("representations").addObject();

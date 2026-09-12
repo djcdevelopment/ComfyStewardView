@@ -137,8 +137,15 @@ public final class SnapshotRepository {
                  "representation_rows, representation_primitive_rows " +
                  "FROM release_metadata");
              ResultSet row = statement.executeQuery()) {
-            if (!row.next() || row.getInt("schema_version") != (context == null
-                        ? PublicCacheExporter.SPATIAL_SCHEMA_VERSION : PublicCacheExporter.SCHEMA_VERSION) ||
+            if (!row.next()) {
+                throw new IllegalArgumentException("Public cache does not match the snapshot and terrain availability");
+            }
+            int schemaVersion = row.getInt("schema_version");
+            boolean supportedSchema = context == null
+                ? schemaVersion == PublicCacheExporter.SPATIAL_SCHEMA_VERSION
+                : schemaVersion == PublicCacheExporter.SCHEMA_VERSION ||
+                    schemaVersion == PublicCacheExporter.LEGACY_TERRAIN_SCHEMA_VERSION;
+            if (!supportedSchema ||
                     row.getLong("snapshot_id") != snapshot.snapshotId() ||
                     !snapshot.fileHash().equalsIgnoreCase(row.getString("snapshot_hash")) ||
                     (context != null && !context.snapshotHash().equalsIgnoreCase(snapshot.fileHash())) ||

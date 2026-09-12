@@ -72,12 +72,16 @@ Build the snapshot-only public cache from the production analytics cache and the
 The builder also binds the checked-in
 [`prefab-representations.json`](src/main/resources/prefab-representations.json) and
 [`prefab-promotion-receipt.json`](src/main/resources/prefab-promotion-receipt.json) by SHA-256.
-Public-cache schema v4 remains a derived lab artifact. It contains only the published BUILDING rows,
+Public-cache schema v5 remains a derived lab artifact. It contains only the published BUILDING rows,
 sanitized coordinates and rotations, biome membership, a 974-prefab geometry lexicon, and the small
 exact-name representation/primitive tables with source and promotion receipts. It does not alter the
 production `viewer` cache schema and does not expose creator/owner identity, flags, raw fields, source
 paths, gallery images, or probe output. Scene responses additionally withhold absolute Y and the exact
-3D world origin; only selection-local transforms leave the server.
+3D world origin; only selection-local transforms and a cropped elevation mesh leave the server.
+The browser opts into scene package v3 while v2 remains the default API compatibility format. V3 adds
+checksummed anonymous local piece ordinals, deterministic detail/standard/overview LOD, schema-5
+procedural primitive metadata, and schema-3 terrain crops. See
+[`ADR 0008`](docs/adr/0008-adaptive-cad-scene-v3.md) for the complete contract.
 
 Run that same profile locally with the prepared Era 17 cache and artifacts:
 
@@ -342,8 +346,8 @@ node tools\scene-browser-smoke.mjs http://127.0.0.1:8092/ data\scene-smoke --fid
 node tools\fidelity-browser-smoke.mjs http://127.0.0.1:8091/ data\fidelity-smoke
 ```
 
-The scene browser gate uses hardware WebGPU and checks the exact pilot and stress populations, package
-receipts, shaded/wireframe controls, Home/full-selection framing, hidden context, unresolved-compound
+The scene browser gate uses hardware WebGPU and checks the exact pilot and stress populations, v3
+membership/LOD/terrain receipts, shaded/wireframe controls, Home/full-selection framing, hidden context, unresolved-compound
 reporting, orbit-WASD and free-flight camera movement, GPU-authored PNG
 capture, browser/validation errors, device loss, startup under 2 seconds, and p95 frame time at or below
 20 ms. Passing `--large` also exercises the confirmed whole-Meadows scene against its explicit 10-second
@@ -356,6 +360,8 @@ X `-3128.0714..-1920.0845`, Z `1488.4435..2968.2389`; snapshot 107 contains 18,8
 pieces there. The private workbench gate proves the four-box candidate produces 867 render instances
 for fixture 713 while the baseline remains 864, matches the recorded camera, and exercises all comparison
 and isolation controls without changing the rejected public representation.
+`--era12` adds the pinned 673-piece user build (`4055dbf…77e2a`, snapshot 1006) when the server is
+started with the archive era catalog; it is the cross-era fidelity pilot for this v3 change.
 
 ## Why this remains a lab
 

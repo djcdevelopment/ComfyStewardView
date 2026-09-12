@@ -9,6 +9,8 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 
@@ -61,6 +63,29 @@ class TerrainContextTest {
         generation.put("sourceDbSha256", "b".repeat(64)); mapper.writeValue(manifest.toFile(), root);
         assertThrows(IllegalArgumentException.class,
             () -> TerrainContext.load(manifest, mapper, 107, "a".repeat(64), "ComfyEra17"));
+    }
+
+    @Test void schemaThreeSamplesChecksummedSelectionLocalElevation() throws Exception {
+        Path manifest = contextManifest("a".repeat(64));
+        ObjectNode root = (ObjectNode) mapper.readTree(manifest.toFile());
+        root.put("schemaVersion", 3);
+        root.putObject("bounds").put("minX", 0).put("maxX", 16).put("minZ", 0).put("maxZ", 16);
+        Path height = temp.resolve("terrain-height.r16");
+        ByteBuffer encoded = ByteBuffer.allocate(16 * 16 * 2).order(ByteOrder.LITTLE_ENDIAN);
+        for (int index = 0; index < 16 * 16; index++) encoded.putShort((short) 1280);
+        Files.write(height, encoded.array());
+        root.putObject("heightfield").put("file", height.getFileName().toString())
+            .put("width", 16).put("height", 16).put("tileSize", 16).put("pixelMeters", 1)
+            .put("encoding", "uint16-le").put("metersPerUnit", 1.0 / 128.0).put("offsetMeters", 0)
+            .put("sha256", sha256(height)).put("bytes", Files.size(height));
+        mapper.writeValue(manifest.toFile(), root);
+
+        TerrainContext context = TerrainContext.load(manifest, mapper, 107, "a".repeat(64), "ComfyEra17");
+        TerrainContext.TerrainPatch patch = context.sampleTerrain(0, 16, 0, 16, 8, 0, 8, 8, 64);
+        assertEquals(3, patch.columns());
+        assertEquals(3, patch.rows());
+        assertEquals(10, ByteBuffer.wrap(patch.vertices()).order(ByteOrder.LITTLE_ENDIAN).getFloat(4));
+        assertTrue(context.publicJson(mapper).path("heightfieldAvailable").asBoolean());
     }
 
     private Path contextManifest(String snapshotHash) throws Exception {

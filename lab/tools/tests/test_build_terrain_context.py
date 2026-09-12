@@ -154,6 +154,16 @@ class TerrainContextBuilderTest(unittest.TestCase):
         self.assertEqual(9, int(np.count_nonzero(expanded)))
         self.assertTrue(np.all(expanded[1:4, 1:4]))
 
+    def test_heightfield_is_little_endian_quantized_and_checksummed(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(builder, "DETAIL_SIZE", 2):
+            path = Path(directory) / "terrain-height.r16"
+            builder.save_heightfield_atomic(np.array([[0.0, 1.0], [10.5, 600.0]], dtype=np.float32), path)
+            self.assertEqual((0, 128, 1344, 65535), struct.unpack("<4H", path.read_bytes()))
+            record = builder.heightfield_record(path)
+            self.assertEqual("uint16-le", record["encoding"])
+            self.assertEqual(8, record["bytes"])
+            self.assertEqual(builder.sha256_file(path), record["sha256"])
+
 
 if __name__ == "__main__":
     unittest.main()

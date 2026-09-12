@@ -9,7 +9,7 @@ const blockedNode = document.getElementById('scene-blocked');
 const errors = [];
 let deviceLost = false;
 let receipt = {
-  schema:'steward-scene-browser/v2', status:'loading', pieces:0,
+  schema:'steward-scene-browser/v3', status:'loading', pieces:0,
   validationErrors:errors, deviceLost:false
 };
 
@@ -61,7 +61,7 @@ function sceneRequestUrl() {
   if (snapshot <= 0 || minX >= maxX || minZ >= maxZ) throw new Error('The shared scene bounds are invalid.');
   const query = new URLSearchParams({
     snapshot:String(snapshot), lens:params.get('lens') || 'build-density',
-    minX:String(minX), maxX:String(maxX), minZ:String(minZ), maxZ:String(maxZ)
+    minX:String(minX), maxX:String(maxX), minZ:String(minZ), maxZ:String(maxZ), format:'3'
   });
   if (params.get('biomes')) query.set('biomes', params.get('biomes'));
   for (const key of ['era','build']) if (params.get(key)) query.set(key, params.get(key));
@@ -112,7 +112,7 @@ async function fetchScene() {
   const version = header.getUint32(4, true);
   const manifestLength = header.getUint32(8, true);
   const instanceOffset = header.getUint32(12, true);
-  if (magic !== 'SV3D' || version !== 2) throw new Error('The scene package format is not supported.');
+  if (magic !== 'SV3D' || (version !== 2 && version !== 3)) throw new Error('The scene package format is not supported.');
   if (instanceOffset % 4 || instanceOffset < 16 + manifestLength || instanceOffset > buffer.byteLength) {
     throw new Error('The scene package offsets are invalid.');
   }
@@ -122,10 +122,18 @@ async function fetchScene() {
   } catch (_) {
     throw new Error('The scene manifest could not be decoded.');
   }
-  if (manifest.schema !== 'steward-zdo-scene/v2' || manifest.instanceStride !== 80 ||
-      manifest.instanceBytes !== buffer.byteLength - instanceOffset ||
+  if (manifest.schema !== `steward-zdo-scene/v${version}` || manifest.instanceStride !== 80 ||
       manifest.instanceBytes !== manifest.renderInstances * manifest.instanceStride) {
     throw new Error('The scene manifest does not match its exact instance payload.');
+  }
+  const sections = version === 3 ? manifest.sections : null;
+  const instanceSection = sections?.instances || { offset:0, bytes:manifest.instanceBytes };
+  if (instanceSection.offset !== 0 || instanceSection.bytes !== manifest.instanceBytes) {
+    throw new Error('The instance section is invalid.');
+  }
+  const payloadBytes = buffer.byteLength - instanceOffset;
+  if (version === 2 && payloadBytes !== manifest.instanceBytes) {
+    throw new Error('The v2 package contains an unexpected trailing section.');
   }
   let expectedStart = 0;
   let representedPieces = 0;
@@ -135,14 +143,42 @@ async function fetchScene() {
     expectedStart += group.count;
     representedPieces += group.pieces;
   }
-  if (expectedStart !== manifest.renderInstances || representedPieces !== manifest.pieces) {
+  if (expectedStart !== manifest.renderInstances || (version === 2 && representedPieces !== manifest.pieces)) {
     throw new Error('The draw ranges do not preserve exact piece membership.');
   }
   const bytes = new Uint8Array(buffer, instanceOffset, manifest.instanceBytes);
   const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
     .map(value => value.toString(16).padStart(2, '0')).join('');
   if (digest !== manifest.instanceSha256) throw new Error('The exact scene payload failed its checksum.');
-  return { manifest, bytes };
+  let terrainData = null;
+  if (version === 3) {
+    const ordinal = sections?.pieceOrdinals, terrain = sections?.terrainVertices;
+    if (!ordinal || ordinal.offset !== manifest.instanceBytes ||
+        ordinal.bytes !== manifest.pieceOrdinalBytes || ordinal.bytes !== manifest.renderInstances * 4 ||
+        !terrain || terrain.offset !== ordinal.offset + ordinal.bytes ||
+        terrain.bytes !== manifest.terrain.vertexBytes || terrain.offset + terrain.bytes !== payloadBytes) {
+      throw new Error('The v3 section directory is invalid.');
+    }
+    const ordinalBytes = new Uint8Array(buffer, instanceOffset + ordinal.offset, ordinal.bytes);
+    const ordinalDigest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', ordinalBytes))]
+      .map(value => value.toString(16).padStart(2, '0')).join('');
+    if (ordinalDigest !== manifest.pieceOrdinalSha256) throw new Error('The piece membership channel failed its checksum.');
+    const ordinals = new Uint32Array(ordinalBytes.buffer, ordinalBytes.byteOffset, ordinalBytes.byteLength / 4);
+    const represented = new Uint8Array(manifest.pieces);
+    for (const ordinalValue of ordinals) {
+      if (ordinalValue >= manifest.pieces) throw new Error('A render instance has an invalid local piece ordinal.');
+      represented[ordinalValue] = 1;
+    }
+    if (represented.some(value => value !== 1)) throw new Error('The scene does not represent every selected piece.');
+    const rawTerrain = new Uint8Array(buffer, instanceOffset + terrain.offset, terrain.bytes);
+    if (rawTerrain.byteLength) {
+      const terrainDigest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', rawTerrain))]
+        .map(value => value.toString(16).padStart(2, '0')).join('');
+      if (terrainDigest !== manifest.terrain.payloadSha256) throw new Error('The terrain crop failed its checksum.');
+      terrainData = new Float32Array(rawTerrain.buffer, rawTerrain.byteOffset, rawTerrain.byteLength / 4);
+    }
+  }
+  return { manifest, bytes, terrainData, version };
 }
 
 function multiply4(a, b) {
@@ -160,6 +196,13 @@ function perspective(fovy, aspect, near, far) {
   out[0] = f / aspect; out[5] = f;
   out[10] = far / (near - far); out[11] = -1;
   out[14] = far * near / (near - far);
+  return out;
+}
+
+function orthographic(left,right,bottom,top,near,far) {
+  const out=new Float32Array(16);
+  out[0]=2/(right-left);out[5]=2/(top-bottom);out[10]=1/(near-far);out[15]=1;
+  out[12]=(left+right)/(left-right);out[13]=(top+bottom)/(bottom-top);out[14]=near/(near-far);
   return out;
 }
 
@@ -233,10 +276,71 @@ function titleCase(value) {
   return value.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 }
 
+function proceduralMesh(kind) {
+  const vertices = [], triangles = [], lines = [];
+  const vertex = (point, normal) => { vertices.push(...point,...normal); return vertices.length / 6 - 1; };
+  const quad = (a,b,c,d) => {
+    const normal = norm(cross(sub(b,a),sub(c,a))), start = vertices.length / 6;
+    [a,b,c,d].forEach(point => vertex(point,normal));
+    triangles.push(start,start+1,start+2,start,start+2,start+3);
+    lines.push(start,start+1,start+1,start+2,start+2,start+3,start+3,start);
+  };
+  const tri = (a,b,c) => {
+    const normal = norm(cross(sub(b,a),sub(c,a))), start = vertices.length / 6;
+    [a,b,c].forEach(point => vertex(point,normal));
+    triangles.push(start,start+1,start+2); lines.push(start,start+1,start+1,start+2,start+2,start);
+  };
+  const box = (low=[-.5,-.5,-.5],high=[.5,.5,.5]) => {
+    const [x0,y0,z0]=low,[x1,y1,z1]=high;
+    quad([x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]);
+    quad([x1,y0,z0],[x0,y0,z0],[x0,y1,z0],[x1,y1,z0]);
+    quad([x1,y0,z1],[x1,y0,z0],[x1,y1,z0],[x1,y1,z1]);
+    quad([x0,y0,z0],[x0,y0,z1],[x0,y1,z1],[x0,y1,z0]);
+    quad([x0,y1,z1],[x1,y1,z1],[x1,y1,z0],[x0,y1,z0]);
+    quad([x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1]);
+  };
+  const wedge = shallow => {
+    const top = shallow ? .12 : .5, p0=[-.5,-.5],p1=[.5,-.5],p2=[.5,top];
+    tri([p0[0],p0[1],.5],[p1[0],p1[1],.5],[p2[0],p2[1],.5]);
+    tri([p2[0],p2[1],-.5],[p1[0],p1[1],-.5],[p0[0],p0[1],-.5]);
+    quad([p0[0],p0[1],-.5],[p1[0],p1[1],-.5],[p1[0],p1[1],.5],[p0[0],p0[1],.5]);
+    quad([p1[0],p1[1],-.5],[p2[0],p2[1],-.5],[p2[0],p2[1],.5],[p1[0],p1[1],.5]);
+    quad([p2[0],p2[1],-.5],[p0[0],p0[1],-.5],[p0[0],p0[1],.5],[p2[0],p2[1],.5]);
+  };
+  const cylinder = () => {
+    const sides=12;
+    for(let i=0;i<sides;i++){
+      const a=i*Math.PI*2/sides,b=(i+1)*Math.PI*2/sides;
+      const p0=[Math.cos(a)*.5,-.5,Math.sin(a)*.5],p1=[Math.cos(b)*.5,-.5,Math.sin(b)*.5];
+      const p2=[p1[0],.5,p1[2]],p3=[p0[0],.5,p0[2]];
+      quad(p0,p1,p2,p3); tri([0,.5,0],p3,p2); tri([0,-.5,0],p1,p0);
+    }
+  };
+  const ring = (arch=false) => {
+    const sides=arch?12:16, start=arch?0:-Math.PI, span=arch?Math.PI:Math.PI*2;
+    for(let i=0;i<sides;i++){
+      const a=start+i*span/sides,b=start+(i+1)*span/sides;
+      const point=(angle,r,z)=>[Math.cos(angle)*r,Math.sin(angle)*r,z];
+      const ao=point(a,.5,.12),bo=point(b,.5,.12),ai=point(a,.31,.12),bi=point(b,.31,.12);
+      const aob=point(a,.5,-.12),bob=point(b,.5,-.12),aib=point(a,.31,-.12),bib=point(b,.31,-.12);
+      quad(ao,bo,bi,ai); quad(bob,aob,aib,bib); quad(aob,bob,bo,ao); quad(bib,aib,ai,bi);
+    }
+  };
+  if (kind === 'sloped-panel-26') wedge(true);
+  else if (kind === 'sloped-panel-45' || kind === 'triangular-prism') wedge(false);
+  else if (kind === 'cylinder-12') cylinder();
+  else if (kind === 'ring-12') ring(false);
+  else if (kind === 'arch-12') ring(true);
+  else if (kind === 'stepped-stair') for(let i=0;i<5;i++) box([-.5+i*.2,-.5,-.5],[ -.3+i*.2,-.3+i*.2,.5]);
+  else if (kind === 'plane-double-sided') { quad([-.5,0,-.5],[.5,0,-.5],[.5,0,.5],[-.5,0,.5]); quad([-.5,0,.5],[.5,0,.5],[.5,0,-.5],[-.5,0,-.5]); }
+  else box();
+  return { vertices:new Float32Array(vertices), triangles:new Uint16Array(triangles), lines:new Uint16Array(lines) };
+}
+
 async function main() {
   if (!navigator.gpu) throw new Error('WebGPU is unavailable. Use a current hardware-accelerated browser.');
   await resolveSharedBounds();
-  const { manifest, bytes:instanceData } = await fetchScene();
+  const { manifest, bytes:instanceData, terrainData, version:sceneVersion } = await fetchScene();
   const radius = Math.max(Number(manifest.radiusM) || 1, 1);
   const homeTarget = Array.isArray(manifest.home?.target) && manifest.home.target.length === 3 &&
       manifest.home.target.every(Number.isFinite) ? [...manifest.home.target] : [0,0,0];
@@ -267,7 +371,8 @@ async function main() {
   const context = canvas.getContext('webgpu');
   if (!context) throw new Error('The browser has WebGPU but could not create a canvas context.');
   const format = navigator.gpu.getPreferredCanvasFormat();
-  let depthTexture;
+  const sampleCount = manifest.lod?.msaaSamples === 4 ? 4 : 1;
+  let depthTexture, multisampleTexture;
   function resize() {
     const ratio = Math.min(devicePixelRatio || 1, 2);
     const width = Math.max(1, Math.floor(stage.clientWidth * ratio));
@@ -275,46 +380,72 @@ async function main() {
     if (canvas.width === width && canvas.height === height) return false;
     canvas.width = width; canvas.height = height;
     context.configure({ device, format, alphaMode:'opaque' });
-    depthTexture?.destroy();
-    depthTexture = device.createTexture({ size:[width,height], format:'depth24plus', usage:GPUTextureUsage.RENDER_ATTACHMENT });
+    depthTexture?.destroy(); multisampleTexture?.destroy();
+    depthTexture = device.createTexture({ size:[width,height], sampleCount, format:'depth24plus', usage:GPUTextureUsage.RENDER_ATTACHMENT });
+    multisampleTexture = sampleCount > 1 ? device.createTexture({ size:[width,height], sampleCount,
+      format, usage:GPUTextureUsage.RENDER_ATTACHMENT }) : null;
     return true;
   }
 
-  const solidVertices = new Float32Array([
-    -.5,-.5,.5,0,0,1, .5,-.5,.5,0,0,1, .5,.5,.5,0,0,1, -.5,.5,.5,0,0,1,
-    .5,-.5,-.5,0,0,-1, -.5,-.5,-.5,0,0,-1, -.5,.5,-.5,0,0,-1, .5,.5,-.5,0,0,-1,
-    .5,-.5,.5,1,0,0, .5,-.5,-.5,1,0,0, .5,.5,-.5,1,0,0, .5,.5,.5,1,0,0,
-    -.5,-.5,-.5,-1,0,0, -.5,-.5,.5,-1,0,0, -.5,.5,.5,-1,0,0, -.5,.5,-.5,-1,0,0,
-    -.5,.5,.5,0,1,0, .5,.5,.5,0,1,0, .5,.5,-.5,0,1,0, -.5,.5,-.5,0,1,0,
-    -.5,-.5,-.5,0,-1,0, .5,-.5,-.5,0,-1,0, .5,-.5,.5,0,-1,0, -.5,-.5,.5,0,-1,0
-  ]);
-  const solidIndices = new Uint16Array([
-    0,1,2,0,2,3,4,5,6,4,6,7,8,9,10,8,10,11,12,13,14,12,14,15,
-    16,17,18,16,18,19,20,21,22,20,22,23
-  ]);
-  const lineVertices = new Float32Array([
-    -.5,-.5,-.5, -.5,-.5,.5, -.5,.5,-.5, -.5,.5,.5,
-    .5,-.5,-.5, .5,-.5,.5, .5,.5,-.5, .5,.5,.5
-  ]);
-  const lineIndices = new Uint16Array([0,1,0,2,0,4,1,3,1,5,2,3,2,6,3,7,4,5,4,6,5,7,6,7]);
   const grid = gridVertices(manifest, manifest.home);
-  const solidVB = gpuBuffer(device, solidVertices, GPUBufferUsage.VERTEX, 'solid cube');
-  const solidIB = gpuBuffer(device, solidIndices, GPUBufferUsage.INDEX, 'solid indices');
-  const lineVB = gpuBuffer(device, lineVertices, GPUBufferUsage.VERTEX, 'wire cube');
-  const lineIB = gpuBuffer(device, lineIndices, GPUBufferUsage.INDEX, 'wire indices');
   const gridVB = gpuBuffer(device, grid.values, GPUBufferUsage.VERTEX, 'selection-local grid');
   const instanceBuffer = gpuBuffer(device, instanceData, GPUBufferUsage.VERTEX, 'exact ZDO instances');
-  const cameraBuffer = device.createBuffer({ size:64, usage:GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const meshBuffers = new Map();
+  for (const kind of new Set((manifest.drawGroups || []).map(group => group.primitiveKind || 'box'))) {
+    const mesh = proceduralMesh(kind);
+    meshBuffers.set(kind, { ...mesh,
+      vertexBuffer:gpuBuffer(device,mesh.vertices,GPUBufferUsage.VERTEX,`${kind} vertices`),
+      triangleBuffer:gpuBuffer(device,mesh.triangles,GPUBufferUsage.INDEX,`${kind} triangles`),
+      lineBuffer:gpuBuffer(device,mesh.lines,GPUBufferUsage.INDEX,`${kind} CAD edges`) });
+  }
+  let terrainVB=null, terrainIB=null, terrainIndexCount=0, waterVB=null, waterIB=null;
+  if (terrainData && manifest.terrain?.available) {
+    const terrainValues = new Float32Array(terrainData.length / 3 * 7);
+    const sea = Number(manifest.terrain.seaLevelLocalY);
+    for(let source=0,target=0;source<terrainData.length;source+=3,target+=7){
+      const x=terrainData[source],y=terrainData[source+1],z=terrainData[source+2];
+      const water=y<sea, contour=Math.abs(y/10-Math.round(y/10))<.045;
+      const color=water?[.12,.25,.34,1]:contour?[.31,.34,.32,1]:[.43,.45,.41,1];
+      terrainValues.set([x,y,z,...color],target);
+    }
+    const columns=manifest.terrain.columns,rows=manifest.terrain.rows, indices=[];
+    for(let row=0;row<rows-1;row++) for(let column=0;column<columns-1;column++){
+      const a=row*columns+column,b=a+1,c=a+columns,d=c+1;
+      indices.push(a,c,b,b,c,d);
+    }
+    const terrainIndices=new Uint32Array(indices); terrainIndexCount=terrainIndices.length;
+    terrainVB=gpuBuffer(device,terrainValues,GPUBufferUsage.VERTEX,'cropped terrain vertices');
+    terrainIB=gpuBuffer(device,terrainIndices,GPUBufferUsage.INDEX,'cropped terrain indices');
+    const halfX=manifest.dimensionsM[0]/2,halfZ=manifest.dimensionsM[2]/2;
+    const waterValues=new Float32Array([
+      -halfX,sea,-halfZ,.10,.29,.42,.42, halfX,sea,-halfZ,.10,.29,.42,.42,
+      halfX,sea,halfZ,.10,.29,.42,.42, -halfX,sea,halfZ,.10,.29,.42,.42]);
+    waterVB=gpuBuffer(device,waterValues,GPUBufferUsage.VERTEX,'water plane');
+    waterIB=gpuBuffer(device,new Uint16Array([0,1,2,0,2,3]),GPUBufferUsage.INDEX,'water indices');
+  }
+  const shadowMapSize = Number(manifest.lod?.shadowMapSize) || 0;
+  const shadowTexture = device.createTexture({ size:[Math.max(1,shadowMapSize),Math.max(1,shadowMapSize)],
+    format:'depth32float', usage:GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+  const shadowSampler = device.createSampler({ compare:'less', magFilter:'linear', minFilter:'linear' });
+  const cameraBuffer = device.createBuffer({ size:128, usage:GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const lightRadius=Math.max(radius,homeRadius)*1.08;
+  const lightViewProjection=multiply4(
+    orthographic(-lightRadius,lightRadius,-lightRadius,lightRadius,.1,lightRadius*5),
+    lookAt([lightRadius*1.4,lightRadius*2.2,lightRadius], [0,0,0], [0,1,0]));
 
   const shader = device.createShaderModule({ code:`
-    struct Camera { viewProjection:mat4x4<f32> }
+    struct Camera { viewProjection:mat4x4<f32>, lightViewProjection:mat4x4<f32> }
     @group(0) @binding(0) var<uniform> camera:Camera;
+    @group(0) @binding(1) var shadowTexture:texture_depth_2d;
+    @group(0) @binding(2) var shadowSampler:sampler_comparison;
     struct SolidIn {
       @location(0) position:vec3f, @location(1) normal:vec3f,
       @location(2) m0:vec4f, @location(3) m1:vec4f,
       @location(4) m2:vec4f, @location(5) m3:vec4f, @location(6) color:vec4f
     }
-    struct SolidOut { @builtin(position) position:vec4f, @location(0) color:vec4f }
+    struct SolidOut { @builtin(position) position:vec4f, @location(0) color:vec4f,
+      @location(1) lightPosition:vec4f }
+    fn linearToSrgb(value:vec3f)->vec3f { return pow(max(value,vec3f(0)),vec3f(1.0/2.2)); }
     @vertex fn solidVS(input:SolidIn)->SolidOut {
       let world=input.m0*input.position.x+input.m1*input.position.y+input.m2*input.position.z+input.m3;
       let direction=input.m0.xyz*input.normal.x+input.m1.xyz*input.normal.y+input.m2.xyz*input.normal.z;
@@ -322,9 +453,25 @@ async function main() {
       let diffuse=0.28+0.72*max(dot(normal,vec3f(-.4629,.8230,.3292)),0);
       let horizon=0.9+0.1*max(normal.y,0);
       var out:SolidOut; out.position=camera.viewProjection*world;
-      out.color=vec4f(input.color.rgb*diffuse*horizon,1); return out;
+      let linearColor=pow(input.color.rgb,vec3f(2.2));
+      out.color=vec4f(linearToSrgb(linearColor*diffuse*horizon),1);
+      out.lightPosition=camera.lightViewProjection*world; return out;
     }
-    @fragment fn solidFS(input:SolidOut)->@location(0) vec4f { return input.color; }
+    @fragment fn solidFS(input:SolidOut)->@location(0) vec4f {
+      let projected=input.lightPosition.xyz/input.lightPosition.w;
+      let uv=vec2f(projected.x*.5+.5,projected.y*-.5+.5);
+      let inMap=all(uv>=vec2f(0))&&all(uv<=vec2f(1))&&projected.z>=0&&projected.z<=1;
+      let shadowValue=textureSampleCompare(shadowTexture,shadowSampler,uv,projected.z-.0015);
+      let visibility=${shadowMapSize > 0 ? 'select(1.0,0.58,inMap && shadowValue<.5)' : '1.0'};
+      return vec4f(input.color.rgb*visibility,input.color.a);
+    }
+    struct ShadowIn { @location(0) position:vec3f,
+      @location(2) m0:vec4f, @location(3) m1:vec4f,
+      @location(4) m2:vec4f, @location(5) m3:vec4f }
+    @vertex fn shadowVS(input:ShadowIn)->@builtin(position) vec4f {
+      let world=input.m0*input.position.x+input.m1*input.position.y+input.m2*input.position.z+input.m3;
+      return camera.lightViewProjection*world;
+    }
     struct LineIn { @location(0) position:vec3f,
       @location(2) m0:vec4f, @location(3) m1:vec4f,
       @location(4) m2:vec4f, @location(5) m3:vec4f, @location(6) color:vec4f }
@@ -348,21 +495,34 @@ async function main() {
     {shaderLocation:4,offset:32,format:'float32x4'}, {shaderLocation:5,offset:48,format:'float32x4'},
     {shaderLocation:6,offset:64,format:'float32x4'}
   ]};
-  const bindLayout = device.createBindGroupLayout({ entries:[{
-    binding:0, visibility:GPUShaderStage.VERTEX, buffer:{type:'uniform'}
-  }]});
+  const bindLayout = device.createBindGroupLayout({ entries:[
+    {binding:0,visibility:GPUShaderStage.VERTEX,buffer:{type:'uniform'}},
+    {binding:1,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'depth'}},
+    {binding:2,visibility:GPUShaderStage.FRAGMENT,sampler:{type:'comparison'}}
+  ]});
   const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts:[bindLayout] });
+  const shadowBindLayout = device.createBindGroupLayout({entries:[
+    {binding:0,visibility:GPUShaderStage.VERTEX,buffer:{type:'uniform'}}]});
+  const shadowPipelineLayout = device.createPipelineLayout({bindGroupLayouts:[shadowBindLayout]});
   const depthStencil = { format:'depth24plus', depthWriteEnabled:true, depthCompare:'less' };
   const solidPipeline = device.createRenderPipeline({ layout:pipelineLayout,
     vertex:{ module:shader, entryPoint:'solidVS', buffers:[{arrayStride:24,attributes:[
       {shaderLocation:0,offset:0,format:'float32x3'}, {shaderLocation:1,offset:12,format:'float32x3'}
     ]},instanceLayout]}, fragment:{module:shader,entryPoint:'solidFS',targets:[{format}]},
-    primitive:{topology:'triangle-list',cullMode:'back'}, depthStencil });
+    primitive:{topology:'triangle-list',cullMode:'back'}, depthStencil, multisample:{count:sampleCount} });
   const linePipeline = device.createRenderPipeline({ layout:pipelineLayout,
-    vertex:{ module:shader, entryPoint:'lineVS', buffers:[{arrayStride:12,attributes:[
+    vertex:{ module:shader, entryPoint:'lineVS', buffers:[{arrayStride:24,attributes:[
       {shaderLocation:0,offset:0,format:'float32x3'}
     ]},instanceLayout]}, fragment:{module:shader,entryPoint:'lineFS',targets:[{format}]},
-    primitive:{topology:'line-list'}, depthStencil });
+    primitive:{topology:'line-list'},
+    depthStencil:{format:'depth24plus',depthWriteEnabled:false,depthCompare:'less-equal'},
+    multisample:{count:sampleCount} });
+  const shadowPipeline = shadowMapSize ? device.createRenderPipeline({ layout:shadowPipelineLayout,
+    vertex:{module:shader,entryPoint:'shadowVS',buffers:[{arrayStride:24,attributes:[
+      {shaderLocation:0,offset:0,format:'float32x3'}]},instanceLayout]},
+    primitive:{topology:'triangle-list',cullMode:'back'},
+    depthStencil:{format:'depth32float',depthWriteEnabled:true,depthCompare:'less',depthBias:2,depthBiasSlopeScale:2}
+  }) : null;
   const gridPipeline = device.createRenderPipeline({ layout:pipelineLayout,
     vertex:{ module:shader, entryPoint:'gridVS', buffers:[{arrayStride:28,attributes:[
       {shaderLocation:0,offset:0,format:'float32x3'}, {shaderLocation:1,offset:12,format:'float32x4'}
@@ -370,8 +530,30 @@ async function main() {
       color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha',operation:'add'},
       alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}
     }}]}, primitive:{topology:'line-list'},
-    depthStencil:{format:'depth24plus',depthWriteEnabled:false,depthCompare:'less-equal'} });
-  const bindGroup = device.createBindGroup({ layout:bindLayout, entries:[{binding:0,resource:{buffer:cameraBuffer}}] });
+    depthStencil:{format:'depth24plus',depthWriteEnabled:false,depthCompare:'less-equal'},
+    multisample:{count:sampleCount} });
+  const terrainPipeline = device.createRenderPipeline({ layout:pipelineLayout,
+    vertex:{module:shader,entryPoint:'gridVS',buffers:[{arrayStride:28,attributes:[
+      {shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x4'}]}]},
+    fragment:{module:shader,entryPoint:'gridFS',targets:[{format}]}, primitive:{topology:'triangle-list'},
+    depthStencil, multisample:{count:sampleCount} });
+  const waterPipeline = device.createRenderPipeline({ layout:pipelineLayout,
+    vertex:{module:shader,entryPoint:'gridVS',buffers:[{arrayStride:28,attributes:[
+      {shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x4'}]}]},
+    fragment:{module:shader,entryPoint:'gridFS',targets:[{format,blend:{
+      color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha',operation:'add'},
+      alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha',operation:'add'}}}]},
+    primitive:{topology:'triangle-list'},
+    depthStencil:{format:'depth24plus',depthWriteEnabled:false,depthCompare:'less-equal'},
+    multisample:{count:sampleCount} });
+  const bindGroup = device.createBindGroup({ layout:bindLayout, entries:[
+    {binding:0,resource:{buffer:cameraBuffer}},
+    {binding:1,resource:shadowTexture.createView()},
+    {binding:2,resource:shadowSampler}
+  ]});
+  const shadowBindGroup = device.createBindGroup({layout:shadowBindLayout,
+    entries:[{binding:0,resource:{buffer:cameraBuffer}}]});
+  device.queue.writeBuffer(cameraBuffer,64,lightViewProjection);
 
   let surface = 'shaded', cameraMode = 'orbit';
   let orbitYaw = -35 * Math.PI / 180, orbitPitch = -28 * Math.PI / 180;
@@ -384,16 +566,6 @@ async function main() {
   const keys = new Set();
   let lastViewProjection = new Float32Array(16);
   let lastDrawCalls = 0;
-
-  function visibleRanges() {
-    const ranges = [];
-    for (let index = 0; index < manifest.drawGroups.length; index++) if (visible.has(index)) {
-      const group = manifest.drawGroups[index], previous = ranges.at(-1);
-      if (previous && previous.start + previous.count === group.start) previous.count += group.count;
-      else ranges.push({start:group.start,count:group.count});
-    }
-    return ranges;
-  }
 
   function forwardVector() {
     return [Math.sin(flyYaw)*Math.cos(flyPitch), Math.sin(flyPitch), Math.cos(flyYaw)*Math.cos(flyPitch)];
@@ -417,20 +589,52 @@ async function main() {
     lastViewProjection = cameraMatrix();
     device.queue.writeBuffer(cameraBuffer, 0, lastViewProjection);
     const encoder = device.createCommandEncoder();
+    if(shadowPipeline){
+      const shadowPass=encoder.beginRenderPass({colorAttachments:[],depthStencilAttachment:{
+        view:shadowTexture.createView(),depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'}});
+      shadowPass.setPipeline(shadowPipeline);shadowPass.setBindGroup(0,shadowBindGroup);
+      shadowPass.setVertexBuffer(1,instanceBuffer);
+      for(let index=0;index<manifest.drawGroups.length;index++) if(visible.has(index)){
+        const group=manifest.drawGroups[index],mesh=meshBuffers.get(group.primitiveKind || 'box');
+        shadowPass.setVertexBuffer(0,mesh.vertexBuffer);shadowPass.setIndexBuffer(mesh.triangleBuffer,'uint16');
+        shadowPass.drawIndexed(mesh.triangles.length,group.count,0,0,group.start);
+      }
+      shadowPass.end();
+    }
+    const swapView = context.getCurrentTexture().createView();
     const pass = encoder.beginRenderPass({ colorAttachments:[{
-      view:context.getCurrentTexture().createView(), clearValue:{r:.028,g:.04,b:.052,a:1},
+      view:multisampleTexture?.createView() || swapView,
+      resolveTarget:multisampleTexture ? swapView : undefined,
+      clearValue:{r:.028,g:.04,b:.052,a:1},
       loadOp:'clear', storeOp:'store'
     }], depthStencilAttachment:{view:depthTexture.createView(),depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'} });
-    pass.setPipeline(gridPipeline); pass.setBindGroup(0,bindGroup); pass.setVertexBuffer(0,gridVB);
-    pass.draw(grid.values.length / 7);
+    pass.setBindGroup(0,bindGroup);
+    let draws=0;
+    if(terrainVB){
+      pass.setPipeline(terrainPipeline);pass.setVertexBuffer(0,terrainVB);pass.setIndexBuffer(terrainIB,'uint32');
+      pass.drawIndexed(terrainIndexCount);draws++;
+      pass.setPipeline(waterPipeline);pass.setVertexBuffer(0,waterVB);pass.setIndexBuffer(waterIB,'uint16');
+      pass.drawIndexed(6);draws++;
+    }else{
+      pass.setPipeline(gridPipeline);pass.setVertexBuffer(0,gridVB);pass.draw(grid.values.length / 7);draws++;
+    }
     const wire = surface === 'wire';
-    pass.setPipeline(wire ? linePipeline : solidPipeline); pass.setBindGroup(0,bindGroup);
-    pass.setVertexBuffer(0,wire ? lineVB : solidVB); pass.setVertexBuffer(1,instanceBuffer);
-    pass.setIndexBuffer(wire ? lineIB : solidIB,'uint16');
-    const ranges = visibleRanges();
-    for (const range of ranges) pass.drawIndexed(wire ? 24 : 36, range.count, 0, 0, range.start);
+    pass.setVertexBuffer(1,instanceBuffer);
+    for(let index=0;index<manifest.drawGroups.length;index++) if(visible.has(index)){
+      const group=manifest.drawGroups[index],mesh=meshBuffers.get(group.primitiveKind || 'box');
+      if(!wire){
+        pass.setPipeline(solidPipeline);pass.setVertexBuffer(0,mesh.vertexBuffer);
+        pass.setIndexBuffer(mesh.triangleBuffer,'uint16');
+        pass.drawIndexed(mesh.triangles.length,group.count,0,0,group.start);draws++;
+      }
+      if(wire || manifest.lod?.cadEdges !== false){
+        pass.setPipeline(linePipeline);pass.setVertexBuffer(0,mesh.vertexBuffer);
+        pass.setIndexBuffer(mesh.lineBuffer,'uint16');
+        pass.drawIndexed(mesh.lines.length,group.count,0,0,group.start);draws++;
+      }
+    }
     pass.end(); device.queue.submit([encoder.finish()]);
-    lastDrawCalls = ranges.length + 1;
+    lastDrawCalls = draws;
   }
 
   async function captureImage() {
@@ -593,7 +797,8 @@ async function main() {
       render(); publish({ drawCalls:lastDrawCalls, visibleGroups:visible.size });
     });
     const swatch = document.createElement('i'); swatch.style.setProperty('--swatch',family.color);
-    const name = document.createElement('span'); name.textContent = titleCase(family.name);
+    const name = document.createElement('span');
+    name.textContent = family.confidence ? `${titleCase(family.name)} · ${titleCase(family.confidence)}` : titleCase(family.name);
     const count = document.createElement('small');
     count.textContent = family.count === family.pieces
       ? fmt(family.pieces) : `${fmt(family.pieces)} / ${fmt(family.count)}`;
@@ -687,6 +892,9 @@ async function main() {
   document.getElementById('metric-instances').textContent = fmt(manifest.renderInstances);
   document.getElementById('metric-dimensions').textContent = manifest.dimensionsM.map(value => `${fmt(value)} m`).join(' × ');
   document.getElementById('metric-bytes').textContent = fmtBytes(manifest.instanceBytes);
+  document.getElementById('metric-lod').textContent = `${titleCase(manifest.lod?.name || 'legacy')} · ${sampleCount}× MSAA`;
+  document.getElementById('metric-terrain').textContent = manifest.terrain?.available
+    ? `${manifest.terrain.spacingM.toFixed(1)} m · ${titleCase(manifest.terrain.provenance)}` : 'Grid fallback';
   document.getElementById('metric-adapter').textContent = adapterInfo.description || adapterInfo.device || adapterInfo.vendor || adapterClass;
   const coverage = manifest.representationQuality;
   document.getElementById('quality-copy').textContent =
@@ -702,9 +910,9 @@ async function main() {
     .map(value => value.toString(16).padStart(2,'0')).join('');
   document.documentElement.dataset.sceneReady = 'true';
   document.getElementById('save-image').disabled = false;
-  statusNode.textContent = `${adapterClass.toUpperCase()} · ${startup.toFixed(1)} MS START · GRID ${grid.step} M`;
+  statusNode.textContent = `${adapterClass.toUpperCase()} · ${startup.toFixed(1)} MS START · ${(manifest.lod?.name || 'legacy').toUpperCase()}`;
   publish({
-    status:'ready', schema:'steward-scene-browser/v2', pieces:manifest.pieces,
+    status:'ready', schema:'steward-scene-browser/v3', packageVersion:sceneVersion, pieces:manifest.pieces,
     renderInstances:manifest.renderInstances,
     triangles:manifest.triangles, exact:manifest.exact, forced:manifest.forced,
     presentationVariant:manifest.presentationVariant, rndCandidate:manifest.rndCandidate === true,
@@ -714,9 +922,10 @@ async function main() {
     canvas:[canvas.width,canvas.height], startupMs:+startup.toFixed(2),
     drawCalls:lastDrawCalls, visibleGroups:visible.size, surface, cameraMode, pointerLocked:false,
     cameraFrame, fullRadiusM:radius, home:manifest.home,
-    viewMatrixSha256:viewHash, representationQuality:coverage,
+    viewMatrixSha256:viewHash, representationQuality:coverage, lod:manifest.lod, terrain:manifest.terrain,
     drawGroups:manifest.drawGroups.map(group => ({name:group.name, pieces:group.pieces,
-      instances:group.count, defaultVisible:group.defaultVisible})),
+      instances:group.count, defaultVisible:group.defaultVisible, primitiveKind:group.primitiveKind,
+      confidence:group.confidence, surfaceClass:group.surfaceClass})),
     scopeKind:worldwideBiome ? 'world-biome' : 'area'
   });
 

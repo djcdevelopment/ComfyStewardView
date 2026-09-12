@@ -16,16 +16,18 @@
 
     <dl class="scene-metrics">
       <div><dt>Pieces</dt><dd id="metric-pieces">—</dd></div>
-      <div><dt>Render boxes</dt><dd id="metric-instances">—</dd></div>
+      <div><dt>Render primitives</dt><dd id="metric-instances">—</dd></div>
       <div><dt>Envelope</dt><dd id="metric-dimensions">—</dd></div>
       <div><dt>GPU buffer</dt><dd id="metric-bytes">—</dd></div>
+      <div><dt>Detail level</dt><dd id="metric-lod">—</dd></div>
+      <div><dt>Terrain</dt><dd id="metric-terrain">—</dd></div>
       <div><dt>Adapter</dt><dd id="metric-adapter">—</dd></div>
     </dl>
 
     <section class="control-section">
       <h2>Surface</h2>
       <div class="button-row" id="surface-controls">
-        <button type="button" data-surface="shaded" aria-pressed="true">Shaded</button>
+        <button type="button" data-surface="shaded" aria-pressed="true">CAD shaded</button>
         <button type="button" data-surface="wire" aria-pressed="false">Wireframe</button>
       </div>
     </section>
@@ -62,7 +64,7 @@
     <section class="quality-card" aria-labelledby="quality-title">
       <h2 id="quality-title">Geometry receipt</h2>
       <p id="quality-copy">Loading coverage…</p>
-      <p>Each piece is labeled honestly as a measured envelope, runtime compound proxy, estimated envelope, or pivot marker. Context is optional. These are bounds—not game meshes, terrain, collision, or interiors.</p>
+      <p>Each piece is labeled as measured, derived, estimated, audited compound, or marker geometry. Shapes are redistribution-safe procedural CAD proxies; terrain provenance and resolution are reported separately.</p>
     </section>
 
     <output id="scene-status" class="scene-status">REQUESTING SCENE…</output>

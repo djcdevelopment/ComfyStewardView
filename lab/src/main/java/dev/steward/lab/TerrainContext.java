@@ -10,8 +10,13 @@ import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -25,7 +30,7 @@ import java.util.Set;
 
 /** A validated, snapshot-bound set of static terrain context images. */
 public final class TerrainContext {
-    public static final int SCHEMA_VERSION = 2;
+    public static final int SCHEMA_VERSION = 3;
     public static final String KIND = "steward-terrain-context";
 
     private final Path manifestPath;
@@ -42,11 +47,13 @@ public final class TerrainContext {
     private final BiomeConfiguration biomes;
     private final String generationMode;
     private final String gameVersion;
+    private final Heightfield heightfield;
 
     private TerrainContext(Path manifestPath, long snapshotId, String snapshotHash,
             String worldId, String worldName, String style, Bounds bounds,
             double defaultOpacity, double detailZoom, double closeDetailFactor,
-            Map<String, Variant> variants, BiomeConfiguration biomes, String generationMode, String gameVersion) {
+            Map<String, Variant> variants, BiomeConfiguration biomes, String generationMode, String gameVersion,
+            Heightfield heightfield) {
         this.manifestPath = manifestPath;
         this.snapshotId = snapshotId;
         this.snapshotHash = snapshotHash;
@@ -61,6 +68,7 @@ public final class TerrainContext {
         this.biomes = biomes;
         this.generationMode = generationMode;
         this.gameVersion = gameVersion;
+        this.heightfield = heightfield;
     }
 
     public static TerrainContext load(Path manifestPath, ObjectMapper mapper,
@@ -70,7 +78,8 @@ public final class TerrainContext {
             throw new IllegalArgumentException("Terrain context manifest not found: " + normalizedManifest);
         }
         JsonNode root = mapper.readTree(normalizedManifest.toFile());
-        if (root.path("schemaVersion").asInt(-1) != SCHEMA_VERSION ||
+        int schemaVersion = root.path("schemaVersion").asInt(-1);
+        if ((schemaVersion != 2 && schemaVersion != SCHEMA_VERSION) ||
                 !KIND.equals(root.path("kind").asText())) {
             throw new IllegalArgumentException("Unsupported terrain context manifest: " + normalizedManifest);
         }
@@ -111,6 +120,8 @@ public final class TerrainContext {
             throw new IllegalArgumentException("Terrain context requires overview and detail variants");
         }
         BiomeConfiguration biomes = BiomeConfiguration.parse(root.path("biomes"), variants);
+        Heightfield heightfield = schemaVersion >= 3
+            ? Heightfield.parse(rootPath, root.path("heightfield"), bounds) : null;
         String generationMode = "snapshot-matched", gameVersion = "";
         if (root.has("generation")) {
             JsonNode generation = root.path("generation");
@@ -121,7 +132,8 @@ public final class TerrainContext {
                 throw new IllegalArgumentException("Terrain generation receipt does not match this snapshot");
         }
         return new TerrainContext(normalizedManifest, snapshotId, snapshotHash, worldId,
-            worldName, style, bounds, defaultOpacity, detailZoom, closeDetailFactor, variants, biomes, generationMode, gameVersion);
+            worldName, style, bounds, defaultOpacity, detailZoom, closeDetailFactor, variants, biomes,
+            generationMode, gameVersion, heightfield);
     }
 
     public ObjectNode publicJson(ObjectMapper mapper) {
@@ -132,6 +144,11 @@ public final class TerrainContext {
         result.put("provenance", "current-client".equals(generationMode) ? "REGENERATED · GAME " + gameVersion : "SNAPSHOT-MATCHED");
         result.put("authoritative", !"current-client".equals(generationMode));
         result.put("generationMode", generationMode);
+        result.put("heightfieldAvailable", heightfield != null);
+        if (heightfield != null) {
+            result.put("heightfieldPixelMeters", heightfield.pixelMeters());
+            result.put("heightfieldVersion", heightfield.sha256().substring(0, 16));
+        }
         if (!gameVersion.isBlank()) result.put("gameVersion", gameVersion);
         result.put("snapshotId", snapshotId);
         result.put("worldId", worldId);
@@ -173,6 +190,34 @@ public final class TerrainContext {
     public double detailZoom() { return detailZoom; }
     public double closeDetailFactor() { return closeDetailFactor; }
     public Path manifestPath() { return manifestPath; }
+    public Heightfield heightfield() { return heightfield; }
+
+    /** Crop and bilinearly sample the public elevation into selection-local right-handed XYZ. */
+    public TerrainPatch sampleTerrain(double minX, double maxX, double minZ, double maxZ,
+            double originX, double originY, double originZ, double requestedSpacing, int maximumVertices)
+            throws IOException {
+        if (heightfield == null) return null;
+        double spacing = Math.max(0.25, requestedSpacing);
+        int columns = Math.max(2, (int) Math.ceil((maxX - minX) / spacing) + 1);
+        int rows = Math.max(2, (int) Math.ceil((maxZ - minZ) / spacing) + 1);
+        while ((long) columns * rows > maximumVertices) {
+            spacing *= 1.2;
+            columns = Math.max(2, (int) Math.ceil((maxX - minX) / spacing) + 1);
+            rows = Math.max(2, (int) Math.ceil((maxZ - minZ) / spacing) + 1);
+        }
+        ByteBuffer values = ByteBuffer.allocate(columns * rows * 12).order(ByteOrder.LITTLE_ENDIAN);
+        for (int row = 0; row < rows; row++) {
+            double worldZ = minZ + (maxZ - minZ) * row / (rows - 1.0);
+            for (int column = 0; column < columns; column++) {
+                double worldX = minX + (maxX - minX) * column / (columns - 1.0);
+                values.putFloat((float) -(worldX - originX));
+                values.putFloat((float) (heightfield.sample(worldX, worldZ, bounds) - originY));
+                values.putFloat((float) (worldZ - originZ));
+            }
+        }
+        return new TerrainPatch(columns, rows, spacing, values.array(), heightfield.sha256(),
+            "current-client".equals(generationMode) ? "current-client-regenerated" : "snapshot-matched");
+    }
 
     private List<Variant> orderedVariants() {
         List<Variant> result = new ArrayList<>();
@@ -302,6 +347,110 @@ public final class TerrainContext {
                 }
             }
         }
+    }
+
+    public record TerrainPatch(int columns, int rows, double spacingMeters, byte[] vertices,
+            String sourceSha256, String provenance) {}
+
+    /** Validated memory-mappable final elevation. Pixels are logical 256 px tiles in row-major order. */
+    public static final class Heightfield {
+        private final Path path;
+        private final int width;
+        private final int height;
+        private final int tileSize;
+        private final double pixelMeters;
+        private final double metersPerUnit;
+        private final double offsetMeters;
+        private final String sha256;
+        private final long bytes;
+        private volatile MappedByteBuffer mapped;
+
+        private Heightfield(Path path, int width, int height, int tileSize, double pixelMeters,
+                double metersPerUnit, double offsetMeters, String sha256, long bytes) {
+            this.path = path; this.width = width; this.height = height; this.tileSize = tileSize;
+            this.pixelMeters = pixelMeters; this.metersPerUnit = metersPerUnit;
+            this.offsetMeters = offsetMeters; this.sha256 = sha256; this.bytes = bytes;
+        }
+
+        private static Heightfield parse(Path root, JsonNode node, Bounds bounds) throws IOException {
+            if (!node.isObject()) throw new IllegalArgumentException("Terrain context heightfield is missing");
+            String file = requiredText(node, "file");
+            if (!file.matches("[A-Za-z0-9._-]+")) {
+                throw new IllegalArgumentException("Unsafe terrain heightfield filename: " + file);
+            }
+            Path path = root.resolve(file).normalize();
+            if (!path.getParent().equals(root) || !Files.isRegularFile(path)) {
+                throw new IllegalArgumentException("Terrain heightfield not found: " + path);
+            }
+            int width = node.path("width").asInt(0), height = node.path("height").asInt(0);
+            int tileSize = node.path("tileSize").asInt(0);
+            if (width < 2 || height < 2 || width > 8192 || height > 8192 ||
+                    tileSize < 16 || tileSize > 1024 || width % tileSize != 0 || height % tileSize != 0) {
+                throw new IllegalArgumentException("Terrain heightfield layout is invalid");
+            }
+            if (!"uint16-le".equals(node.path("encoding").asText())) {
+                throw new IllegalArgumentException("Terrain heightfield encoding is unsupported");
+            }
+            double pixelMeters = bounded(node.path("pixelMeters").asDouble(Double.NaN),
+                0.1, 1000, "heightfield.pixelMeters");
+            double expectedX = bounds.maxX() - bounds.minX(), expectedZ = bounds.maxZ() - bounds.minZ();
+            if (Math.abs(width * pixelMeters - expectedX) > pixelMeters ||
+                    Math.abs(height * pixelMeters - expectedZ) > pixelMeters) {
+                throw new IllegalArgumentException("Terrain heightfield does not cover manifest bounds");
+            }
+            double metersPerUnit = bounded(node.path("metersPerUnit").asDouble(Double.NaN),
+                0.000001, 100, "heightfield.metersPerUnit");
+            double offsetMeters = node.path("offsetMeters").asDouble(Double.NaN);
+            if (!Double.isFinite(offsetMeters)) throw new IllegalArgumentException("Terrain heightfield offset is invalid");
+            long bytes = Files.size(path), expectedBytes = (long) width * height * 2;
+            if (bytes != expectedBytes || node.path("bytes").asLong(-1) != bytes) {
+                throw new IllegalArgumentException("Terrain heightfield byte count is invalid");
+            }
+            String expectedHash = hash(node.path("sha256").asText(), "heightfield sha256");
+            if (!expectedHash.equals(TerrainContext.sha256(path))) {
+                throw new IllegalArgumentException("Terrain heightfield checksum does not match " + file);
+            }
+            return new Heightfield(path, width, height, tileSize, pixelMeters, metersPerUnit,
+                offsetMeters, expectedHash, bytes);
+        }
+
+        private MappedByteBuffer data() throws IOException {
+            MappedByteBuffer result = mapped;
+            if (result != null) return result;
+            synchronized (this) {
+                if (mapped == null) {
+                    try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
+                        mapped = channel.map(FileChannel.MapMode.READ_ONLY, 0, bytes);
+                        mapped.order(ByteOrder.LITTLE_ENDIAN);
+                    }
+                }
+                return mapped;
+            }
+        }
+
+        private double sample(double worldX, double worldZ, Bounds bounds) throws IOException {
+            double x = (worldX - bounds.minX()) / pixelMeters - 0.5;
+            double z = (bounds.maxZ() - worldZ) / pixelMeters - 0.5;
+            x = Math.max(0, Math.min(width - 1, x)); z = Math.max(0, Math.min(height - 1, z));
+            int x0 = (int) Math.floor(x), z0 = (int) Math.floor(z);
+            int x1 = Math.min(width - 1, x0 + 1), z1 = Math.min(height - 1, z0 + 1);
+            double tx = x - x0, tz = z - z0;
+            MappedByteBuffer values = data();
+            double a = decoded(values, z0 * width + x0), b = decoded(values, z0 * width + x1);
+            double c = decoded(values, z1 * width + x0), d = decoded(values, z1 * width + x1);
+            return (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * tz;
+        }
+
+        private double decoded(ByteBuffer values, int index) {
+            return Short.toUnsignedInt(values.getShort(index * 2)) * metersPerUnit + offsetMeters;
+        }
+
+        public Path path() { return path; }
+        public int width() { return width; }
+        public int height() { return height; }
+        public int tileSize() { return tileSize; }
+        public double pixelMeters() { return pixelMeters; }
+        public String sha256() { return sha256; }
     }
 
     public record BiomeConfiguration(String classification, String maskVariant, String displayMaskVariant,

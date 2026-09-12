@@ -1,7 +1,12 @@
 {
-  "schema": "steward-prefab-representations/v1",
+  "schema": "steward-prefab-representations/v2",
   "gameVersion": "0.221.12",
-  "policy": "Exact prefab names only. Context is hidden by default; compounds require a promoted runtime-renderer receipt.",
+  "policy": "Exact prefab names only. Procedural templates are catalog data, never runtime substring matches. Context is hidden by default; compounds require a promoted runtime-renderer receipt.",
+  "proceduralVocabulary": ["box", "sloped-panel-26", "sloped-panel-45", "triangular-prism", "stepped-stair", "cylinder-12", "arch-12", "ring-12", "plane-double-sided"],
+  "defaults": {
+    "structure": {"template": "box", "surfaceClass": "structure", "confidence": "metadata"},
+    "context": {"template": "box", "surfaceClass": "context", "confidence": "metadata"}
+  },
   "representations": [
     {
       "name": "windmill",
@@ -11,6 +16,9 @@
       "authority": "known-compound-awaiting-metric-promotion",
       "defaultVisible": true,
       "markerAxis": 0.35,
+      "template": "box",
+      "surfaceClass": "structure",
+      "confidence": "metadata",
       "primitives": []
     },
     { "name": "vines", "hash": -649881157, "semanticClass": "context", "strategy": "pivot-marker", "authority": "metadata-exact-name", "defaultVisible": false, "markerAxis": 0.22, "primitives": [] },

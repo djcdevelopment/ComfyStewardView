@@ -14,6 +14,7 @@ import java.security.MessageDigest;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -71,7 +72,7 @@ public final class ScenePackage {
             double minX, double maxX, double minZ, double maxZ,
             List<String> biomes, boolean forced, String release) throws Exception {
         return build(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes, forced,
-            release, "candidate", false, false, null, false);
+            release, "candidate", false, false, null, false, 2, null);
     }
 
     /** Private Creator/DM package. Public scene v2 remains anonymous and origin-free. */
@@ -79,7 +80,7 @@ public final class ScenePackage {
             double minX, double maxX, double minZ, double maxZ,
             List<String> biomes, String release, String producerRevision) throws Exception {
         return build(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes, false,
-            release, "candidate", false, true, producerRevision, false);
+            release, "candidate", false, true, producerRevision, false, 2, null);
     }
 
     Result build(long snapshotId, String lensId,
@@ -87,7 +88,7 @@ public final class ScenePackage {
             List<String> biomes, boolean forced, String release,
             String presentationVariant, boolean exposeRndCameraOrigin) throws Exception {
         return build(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes, forced,
-            release, presentationVariant, exposeRndCameraOrigin, false, null, false);
+            release, presentationVariant, exposeRndCameraOrigin, false, null, false, 2, null);
     }
 
     /** As above, but also emit the selection origin for a caller that wants to place an exact
@@ -97,14 +98,28 @@ public final class ScenePackage {
             List<String> biomes, boolean forced, String release,
             String presentationVariant, boolean exposeRndCameraOrigin, boolean exposeCameraOrigin) throws Exception {
         return build(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes, forced,
-            release, presentationVariant, exposeRndCameraOrigin, false, null, exposeCameraOrigin);
+            release, presentationVariant, exposeRndCameraOrigin, false, null, exposeCameraOrigin, 2, null);
+    }
+
+    /** Public scene v3 adds adaptive LOD, anonymous local piece ordinals, and cropped terrain. */
+    public Result buildV3(long snapshotId, String lensId,
+            double minX, double maxX, double minZ, double maxZ,
+            List<String> biomes, boolean forced, String release,
+            String presentationVariant, boolean exposeRndCameraOrigin, boolean exposeCameraOrigin,
+            TerrainContext terrainContext) throws Exception {
+        return build(snapshotId, lensId, minX, maxX, minZ, maxZ, biomes, forced,
+            release, presentationVariant, exposeRndCameraOrigin, false, null, exposeCameraOrigin,
+            3, terrainContext);
     }
 
     private Result build(long snapshotId, String lensId,
             double minX, double maxX, double minZ, double maxZ,
             List<String> biomes, boolean forced, String release,
             String presentationVariant, boolean exposeRndCameraOrigin,
-            boolean authoring, String producerRevision, boolean exposeCameraOrigin) throws Exception {
+            boolean authoring, String producerRevision, boolean exposeCameraOrigin,
+            int formatVersion, TerrainContext terrainContext) throws Exception {
+        if (formatVersion != 2 && formatVersion != 3) throw new IllegalArgumentException("Unsupported scene format");
+        boolean v3 = formatVersion == 3 && !authoring;
         boolean baseline = "baseline".equals(presentationVariant);
         if (!baseline && !"candidate".equals(presentationVariant)) {
             throw new IllegalArgumentException("presentation must be candidate or baseline");
@@ -144,12 +159,14 @@ public final class ScenePackage {
 
         long desiredInstances = 0;
         for (Piece piece : pieces) desiredInstances += desiredInstanceCount(piece, primitives, baseline);
+        LodProfile lod = v3 ? LodProfile.choose(pieceCount, desiredInstances) : LodProfile.legacy();
         boolean presentationCapped = desiredInstances > PRESENTATION_INSTANCE_LIMIT;
         Coverage coverage = new Coverage();
         List<Visual> visuals = new ArrayList<>((int) Math.min(
             presentationCapped ? pieces.size() : desiredInstances, PRESENTATION_INSTANCE_LIMIT));
-        for (Piece piece : pieces) visuals.addAll(visualize(
-            piece, primitives, presentationCapped, baseline, coverage));
+        for (Piece piece : pieces) visuals.addAll(v3
+            ? visualizeV3(piece, primitives, lod, baseline, coverage)
+            : visualize(piece, primitives, presentationCapped, baseline, coverage));
         if (visuals.isEmpty() || visuals.size() > PRESENTATION_INSTANCE_LIMIT) {
             throw new IllegalStateException("The scene presentation budget could not preserve exact membership");
         }
@@ -166,9 +183,13 @@ public final class ScenePackage {
         List<GroupBuilder> groups = groupVisuals(visuals);
         ByteBuffer instanceBuffer = ByteBuffer.allocate(visuals.size() * INSTANCE_STRIDE)
             .order(ByteOrder.LITTLE_ENDIAN);
-        ByteBuffer identityBuffer = authoring
+        ByteBuffer identityBuffer = authoring || v3
             ? ByteBuffer.allocate(visuals.size() * IDENTITY_STRIDE).order(ByteOrder.LITTLE_ENDIAN)
             : null;
+        Map<Long, Integer> localPieceOrdinals = new HashMap<>();
+        if (v3) for (int ordinal = 0; ordinal < pieces.size(); ordinal++) {
+            localPieceOrdinals.put(pieces.get(ordinal).zdoIndex, ordinal);
+        }
         double radius = 0;
         int start = 0;
         for (GroupBuilder group : groups) {
@@ -178,10 +199,10 @@ public final class ScenePackage {
                 putModel(instanceBuffer, mirrorX(visual.linear), localCenter);
                 for (float channel : hexColor(visual.color)) instanceBuffer.putFloat(channel);
                 if (identityBuffer != null) {
-                    if (visual.zdoIndex < 0 || visual.zdoIndex > 0xffff_ffffL) {
+                    if (authoring && (visual.zdoIndex < 0 || visual.zdoIndex > 0xffff_ffffL)) {
                         throw new IllegalStateException("Creator scene ZDO index exceeds uint32");
                     }
-                    identityBuffer.putInt((int) visual.zdoIndex);
+                    identityBuffer.putInt(authoring ? (int) visual.zdoIndex : localPieceOrdinals.get(visual.zdoIndex));
                 }
                 radius = Math.max(radius, length(localCenter) + visualRadius(visual.linear));
                 start++;
@@ -190,7 +211,7 @@ public final class ScenePackage {
         byte[] instanceBytes = instanceBuffer.array();
         byte[] identityBytes = identityBuffer == null ? new byte[0] : identityBuffer.array();
         String instanceSha = sha256(instanceBytes);
-        String identitySha = authoring ? sha256(identityBytes) : null;
+        String identitySha = identityBuffer == null ? null : sha256(identityBytes);
         ReleaseReceipt receipt = releaseReceipt();
         SnapshotRepository.Snapshot snapshot = authoring ? snapshots.requireSnapshot(snapshotId) : null;
         if (authoring && (snapshot.worldId() == null || snapshot.worldId().isBlank()
@@ -201,9 +222,15 @@ public final class ScenePackage {
             throw new IllegalStateException("Creator scene provenance is unavailable or inconsistent");
         }
         HomeFrame home = homeFrame(framingVisuals, bounds, origin, framingRadius);
+        TerrainContext.TerrainPatch terrain = v3 && terrainContext != null
+            ? terrainContext.sampleTerrain(minX, maxX, minZ, maxZ, origin[0], origin[1], origin[2],
+                lod.terrainSpacing, 65_536) : null;
+        byte[] terrainBytes = terrain == null ? new byte[0] : terrain.vertices();
+        String terrainSha = terrain == null ? "" : sha256(terrainBytes);
 
         ObjectNode manifest = mapper.createObjectNode();
-        manifest.put("schema", authoring ? "steward-zdo-authoring-scene/v1" : "steward-zdo-scene/v2");
+        manifest.put("schema", authoring ? "steward-zdo-authoring-scene/v1"
+            : v3 ? "steward-zdo-scene/v3" : "steward-zdo-scene/v2");
         manifest.put("snapshotId", snapshotId);
         manifest.put("snapshotHash", receipt.snapshotHash);
         manifest.put("release", release == null ? "" : release);
@@ -218,7 +245,10 @@ public final class ScenePackage {
         }
         manifest.put("pieces", pieces.size());
         manifest.put("renderInstances", visuals.size());
-        manifest.put("triangles", visuals.size() * 12L);
+        long triangleCount = v3
+            ? visuals.stream().mapToLong(visual -> primitiveTriangles(visual.primitiveKind)).sum()
+            : visuals.size() * 12L;
+        manifest.put("triangles", triangleCount);
         manifest.put("instanceStride", INSTANCE_STRIDE);
         manifest.put("instanceBytes", instanceBytes.length);
         manifest.put("instanceSha256", instanceSha);
@@ -239,6 +269,11 @@ public final class ScenePackage {
             manifest.put("identityCount", visuals.size());
             manifest.put("identityBytes", identityBytes.length);
             manifest.put("identitySha256", identitySha);
+        } else if (v3) {
+            manifest.put("pieceOrdinalStride", IDENTITY_STRIDE);
+            manifest.put("pieceOrdinalCount", visuals.size());
+            manifest.put("pieceOrdinalBytes", identityBytes.length);
+            manifest.put("pieceOrdinalSha256", identitySha);
         }
         if (exposeRndCameraOrigin || exposeCameraOrigin) {
             ArrayNode cameraOrigin = manifest.putArray("rndCameraOrigin");
@@ -284,6 +319,28 @@ public final class ScenePackage {
         presentation.put("capped", presentationCapped);
         presentation.put("membershipDropped", 0);
 
+        if (v3) {
+            ObjectNode lodNode = manifest.putObject("lod");
+            lodNode.put("name", lod.name);
+            lodNode.put("maximumPartsPerPiece", lod.maximumPartsPerPiece);
+            lodNode.put("requestedTerrainSpacingM", lod.terrainSpacing);
+            lodNode.put("msaaSamples", lod.msaaSamples);
+            lodNode.put("cadEdges", lod.cadEdges);
+            lodNode.put("shadowMapSize", lod.shadowMapSize);
+            ObjectNode terrainNode = manifest.putObject("terrain");
+            terrainNode.put("available", terrain != null);
+            terrainNode.put("fallback", terrain == null ? "selection-grid" : "none");
+            terrainNode.put("provenance", terrain == null ? "unavailable" : terrain.provenance());
+            terrainNode.put("sourceSha256", terrain == null ? "" : terrain.sourceSha256());
+            terrainNode.put("payloadSha256", terrainSha);
+            terrainNode.put("vertexStride", 12);
+            terrainNode.put("vertexBytes", terrainBytes.length);
+            terrainNode.put("columns", terrain == null ? 0 : terrain.columns());
+            terrainNode.put("rows", terrain == null ? 0 : terrain.rows());
+            terrainNode.put("spacingM", terrain == null ? 0 : terrain.spacingMeters());
+            terrainNode.put("seaLevelLocalY", round(30.0 - origin[1], 3));
+        }
+
         ArrayNode groupNodes = manifest.putArray("drawGroups");
         for (GroupBuilder group : groups) {
             ObjectNode node = groupNodes.addObject();
@@ -294,6 +351,12 @@ public final class ScenePackage {
             node.put("start", group.start);
             node.put("count", group.visuals.size());
             node.put("pieces", group.pieceIds.size());
+            if (v3) {
+                node.put("primitiveKind", group.primitiveKind);
+                node.put("lod", lod.name);
+                node.put("confidence", group.confidence);
+                node.put("surfaceClass", group.surfaceClass);
+            }
         }
         manifest.put("warmupFrames", 30);
         manifest.put("benchmarkFrames", 300);
@@ -301,23 +364,37 @@ public final class ScenePackage {
         byte[] manifestBytes = mapper.writeValueAsBytes(manifest);
         int headerBytes = authoring ? 20 : 16;
         int instanceOffset = align4(headerBytes + manifestBytes.length);
-        int identityOffset = authoring ? instanceOffset + instanceBytes.length : 0;
-        ByteBuffer result = ByteBuffer.allocate(instanceOffset + instanceBytes.length + identityBytes.length)
+        int identityOffset = identityBuffer == null ? 0 : instanceOffset + instanceBytes.length;
+        int terrainOffset = instanceOffset + instanceBytes.length + identityBytes.length;
+        if (v3) {
+            ObjectNode sections = manifest.putObject("sections");
+            sections.putObject("instances").put("offset", 0).put("bytes", instanceBytes.length);
+            sections.putObject("pieceOrdinals").put("offset", instanceBytes.length).put("bytes", identityBytes.length);
+            sections.putObject("terrainVertices").put("offset", instanceBytes.length + identityBytes.length)
+                .put("bytes", terrainBytes.length);
+            manifestBytes = mapper.writeValueAsBytes(manifest);
+            instanceOffset = align4(headerBytes + manifestBytes.length);
+            identityOffset = instanceOffset + instanceBytes.length;
+            terrainOffset = identityOffset + identityBytes.length;
+        }
+        ByteBuffer result = ByteBuffer.allocate(terrainOffset + terrainBytes.length)
             .order(ByteOrder.LITTLE_ENDIAN);
         result.put((authoring ? "SVCA" : "SV3D").getBytes(StandardCharsets.US_ASCII));
-        result.putInt(authoring ? 1 : 2);
+        result.putInt(authoring ? 1 : formatVersion);
         result.putInt(manifestBytes.length);
         result.putInt(instanceOffset);
         if (authoring) result.putInt(identityOffset);
         result.put(manifestBytes);
         while (result.position() < instanceOffset) result.put((byte) 0);
         result.put(instanceBytes);
-        if (authoring) result.put(identityBytes);
+        if (identityBuffer != null) result.put(identityBytes);
+        if (v3) result.put(terrainBytes);
         return new Result(result.array(), manifest, pieces.size(), visuals.size());
     }
 
     private List<Piece> query(long snapshotId, double minX, double maxX,
             double minZ, double maxZ, List<String> biomes, int limit, boolean authoring) throws SQLException {
+        boolean enrichedGeometry = hasCacheColumn("prefab_geometry", "primitive_kind");
         StringBuilder biomeSql = new StringBuilder();
         if (!biomes.isEmpty()) {
             biomeSql.append(" AND z.biome IN (");
@@ -330,6 +407,8 @@ public final class ScenePackage {
         String sql = "SELECT z.zdo_index, z.prefab_hash, z.prefab_name, z.x, z.y, z.z, " +
             "z.has_rot, z.rot_x, z.rot_y, z.rot_z, pg.family, pg.geometry_source, " +
             "pg.extent_x, pg.extent_y, pg.extent_z, pg.center_x, pg.center_y, pg.center_z, " +
+            (enrichedGeometry ? "pg.primitive_kind, pg.surface_class, pg.confidence, "
+                : "NULL AS primitive_kind, NULL AS surface_class, NULL AS confidence, ") +
             "pr.semantic_class, pr.strategy, pr.authority, pr.default_visible, pr.marker_axis, " +
             "pr.primitive_count, pr.animation_axis, pr.animation_pivot_x, " +
             "pr.animation_pivot_y, pr.animation_pivot_z FROM zdo z " +
@@ -355,18 +434,30 @@ public final class ScenePackage {
         return result;
     }
 
+    private boolean hasCacheColumn(String table, String column) throws SQLException {
+        try (Connection connection = snapshots.open();
+             PreparedStatement statement = connection.prepareStatement(
+                 "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = ? AND column_name = ?")) {
+            statement.setString(1, table); statement.setString(2, column);
+            try (ResultSet row = statement.executeQuery()) { return row.next() && row.getInt(1) > 0; }
+        }
+    }
+
     private Map<Integer, List<Primitive>> queryPrimitives() throws SQLException {
         Map<Integer, List<Primitive>> result = new HashMap<>();
         try (Connection connection = snapshots.open();
              PreparedStatement statement = connection.prepareStatement(
                  "SELECT * FROM prefab_representation_primitive ORDER BY prefab_hash, ordinal");
-             ResultSet rows = statement.executeQuery()) {
+            ResultSet rows = statement.executeQuery()) {
+            ResultSetMetaData metadata = rows.getMetaData();
+            boolean hasPrimitiveKind = hasColumn(metadata, "primitive_kind");
             while (rows.next()) {
                 double[] matrix = new double[16];
                 for (int i = 0; i < matrix.length; i++) matrix[i] = rows.getDouble(4 + i);
                 int hash = rows.getInt("prefab_hash");
                 result.computeIfAbsent(hash, ignored -> new ArrayList<>()).add(
-                    new Primitive(rows.getInt("ordinal"), rows.getBoolean("animated"), matrix));
+                    new Primitive(rows.getInt("ordinal"), rows.getBoolean("animated"), matrix,
+                        hasPrimitiveKind ? rows.getString("primitive_kind") : "box"));
             }
         }
         return result;
@@ -376,8 +467,8 @@ public final class ScenePackage {
         RndCandidate candidate = rndCandidates.get(piece.prefabHash);
         if (candidate == null || !candidate.prefabName.equals(piece.prefabName)) return piece;
         return new Piece(piece.zdoIndex, piece.prefabHash, piece.prefabName, piece.family,
-            piece.geometrySource, piece.extents, piece.centerOffset, piece.rotation, piece.pivot,
-            candidate.representation);
+            piece.geometrySource, piece.extents, piece.centerOffset, piece.primitiveKind,
+            piece.surfaceClass, piece.confidence, piece.rotation, piece.pivot, candidate.representation);
     }
 
     private static Map<Integer, RndCandidate> readRndCandidates(Path path, ObjectMapper mapper) throws Exception {
@@ -414,7 +505,8 @@ public final class ScenePackage {
                         Math.abs(matrix[11]) > .0001 || Math.abs(matrix[15] - 1) > .0001) {
                     throw new IllegalArgumentException("Local renderer candidate matrix is not affine: " + name);
                 }
-                boxes.add(new Primitive(ordinal++, box.path("animated").asBoolean(false), matrix));
+                boxes.add(new Primitive(ordinal++, box.path("animated").asBoolean(false), matrix,
+                    box.path("kind").asText("box")));
             }
             if (boxes.isEmpty() || boxes.size() > 32 || row.path("boxCount").asInt() != boxes.size()) {
                 throw new IllegalArgumentException("Local renderer candidate must contain 1..32 audited boxes: " + name);
@@ -508,7 +600,8 @@ public final class ScenePackage {
         }
         return new Piece(row.getLong("zdo_index"), row.getInt("prefab_hash"),
             row.getString("prefab_name"), family == null ? "unknown" : family,
-            geometrySource, extents, centerOffset, rotation, pivot, representation);
+            geometrySource, extents, centerOffset, row.getString("primitive_kind"),
+            row.getString("surface_class"), row.getString("confidence"), rotation, pivot, representation);
     }
 
     private static long desiredInstanceCount(Piece piece, Map<Integer, List<Primitive>> primitives,
@@ -554,6 +647,34 @@ public final class ScenePackage {
         return envelope(piece, representation, coverage);
     }
 
+    private static List<Visual> visualizeV3(Piece piece, Map<Integer, List<Primitive>> primitives,
+            LodProfile lod, boolean baseline, Coverage coverage) {
+        if (baseline) return envelope(piece, piece.representation, coverage);
+        Representation representation = piece.representation;
+        if (representation != null && "context".equals(representation.semanticClass)) {
+            coverage.contextMarkers++; coverage.hiddenContextPieces++;
+            return List.of(marker(piece, "context", "context", false,
+                representation.markerAxis, FAMILY_COLORS.get("context"), Kind.CONTEXT));
+        }
+        if ("overview".equals(lod.name)) return envelope(piece, representation, coverage);
+        if (representation != null && "runtime-compound".equals(representation.strategy)) {
+            List<Primitive> source = primitives.getOrDefault(piece.prefabHash, List.of());
+            if (!source.isEmpty()) {
+                coverage.runtimeCompoundProxy++;
+                int count = Math.min(source.size(), lod.maximumPartsPerPiece);
+                List<Visual> result = new ArrayList<>(count);
+                for (int index = 0; index < count; index++) result.add(compound(piece, source.get(index)));
+                return result;
+            }
+        }
+        if (representation != null && "unresolved-compound".equals(representation.strategy)) {
+            coverage.pivotMarker++; coverage.unresolvedCompoundMarkers++;
+            return List.of(marker(piece, "unresolved", "structure", true,
+                representation.markerAxis, FAMILY_COLORS.get("unknown"), Kind.PIVOT));
+        }
+        return envelope(piece, representation, coverage);
+    }
+
     private static List<Visual> envelope(Piece piece, Representation representation, Coverage coverage) {
         if (piece.extents == null) {
             coverage.pivotMarker++;
@@ -575,9 +696,12 @@ public final class ScenePackage {
         double[] center = add(piece.pivot, multiply(piece.rotation, piece.centerOffset));
         String group = representation != null && "structure".equals(representation.semanticClass)
             ? piece.prefabName : piece.family;
+        Kind quality = "family_median".equals(piece.geometrySource) ? Kind.ESTIMATED : Kind.MEASURED;
         return List.of(new Visual(piece.zdoIndex, group, "structure", true,
-            color(piece.family), linear, center,
-            "family_median".equals(piece.geometrySource) ? Kind.ESTIMATED : Kind.MEASURED));
+            color(piece.family), linear, center, quality,
+            piece.primitiveKind == null ? primitiveKind(piece.family, quality) : normalizePrimitiveKind(piece.primitiveKind),
+            piece.confidence == null ? confidence(piece.geometrySource) : piece.confidence,
+            piece.surfaceClass == null ? surfaceClass(piece.family) : piece.surfaceClass));
     }
 
     private static Visual marker(Piece piece, String group, String semanticClass,
@@ -585,7 +709,7 @@ public final class ScenePackage {
         double safeAxis = Math.max(MIN_VISIBLE_AXIS, axis);
         return new Visual(piece.zdoIndex, group, semanticClass, defaultVisible, color,
             multiply(piece.rotation, diagonal(new double[] { safeAxis, safeAxis, safeAxis })),
-            piece.pivot.clone(), kind);
+            piece.pivot.clone(), kind, "box", "marker", "marker");
     }
 
     private static Visual compound(Piece piece, Primitive primitive) {
@@ -604,15 +728,18 @@ public final class ScenePackage {
         double[][] linear = multiply(piece.rotation, localLinear);
         double[] center = add(piece.pivot, multiply(piece.rotation, localCenter));
         return new Visual(piece.zdoIndex, piece.prefabName, "structure", true,
-            color(piece.family), linear, center, Kind.COMPOUND);
+            color(piece.family), linear, center, Kind.COMPOUND,
+            normalizePrimitiveKind(primitive.kind), "audited", surfaceClass(piece.family));
     }
 
     private static List<GroupBuilder> groupVisuals(List<Visual> visuals) {
         Map<String, GroupBuilder> byKey = new LinkedHashMap<>();
         for (Visual visual : visuals) {
-            String key = visual.group + "\u0000" + visual.semanticClass + "\u0000" + visual.defaultVisible;
+            String key = visual.group + "\u0000" + visual.semanticClass + "\u0000" + visual.defaultVisible +
+                "\u0000" + visual.primitiveKind + "\u0000" + visual.confidence + "\u0000" + visual.surfaceClass;
             GroupBuilder group = byKey.computeIfAbsent(key, ignored -> new GroupBuilder(
-                visual.group, visual.color, visual.semanticClass, visual.defaultVisible));
+                visual.group, visual.color, visual.semanticClass, visual.defaultVisible,
+                visual.primitiveKind, visual.confidence, visual.surfaceClass));
             group.visuals.add(visual);
             group.pieceIds.add(visual.zdoIndex);
         }
@@ -629,6 +756,62 @@ public final class ScenePackage {
             volume *= Math.max(MIN_VISIBLE_AXIS, extent);
         }
         return Double.isFinite(volume) && volume <= MAX_PROXY_VOLUME;
+    }
+
+    private static String primitiveKind(String family, Kind quality) {
+        if (quality == Kind.PIVOT || quality == Kind.CONTEXT) return "box";
+        return switch (family == null ? "" : family) {
+            case "roof" -> "sloped-panel-45";
+            case "stair" -> "stepped-stair";
+            case "pole", "light" -> "cylinder-12";
+            case "portal" -> "ring-12";
+            default -> "box";
+        };
+    }
+
+    private static String normalizePrimitiveKind(String value) {
+        return Set.of("box", "sloped-panel-26", "sloped-panel-45", "triangular-prism",
+            "stepped-stair", "cylinder-12", "arch-12", "ring-12", "plane-double-sided")
+            .contains(value) ? value : "box";
+    }
+
+    private static String confidence(String geometrySource) {
+        if (geometrySource == null) return "unknown";
+        return switch (geometrySource) {
+            case "mesh", "snap+mesh" -> "measured";
+            case "snap" -> "derived";
+            case "family_median" -> "estimated";
+            default -> "unknown";
+        };
+    }
+
+    private static String surfaceClass(String family) {
+        if (family == null) return "unknown";
+        return switch (family) {
+            case "roof" -> "roofing";
+            case "floor", "wall", "beam", "pole", "fence", "stair", "door", "gate" -> "structure";
+            case "window" -> "glazing";
+            case "light" -> "emissive-fixture";
+            default -> "object";
+        };
+    }
+
+    private static int primitiveTriangles(String kind) {
+        return switch (kind) {
+            case "triangular-prism" -> 8;
+            case "cylinder-12" -> 48;
+            case "ring-12", "arch-12" -> 96;
+            case "stepped-stair" -> 60;
+            case "plane-double-sided" -> 4;
+            default -> 12;
+        };
+    }
+
+    private static boolean hasColumn(ResultSetMetaData metadata, String name) throws SQLException {
+        for (int index = 1; index <= metadata.getColumnCount(); index++) {
+            if (name.equalsIgnoreCase(metadata.getColumnLabel(index))) return true;
+        }
+        return false;
     }
 
     private static HomeFrame homeFrame(List<Visual> visuals, Bounds bounds, double[] origin, double radius) {
@@ -878,16 +1061,18 @@ public final class ScenePackage {
     }
 
     private enum Kind { MEASURED, COMPOUND, ESTIMATED, PIVOT, CONTEXT }
-    private record Primitive(int ordinal, boolean animated, double[] matrix) {}
+    private record Primitive(int ordinal, boolean animated, double[] matrix, String kind) {}
     private record Representation(String semanticClass, String strategy, String authority,
             boolean defaultVisible, double markerAxis, int primitiveCount,
             String animationAxis, double[] animationPivot) {}
     private record RndCandidate(String prefabName, Representation representation, List<Primitive> primitives) {}
     private record Piece(long zdoIndex, int prefabHash, String prefabName, String family,
             String geometrySource, double[] extents, double[] centerOffset,
+            String primitiveKind, String surfaceClass, String confidence,
             double[][] rotation, double[] pivot, Representation representation) {}
     private record Visual(long zdoIndex, String group, String semanticClass, boolean defaultVisible,
-            String color, double[][] linear, double[] center, Kind kind) {}
+            String color, double[][] linear, double[] center, Kind kind, String primitiveKind,
+            String confidence, String surfaceClass) {}
     private record Cell(long x, long y, long z) {}
     private record HomeFrame(String strategy, int pieces, double[] target, double radius, double floorY) {}
     private record ReleaseReceipt(String snapshotHash, String buildingGeometrySha256,
@@ -899,6 +1084,20 @@ public final class ScenePackage {
                 (low[0] + high[0]) / 2, (low[1] + high[1]) / 2, (low[2] + high[2]) / 2
             };
         }
+    }
+
+    private record LodProfile(String name, int maximumPartsPerPiece, double terrainSpacing,
+            int msaaSamples, boolean cadEdges, int shadowMapSize) {
+        private static LodProfile choose(long pieces, long desiredInstances) {
+            if (pieces <= 5_000 && desiredInstances <= 40_000) {
+                return new LodProfile("detail", 32, 2, 4, true, 2048);
+            }
+            if (pieces <= 50_000 && desiredInstances <= 250_000) {
+                return new LodProfile("standard", 4, 8, 1, true, 0);
+            }
+            return new LodProfile("overview", 1, 32, 1, false, 0);
+        }
+        private static LodProfile legacy() { return new LodProfile("legacy", 32, 0, 1, false, 0); }
     }
 
     private static final class Coverage {
@@ -918,12 +1117,17 @@ public final class ScenePackage {
         private final String color;
         private final String semanticClass;
         private final boolean defaultVisible;
+        private final String primitiveKind;
+        private final String confidence;
+        private final String surfaceClass;
         private final List<Visual> visuals = new ArrayList<>();
         private final Set<Long> pieceIds = new HashSet<>();
         private int start;
-        private GroupBuilder(String name, String color, String semanticClass, boolean defaultVisible) {
+        private GroupBuilder(String name, String color, String semanticClass, boolean defaultVisible,
+                String primitiveKind, String confidence, String surfaceClass) {
             this.name = name; this.color = color; this.semanticClass = semanticClass;
             this.defaultVisible = defaultVisible;
+            this.primitiveKind = primitiveKind; this.confidence = confidence; this.surfaceClass = surfaceClass;
         }
     }
 
