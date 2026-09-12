@@ -190,6 +190,16 @@ class Worker:
             write(self.root/'state.json',self.state)
             path.unlink()
 
+    def seed_character(self):
+        """File stem the seeded character is played under. Steam Cloud can hold a copy of the same
+        character (the game uploads whichever profile it played), and the save system groups files by
+        name and lets the cloud copy win the group -- a local questyfour.fch never even appears in the
+        character list, and the session spawns wherever the previous one quit (2026-09-12: a zone the
+        1.0 client refuses, player never spawned). A distinct stem makes the pinned file the one in play;
+        ComfyCameraProof 0.2.5 matches orbit-request's character against the stem."""
+        c=self.runtime['character']
+        return c if c.endswith('-seed') else c+'-seed'
+
     def prefs_receipt(self, saves, dest, seed):
         """Proof the game read and wrote the seeded prefs file, whichever name it resolved."""
         link=dest/'xdg/unity3d/unknown/unknown';path=saves/'prefs'
@@ -209,7 +219,7 @@ class Worker:
             spec=self.runtime['sources'][kind];target=worlds/(self.plan['world']+'.'+kind)
             shutil.copy2(spec['path'],target);verify(target,spec);target.chmod(0o600)
         character=self.runtime['sources']['character']
-        character_copy=saves/'characters_local'/Path(character['path']).name
+        character_copy=saves/'characters_local'/(self.seed_character()+'.fch')
         shutil.copy2(character['path'],character_copy);character_copy.chmod(0o600)
         for spec in self.runtime.get('terrainCaches',[]):
             verify(Path(spec['path']),spec)
@@ -265,7 +275,7 @@ class Worker:
             if p.exists():shutil.copy2(p,dest/('before-'+name))
         (self.cfg/'shotplan.tsv').write_text(HEADER+''.join(s['tsv']+'\n' for b in builds for s in b['shots']),encoding='utf-8')
         (self.cfg/'shotplan-receipts.jsonl').write_text('',encoding='utf-8')
-        write(self.cfg/'orbit-request.json',{'world':self.plan['world'],'character':self.runtime['character'], 'quit_when_done':True})
+        write(self.cfg/'orbit-request.json',{'world':self.plan['world'],'character':self.seed_character(), 'quit_when_done':True})
         write(dest/'dispatch.json',{'sourceKey':self.plan['sourceKey'],'builds':builds,'runtimeMode':'current-client'})
         self.state['activeAttempt']=dest.relative_to(self.root).as_posix()
         write(self.root/'state.json',self.state)

@@ -291,7 +291,7 @@ class RefineWorker(Worker):
                 shutil.copy2(p, self.dest / ('before-' + name))
         (self.cfg / 'shotplan.tsv').write_text(HEADER, encoding='utf-8')      # header only: everything is fed
         (self.cfg / 'shotplan-receipts.jsonl').write_text('', encoding='utf-8')
-        write(self.cfg / 'orbit-request.json', {'world': self.plan['world'], 'character': self.runtime['character'],
+        write(self.cfg / 'orbit-request.json', {'world': self.plan['world'], 'character': self.seed_character(),
                                                 'quit_when_done': True, 'feed_dir': FEED_DIR,
                                                 'feed_idle_seconds': self.idle_seconds})
         write(self.dest / 'dispatch.json', {'sourceKey': self.plan['sourceKey'], 'builds': self.plan['builds'],
