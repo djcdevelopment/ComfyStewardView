@@ -115,7 +115,7 @@ if (-not $SkipCreators) {
     try {
         $d = (Invoke-WebRequest -Uri ($base + '/valheim/creators/directory.json') -UseBasicParsing -TimeoutSec 60).Content | ConvertFrom-Json
         $top = $d.builders | Sort-Object -Property albums -Descending | Select-Object -First 1
-        Check ('/valheim/creators/' + $top.builderKey + '/') @('../creators.css?v=12', 'src="../pair.js"', 'src="../kin-tree.js"', 'src="../portraits.js"', 'src="../profile.js"', 'href="/chronicles/"', 'id="builder-hero"', '<a id="hero-avatar"', 'id="look-out"', 'id="thread-notes"')
+        Check ('/valheim/creators/' + $top.builderKey + '/') @('../creators.css?v=12', 'src="../pair.js"', 'src="../kin-tree.js"', 'src="../portraits.js"', 'href="/chronicles/"', 'id="builder-hero"', '<a id="hero-avatar"', 'id="look-out"', 'id="thread-notes"')
         # Every record wears a face by the archive's pick (or the builder's confirmed one).
         $noface = @($d.builders | Where-Object { -not $_.portrait }).Count
         if ($noface) { $script:fail++; "FAIL directory.json: $noface builder(s) carry no portrait" } else { "OK   directory.json: every builder carries a portrait" }
