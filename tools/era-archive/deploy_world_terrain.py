@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deploy one verified terrain context plus the thin app JAR without copying the world catalog."""
+"""Deploy verified terrain contexts plus the thin app JAR without copying the world catalog."""
 import argparse
 import json
 import os
@@ -57,10 +57,34 @@ def validate_terrain_context(root):
     return manifest, sorted(files, key=lambda path: path.name)
 
 
+def validate_terrain_batch(contexts, eras):
+    if len(contexts) != len(eras):
+        raise ValueError("Supply exactly one --context for each --era")
+    if any(not re.fullmatch(r"era[0-9]+", era) for era in eras):
+        raise ValueError("Invalid era slug")
+    if len(set(eras)) != len(eras):
+        raise ValueError("Duplicate era slug")
+    terrains = []
+    for era, context in zip(eras, contexts):
+        manifest, context_files = validate_terrain_context(context)
+        terrains.append({
+            "era": era,
+            "context": context.resolve(),
+            "manifest": manifest,
+            "files": context_files,
+        })
+    snapshot_ids = [item["manifest"]["snapshot"]["id"] for item in terrains]
+    if len(set(snapshot_ids)) != len(snapshot_ids):
+        raise ValueError("Terrain contexts must identify distinct snapshots")
+    return terrains
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--context", type=Path, required=True)
-    parser.add_argument("--era", required=True)
+    parser.add_argument("--context", type=Path, action="append", required=True,
+                        help="Schema-3 context directory; repeat once per --era")
+    parser.add_argument("--era", action="append", required=True,
+                        help="Era slug paired by position with --context; repeat for a batch")
     parser.add_argument("--jar", type=Path, required=True,
                         help="Maven's target/original-steward-spatial-lab-*.jar")
     parser.add_argument("--revision", required=True)
@@ -70,8 +94,6 @@ def main():
     args = parser.parse_args()
     if not re.fullmatch(r"[a-f0-9]{40}", args.revision):
         raise ValueError("Use a complete source commit")
-    if not re.fullmatch(r"era[0-9]+", args.era):
-        raise ValueError("Invalid era slug")
     if not re.fullmatch(r"/home/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+", args.remote_root):
         raise ValueError("Invalid deployment root")
     if not re.fullmatch(r"[A-Za-z0-9_.@-]+", args.ssh_target):
@@ -83,16 +105,18 @@ def main():
     if head != args.revision or dirty.strip():
         raise ValueError("Commit the reviewed terrain implementation before release")
 
-    manifest, context_files = validate_terrain_context(args.context)
+    terrains = validate_terrain_batch(args.context, args.era)
     jar = validate_thin_jar(args.jar)
     with tempfile.TemporaryDirectory(prefix="steward-terrain-") as temporary:
         archive = Path(temporary) / "terrain.tgz"
         with tarfile.open(archive, "w:gz") as tar:
             tar.add(jar, arcname="steward-code.jar", recursive=False)
-            for path in context_files:
-                tar.add(path, arcname="context/" + path.name, recursive=False)
+            for item in terrains:
+                for path in item["files"]:
+                    tar.add(path, arcname=f"contexts/{item['era']}/{path.name}", recursive=False)
         archive_stamp = digest(archive)
-        release = (args.revision[:12] + "-terrain-" + args.era + "-" +
+        terrain_tag = args.era[0] if len(args.era) == 1 else f"{len(args.era)}eras"
+        release = (args.revision[:12] + "-terrain-" + terrain_tag + "-" +
                    archive_stamp["sha256"][:12])
         remote_archive = "/tmp/steward-world-" + release + ".tgz"
         remote(args.ssh_target,
@@ -107,22 +131,28 @@ def main():
             "archive": remote_archive,
             "release": release,
             "revision": args.revision,
-            "era": args.era,
             "sha256": archive_stamp["sha256"],
             "bytes": archive_stamp["bytes"],
             "jar": digest(jar),
-            "snapshotId": manifest["snapshot"]["id"],
-            "snapshotSha256": manifest["snapshot"]["sha256"],
-            "contextFiles": {path.name: digest(path) for path in context_files},
+            "terrains": [{
+                "era": item["era"],
+                "snapshotId": item["manifest"]["snapshot"]["id"],
+                "snapshotSha256": item["manifest"]["snapshot"]["sha256"],
+                "generationMode": (item["manifest"].get("generation") or {}).get(
+                    "mode", "snapshot-matched"),
+                "contextFiles": {path.name: digest(path) for path in item["files"]},
+            } for item in terrains],
         }
         result = json.loads(remote(args.ssh_target, "settings=" + repr(settings) + "\n" + REMOTE))
         save(args.receipt, {
-            "schema": "steward-world-terrain-deployment/v1",
+            "schema": "steward-world-terrain-deployment/v2",
             "deployedAt": now(),
             "revision": args.revision,
-            "era": args.era,
-            "snapshotId": manifest["snapshot"]["id"],
-            "contextManifest": digest(args.context / "manifest.json"),
+            "terrains": [{
+                "era": item["era"],
+                "snapshotId": item["manifest"]["snapshot"]["id"],
+                "contextManifest": digest(item["context"] / "manifest.json"),
+            } for item in terrains],
             "archive": archive_stamp,
             "remote": result,
         })
@@ -165,10 +195,13 @@ with tarfile.open(incoming) as tar:
         assert member.isfile() and (staging/member.name).resolve().is_relative_to(staging.resolve())
     tar.extractall(staging,filter='data')
 incoming.unlink()
-assert {path.relative_to(staging).as_posix() for path in staging.rglob('*') if path.is_file()}==(
-    {'steward-code.jar'}|{'context/'+name for name in settings['contextFiles']})
-for name,record in settings['contextFiles'].items():
-    assert stamp(staging/'context'/name)==record
+expected={'steward-code.jar'}
+for terrain in settings['terrains']:
+    expected|={'contexts/'+terrain['era']+'/'+name for name in terrain['contextFiles']}
+assert {path.relative_to(staging).as_posix() for path in staging.rglob('*') if path.is_file()}==expected
+for terrain in settings['terrains']:
+    for name,record in terrain['contextFiles'].items():
+        assert stamp(staging/'contexts'/terrain['era']/name)==record
 code_jar=dest/'steward-code.jar';os.replace(staging/'steward-code.jar',code_jar)
 assert stamp(code_jar)==settings['jar'];code_jar.chmod(0o444)
 
@@ -177,37 +210,44 @@ assert stamp(code_jar)==settings['jar'];code_jar.chmod(0o444)
 # inodes, so the preceding release remains a complete rollback target.
 catalog=dest/'catalog';shutil.copytree(source_catalog,catalog,copy_function=os.link)
 catalog_document=json.loads((catalog/'catalog.json').read_text(encoding='utf-8'))
-selected=next(item for item in catalog_document['eras'] if item['slug']==settings['era'])
-assert selected['status']=='ready' and selected['snapshotId']==settings['snapshotId']
-context_relative=Path(selected['contextManifest'])
-assert context_relative.as_posix()==settings['era']+'/context/manifest.json'
-context_dir=(catalog/context_relative.parent).resolve()
-assert context_dir.is_relative_to(catalog.resolve())
-shutil.rmtree(context_dir);context_dir.mkdir()
-for name in settings['contextFiles']:
-    os.replace(staging/'context'/name,context_dir/name);(context_dir/name).chmod(0o444)
-(staging/'context').rmdir();staging.rmdir()
+prefixes=[]
+for terrain in settings['terrains']:
+    era=terrain['era'];selected=next(item for item in catalog_document['eras'] if item['slug']==era)
+    assert selected['status']=='ready' and selected['snapshotId']==terrain['snapshotId']
+    context_relative=Path(selected['contextManifest'])
+    assert context_relative.as_posix()==era+'/context/manifest.json'
+    context_dir=(catalog/context_relative.parent).resolve()
+    assert context_dir.is_relative_to(catalog.resolve())
+    shutil.rmtree(context_dir);context_dir.mkdir()
+    for name in terrain['contextFiles']:
+        os.replace(staging/'contexts'/era/name,context_dir/name);(context_dir/name).chmod(0o444)
+    (staging/'contexts'/era).rmdir()
 
-manifest=json.loads((context_dir/'manifest.json').read_text(encoding='utf-8'))
-assert manifest['schemaVersion']==3 and manifest['kind']=='steward-terrain-context'
-assert manifest['snapshot']=={'id':settings['snapshotId'],'sha256':settings['snapshotSha256']}
-declared={item['file']:(item['bytes'],item['sha256']) for item in manifest['variants']}
-height=manifest['heightfield'];declared[height['file']]=(height['bytes'],height['sha256'])
-assert set(declared)|{'manifest.json'}==set(settings['contextFiles'])
-for name,(size,sha) in declared.items():assert stamp(context_dir/name)=={'bytes':size,'sha256':sha}
+    manifest=json.loads((context_dir/'manifest.json').read_text(encoding='utf-8'))
+    assert manifest['schemaVersion']==3 and manifest['kind']=='steward-terrain-context'
+    assert manifest['snapshot']=={'id':terrain['snapshotId'],'sha256':terrain['snapshotSha256']}
+    declared={item['file']:(item['bytes'],item['sha256']) for item in manifest['variants']}
+    height=manifest['heightfield'];declared[height['file']]=(height['bytes'],height['sha256'])
+    assert set(declared)|{'manifest.json'}==set(terrain['contextFiles'])
+    for name,(size,sha) in declared.items():assert stamp(context_dir/name)=={'bytes':size,'sha256':sha}
 
-prefix=settings['era']+'/context/'
-selected['files']=[item for item in selected['files'] if not item['path'].startswith(prefix)]
-selected['files']+=sorted(({'path':prefix+path.name,**stamp(path)} for path in context_dir.iterdir()),
-                          key=lambda item:item['path'])
-selected['files'].sort(key=lambda item:item['path'])
+    prefix=era+'/context/';prefixes.append(prefix)
+    selected['files']=[item for item in selected['files'] if not item['path'].startswith(prefix)]
+    selected['files']+=sorted(({'path':prefix+path.name,**stamp(path)} for path in context_dir.iterdir()),
+                              key=lambda item:item['path'])
+    selected['files'].sort(key=lambda item:item['path'])
+(staging/'contexts').rmdir();staging.rmdir()
+
 created=datetime.datetime.now(datetime.timezone.utc).isoformat()
 catalog_document['createdAt']=created;write_json(catalog/'catalog.json',catalog_document)
 receipt_path=catalog/'receipt.json';receipt=json.loads(receipt_path.read_text(encoding='utf-8'))
 receipt['createdAt']=created
-receipt['files']=[item for item in receipt['files'] if item['path']!='catalog.json' and not item['path'].startswith(prefix)]
+receipt['files']=[item for item in receipt['files'] if item['path']!='catalog.json' and
+                  not any(item['path'].startswith(prefix) for prefix in prefixes)]
 receipt['files'].append({'path':'catalog.json',**stamp(catalog/'catalog.json')})
-receipt['files']+=({'path':prefix+path.name,**stamp(path)} for path in context_dir.iterdir())
+for prefix in prefixes:
+    context_dir=catalog/Path(prefix)
+    receipt['files']+=({'path':prefix+path.name,**stamp(path)} for path in context_dir.iterdir())
 receipt['files'].sort(key=lambda item:item['path']);write_json(receipt_path,receipt)
 (catalog/'catalog.json').chmod(0o444);receipt_path.chmod(0o444)
 
@@ -252,7 +292,10 @@ def verify(port):
         selected_bootstrap=get(port,'/api/bootstrap?era='+era['slug'])
         assert len(selected_bootstrap['snapshots'])==1 and selected_bootstrap['snapshots'][0]['snapshotId']==era['snapshotId']
         assert selected_bootstrap['sceneAvailable'] and selected_bootstrap['terrainAvailable']==bool(era.get('contextManifest'))
-        if era['slug']==settings['era']:assert selected_bootstrap['context']['heightfieldAvailable'] is True
+        matching=[item for item in settings['terrains'] if item['era']==era['slug']]
+        if matching:
+            assert selected_bootstrap['context']['heightfieldAvailable'] is True
+            assert selected_bootstrap['context']['generationMode']==matching[0]['generationMode']
     page=text(port,'/scene.html');assert 'data-terrain="ghost"' in page and 'Ghost preserves underground rooms' in page
     return eras
 
@@ -270,7 +313,8 @@ result={'release':settings['release'],'directory':str(dest),'container':containe
     'previousContainer':backup,'baseImage':base,'catalog':str(catalog),'eras':eras,
     'candidateVerified':True,'activeVerified':True,'port':7081,'uiOverride':str(ui),
     'transferredBytes':settings['bytes'],'catalogTransferred':False,'catalogClonedWithHardlinks':True,
-    'terrainEra':settings['era'],'terrainSnapshot':settings['snapshotId'],'imageBuilt':False}
+    'terrainEras':[item['era'] for item in settings['terrains']],
+    'terrainSnapshots':[item['snapshotId'] for item in settings['terrains']],'imageBuilt':False}
 (dest/'deployment.json').write_text(json.dumps(result,indent=2))
 print(json.dumps(result))
 '''

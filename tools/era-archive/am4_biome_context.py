@@ -68,6 +68,19 @@ def require_variant(manifest: dict, identifier: str, root: Path) -> dict:
     return item
 
 
+def require_heightfield(manifest: dict, root: Path) -> dict:
+    if manifest.get("schemaVersion") != 3:
+        raise ValueError("Existing terrain context is not schema 3; use a fresh output directory")
+    item = manifest.get("heightfield") or {}
+    path = root / str(item.get("file", ""))
+    if (item.get("encoding") != "uint16-le" or
+            item.get("bytes") != item.get("width", 0) * item.get("height", 0) * 2 or
+            not path.is_file() or path.stat().st_size != item.get("bytes") or
+            sha256(path) != item.get("sha256")):
+        raise ValueError("Existing terrain context has an invalid heightfield")
+    return item
+
+
 def build(args: argparse.Namespace) -> None:
     handoff = wait_for_caches(args.terrain_root / "status.json", args.poll_seconds)
     catalog = read(args.catalog)
@@ -83,6 +96,7 @@ def build(args: argparse.Namespace) -> None:
             manifest = read(manifest_path)
             if manifest["snapshot"]["sha256"] != era["db"]["sha256"]:
                 raise ValueError(f"Existing context source mismatch: {slug}")
+            require_heightfield(manifest, context)
             for identifier in ("biome-mask", "biome-display-mask"):
                 require_variant(manifest, identifier, context)
             completed.append(slug)

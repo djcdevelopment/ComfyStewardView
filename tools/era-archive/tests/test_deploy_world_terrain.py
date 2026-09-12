@@ -15,7 +15,7 @@ SPEC.loader.exec_module(MODULE)
 
 
 class DeployWorldTerrainTests(unittest.TestCase):
-    def context(self, root):
+    def context(self, root, snapshot=1006):
         variant = root / "terrain-detail.png"
         variant.write_bytes(b"png")
         height = root / "terrain-height.r16"
@@ -26,7 +26,7 @@ class DeployWorldTerrainTests(unittest.TestCase):
         }
         manifest = {
             "schemaVersion": 3, "kind": "steward-terrain-context",
-            "snapshot": {"id": 1006, "sha256": "a" * 64},
+            "snapshot": {"id": snapshot, "sha256": "a" * 64},
             "variants": [record(variant)],
             "heightfield": {**record(height), "width": 2, "height": 2, "encoding": "uint16-le"},
         }
@@ -50,11 +50,33 @@ class DeployWorldTerrainTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "file set drift"):
                 MODULE.validate_terrain_context(root)
 
+    def test_accepts_multiple_distinct_era_contexts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            first, second = root / "first", root / "second"
+            first.mkdir(); second.mkdir()
+            self.context(first, 1001); self.context(second, 1002)
+            terrains = MODULE.validate_terrain_batch([first, second], ["era7", "era8"])
+            self.assertEqual(["era7", "era8"], [item["era"] for item in terrains])
+            self.assertEqual([1001, 1002], [item["manifest"]["snapshot"]["id"] for item in terrains])
+
+    def test_rejects_duplicate_eras_or_snapshots(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            first, second = root / "first", root / "second"
+            first.mkdir(); second.mkdir()
+            self.context(first, 1001); self.context(second, 1001)
+            with self.assertRaisesRegex(ValueError, "Duplicate era"):
+                MODULE.validate_terrain_batch([first, second], ["era7", "era7"])
+            with self.assertRaisesRegex(ValueError, "distinct snapshots"):
+                MODULE.validate_terrain_batch([first, second], ["era7", "era8"])
+
     def test_remote_program_compiles_and_uses_hardlink_clone(self):
         compile(MODULE.REMOTE, "<deploy-world-terrain-remote>", "exec")
         self.assertIn("copy_function=os.link", MODULE.REMOTE)
         self.assertIn("os.replace(candidate,path)", MODULE.REMOTE)
-        self.assertIn("(staging/'context').rmdir();staging.rmdir()", MODULE.REMOTE)
+        self.assertIn("(staging/'contexts').rmdir();staging.rmdir()", MODULE.REMOTE)
+        self.assertIn("for terrain in settings['terrains']", MODULE.REMOTE)
         self.assertIn("'catalogTransferred':False", MODULE.REMOTE)
         self.assertIn("'imageBuilt':False", MODULE.REMOTE)
         self.assertNotIn("docker','build", MODULE.REMOTE)

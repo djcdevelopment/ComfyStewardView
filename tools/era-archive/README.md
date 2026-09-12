@@ -395,12 +395,14 @@ catalog mount, and runs the same candidate-before-swap rollback discipline witho
 image build. Static-only changes still go through `tools/Push-StewardWorldUi.ps1` and do
 not restart the container.
 
-For a regenerated terrain context, use `deploy_world_terrain.py` with one schema-3 context
-directory, its era slug, and the same thin application JAR. This lane transfers only that
-context and the small JAR. On the server it hard-link clones the live immutable catalog,
-replaces the selected era's context on new inodes, rewrites its checksummed inventories,
-and verifies a candidate before swapping containers. It neither uploads the multi-era
-catalog nor builds an image; the preceding catalog tree remains intact for rollback.
+For schema-3 terrain contexts, use `deploy_world_terrain.py` with matching, repeatable
+`--era` and `--context` arguments plus the same thin application JAR. A single pair remains
+valid; a batch transfers all named contexts in one archive and performs one candidate check
+and one container swap. On the server it hard-link clones the live immutable catalog,
+replaces only the selected eras' contexts on new inodes, rewrites their checksummed
+inventories, and verifies every selected heightfield and generation mode before promotion.
+It neither uploads the multi-era catalog nor builds an image; the preceding catalog tree
+remains intact for rollback.
 
 ```powershell
 python -m unittest discover -s tools/era-archive/tests -v

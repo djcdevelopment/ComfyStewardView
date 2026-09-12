@@ -40,6 +40,20 @@ def era_fixture(root):
 
 
 class OmenBiomeContextTests(unittest.TestCase):
+    def test_existing_context_must_have_a_verified_schema_three_heightfield(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            height = root / "terrain-height.r16"
+            height.write_bytes(bytes(range(8)))
+            manifest = {"schemaVersion": 2}
+            with self.assertRaisesRegex(ValueError, "not schema 3"):
+                builder.require_heightfield(manifest, root)
+            manifest = {"schemaVersion": 3, "heightfield": {
+                "file": height.name, "width": 2, "height": 2, "encoding": "uint16-le",
+                "bytes": height.stat().st_size, "sha256": builder.sha256(height),
+            }}
+            self.assertEqual(height.name, builder.require_heightfield(manifest, root)["file"])
+
     def test_cache_receipt_reads_absolute_source_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
