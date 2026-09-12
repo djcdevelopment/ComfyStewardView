@@ -92,13 +92,15 @@ try{
   if(!results.thread.title.startsWith(results.thread.heading))throw Error('Thread page still carries the shared directory title');
   if(!results.thread.image||!results.thread.description)throw Error('Thread page would unfurl bare in Discord');
   await wait("[...document.querySelectorAll('.photos img')].filter(i=>{const r=i.getBoundingClientRect();return i.loading!=='lazy'||(r.width>0&&r.top<innerHeight)}).every(i=>i.complete&&i.naturalWidth>0)");await screenshot('creator-thread');
-  // The one-story page (pass 3): the builder's best frames sit under the hero, the
-  // attribution sentence is said once, and every album row starts folded. A row that
-  // rendered open, or a second disclaimer, is the old wall creeping back.
-  results.story=await evaluate("({mosaic:document.querySelectorAll('#work-mosaic .photo-thumb').length,notes:document.querySelectorAll('.albums-note').length,rows:document.querySelectorAll('article.album').length,folded:[...document.querySelectorAll('article.album')].every(a=>a.querySelector('.album-more').hidden),notesStrip:!document.getElementById('thread-notes')?.hidden})");
-  if(results.story.mosaic<1)throw Error('Builder page drew no work mosaic for a photographed thread');
+  // The one-story page (pass 3): the carousel of photographed builds sits under the hero
+  // with its banner and its details article, the attribution sentence is said once, every
+  // Details drop-down in the rest table starts folded, and the notes strip renders.
+  results.story=await evaluate("({stage:document.querySelectorAll('#work .work-banner').length,rail:document.querySelectorAll('#work .work-tile').length,details:document.querySelectorAll('#work article.album.work-details button.primary').length,notes:document.querySelectorAll('.albums-note').length,restRows:document.querySelectorAll('article.album.rest-row').length,feedback:document.querySelectorAll('.rest-feedback [role=radio]').length,folded:[...document.querySelectorAll('article.album .album-more')].every(m=>m.hidden),notesStrip:!document.getElementById('thread-notes')?.hidden})");
+  if(results.story.stage!==1||results.story.rail<1)throw Error('Builder page drew no work carousel for a photographed thread');
+  if(results.story.details!==1)throw Error('The carousel details lost the claim control');
   if(results.story.notes!==1)throw Error('Attribution sentence is not said exactly once');
-  if(!results.story.rows||!results.story.folded)throw Error('Album rows did not start folded');
+  if(results.story.restRows&&results.story.feedback!==results.story.restRows*3)throw Error('The rest table lost its feedback marks');
+  if(!results.story.folded)throw Error('A Details drop-down did not start folded');
   if(!results.story.notesStrip)throw Error('The notes strip at the foot did not render');
   // The check that would have caught a modal whose sheet was display:none inside a
   // visible overlay: every participation dialog opened as an empty black screen.

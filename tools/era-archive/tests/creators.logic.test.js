@@ -757,18 +757,22 @@ test('a kinship export rides a built claim and never a disavowal', () => {
 
 // ---- the work mosaic and the attribution sentence (builder page pass 3) ----
 
-test('pickMosaicAlbums keeps photographed albums only, most-photographed then largest, capped', () => {
-  const album = (key, era, pieces, photos) => ({buildKey: key.repeat(64), era, pieces,
+test('pickMosaicAlbums keeps photographed albums only, own pieces first, then photos, then size', () => {
+  const me = 'a'.repeat(32);
+  const album = (key, era, pieces, photos, minePieces) => ({buildKey: key.repeat(64), era, pieces,
+    contributors: minePieces == null ? [] : [{builderKey: me, pieces: minePieces, share: minePieces / pieces}],
     photos: Array.from({length: photos}, (_, i) => ({id: `${key}-${i}`, thumb: `t${i}`, large: `l${i}`, label: `Build ${key}`}))});
-  const doc = {builderKey: 'a'.repeat(32), eras: [
-    {era: 12, albums: [album('1', 12, 100, 0), album('2', 12, 50, 4)]},
-    {era: 7, albums: [album('3', 7, 900, 4), album('4', 7, 10, 1), album('5', 7, 5, 2)]},
+  const doc = {builderKey: me, eras: [
+    {era: 12, albums: [album('1', 12, 100, 0, 100), album('2', 12, 50, 4, 40)]},
+    {era: 7, albums: [album('3', 7, 900, 4, 5), album('4', 7, 10, 1, 10), album('5', 7, 5, 2, 5)]},
   ]};
+  // 2 leads (40 own pieces), then 4 (10), then 5 and 3 tie at 5 own pieces: 5 has fewer
+  // photographs than 3, so 3 comes first; 1 has no photographs and never appears.
   const picks = pickMosaicAlbums(doc, 8).map((a) => a.buildKey[0]);
-  assert.deepEqual(picks, ['3', '2', '5', '4']);
-  assert.deepEqual(pickMosaicAlbums(doc, 2).map((a) => a.buildKey[0]), ['3', '2']);
+  assert.deepEqual(picks, ['2', '4', '3', '5']);
+  assert.deepEqual(pickMosaicAlbums(doc, 2).map((a) => a.buildKey[0]), ['2', '4']);
   assert.deepEqual(pickMosaicAlbums(null), []);
-  assert.deepEqual(pickMosaicAlbums({eras: [{era: 1, albums: [album('9', 1, 1, 0)]}]}), []);
+  assert.deepEqual(pickMosaicAlbums({builderKey: me, eras: [{era: 1, albums: [album('9', 1, 1, 0, 1)]}]}), []);
 });
 
 test('distinctAttributions says each sentence once, the standard one first', () => {
@@ -781,4 +785,26 @@ test('distinctAttributions says each sentence once, the standard one first', () 
   assert.deepEqual(distinctAttributions(doc), [standard, legacy]);
   assert.deepEqual(distinctAttributions({eras: []}), []);
   assert.deepEqual(distinctAttributions(null), []);
+});
+
+test('setPriority records one mark per build, clears on repeat, and rides the export', () => {
+  const state = StewardParticipation.defaultState('2026-09-12T00:00:00Z');
+  const key = 'c'.repeat(64);
+  const me = 'a'.repeat(32);
+  const rec = StewardParticipation.setPriority(state, {buildKey: key, builderKey: me, buildLabel: 'Build cccccccc', value: 'first', participant: ' Skald '});
+  assert.equal(rec.value, 'first');
+  assert.equal(rec.participant, 'Skald');
+  assert.equal(StewardParticipation.priorityForBuild(state, key).priorityId, rec.priorityId);
+  // A different mark replaces; the same mark again clears.
+  assert.equal(StewardParticipation.setPriority(state, {buildKey: key, builderKey: me, buildLabel: 'x', value: 'skip'}).value, 'skip');
+  assert.equal(StewardParticipation.setPriority(state, {buildKey: key, builderKey: me, buildLabel: 'x', value: 'skip'}), null);
+  assert.equal(StewardParticipation.priorityForBuild(state, key), null);
+  // An unknown value is refused, not stored.
+  assert.equal(StewardParticipation.setPriority(state, {buildKey: key, builderKey: me, buildLabel: 'x', value: 'maybe'}), null);
+  StewardParticipation.setPriority(state, {buildKey: key, builderKey: me, buildLabel: 'x', value: 'next'});
+  assert.deepEqual(StewardParticipation.exportPayload(state).priorities.map((p) => p.value), ['next']);
+  assert.equal(StewardParticipation.buildPayload(state, {builderKey: me, buildKey: key, buildLabel: 'x'}).priority.value, 'next');
+  // A ledger saved before the column existed loads with an empty one.
+  const storage = {getItem: () => JSON.stringify({...state, priorities: undefined}), setItem() {}, removeItem() {}};
+  assert.deepEqual(StewardParticipation.load(storage).priorities, {});
 });

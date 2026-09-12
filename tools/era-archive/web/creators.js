@@ -190,15 +190,20 @@ function heroAliases(threadDoc, limit = 4) {
   return {shown: kept.slice(0, limit), more: Math.max(0, kept.length - limit)};
 }
 
-// The builder's best photographs, one per album: most-photographed album first, then the
-// largest. The first frame of every album is already the best one -- import_captures
-// sorts each album by the aesthetic head's score before it is ever projected, and the
-// og:image has leaned on that for weeks -- so this never has to rank frames itself.
+// The builder's photographed albums, the ones most theirs first: by the pieces this
+// builder placed there, then by how many photographs there are, then by size. A
+// 2,000-piece hall they laid one wall of is not their work to lead with. The first
+// frame of every album is already the best one -- import_captures sorts each album by
+// the aesthetic head's score before it is ever projected, and the og:image has leaned
+// on that for weeks -- so this never has to rank frames itself.
 function pickMosaicAlbums(threadDoc, limit = 8) {
   if (!threadDoc) return [];
+  const self = threadDoc.builderKey;
+  const mine = (album) => (album.contributors || []).find((c) => c && c.builderKey === self)?.pieces ?? 0;
   return threadDoc.eras.flatMap((e) => e.albums)
     .filter((a) => Array.isArray(a.photos) && a.photos.length)
-    .sort((a, b) => b.photos.length - a.photos.length
+    .sort((a, b) => mine(b) - mine(a)
+      || b.photos.length - a.photos.length
       || (b.pieces || 0) - (a.pieces || 0)
       || a.buildKey.localeCompare(b.buildKey))
     .slice(0, limit);
@@ -471,6 +476,7 @@ const StewardParticipation = {
       claims: {},       // buildKey -> claim
       requests: {},     // requestId -> request
       kinshipTags: {},  // `${buildKey}:${contributorKey}` -> tag record
+      priorities: {},   // buildKey -> photo priority (first | next | skip)
     };
   },
 
@@ -491,6 +497,8 @@ const StewardParticipation = {
       next.requests = parsed.requests && typeof parsed.requests === 'object' ? parsed.requests : {};
       // A ledger written before kinship existed is not a broken ledger.
       next.kinshipTags = parsed.kinshipTags && typeof parsed.kinshipTags === 'object' ? parsed.kinshipTags : {};
+      // A ledger written before the feedback column existed is not a broken ledger either.
+      next.priorities = parsed.priorities && typeof parsed.priorities === 'object' ? parsed.priorities : {};
       next.createdAt = typeof parsed.createdAt === 'string' ? parsed.createdAt : next.createdAt;
       next.updatedAt = typeof parsed.updatedAt === 'string' ? parsed.updatedAt : nowISOString();
       return next;
@@ -576,6 +584,39 @@ const StewardParticipation = {
     return record;
   },
 
+  // The feedback column on the un-photographed builds: one of three marks per build,
+  // or none. It is a self-reported preference about the NEXT capture campaign, recorded
+  // on this device and carried in the copied payload exactly as a claim is -- never a
+  // vote the archive tallies on its own. A repeat of the same mark clears it.
+  PRIORITIES: ['first', 'next', 'skip'],
+
+  priorityForBuild(state, buildKey) {
+    return state.priorities?.[buildKey] || null;
+  },
+
+  setPriority(state, {buildKey, builderKey, buildLabel, value, participant}) {
+    if (!state.priorities) state.priorities = {};
+    const prior = state.priorities[buildKey];
+    if (!value || (prior && prior.value === value)) {
+      delete state.priorities[buildKey];
+      return null;
+    }
+    if (!StewardParticipation.PRIORITIES.includes(value)) return prior || null;
+    const record = {
+      priorityId: prior?.priorityId || randomId('priority'),
+      buildKey,
+      builderKey,
+      buildLabel,
+      value,
+      participant: normalizeHandle(participant || ''),
+      createdAt: prior?.createdAt || nowISOString(),
+      updatedAt: nowISOString(),
+      deliveryStatus: 'local',
+    };
+    state.priorities[buildKey] = record;
+    return record;
+  },
+
   exportPayload(state, {kindFilter, buildKey} = {}) {
     const payload = {
       schema: 'steward-creator-participation-export/v1',
@@ -584,6 +625,7 @@ const StewardParticipation = {
       claims: Object.values(state.claims || {}),
       requests: Object.values(state.requests || {}),
       kinshipTags: Object.values(state.kinshipTags || {}),
+      priorities: Object.values(state.priorities || {}),
     };
     if (kindFilter === 'claim') payload.claims = payload.claims.filter((c) => c.buildKey === buildKey);
     if (kindFilter === 'request' && buildKey) payload.requests = payload.requests.filter((r) => r.buildKey === buildKey);
@@ -608,6 +650,7 @@ const StewardParticipation = {
       claim: StewardParticipation.claimForBuild(state, buildKey),
       requests: StewardParticipation.requestsForBuild(state, buildKey),
       kinshipTags: StewardParticipation.tagsForBuild(state, buildKey),
+      priority: StewardParticipation.priorityForBuild(state, buildKey),
     };
   },
 };
@@ -872,6 +915,8 @@ const initCreatorsPage = async () => {
     // Only when there are some: a standing "0 disavowed" reads as an accusation waiting
     // for a name, and the first-time visitor has enough zeroes to look at already.
     if (counts.disavowals) parts.push(`${counts.disavowals} disavowed`);
+    const prioritised = Object.keys(state.priorities || {}).length;
+    if (prioritised) parts.push(`${prioritised} builds marked for photography`);
     parts.push(
       `${counts.requests} photo requests`,
       `${counts.submitted} already sent`,
@@ -1458,10 +1503,6 @@ const initCreatorsPage = async () => {
   let kinTarget = null;
   let kinCap = 0;
   let kinResizeTimer = 0;
-  // Per era, the function that puts its first page of rows on the page. Folded eras
-  // render nothing until they open -- the richest thread has 1,563 albums -- and a deep
-  // link into one asks for its rows by era here.
-  const eraRenderers = new Map();
 
   function drawKinshipEmbed() {
     if (!kinTree || !kinTarget) return null;
@@ -1658,30 +1699,142 @@ const initCreatorsPage = async () => {
     return photos;
   }
 
-  // The builder's best frames, one per album, under the hero. This is the page's first
-  // picture of the work; until pass 3 the photographs were the fourth thing inside each
-  // album card, a screen and a half below the name.
-  function renderWorkMosaic() {
-    const picks = pickMosaicAlbums(thread, 8);
-    if (!picks.length) return null;
-    const section = node('section', null, 'work-mosaic');
-    section.id = 'work-mosaic';
+  // The work: one carousel of the photographed builds. A big viewport with a thick
+  // banner across its top (the era and the basic facts), the build's details laid out
+  // plainly underneath -- credits, links, the claim controls -- and a rail of every
+  // photographed build beneath as the selector. Nothing here folds. Until pass 3 the
+  // photographs were the fourth thing inside each album card, a screen and a half down.
+  let workAlbums = [];
+  let workIndex = 0;
+  let workPhoto = 0;
+
+  function workShareText(album) {
+    const share = shareFor(album, thread.builderKey);
+    if (share == null) return null;
+    const pct = 100 * share;
+    return `${pct > 0 && pct < 1 ? pct.toFixed(1) : Math.round(pct)} % yours`;
+  }
+
+  function workStepBuild(delta) {
+    if (!workAlbums.length) return;
+    workIndex = (workIndex + delta + workAlbums.length) % workAlbums.length;
+    workPhoto = 0;
+    paintWorkStage();
+  }
+
+  function workStepPhoto(delta) {
+    const album = workAlbums[workIndex];
+    if (!album) return;
+    workPhoto = (workPhoto + delta + album.photos.length) % album.photos.length;
+    paintWorkStage();
+  }
+
+  function arrowButton(cls, label, glyph, onClick) {
+    const button = node('button', glyph, cls);
+    button.type = 'button';
+    button.setAttribute('aria-label', label);
+    button.onclick = onClick;
+    return button;
+  }
+
+  // Paint the stage for the current build and photograph. Re-run on every step and on
+  // every claim (refreshAlbumCard routes here): the details article is a real
+  // `article.album[data-build-key]`, so the confirmed-tag sweep and the claim refresh
+  // find it the same way they find a row.
+  function paintWorkStage() {
+    const stage = $('work-stage');
+    if (!stage || !workAlbums.length) return;
+    const album = workAlbums[workIndex];
+    const photo = album.photos[workPhoto] || album.photos[0];
+
+    const viewport = node('div', null, 'work-viewport');
+    const picture = photoThumb(photo, 'photo-thumb work-photo');
+    const img = picture.querySelector('img');
+    img.loading = 'eager';
+    img.src = photo.large || photo.thumb;
+    img.onerror = () => { if (img.src !== photo.thumb) img.src = photo.thumb; };
+    viewport.append(picture);
+
+    const banner = node('div', null, 'work-banner');
+    const facts = node('div', null, 'work-facts');
+    facts.append(node('span', `Era ${album.era}`, 'work-era'));
+    facts.append(node('b', album.label, 'work-name'));
+    facts.append(node('span', `${album.pieces.toLocaleString()} pieces`));
+    const share = workShareText(album);
+    if (share) facts.append(node('span', share));
+    facts.append(node('span', plural(album.photos.length, 'photograph')));
+    banner.append(facts);
+    if (album.photos.length > 1) {
+      const stepper = node('div', null, 'work-photo-step');
+      stepper.append(
+        arrowButton('work-step', 'Previous photograph', '‹', () => workStepPhoto(-1)),
+        node('span', `${workPhoto + 1} / ${album.photos.length}`, 'work-step-count'),
+        arrowButton('work-step', 'Next photograph', '›', () => workStepPhoto(1)),
+      );
+      banner.append(stepper);
+    }
+    viewport.append(banner);
+    if (workAlbums.length > 1) {
+      viewport.append(
+        arrowButton('work-arrow work-arrow-prev', 'Previous build', '‹', () => workStepBuild(-1)),
+        arrowButton('work-arrow work-arrow-next', 'Next build', '›', () => workStepBuild(1)),
+      );
+    }
+
+    const details = node('article', null, 'album work-details');
+    details.dataset.buildKey = album.buildKey;
+    const text = node('div', null, 'work-text');
+    text.append(buildCreditLine(album));
+    const links = node('div', null, 'links');
+    if (album.galleryUrl) links.append(link('Open original gallery', album.galleryUrl));
+    if (album.worldUrl) links.append(link('Open in world viewer', album.worldUrl));
+    if (links.childElementCount) text.append(links);
+    const requestHistory = requestsForBuild(album.buildKey);
+    if (requestHistory.length) {
+      const sent = requestHistory.filter((r) => r.deliveryStatus === 'submitted').length;
+      text.append(node('p', `${plural(requestHistory.length, 'request')} for this build ( ${sent} sent )`, 'muted'));
+    }
+    details.append(text, renderAlbumActions(album, thread.builderKey));
+
+    stage.replaceChildren(viewport, details);
+    for (const tile of document.querySelectorAll('#work .work-tile')) {
+      tile.setAttribute('aria-pressed', String(tile.dataset.buildKey === album.buildKey));
+    }
+    renderConfirmedTagChips(externalParticipation);
+  }
+
+  function renderWorkCarousel() {
+    workAlbums = pickMosaicAlbums(thread, Infinity);
+    if (!workAlbums.length) return null;
+    workIndex = Math.min(workIndex, workAlbums.length - 1);
+    workPhoto = 0;
+    const section = node('section', null, 'work');
+    section.id = 'work';
     section.setAttribute('aria-labelledby', 'work-h2');
     const heading = node('h2', 'The work');
     heading.id = 'work-h2';
     section.append(heading);
-    const grid = node('div', null, 'photos mosaic');
-    picks.forEach((album, index) => {
-      const tile = photoThumb(album.photos[0], 'photo-thumb mosaic-tile');
-      // The first row is above the fold on every screen; the rest can wait.
-      if (index < 4) tile.querySelector('img').loading = 'eager';
+    // The attribution sentence, once for the page: every credit line below reads under it.
+    const attributions = distinctAttributions(thread);
+    if (attributions.length) section.append(node('p', attributions.join(' '), 'albums-note muted'));
+    const stage = node('div', null, 'work-stage');
+    stage.id = 'work-stage';
+    section.append(stage);
+    const rail = node('div', null, 'photos work-rail');
+    rail.setAttribute('role', 'group');
+    rail.setAttribute('aria-label', 'Photographed builds');
+    workAlbums.forEach((album, index) => {
+      const tile = photoThumb(album.photos[0], 'photo-thumb work-tile');
+      tile.dataset.buildKey = album.buildKey;
+      tile.setAttribute('aria-pressed', 'false');
+      tile.setAttribute('aria-label', `${album.label} · era ${album.era}`);
       tile.append(node('span', `Era ${album.era}`, 'mosaic-era'));
-      grid.append(tile);
+      tile.onclick = () => { workIndex = index; workPhoto = 0; paintWorkStage(); };
+      rail.append(tile);
     });
-    section.append(grid);
-    const albums = thread.eras.flatMap((e) => e.albums);
-    const shot = albums.filter((a) => a.photos?.length).length;
-    section.append(node('p', `${plural(thread.photos || 0, 'photograph')} across ${plural(shot, 'album')}`, 'mosaic-foot muted'));
+    section.append(rail);
+    const shot = workAlbums.length;
+    section.append(node('p', `${plural(thread.photos || 0, 'photograph')} across ${plural(shot, 'build')}`, 'mosaic-foot muted'));
     return section;
   }
 
@@ -1692,17 +1845,7 @@ const initCreatorsPage = async () => {
     return mine && mine.share != null ? mine.share : null;
   }
 
-  // What a row still owes its expanded body -- today the photographs past the first
-  // four. Rendered on the first open rather than up front: an image inside a hidden
-  // body never loads, and the release smoke rightly counts that as a broken photograph.
-  const albumRest = new WeakMap();
-
   function setAlbumExpanded(card, on) {
-    if (on && albumRest.has(card)) {
-      const pending = albumRest.get(card);
-      albumRest.delete(card);
-      pending();
-    }
     card.dataset.expanded = on ? 'true' : 'false';
     const toggle = card.querySelector('.album-toggle');
     if (toggle) toggle.setAttribute('aria-expanded', String(on));
@@ -1710,11 +1853,115 @@ const initCreatorsPage = async () => {
     if (more) more.hidden = !on;
   }
 
-  // The one label row that earns its place: a bare "34 %" says nothing without it.
-  function albumLedgerHead() {
-    const head = node('div', null, 'album-ledger-head');
+  // The freeform overview a row's Details drops down: the pieces per builder against the
+  // total, the ones nobody is recorded on, and who slept here. Names are credit links so
+  // the confirmed-tag sweep and the directory's late names find them as they do elsewhere.
+  function restOverview(album) {
+    const p = node('p', null, 'credits rest-text');
+    const total = album.pieces || 0;
+    p.append(`${total.toLocaleString()} construction pieces. `);
+    const contributors = (album.contributors || []).slice().sort((a, b) => (b.pieces ?? 0) - (a.pieces ?? 0));
+    const known = contributors.filter((c) => c.pieces != null);
+    if (!known.length) {
+      p.append('Historical import: shares were never recorded. Leading contributor ');
+      contributors.forEach((c, i) => {
+        if (i) p.append(', ');
+        const a = link(buildersByKey.get(c.builderKey)?.displayName || 'Recorded builder', new URL(`${c.builderKey}/`, base));
+        a.className = 'credit';
+        a.dataset.builderKey = c.builderKey;
+        p.append(a);
+      });
+      p.append('.');
+    } else {
+      let attributed = 0;
+      known.forEach((c, i) => {
+        if (i) p.append(', ');
+        const a = link(buildersByKey.get(c.builderKey)?.displayName || 'Recorded builder', new URL(`${c.builderKey}/`, base));
+        a.className = 'credit';
+        a.dataset.builderKey = c.builderKey;
+        p.append(a);
+        p.append(` placed ${c.pieces.toLocaleString()}${c.share != null ? ` (${(100 * c.share).toFixed(1)} %)` : ''}`);
+        attributed += c.pieces;
+      });
+      const rest = Math.max(0, total - attributed);
+      if (rest) p.append(`; ${rest.toLocaleString()} (${total ? (100 * rest / total).toFixed(1) : '0.0'} %) carry no saved creator`);
+      p.append('.');
+    }
+    if (Array.isArray(album.residents) && album.residents.length) {
+      p.append(' Slept here: ');
+      album.residents.forEach((r, i) => {
+        if (i) p.append(', ');
+        const a = link(buildersByKey.get(r.builderKey)?.displayName || 'Recorded builder', new URL(`${r.builderKey}/`, base));
+        a.className = 'resident';
+        a.dataset.builderKey = r.builderKey;
+        p.append(a);
+        if (r.beds > 1) p.append(` (${r.beds} beds)`);
+      });
+      p.append('.');
+    }
+    return p;
+  }
+
+  // The three marks of the feedback column. Hollow until chosen; the chosen one fills.
+  const PRIORITY_MARKS = [
+    ['first', 'Photograph this first', 'M8 1.8l1.9 4 4.4.6-3.2 3.1.8 4.4L8 11.8l-3.9 2.1.8-4.4L1.7 6.4l4.4-.6z'],
+    ['next', 'Photograph this in the next batch', 'M3 3h10v10H3z'],
+    ['skip', 'Not worth a photograph', 'M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13z'],
+  ];
+
+  function priorityIcon(value) {
+    const mark = PRIORITY_MARKS.find(([v]) => v === value);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'fb-icon');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('width', '18');
+    svg.setAttribute('height', '18');
+    svg.setAttribute('aria-hidden', 'true');
+    const shape = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    shape.setAttribute('class', 'fill');
+    shape.setAttribute('d', mark[2]);
+    svg.append(shape);
+    if (value === 'skip') {
+      const cross = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      cross.setAttribute('class', 'cross');
+      cross.setAttribute('d', 'M5.5 5.5l5 5M10.5 5.5l-5 5');
+      svg.append(cross);
+    }
+    return svg;
+  }
+
+  function renderPriorityGroup(album, targetBuilderKey) {
+    const group = node('div', null, 'rest-feedback');
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-label', `Photograph ${album.label}?`);
+    const current = StewardParticipation.priorityForBuild(state, album.buildKey);
+    for (const [value, title] of PRIORITY_MARKS) {
+      const button = node('button', null, `fb fb-${value}`);
+      button.type = 'button';
+      button.setAttribute('role', 'radio');
+      button.setAttribute('aria-checked', String(current?.value === value));
+      button.setAttribute('aria-label', title);
+      button.title = title;
+      button.append(priorityIcon(value));
+      button.onclick = () => {
+        StewardParticipation.setPriority(state, {
+          buildKey: album.buildKey, builderKey: targetBuilderKey, buildLabel: album.label, value, participant: state.participant,
+        });
+        saveState();
+        const chosen = StewardParticipation.priorityForBuild(state, album.buildKey);
+        for (const other of group.querySelectorAll('.fb')) {
+          other.setAttribute('aria-checked', String(Boolean(chosen) && other.classList.contains(`fb-${chosen.value}`)));
+        }
+      };
+      group.append(button);
+    }
+    return group;
+  }
+
+  function restLedgerHead() {
+    const head = node('div', null, 'rest-head');
     head.setAttribute('aria-hidden', 'true');
-    head.append(node('span', 'Build'), node('span', 'Pieces'), node('span', 'Share'), node('span', ''), node('span', 'Photos'));
+    head.append(node('span', 'Era'), node('span', 'Build'), node('span', '3D'), node('span', 'Details'), node('span', 'Feedback'));
     return head;
   }
 
@@ -1783,61 +2030,43 @@ const initCreatorsPage = async () => {
     return row;
   }
 
-  // One row per build: the name, the pieces, this builder's share, whether it has been
-  // photographed, and the first four frames. Everything a visitor reads once and then
-  // wants out of the way -- the credits, the links, the claim controls -- opens on the
-  // row's own toggle. The article keeps class `album` and its data-build-key: the
-  // confirmed-tag sweep, the claim refresh and the release smoke all find it by those.
+  // One row of the rest: the era, the build, the world-viewer link, a Details drop-down
+  // of freeform text, and the feedback marks. The article keeps class `album` and its
+  // data-build-key: the confirmed-tag sweep, the claim refresh and the release smoke all
+  // find it by those. The claim controls live under Details, where the pieces are.
   function buildAlbumCard(album, targetBuilderKey, {expanded = false} = {}) {
-    const card = node('article', null, 'album');
+    const card = node('article', null, 'album rest-row');
     card.dataset.buildKey = album.buildKey;
     const moreId = `album-more-${album.buildKey.slice(0, 12)}`;
 
-    const row = node('div', null, 'album-row');
-    const name = node('h3', null, 'album-name');
-    const toggle = node('button', album.label, 'album-toggle');
+    const line = node('div', null, 'rest-line');
+    line.append(node('span', `Era ${album.era}`, 'rest-era'));
+    const name = node('h3', album.label, 'rest-name');
+    line.append(name);
+    const url = album.worldUrl || album.galleryUrl;
+    if (url) {
+      const open = link('link', url);
+      open.className = 'rest-link';
+      open.setAttribute('aria-label', `${album.worldUrl ? 'Open' : 'Open the gallery for'} ${album.label}${album.worldUrl ? ' in the world viewer' : ''}`);
+      if (album.worldUrl) { open.target = '_blank'; open.rel = 'noopener'; }
+      line.append(open);
+    } else {
+      line.append(node('span', '—', 'rest-link muted'));
+    }
+    const toggle = node('button', 'Details', 'album-toggle rest-toggle');
     toggle.type = 'button';
     toggle.setAttribute('aria-controls', moreId);
     toggle.onclick = () => setAlbumExpanded(card, card.dataset.expanded !== 'true');
-    name.append(toggle);
+    line.append(toggle);
+    line.append(renderPriorityGroup(album, targetBuilderKey));
 
-    const pieces = node('span', album.pieces.toLocaleString(), 'album-pieces');
-    pieces.append(node('span', ' pieces', 'visually-hidden'));
-    const share = shareFor(album, targetBuilderKey);
-    const shareEl = node('span', share == null ? '—' : `${Math.round(share * 100)} %`, 'album-share');
-    if (share != null) shareEl.title = `${(100 * share).toFixed(1)}% of the pieces are this builder's`;
-    const shot = node('span', '●', 'album-shot');
-    const shotState = album.photos?.length ? 'yes' : (album.photoStatus === 'rejected' ? 'withheld' : 'none');
-    shot.dataset.shot = shotState;
-    shot.setAttribute('role', 'img');
-    shot.setAttribute('aria-label', shotState === 'yes' ? 'Photographed' : (shotState === 'withheld' ? 'Photographed, frames withheld' : 'Not photographed yet'));
-    const strip = renderAlbumPhotos(album, {limit: 4, cls: 'photos album-strip'}) || node('div', null, 'album-strip');
-    row.append(name, pieces, shareEl, shot, strip);
-
-    const more = node('div', null, 'album-more');
+    const more = node('div', null, 'album-more rest-more');
     more.id = moreId;
-    if (shotState === 'withheld') more.append(node('p', WITHHELD_NOTE, 'muted'));
-    more.append(buildCreditLine(album));
-    const links = node('div', null, 'links');
-    if (album.galleryUrl) links.append(link('Open original gallery', album.galleryUrl));
-    if (album.worldUrl) links.append(link('Open in world viewer', album.worldUrl));
-    if (links.childElementCount) more.append(links);
-    const requestHistory = requestsForBuild(album.buildKey);
-    if (requestHistory.length) {
-      const requestCount = requestHistory.length;
-      const sent = requestHistory.filter((r) => r.deliveryStatus === 'submitted').length;
-      more.append(node('p', `${requestCount} request${requestCount === 1 ? '' : 's'} for this build ( ${sent} sent )`, 'muted'));
-    }
-    const actions = renderAlbumActions(album, targetBuilderKey);
-    more.append(actions);
-    if ((album.photos || []).length > 4) {
-      albumRest.set(card, () => {
-        const rest = renderAlbumPhotos(album, {from: 4, cls: 'photos album-rest'});
-        if (rest) more.insertBefore(rest, actions);
-      });
-    }
+    if (album.photoStatus === 'rejected') more.append(node('p', WITHHELD_NOTE, 'muted'));
+    more.append(restOverview(album));
+    more.append(renderAlbumActions(album, targetBuilderKey));
 
-    card.append(row, more);
+    card.append(line, more);
     setAlbumExpanded(card, expanded);
     return card;
   }
@@ -1847,7 +2076,10 @@ const initCreatorsPage = async () => {
   // row stays open across the swap: the visitor just pressed a button inside it.
   function refreshAlbumCard(album, targetBuilderKey) {
     const existing = document.querySelector('article.album[data-build-key="' + album.buildKey + '"]');
-    if (existing) existing.replaceWith(buildAlbumCard(album, targetBuilderKey, {expanded: existing.dataset.expanded === 'true'}));
+    if (!existing) return;
+    // A photographed build lives on the carousel stage; repaint the stage in place.
+    if (existing.classList.contains('work-details')) { paintWorkStage(); return; }
+    existing.replaceWith(buildAlbumCard(album, targetBuilderKey, {expanded: existing.dataset.expanded === 'true'}));
   }
 
   function renderManifestAction() {
@@ -1998,18 +2230,20 @@ const initCreatorsPage = async () => {
   // more paging to do: a buildKey that belongs to no album on this thread must not spin.
   function revealAlbum(buildKey) {
     if (!/^[a-f0-9]{64}$/.test(String(buildKey || ''))) return null;
+    // A photographed build is on the carousel: turn the stage to it.
+    const shot = workAlbums.findIndex((a) => a.buildKey === buildKey);
+    if (shot >= 0) {
+      workIndex = shot;
+      workPhoto = 0;
+      paintWorkStage();
+      const stage = $('work-stage');
+      if (stage) stage.scrollIntoView({block: 'start'});
+      return stage ? stage.querySelector('article.album') : null;
+    }
     const find = () => document.querySelector(`article.album[data-build-key="${buildKey}"]`);
     let card = find();
     if (!card) {
-      const era = (thread?.eras || []).find((e) => (e.albums || []).some((a) => a.buildKey === buildKey));
-      if (!era) return null;
-      const section = $('content').querySelector(`details[data-era="${era.era}"]`);
-      if (!section) return null;
-      section.open = true;
-      // Opening fires `toggle` asynchronously; the rows are wanted now.
-      const ensure = eraRenderers.get(String(era.era));
-      if (ensure) ensure();
-      const more = section.querySelector('button.more-albums');
+      const more = $('rest')?.querySelector('button.more-albums');
       // One page per click. The cap is generous enough for the richest thread in the
       // archive (1,563 albums, forty to a page) and finite either way.
       for (let guard = 0; guard < 200 && !find(); guard += 1) {
@@ -2019,11 +2253,7 @@ const initCreatorsPage = async () => {
       card = find();
     }
     if (!card) return null;
-    // Older eras start folded now, so a card can exist and still be out of sight; the
-    // row arrives open and so does its era -- the visitor was sent here for its
-    // credits and its buttons.
-    const era = card.closest('details');
-    if (era) era.open = true;
+    // The row arrives open: the visitor was sent here for its pieces and its buttons.
     setAlbumExpanded(card, true);
     card.scrollIntoView({block: 'start'});
     const toggle = card.querySelector('.album-toggle');
@@ -2082,11 +2312,13 @@ const initCreatorsPage = async () => {
     }
     $('content').className = '';
     $('content').replaceChildren();
-    eraRenderers.clear();
 
-    // The order is the story: the work, then who they built beside, then the albums.
-    const work = renderWorkMosaic();
-    if (work) $('content').append(work);
+    // The order is the story: the work, then who they built beside, then the rest.
+    const work = renderWorkCarousel();
+    if (work) {
+      $('content').append(work);
+      paintWorkStage();
+    }
 
     const beside = renderKinshipEmbed();
     if (beside) {
@@ -2114,56 +2346,41 @@ const initCreatorsPage = async () => {
       }
     }
 
-    const albumsBlock = node('section', null, 'albums');
-    albumsBlock.id = 'albums';
-    albumsBlock.setAttribute('aria-labelledby', 'albums-h2');
-    const albumsHeading = node('h2', 'Albums by era');
-    albumsHeading.id = 'albums-h2';
-    albumsBlock.append(albumsHeading);
-    const attributions = distinctAttributions(thread);
-    if (attributions.length) albumsBlock.append(node('p', attributions.join(' '), 'albums-note muted'));
-    $('content').append(albumsBlock);
-
-    const allEraBlocks = thread.eras.slice().sort((a, b) => b.era - a.era);
-    allEraBlocks.forEach((era, position) => {
-      const section = node('details');
-      // revealAlbum() has to find the era that holds one build without walking the DOM
-      // for it, and a deep-linked build can be on any of them.
-      section.dataset.era = String(era.era);
-      // The newest era opens; the older ones wait one click away, and revealAlbum() opens
-      // whichever one a deep link needs.
-      section.open = position === 0;
-      const photographed = era.albums.filter((a) => a.photos?.length).length;
-      section.append(node('summary',
-        `Era ${era.era} · ${era.albums.length.toLocaleString()} albums · ${photographed.toLocaleString()} photographed`));
-      section.append(albumLedgerHead());
-
+    // The rest: every build not photographed yet, newest era first, largest first --
+    // for anyone who wants to dig, and for the feedback that steers the next campaign.
+    const rest = thread.eras.flatMap((e) => e.albums).filter((a) => !(a.photos && a.photos.length))
+      .sort((a, b) => b.era - a.era || (b.pieces || 0) - (a.pieces || 0) || a.buildKey.localeCompare(b.buildKey));
+    if (rest.length) {
+      const block = node('section', null, 'rest');
+      block.id = 'rest';
+      block.setAttribute('aria-labelledby', 'rest-h2');
+      const restHeading = node('h2', 'The rest');
+      restHeading.id = 'rest-h2';
+      block.append(restHeading);
+      block.append(node('p',
+        `${plural(rest.length, 'build')} not photographed yet. The link opens each one as it stands in the saved world; the marks say what should be shot next.`,
+        'rest-sub muted'));
+      if (!workAlbums.length) {
+        const attributions = distinctAttributions(thread);
+        if (attributions.length) block.append(node('p', attributions.join(' '), 'albums-note muted'));
+      }
+      const table = node('div', null, 'rest-table');
+      table.append(restLedgerHead());
       let shown = 0;
-      // Classed, not found by position: the album cards inside this section carry buttons
-      // of their own and they are inserted BEFORE this one.
-      const more = node('button', 'Show more albums', 'more-albums');
-      more.hidden = true;
-      const appendAlbums = () => {
-        for (const album of era.albums.slice(shown, shown + PAGE_SIZE_ALBUMS)) {
-          section.insertBefore(buildAlbumCard(album, thread.builderKey), more);
+      const more = node('button', 'Show more builds', 'more-albums');
+      const appendRows = () => {
+        for (const album of rest.slice(shown, shown + PAGE_SIZE_ALBUMS)) {
+          table.insertBefore(buildAlbumCard(album, thread.builderKey), more);
         }
         shown += PAGE_SIZE_ALBUMS;
-        more.hidden = shown >= era.albums.length;
+        more.hidden = shown >= rest.length;
       };
-      section.append(more);
-      more.onclick = appendAlbums;
-      // A folded era renders its rows the first time it opens, and hangs the confirmed
-      // tags on them then -- participation.json usually landed long before.
-      const ensureRendered = () => {
-        if (shown) return;
-        appendAlbums();
-        renderConfirmedTagChips(externalParticipation);
-      };
-      eraRenderers.set(String(era.era), ensureRendered);
-      if (section.open) appendAlbums();
-      else section.addEventListener('toggle', () => { if (section.open) ensureRendered(); });
-      albumsBlock.append(section);
-    });
+      table.append(more);
+      more.onclick = () => { appendRows(); renderConfirmedTagChips(externalParticipation); };
+      appendRows();
+      block.append(table);
+      $('content').append(block);
+    }
     renderThreadNotes();
     // If participation.json already landed there are albums to hang its chips on now.
     renderConfirmedTagChips(externalParticipation);
@@ -2342,6 +2559,7 @@ const initCreatorsPage = async () => {
         state.claims = fresh.claims;
         state.requests = fresh.requests;
         state.kinshipTags = fresh.kinshipTags;
+        state.priorities = fresh.priorities;
         updateParticipantSnapshot();
         showToast('Local participation cleared.');
         if (isThread && thread) renderThread();

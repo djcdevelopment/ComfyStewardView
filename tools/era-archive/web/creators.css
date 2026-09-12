@@ -436,10 +436,16 @@ fieldset input {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-/* An album is one row now, not a card: the name, the pieces, this builder's share, a
-   photographed dot and the first four frames. The rest opens on the row's own toggle. */
-#content .album {
-  padding: 8px 14px;
+/* An un-photographed build is one row of a table; the photographed ones are on the
+   carousel. Neither wears the card's 22px of stone. */
+#content .album.rest-row {
+  padding: 6px 14px;
+}
+
+#content .album.work-details {
+  padding: 16px 18px;
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
 }
 
 #content .builder {
@@ -542,18 +548,48 @@ fieldset input {
   margin: 6px 0;
 }
 
-.album-row {
+.album-more {
+  margin-top: 8px;
+  padding: 10px 0 6px;
+  border-top: 1px dashed var(--outline-variant);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 88px 64px 20px 228px;
+  gap: 10px;
+}
+
+.album-more .actions-row {
+  margin-top: 2px;
+}
+
+/* The rest: a table. Era · build · the world-viewer link · Details · Feedback. */
+.rest {
+  margin: 0 0 34px;
+}
+
+.rest h2 {
+  font-size: 1.5rem;
+  margin: 0 0 4px;
+}
+
+.rest-sub {
+  margin: 0 0 12px;
+  font-size: 0.88rem;
+}
+
+.rest-table {
+  display: grid;
+  gap: 6px;
+}
+
+.rest-head,
+.rest-line {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 56px 92px 118px;
   gap: 12px;
   align-items: center;
 }
 
-.album-ledger-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 88px 64px 20px 228px;
-  gap: 12px;
-  margin: 0 15px 4px;
+.rest-head {
+  margin: 0 15px 2px;
   font-family: var(--font-mono);
   font-size: 0.66rem;
   letter-spacing: 0.12em;
@@ -561,36 +597,53 @@ fieldset input {
   color: var(--outline);
 }
 
-.album-ledger-head > :nth-child(2),
-.album-ledger-head > :nth-child(3) {
+.rest-head > :last-child {
   text-align: right;
 }
 
-.album-name {
-  margin: 0;
-  min-width: 0;
+.rest-era {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  color: var(--parchment);
+  white-space: nowrap;
 }
 
-/* The name is the toggle. It wears none of the stele button's iron: a caret and the
-   display face, and the row's hover says the rest. */
+.rest-name {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rest-link {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+
+/* Details is a quiet toggle in the row, not a stele. */
+.rest-toggle,
 .album-toggle {
   margin: 0;
-  padding: 6px 0 6px 18px;
+  padding: 6px 0 6px 16px;
   width: auto;
-  max-width: 100%;
   border: 0;
   background: none;
   box-shadow: none;
   text-align: left;
   position: relative;
-  font-family: var(--font-display);
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--on-surface);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--outline);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .album-toggle::before {
@@ -599,8 +652,7 @@ fieldset input {
   left: 0;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 0.7em;
-  color: var(--outline);
+  font-size: 0.9em;
   transition: transform 0.15s ease;
 }
 
@@ -608,69 +660,73 @@ fieldset input {
   transform: translateY(-50%) rotate(90deg);
 }
 
-.album-toggle:hover {
+.album-toggle:hover,
+.album-toggle[aria-expanded="true"] {
   background: none;
   border: 0;
   color: var(--primary);
 }
 
-.album-pieces,
-.album-share {
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-  color: var(--parchment);
-  text-align: right;
-  white-space: nowrap;
+.rest-text {
+  margin: 0;
+  max-width: 880px;
+  line-height: 1.6;
 }
 
-.album-shot {
-  text-align: center;
-  font-size: 12px;
-  line-height: 1;
-  color: var(--flame);
+/* Feedback: three marks, hollow until chosen. A radio group of icons. */
+.rest-feedback {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
-.album-shot[data-shot="none"] {
-  color: var(--outline-variant);
-}
-
-.album-shot[data-shot="withheld"] {
+.rest-feedback .fb {
+  margin: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  box-shadow: none;
   color: var(--outline);
 }
 
-.album-strip,
-.photos.album-strip {
-  display: flex;
-  gap: 4px;
-  min-height: 29px;
-  margin: 0;
+.rest-feedback .fb:hover {
+  background: var(--surface-container);
+  border-color: var(--outline-variant);
+  color: var(--parchment);
 }
 
-.album-strip .photo-thumb {
-  width: 52px;
-  flex: none;
+.rest-feedback .fb[aria-checked="true"] {
+  color: var(--flame);
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(245, 158, 11, 0.12);
 }
 
-.album-strip img {
-  border-radius: 3px;
+.fb-icon .fill {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linejoin: round;
 }
 
-.album-more {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--outline-variant);
-  display: grid;
-  gap: 10px;
+.fb-icon .cross {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
 }
 
-.album-more .photos {
-  margin-top: 0;
+.fb[aria-checked="true"] .fb-icon .fill {
+  fill: currentColor;
 }
 
-.album-more .actions-row {
-  margin-top: 2px;
+.fb[aria-checked="true"] .fb-icon .cross {
+  stroke: var(--surface-low);
+  stroke-width: 2;
 }
 
 .album .credits {
@@ -728,35 +784,204 @@ fieldset input {
   display: block;
 }
 
-/* The work: the builder's best frame from each photographed album, under the hero. */
-.work-mosaic {
-  margin: 0 0 30px;
+/* The work: one carousel of the photographed builds -- the viewport with its banner,
+   the details plainly under it, the rail of builds as the selector. */
+.work {
+  margin: 0 0 32px;
 }
 
-.work-mosaic h2 {
+.work h2 {
   font-size: 1.5rem;
+  margin: 0 0 4px;
+}
+
+.work .albums-note {
   margin: 0 0 12px;
 }
 
-.photos.mosaic {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 0;
+.work-stage {
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-container-low);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  overflow: hidden;
 }
 
-.mosaic-tile {
+.work-viewport {
+  position: relative;
+  background: var(--surface-low);
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+.work-photo {
+  width: 100%;
+  aspect-ratio: 16 / 8;
+  max-height: 560px;
+}
+
+.work-photo img {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  object-fit: cover;
+  border-radius: 0;
+}
+
+/* The thick banner across the top of the viewport: the era and the basic facts. */
+.work-banner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  background: rgba(9, 15, 22, 0.86);
+  border-bottom: 1px solid var(--bronze);
+  backdrop-filter: blur(4px);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  color: var(--parchment);
+  pointer-events: none;
+}
+
+.work-banner > * {
+  pointer-events: auto;
+}
+
+.work-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  min-width: 0;
+}
+
+.work-era {
+  padding: 2px 8px;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--primary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.7rem;
+}
+
+.work-name {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--on-surface);
+}
+
+.work-photo-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.work-step-count {
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  text-align: center;
+}
+
+.work-step,
+.work-arrow {
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--outline-variant);
+  border-radius: 4px;
+  background: rgba(9, 15, 22, 0.7);
+  box-shadow: none;
+  color: var(--on-surface);
+  font-size: 1.1rem;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+}
+
+.work-step:hover,
+.work-arrow:hover {
+  border-color: var(--bronze);
+  background: rgba(9, 15, 22, 0.9);
+  color: var(--primary);
+}
+
+/* The build arrows sit on the picture's edges, below the banner. */
+.work-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 56px;
+  font-size: 1.6rem;
+}
+
+.work-arrow-prev {
+  left: 12px;
+}
+
+.work-arrow-next {
+  right: 12px;
+}
+
+/* The details under the viewport: the credits and the links on the left, the claim
+   controls on the right. Nothing folds. */
+.work-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px 28px;
+  align-items: start;
+}
+
+.work-text {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.work-details .actions-row {
+  margin: 0;
+  justify-content: flex-end;
+}
+
+.photos.work-rail {
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.work-tile {
   position: relative;
   border: 1px solid var(--outline-variant);
   border-radius: 4px;
   overflow: hidden;
   background: var(--surface-low);
-  transition: border-color 0.14s ease;
+  opacity: 0.75;
+  transition: border-color 0.14s ease, opacity 0.14s ease;
 }
 
-.mosaic-tile:hover {
+.work-tile:hover,
+.work-tile[aria-pressed="true"] {
   border: 1px solid var(--bronze);
+  opacity: 1;
 }
 
-.mosaic-tile img {
+.work-tile[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--ember);
+}
+
+.work-tile img {
   border-radius: 0;
 }
 
@@ -782,12 +1007,6 @@ fieldset input {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   letter-spacing: 0.04em;
-}
-
-/* Albums by era: the heading, the attribution sentence once, then the era folds. */
-.albums h2 {
-  font-size: 1.5rem;
-  margin: 0 0 4px;
 }
 
 .albums-note {
@@ -1156,45 +1375,86 @@ footer {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   }
 
-  .photos.mosaic {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .photos.work-rail {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .album-ledger-head {
+  .work-photo {
+    aspect-ratio: 4 / 3;
+  }
+
+  .work-banner {
+    padding: 8px 12px;
+    font-size: 0.72rem;
+  }
+
+  .work-name {
+    font-size: 1rem;
+  }
+
+  .work-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .work-details .actions-row {
+    justify-content: flex-start;
+  }
+
+  .rest-head {
     display: none;
   }
 
-  .album-row {
-    grid-template-columns: minmax(0, 1fr) 20px;
-    row-gap: 6px;
+  .rest-line {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 4px;
   }
 
-  .album-pieces,
-  .album-share {
-    text-align: left;
-  }
-
-  .album-pieces {
+  .rest-era {
     grid-column: 1;
+    grid-row: 1;
   }
 
-  .album-share {
+  .rest-name {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    white-space: normal;
+  }
+
+  .rest-link {
     grid-column: 2;
+    grid-row: 1;
     text-align: right;
   }
 
-  .album-strip {
-    grid-column: 1 / -1;
+  .rest-toggle {
+    grid-column: 1;
+    grid-row: 3;
   }
 
-  .album-strip .photo-thumb {
-    width: calc(25% - 3px);
+  .rest-feedback {
+    grid-column: 2;
+    grid-row: 3;
   }
 
   .album-toggle,
   .photo-thumb,
-  .kin-tree button.kin-node {
+  .kin-tree button.kin-node,
+  .rest-feedback .fb,
+  .work-step,
+  .work-arrow {
     width: auto;
+  }
+
+  .rest-feedback .fb {
+    width: 32px;
+  }
+
+  .work-step {
+    width: 28px;
+  }
+
+  .work-arrow {
+    width: 36px;
   }
 
   .photo-thumb {

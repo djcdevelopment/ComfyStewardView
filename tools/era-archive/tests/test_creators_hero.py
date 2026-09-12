@@ -107,14 +107,21 @@ class HeroShellTests(unittest.TestCase):
         # them in that order, and each is a real section a reader (and a test) can find.
         thread = self.js[self.js.index("function renderThread()"):]
         order = [thread.index(marker) for marker in
-                 ("renderWorkMosaic()", "renderKinshipEmbed()", "'Albums by era'", "renderThreadNotes()")]
+                 ("renderWorkCarousel()", "renderKinshipEmbed()", "'The rest'", "renderThreadNotes()")]
         self.assertEqual(order, sorted(order), "the builder page lost its order")
         # The attribution sentence is said once for the page, not once per album.
         self.assertIn("distinctAttributions(", self.js)
         self.assertIn("'albums-note muted'", self.js)
-        # Album rows collapse: the toggle owns aria-expanded and the body is hidden by default.
-        for marker in ("'album-toggle'", "aria-expanded", "'album-more'", "setAlbumExpanded("):
-            self.assertIn(marker, self.js, f"album rows lost {marker}")
+        # The carousel: a banner over the viewport, the details article under it, a rail.
+        for marker in ("'work-banner'", "'album work-details'", "'photos work-rail'", "paintWorkStage()"):
+            self.assertIn(marker, self.js, f"the carousel lost {marker}")
+        # The rest: era, build, the world-viewer link, a Details drop-down, the feedback marks.
+        for marker in ("'album rest-row'", "'rest-link'", "'album-toggle rest-toggle'", "'rest-feedback'",
+                       "'radiogroup'", "setAlbumExpanded("):
+            self.assertIn(marker, self.js, f"the rest table lost {marker}")
+        # Feedback rides the participation rails like a claim: stored locally, exported.
+        self.assertIn("priorities: Object.values(state.priorities || {})", self.js)
+        self.assertIn("state.priorities = fresh.priorities", self.js)
         # The tree is drawn on the profile with the shared drawing, and the ribbon is its
         # caption: no second heading for the same eight names.
         self.assertIn("drawKinshipTree(", self.js)
