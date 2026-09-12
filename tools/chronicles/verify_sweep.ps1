@@ -78,8 +78,8 @@ if (-not $SkipViewer) {
 
 if (-not $SkipCreators) {
     "== creators"
-    Check '/valheim/creators/' @('creators.css?v=8', 'id="stats-link"', 'href="/chronicles/"')
-    Check '/valheim/creators/creators.css?v=8' @('--flame', '@font-face')
+    Check '/valheim/creators/' @('creators.css?v=9', 'id="stats-link"', 'href="/chronicles/"')
+    Check '/valheim/creators/creators.css?v=9' @('--flame', '@font-face')
     Check '/valheim/creators/creators.js' @('Top 8', 'portraitIndex', 'StewardParticipation', 'buildKinshipTree')
     # The pair view is mounted by creators.js and drawn entirely by this script, so the
     # section itself cannot be probed in the served HTML -- the script's own presence and
@@ -89,13 +89,13 @@ if (-not $SkipCreators) {
     Check '/valheim/creators/stats/' @('Archive Statistics', 'href="/chronicles/"')
     # The kinship page is served from its own directory, so its assets climb one level.
     # The two banned words and the participation deep link all belong to other pages.
-    Check '/valheim/creators/kinship/' @('id="kin-tree"', '../creators.css?v=8', 'src="../kin-tree.js?v=8"', 'data-steward-page="kinship"', 'href="/chronicles/"') @('character', 'archetype', 'href="#participation-details"')
+    Check '/valheim/creators/kinship/' @('id="kin-tree"', '../creators.css?v=9', 'src="../kin-tree.js?v=9"', 'data-steward-page="kinship"', 'href="/chronicles/"') @('character', 'archetype', 'href="#participation-details"')
     Check '/valheim/creators/kinship.js' @('initKinshipPage', 'drawKinshipTree(')
     Check '/valheim/creators/directory.json' @('"builders"') @() 'no-cache'
     try {
         $d = (Invoke-WebRequest -Uri ($base + '/valheim/creators/directory.json') -UseBasicParsing -TimeoutSec 60).Content | ConvertFrom-Json
         $top = $d.builders | Sort-Object -Property albums -Descending | Select-Object -First 1
-        Check ('/valheim/creators/' + $top.builderKey + '/') @('../creators.css?v=8', 'src="../pair.js"', 'src="../kin-tree.js"', 'href="/chronicles/"', 'id="builder-hero"', 'id="look-out"', 'id="thread-notes"')
+        Check ('/valheim/creators/' + $top.builderKey + '/') @('../creators.css?v=9', 'src="../pair.js"', 'src="../kin-tree.js"', 'href="/chronicles/"', 'id="builder-hero"', 'id="look-out"', 'id="thread-notes"')
         Check ('/valheim/creators/threads/' + $top.builderKey + '.json') @('"contributors"')
         # A named anchor has to reach the same shell the bare page does.
         Check ('/valheim/creators/kinship/?builder=' + $top.builderKey) @('id="kin-tree"')

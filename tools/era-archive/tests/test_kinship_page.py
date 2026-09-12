@@ -93,8 +93,8 @@ class KinshipProjectionTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             receipt = project(shared_document(), dest, "https://example.invalid/world")
             page = (dest / "kinship" / "index.html").read_text(encoding="utf-8")
-            for marker in ('href="../creators.css?v=8"', 'src="../creators.js?v=8"',
-                           'src="../kin-tree.js?v=8"', 'src="../kinship.js"',
+            for marker in ('href="../creators.css?v=9"', 'src="../creators.js?v=9"',
+                           'src="../kin-tree.js?v=9"', 'src="../kinship.js"',
                            'data-steward-page="kinship"', 'id="kin-tree"'):
                 self.assertIn(marker, page, f"projected kinship page lost {marker}")
             # The rewrite must not leave a same-directory link behind for any script.

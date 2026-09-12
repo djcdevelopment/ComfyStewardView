@@ -1941,7 +1941,9 @@ const initCreatorsPage = async () => {
       button.setAttribute('role', 'radio');
       button.setAttribute('aria-checked', String(current?.value === value));
       button.setAttribute('aria-label', title);
-      button.title = title;
+      // A drawn tooltip (data-tip + CSS), not the native title: the native one waits a
+      // second, never shows on keyboard focus, and an icon-only control needs its name.
+      button.dataset.tip = title;
       button.append(priorityIcon(value));
       button.onclick = () => {
         StewardParticipation.setPriority(state, {
