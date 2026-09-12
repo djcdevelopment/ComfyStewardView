@@ -1,10 +1,13 @@
 <!doctype html>
+<!-- Rendered by tools/era-archive/stats.py at projection time: every figure on this page is a token
+     stats.py fills from the community document. Never type a number in here. To review a render:
+     python tools/era-archive/stats.py --output-root E:\omen\steward-multi-era --out <file> -->
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Archive Statistics · Comfy builders</title>
-    <meta name="description" content="Mathematical breakdown of construction scale, contributor share distributions, album inflation, and collaborative effort across the 7-era Valheim archive.">
+    <meta name="description" content="Mathematical breakdown of construction scale, contributor share distributions, album inflation, and collaborative effort across the {{era_count}}-era Valheim archive.">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23121820'/%3E%3Cpath d='M32 10L48 24V40L32 54L16 40V24L32 10Z' fill='%231a232e' stroke='%23f59e0b' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%23f59e0b'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="./creators.css?v=15">
   </head>
@@ -28,35 +31,36 @@
     <main>
       <p class="eyebrow">THE COMFY COMMUNITY · ARCHIVE INTELLIGENCE</p>
       <h1>How the World Was Built</h1>
-      <p id="intro">A mathematical census of 16.9 million construction pieces across 7 historical eras. This analysis explains why players discover hundreds of build albums on their thread, and measures the true distribution of solo pioneering, co-op megaprojects, and wilderness exploration.</p>
+      <p id="intro">A mathematical census of {{pieces_millions}} million construction pieces across {{era_count}} historical eras. This analysis explains why players discover hundreds of build albums on their thread, and measures the true distribution of solo pioneering, co-op megaprojects, and wilderness exploration.</p>
+      <p class="muted" id="data-stamp">Generated {{generated_date}} from {{clusters}} spatial clusters and {{rows}} credited contributions across {{era_runs}}. {{legacy_rows}} legacy gallery albums ({{legacy_era_runs}}) carry a credit but no piece count, so they sit outside the piece and share arithmetic below. Directory rule: {{rule_label}}.</p>
 
       <section class="stat-cards-grid">
         <div class="stat-card">
-          <span class="stat-num">16,893,112</span>
+          <span class="stat-num">{{pieces_total}}</span>
           <span class="stat-label">Attributed Construction Pieces</span>
-          <span class="stat-desc">Saved building objects across eras 7, 8, 9, 10, 11, 12, and 14.</span>
+          <span class="stat-desc">Saved building objects across eras {{era_list}}.</span>
         </div>
         <div class="stat-card">
-          <span class="stat-num">318,319</span>
+          <span class="stat-num">{{clusters}}</span>
           <span class="stat-label">Spatial Build Clusters</span>
           <span class="stat-desc">Connected structures identified via 3D proximity grouping.</span>
         </div>
         <div class="stat-card">
-          <span class="stat-num">2,747</span>
+          <span class="stat-num">{{builders}}</span>
           <span class="stat-label">Recorded Builders</span>
           <span class="stat-desc">Unique players verified via tombstones, beds, and crafter IDs.</span>
         </div>
         <div class="stat-card">
-          <span class="stat-num">86.4%</span>
+          <span class="stat-num">{{r3_noise_cut}}</span>
           <span class="stat-label">Trail & Utility Noise Ratio</span>
-          <span class="stat-desc">86.4% of all generated albums account for just 3.5% of placed blocks.</span>
+          <span class="stat-desc">{{r3_noise_cut}} of all generated albums account for just {{r3_pieces_cut}} of placed blocks.</span>
         </div>
       </section>
 
       <!-- Section 1 -->
       <section class="stats-section">
         <h2>1. The 2D Spread: Build Size vs. Contributor Share %</h2>
-        <p class="muted">Every one of the 283,476 contribution events in the multi-era archive, cross-tabulating the scale of the structure against the share of blocks placed by that contributor.</p>
+        <p class="muted">Every one of the {{measured_rows}} measured contribution events in the multi-era archive ({{legacy_rows}} legacy gallery credits carry no piece count and are excluded), cross-tabulating the scale of the structure against the share of blocks placed by that contributor.</p>
         <div class="stats-table-wrap">
           <table class="stats-table">
             <thead>
@@ -74,120 +78,14 @@
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td class="text-left"><strong>1 piece</strong></td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td><strong>115,997</strong></td>
-                <td><strong>115,997</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>2–5 pieces</strong></td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>1,265</td>
-                <td>7,195</td>
-                <td>13,717</td>
-                <td>2,094</td>
-                <td><strong>56,626</strong></td>
-                <td><strong>80,897</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>6–20 pieces</strong></td>
-                <td>0</td>
-                <td>0</td>
-                <td>1,173</td>
-                <td>3,063</td>
-                <td>1,887</td>
-                <td>1,922</td>
-                <td>2,464</td>
-                <td><strong>11,674</strong></td>
-                <td><strong>22,183</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>21–50 pieces</strong></td>
-                <td>0</td>
-                <td>1,553</td>
-                <td>515</td>
-                <td>904</td>
-                <td>722</td>
-                <td>526</td>
-                <td>1,136</td>
-                <td><strong>3,663</strong></td>
-                <td><strong>9,019</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>51–100 pieces</strong></td>
-                <td>0</td>
-                <td>1,457</td>
-                <td>448</td>
-                <td>722</td>
-                <td>996</td>
-                <td>918</td>
-                <td>903</td>
-                <td><strong>1,985</strong></td>
-                <td><strong>7,429</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>101–500 pieces</strong></td>
-                <td>4,309</td>
-                <td>2,806</td>
-                <td>1,273</td>
-                <td>1,701</td>
-                <td>1,614</td>
-                <td>1,162</td>
-                <td>2,375</td>
-                <td><strong>2,616</strong></td>
-                <td><strong>17,856</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>501–2,000 pieces</strong></td>
-                <td>5,057</td>
-                <td>2,923</td>
-                <td>1,212</td>
-                <td>2,228</td>
-                <td>1,583</td>
-                <td>1,299</td>
-                <td>2,439</td>
-                <td><strong>1,112</strong></td>
-                <td><strong>17,853</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>&gt;2,000 pieces</strong></td>
-                <td>4,797</td>
-                <td>2,010</td>
-                <td>972</td>
-                <td>1,234</td>
-                <td>826</td>
-                <td>673</td>
-                <td>1,242</td>
-                <td><strong>488</strong></td>
-                <td><strong>12,242</strong></td>
-              </tr>
+{{table_1_body}}
             </tbody>
             <tfoot>
-              <tr>
-                <td class="text-left"><strong>Total Contributions</strong></td>
-                <td><strong>14,163</strong></td>
-                <td><strong>10,749</strong></td>
-                <td><strong>5,593</strong></td>
-                <td><strong>11,117</strong></td>
-                <td><strong>14,823</strong></td>
-                <td><strong>20,217</strong></td>
-                <td><strong>12,653</strong></td>
-                <td><strong>194,161</strong></td>
-                <td><strong>283,476</strong></td>
-              </tr>
+{{table_1_foot}}
             </tfoot>
           </table>
         </div>
-        <p class="table-note"><strong>Reading this table:</strong> The top row reveals 115,997 solo 1-piece drops (campfires, single workbenches, lanterns). The bottom-left columns highlight 21,902 instances of &ldquo;megastructure tourism&rdquo;—where players placed under 5% of a building with over 100 pieces.</p>
+        <p class="table-note"><strong>Reading this table:</strong> The top row reveals {{t1_solo_1piece}} solo 1-piece drops (campfires, single workbenches, lanterns). The bottom-left columns highlight {{t1_tourism}} instances of &ldquo;megastructure tourism&rdquo;—where players placed under 5% of a building with over 100 pieces.</p>
       </section>
 
       <!-- Section 2 -->
@@ -210,107 +108,10 @@
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td class="text-left"><strong>1 piece</strong></td>
-                <td>115,997</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td><strong>115,997</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>2–5 pieces</strong></td>
-                <td>16,255</td>
-                <td>64,642</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td><strong>80,897</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>6–20 pieces</strong></td>
-                <td>3,339</td>
-                <td>4,215</td>
-                <td>14,629</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td><strong>22,183</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>21–50 pieces</strong></td>
-                <td>1,410</td>
-                <td>1,241</td>
-                <td>1,410</td>
-                <td>4,958</td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td><strong>9,019</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>51–100 pieces</strong></td>
-                <td>952</td>
-                <td>796</td>
-                <td>1,422</td>
-                <td>965</td>
-                <td>3,294</td>
-                <td>0</td>
-                <td>0</td>
-                <td><strong>7,429</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>101–500 pieces</strong></td>
-                <td>3,295</td>
-                <td>2,534</td>
-                <td>2,316</td>
-                <td>1,752</td>
-                <td>1,605</td>
-                <td>6,328</td>
-                <td>26</td>
-                <td><strong>17,856</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>501–2,000 pieces</strong></td>
-                <td>2,201</td>
-                <td>1,963</td>
-                <td>2,077</td>
-                <td>1,434</td>
-                <td>1,413</td>
-                <td>3,938</td>
-                <td>4,827</td>
-                <td><strong>17,853</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>&gt;2,000 pieces</strong></td>
-                <td>1,379</td>
-                <td>1,436</td>
-                <td>1,383</td>
-                <td>982</td>
-                <td>897</td>
-                <td>2,223</td>
-                <td>3,942</td>
-                <td><strong>12,242</strong></td>
-              </tr>
+{{table_2_body}}
             </tbody>
             <tfoot>
-              <tr>
-                <td class="text-left"><strong>Total Contributions</strong></td>
-                <td><strong>144,828</strong></td>
-                <td><strong>76,827</strong></td>
-                <td><strong>23,237</strong></td>
-                <td><strong>10,091</strong></td>
-                <td><strong>7,209</strong></td>
-                <td><strong>12,489</strong></td>
-                <td><strong>8,795</strong></td>
-                <td><strong>283,476</strong></td>
-              </tr>
+{{table_2_foot}}
             </tfoot>
           </table>
         </div>
@@ -319,7 +120,7 @@
       <!-- Section 3 -->
       <section class="stats-section">
         <h2>3. The Album Inflation Factor & Player Archetypes</h2>
-        <p class="muted">Distribution percentiles across all 2,747 recorded builders. Because the spatial clustering algorithm guarantees zero piece loss by grouping even isolated single pieces into builds, active players accumulate massive album inflation.</p>
+        <p class="muted">Distribution percentiles across all {{builders}} recorded builders ({{n_with_pieces}} carry a piece count; a legacy gallery credit counts as an album but not as pieces). Because the spatial clustering algorithm guarantees zero piece loss by grouping even isolated single pieces into builds, active players accumulate massive album inflation.</p>
         <div class="stats-table-wrap">
           <table class="stats-table">
             <thead>
@@ -337,78 +138,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td class="text-left"><strong>Credited Albums (all recorded pieces)</strong></td>
-                <td>1</td>
-                <td>1</td>
-                <td>3</td>
-                <td><strong>11</strong></td>
-                <td>48</td>
-                <td>189</td>
-                <td>380</td>
-                <td>13,639</td>
-                <td>103.2</td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Lifetime Construction Pieces</strong></td>
-                <td>1</td>
-                <td>7</td>
-                <td>91</td>
-                <td><strong>669</strong></td>
-                <td>3,465</td>
-                <td>12,586</td>
-                <td>28,626</td>
-                <td>928,754</td>
-                <td>6,465.0</td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Real Builds (&ge;50 pieces placed)</strong></td>
-                <td>0</td>
-                <td>0</td>
-                <td>0</td>
-                <td><strong>1</strong></td>
-                <td>5</td>
-                <td>20</td>
-                <td>43</td>
-                <td>924</td>
-                <td>10.3</td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Wilderness & Trail Drops (&le;5 pieces)</strong></td>
-                <td>0</td>
-                <td>0</td>
-                <td>1</td>
-                <td><strong>7</strong></td>
-                <td>35</td>
-                <td>138</td>
-                <td>281</td>
-                <td>11,730</td>
-                <td>80.7</td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>% of Portfolio that is Trail Drops (&le;5 pieces)</strong></td>
-                <td>0.0%</td>
-                <td>0.0%</td>
-                <td>50.0%</td>
-                <td><strong>71.0%</strong></td>
-                <td>81.1%</td>
-                <td>100.0%</td>
-                <td>100.0%</td>
-                <td>100.0%</td>
-                <td>63.7%</td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Album Inflation Factor (Albums / Real Builds, active builders)</strong></td>
-                <td>1.0x</td>
-                <td>3.0x</td>
-                <td>5.3x</td>
-                <td><strong>7.8x</strong></td>
-                <td>11.3x</td>
-                <td>16.7x</td>
-                <td>22.3x</td>
-                <td>2,198.0x</td>
-                <td>13.4x</td>
-              </tr>
+{{table_3_body}}
             </tbody>
           </table>
         </div>
@@ -435,7 +165,7 @@
       <!-- Section 4 -->
       <section class="stats-section">
         <h2>4. Effort Concentration (The Valheim Pareto Curve)</h2>
-        <p class="muted">Cumulative percentage of a builder's lifetime block placement concentrated in their top N builds (analyzed across all 1,416 active builders with &ge;500 pieces).</p>
+        <p class="muted">Cumulative percentage of a builder's lifetime block placement concentrated in their top N builds (analyzed across all {{n_active}} active builders with &ge;500 pieces).</p>
         <div class="stats-table-wrap">
           <table class="stats-table">
             <thead>
@@ -450,61 +180,17 @@
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td class="text-left"><strong>Pieces in Top 1 Build</strong></td>
-                <td>11.3%</td>
-                <td>23.8%</td>
-                <td><strong>46.0%</strong></td>
-                <td>72.7%</td>
-                <td>93.0%</td>
-                <td>48.8%</td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Pieces in Top 3 Builds</strong></td>
-                <td>27.8%</td>
-                <td>52.7%</td>
-                <td><strong>81.6%</strong></td>
-                <td>96.0%</td>
-                <td>99.1%</td>
-                <td>71.8%</td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Pieces in Top 5 Builds</strong></td>
-                <td>38.8%</td>
-                <td>67.6%</td>
-                <td><strong>91.3%</strong></td>
-                <td>98.2%</td>
-                <td>99.7%</td>
-                <td>79.8%</td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Pieces in Top 10 Builds</strong></td>
-                <td>57.6%</td>
-                <td>85.2%</td>
-                <td><strong>97.0%</strong></td>
-                <td>99.4%</td>
-                <td>100.0%</td>
-                <td>87.7%</td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Pieces in Top 20 Builds</strong></td>
-                <td>74.9%</td>
-                <td>94.5%</td>
-                <td><strong>99.0%</strong></td>
-                <td>100.0%</td>
-                <td>100.0%</td>
-                <td>93.0%</td>
-              </tr>
+{{table_4_body}}
             </tbody>
           </table>
         </div>
-        <p class="table-note"><strong>The 97% Rule:</strong> A median builder deposits <strong>46.0% of their lifetime effort into a single build</strong>, 81.6% across their top 3, and <strong>97.0% across their top 10</strong>. Albums beyond the 10th are almost entirely incidental touches or survival remnants.</p>
+        <p class="table-note"><strong>The 97% Rule:</strong> A median builder deposits <strong>{{t4_top1_p50}} of their lifetime effort into a single build</strong>, {{t4_top3_p50}} across their top 3, and <strong>{{t4_top10_p50}} across their top 10</strong>. Albums beyond the 10th are almost entirely incidental touches or survival remnants.</p>
       </section>
 
       <!-- Section 5 -->
       <section class="stats-section">
         <h2>5. Shared Build Anatomy: Solo Dominance vs. True Co-Op</h2>
-        <p class="muted">Analysis of all collaborative structures with 2 or more credited contributors. Examines whether multi-player builds are equal partnerships or lead-dominated projects.</p>
+        <p class="muted">Analysis of all {{shared_builds}} collaborative structures with 2 or more credited contributors. Examines whether multi-player builds are equal partnerships or lead-dominated projects.</p>
         <div class="stats-table-wrap">
           <table class="stats-table">
             <thead>
@@ -520,86 +206,17 @@
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td class="text-left"><strong>2–5 pieces</strong></td>
-                <td>10,234</td>
-                <td>2.0</td>
-                <td>4</td>
-                <td>60.4%</td>
-                <td>6.8%</td>
-                <td>96.8%</td>
-                <td><strong>3.2%</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>6–20 pieces</strong></td>
-                <td>3,903</td>
-                <td>2.2</td>
-                <td>6</td>
-                <td>72.6%</td>
-                <td>46.9%</td>
-                <td>48.6%</td>
-                <td><strong>6.2%</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>21–50 pieces</strong></td>
-                <td>1,600</td>
-                <td>2.3</td>
-                <td>8</td>
-                <td>71.3%</td>
-                <td>53.7%</td>
-                <td>29.7%</td>
-                <td><strong>17.3%</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>51–100 pieces</strong></td>
-                <td>1,778</td>
-                <td>2.3</td>
-                <td>8</td>
-                <td>67.2%</td>
-                <td>33.9%</td>
-                <td>45.7%</td>
-                <td><strong>20.6%</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>101–500 pieces</strong></td>
-                <td>4,069</td>
-                <td>2.7</td>
-                <td>16</td>
-                <td>61.9%</td>
-                <td>39.9%</td>
-                <td>28.4%</td>
-                <td><strong>31.9%</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>501–2,000 pieces</strong></td>
-                <td>4,233</td>
-                <td>3.4</td>
-                <td>20</td>
-                <td>70.9%</td>
-                <td>44.3%</td>
-                <td>33.5%</td>
-                <td><strong>22.2%</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>&gt;2,000 pieces</strong></td>
-                <td>2,129</td>
-                <td>5.4</td>
-                <td>100</td>
-                <td>74.3%</td>
-                <td>46.7%</td>
-                <td>37.9%</td>
-                <td><strong>15.4%</strong></td>
-              </tr>
+{{table_5_body}}
             </tbody>
           </table>
         </div>
-        <p class="table-note">Even in massive megastructures (&gt;2,000 pieces), <strong>46.7% are dominated by a single creator</strong> with &ge;80% share, while true distributed co-op (no single player having &ge;50%) represents just 15.4% of builds.</p>
+        <p class="table-note">Even in massive megastructures (&gt;2,000 pieces), <strong>{{t5_top_dominated}} are dominated by a single creator</strong> with &ge;80% share, while true distributed co-op (no single player having &ge;50%) represents just {{t5_top_coop}} of builds.</p>
       </section>
 
       <!-- Section 6 -->
       <section class="stats-section">
         <h2>6. Threshold Reduction Curve: Filtering Noise Without Losing History</h2>
-        <p class="muted">Simulated qualification rules showing the mathematical impact of filtering small remnants from public build directories.</p>
+        <p class="muted">Simulated qualification rules showing the mathematical impact of filtering small remnants from public build directories, ending with the rule the directory actually ships.</p>
         <div class="stats-table-wrap">
           <table class="stats-table">
             <thead>
@@ -609,73 +226,66 @@
                 <th>Noise Cut %</th>
                 <th>Total Pieces Kept</th>
                 <th>Builders Preserved</th>
-                <th>Tugcow Albums</th>
+                <th>{{exemplar_name}} Albums</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td class="text-left"><strong>Current baseline (All &ge; 1 piece)</strong></td>
-                <td>283,476</td>
-                <td>0.0%</td>
-                <td><strong>100.0%</strong></td>
-                <td>2,747 (100.0%)</td>
-                <td><strong>427</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Placed &ge; 5 pieces</strong></td>
-                <td>67,926</td>
-                <td>76.0%</td>
-                <td><strong>98.6%</strong></td>
-                <td>2,342 (85.3%)</td>
-                <td><strong>66</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Placed &ge; 10 pieces</strong></td>
-                <td>49,099</td>
-                <td>82.7%</td>
-                <td><strong>97.4%</strong></td>
-                <td>2,254 (82.1%)</td>
-                <td><strong>40</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Placed &ge; 20 pieces (Recommended)</strong></td>
-                <td>38,619</td>
-                <td>86.4%</td>
-                <td><strong>96.5%</strong></td>
-                <td>2,170 (79.0%)</td>
-                <td><strong>33</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Placed &ge; 50 pieces</strong></td>
-                <td>28,181</td>
-                <td>90.1%</td>
-                <td><strong>94.5%</strong></td>
-                <td>2,023 (73.6%)</td>
-                <td><strong>18</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Substantial: (Placed &ge; 10 and Share &ge; 5%) or Placed &ge; 50</strong></td>
-                <td>44,217</td>
-                <td>84.4%</td>
-                <td><strong>97.0%</strong></td>
-                <td>2,183 (79.5%)</td>
-                <td><strong>39</strong></td>
-              </tr>
-              <tr>
-                <td class="text-left"><strong>Structure: Build &ge; 20 total and (Share &ge; 10% or Placed &ge; 50)</strong></td>
-                <td>39,114</td>
-                <td>86.2%</td>
-                <td><strong>96.2%</strong></td>
-                <td>2,163 (78.7%)</td>
-                <td><strong>37</strong></td>
-              </tr>
+{{table_6_body}}
             </tbody>
           </table>
         </div>
-        <p class="table-note">Setting a simple threshold of <strong>&ge;20 pieces placed</strong> cuts <strong>86.4% of all album noise</strong> server-wide while preserving <strong>96.5% of all construction volume</strong> and 79% of all registered builders.</p>
+        <p class="table-note">Setting a simple threshold of <strong>&ge;20 pieces placed</strong> cuts <strong>{{r3_noise_cut}} of all album noise</strong> server-wide while preserving <strong>{{r3_pieces_kept}} of all construction volume</strong> and {{r3_builders_pct}} of all registered builders. The directory ships the last row: {{shipped_records}} credits, which is <strong>{{shipped_builds}} distinct albums for {{shipped_builders}} builders</strong> &mdash; the figures its receipt carries.</p>
       </section>
 
-      <footer>Data extracted directly from immutable Valheim world saves (.db) across Eras 7–14 using the Comfy multi-era archive pipeline. Opaque spatial clustering keys guarantee exact piece membership without rectangular approximations.</footer>
+      <!-- Section 7 -->
+      <section class="stats-section">
+        <h2>7. Photographs &amp; Residency: What the Archive Added Since the Census</h2>
+        <p class="muted">The directory publishes {{directory_albums}} albums under the rule above. Two things ride an album beyond its credits: photographs, shot by the capture lane on the archive's own world saves, and residency &mdash; a bed whose owner slept inside the build's footprint. A bed is residency, not credit: residents never enter the tables above.</p>
+        <section class="stat-cards-grid">
+          <div class="stat-card">
+            <span class="stat-num">{{photos}}</span>
+            <span class="stat-label">Photographs</span>
+            <span class="stat-desc">Across {{albums_with_photos}} published albums.</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-num">{{builders_with_photos}}</span>
+            <span class="stat-label">Builders Photographed</span>
+            <span class="stat-desc">At least one of their albums carries a frame.</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-num">{{builders_with_bed}}</span>
+            <span class="stat-label">Builders With a Bed</span>
+            <span class="stat-desc">{{beds}} beds inside {{albums_with_beds}} clusters across the archive.</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-num">{{directory_albums}}</span>
+            <span class="stat-label">Albums in the Directory</span>
+            <span class="stat-desc">Kept from {{clusters}} spatial clusters by the shipped rule.</span>
+          </div>
+        </section>
+        <div class="stats-table-wrap">
+          <table class="stats-table">
+            <thead>
+              <tr>
+                <th class="text-left">Era</th>
+                <th>Albums in Directory</th>
+                <th>Photographed</th>
+                <th>Photographed %</th>
+                <th>Photographs</th>
+              </tr>
+            </thead>
+            <tbody>
+{{table_7_body}}
+            </tbody>
+            <tfoot>
+{{table_7_foot}}
+            </tfoot>
+          </table>
+        </div>
+        <p class="table-note">Legacy eras ({{legacy_era_runs}}) entered the archive as photo galleries, so every one of their albums is photographed by construction; the analysed eras are photographed by the capture lane one build at a time, and their share climbs with every run.</p>
+      </section>
+
+      <footer>Data extracted directly from immutable Valheim world saves (.db) across {{era_runs}} using the Comfy multi-era archive pipeline. Opaque spatial clustering keys guarantee exact piece membership without rectangular approximations. Figures computed by stats.py from the {{schema}} document generated {{generated_date}}.</footer>
     </main>
   </body>
 </html>
