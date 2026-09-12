@@ -132,6 +132,9 @@ else:
     assert marker < main_index
     jvm=command[:marker];application=command[main_index+1:]
 assert application and application[0]=='serve'
+release_flag=application.index('--release-version')
+assert release_flag+1<len(application)
+application[release_flag+1]=settings['release']
 command=jvm+['-cp','/app/steward-code.jar:/app/steward-spatial-lab.jar',main]+application
 
 with socket.socket() as probe:probe.bind(('127.0.0.1',7083))

@@ -34,6 +34,7 @@ class DeployWorldCodeTests(unittest.TestCase):
         compile(MODULE.REMOTE, "<deploy-world-code-remote>", "exec")
         self.assertIn("catalogTransferred':False", MODULE.REMOTE)
         self.assertIn("imageBuilt':False", MODULE.REMOTE)
+        self.assertIn("application[release_flag+1]=settings['release']", MODULE.REMOTE)
         self.assertNotIn("docker','build", MODULE.REMOTE)
 
 
