@@ -247,6 +247,7 @@ class RefineWorker(Worker):
         self.journal_path = self.root / 'refine-journal.jsonl'
         self.counter = 0
         self.results = {}
+        self.builds_n = len(self.plan['builds'])
         self.dest = None; self.saves = None; self.log = None; self.prefs = None
         self.t_start = time.monotonic()
 
@@ -276,6 +277,13 @@ class RefineWorker(Worker):
         return found
 
     # ---- the session
+    def status(self, state, **extra):
+        """A refine session's progress is builds decided, not entries in `completed`: every fan
+        candidate lands there too, so the inherited completedShots/targetShots pair would read
+        "601 of 84". Report the base numbers as shotsJudged/shotsPlanned and put builds first."""
+        super().status(state, buildsDone=len(self.results), buildsTarget=min(self.builds_n, len(self.plan['builds'])),
+                       shotsJudged=len(self.state['completed']), **extra)
+
     def launch(self):
         self.check_runtime()
         self.feed.mkdir(parents=True, exist_ok=True)
@@ -552,6 +560,7 @@ class RefineWorker(Worker):
 
     def run_refine(self, builds_n, rounds):
         import fcntl
+        self.builds_n = builds_n
         with (self.root / 'worker.lock').open('a+') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.lock_acquired = True
