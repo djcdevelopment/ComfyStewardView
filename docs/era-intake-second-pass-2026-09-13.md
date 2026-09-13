@@ -112,6 +112,17 @@ generator line that precedes `Load world:`, not the menu's afterwards). The arch
 is unaffected — the parser and the payload identity check both passed — but **no 1.0.x client
 can photograph era 4 until that container is repaired in a derived working copy**.
 
+## Publication verification
+
+VERIFIED live on 2026-09-13 UTC: eight `prepare_world_era.py` packages deployed with
+`deploy_world_era.py` at revision `ad17071dae62` (era 13 first as the smoke, then 15, 1-6;
+candidate and active checks passed on every swap; one candidate-port race between
+back-to-back swaps was retried). The [world catalog](https://am4.tail8e749c.ts.net/world/)
+serves **17 eras**, every one with terrain and a scene; `world-browser-smoke.mjs` passed on
+era 1 (9,232-piece build) and era 15 (29,120-piece build) with no Chrome profile left
+under the receipt (`world-view-v3/browser-live/eras-ad17071/`). Deployment receipts:
+`world-view-v3/receipts/<era>-ad17071dae62.json`.
+
 Validation: viewer Java suite (LegacyZdoDecoderTest across 26/27/29); 198 era-archive Python
 tests; 91 selfie-stick tests. Artifacts under `E:\omen\steward-multi-era`: `catalog.json`
 (`parsers`), `intake-report.json`, `run-manifest.json`, `runs/20260913T042116Z/`,
