@@ -14,6 +14,9 @@ import struct
 import subprocess
 import time
 
+from load_census import load_census
+from terrain_caches import CACHE_SUFFIXES as SHARED_CACHE_SUFFIXES, complete_cache_set, freeze_cache_set  # noqa: F401
+
 
 CACHE_SUFFIXES = ("mapTexCache", "heightTexCache", "forestMaskTexCache")
 SAFE_CAPTURE_STOPS = {"output-limit", "disk-reserve"}
@@ -50,6 +53,68 @@ def stamp(path: Path) -> dict[str, object]:
 def verify(path: Path, expected: dict, label: str) -> None:
     if not path.is_file() or stamp(path) != {key: expected[key] for key in ("bytes", "sha256")}:
         raise ValueError(f"File verification failed for {label}: {path}")
+
+
+def world_header(path: Path) -> dict[str, int]:
+    """The two facts a save declares about itself before any object is read."""
+    with path.open("rb") as stream:
+        version, _net_time, _user, _next, count = struct.unpack("<idqii", stream.read(28))
+    return {"worldVersion": version, "declaredZdos": count}
+
+
+def game_build(game_root: Path) -> dict[str, object]:
+    """Which client this is, from Steam's own manifest and the game assembly -- so two runs
+    on different clients can never be mistaken for the same instrument."""
+    result: dict[str, object] = {}
+    for manifest in (game_root.parents[1] / "appmanifest_892970.acf" if len(game_root.parents) > 1 else None,
+                     game_root / "steamapps/appmanifest_892970.acf"):
+        if manifest and manifest.is_file():
+            import re
+            match = re.search(r'"buildid"\s*"(\d+)"', manifest.read_text(encoding="utf-8", errors="replace"))
+            if match:
+                result["steamBuildId"] = match.group(1)
+                result["manifest"] = str(manifest)
+            break
+    assembly = game_root / "valheim_Data/Managed/assembly_valheim.dll"
+    if assembly.is_file():
+        result["assemblySha256"] = sha256(assembly)
+    return result
+
+
+def converted_world(worlds: Path, world: str, source: dict, destination: Path) -> dict[str, object]:
+    """Keep what the client wrote back on quit: a save rewritten in the client's own format.
+
+    On the 0.221.12 client that is a monolithic current-version .db beside a `<world>_backup_*`
+    of the original, and it is the only game-side artefact the archive's decoders can be
+    checked against. It is a derived artefact: the catalog's sourceKey still names the
+    original bytes, and this receipt points at them."""
+    db, fwl = worlds / f"{world}.db", worlds / f"{world}.fwl"
+    chunked = worlds / world / "_main.1.db2"
+    if chunked.is_file():
+        # Valheim 1.0 rewrites the save as a chunk directory. It is not a format the parser
+        # reads, and it is a gigabyte, so it is described here and left behind.
+        return {"resaved": True, "format": "chunked-db2",
+                "files": {name: stamp(worlds / world / name) for name in ("_main.1.db2", "_main.1.fwl2") if (worlds / world / name).is_file()},
+                "chunks": sum(1 for _ in (worlds / world).glob("*.chunk")),
+                "backups": sorted(p.name for p in worlds.glob(f"{world}_backup_*"))}
+    if not db.is_file():
+        return {"resaved": False, "reason": "no world file after quit"}
+    written = stamp(db)
+    if written["sha256"] == source["db"]["sha256"]:
+        return {"resaved": False, "reason": "world file unchanged"}
+    destination.mkdir(parents=True, exist_ok=True)
+    files = {}
+    for kind, path in (("db", db), ("fwl", fwl)):
+        if path.is_file():
+            target = destination / path.name
+            shutil.copy2(path, target)
+            verify(target, stamp(path), f"converted {world} {kind}")
+            files[kind] = {"path": str(target), **stamp(target)}
+    header_in = world_header(Path(source["db"]["path"])) if Path(source["db"].get("path", "")).is_file() else {}
+    return {"resaved": True, "files": files, "worldVersionOut": world_header(db)["worldVersion"],
+            "declaredZdosOut": world_header(db)["declaredZdos"], **{k + "In": v for k, v in header_in.items()},
+            "backups": sorted(p.name for p in worlds.glob(f"{world}_backup_*")),
+            "chunkSaves": sorted(p.name for p in (worlds / world).glob("*")) if (worlds / world).is_dir() else []}
 
 
 def png_size(path: Path) -> tuple[int, int]:
@@ -151,32 +216,28 @@ class Worker:
         if process_running("valheim.x86_64") or service_active(self.args.capture_service):
             raise RuntimeError("Photography still owns Valheim")
 
-    def wait_for_caches(self, worlds: Path, world: str, log) -> dict[str, dict]:
+    def wait_for_caches(self, worlds: Path, world: str, log) -> dict[str, object]:
+        """Wait for a complete cache set of either generation -- the 0.221 PNG trio beside the
+        world, or the 1.0 gzip set under worlds_local/<world>/ -- to stop changing and the
+        client to exit. Returns the candidate (format + paths) for freeze_cache_set."""
         deadline = time.monotonic() + self.args.timeout_minutes * 60
         previous = None
         stable = 0
-        candidates = [worlds / f"{world}_{suffix}" for suffix in CACHE_SUFFIXES]
         while time.monotonic() < deadline:
-            if all(path.is_file() for path in candidates):
-                sizes = tuple(path.stat().st_size for path in candidates)
+            candidate = complete_cache_set(worlds, world)
+            if candidate is not None:
+                paths = list(candidate["outputs"].values()) + ([candidate["meta"]] if candidate.get("meta") else [])
+                sizes = tuple(path.stat().st_size for path in paths)
                 stable = stable + 1 if sizes == previous else 0
                 previous = sizes
                 if self.process.poll() is not None and stable >= 1:
-                    break
+                    return candidate
             elif self.process.poll() is not None:
                 raise RuntimeError(f"Valheim exited {self.process.returncode} before all caches for {world}")
             if self.stopping:
                 raise RuntimeError("Terrain worker stopped during an owned game run")
             time.sleep(5)
-        else:
-            raise TimeoutError(f"Timed out waiting for terrain caches for {world}")
-        outputs = {}
-        for suffix, path in zip(CACHE_SUFFIXES, candidates):
-            dimensions = png_size(path)
-            if dimensions != (2048, 2048):
-                raise ValueError(f"Unexpected cache dimensions for {suffix}: {dimensions}")
-            outputs[suffix] = {"path": str(path), **stamp(path), "width": 2048, "height": 2048}
-        return outputs
+        raise TimeoutError(f"Timed out waiting for terrain caches for {world}")
 
     def stop_owned_process(self) -> None:
         if self.process is None or self.process.poll() is not None:
@@ -234,8 +295,12 @@ class Worker:
             "light_dump": True,
         })
         started = now()
-        command = ["./start_game_bepinex.sh", "-batchmode", "-console", "-screen-fullscreen", "0",
-                   "-screen-width", "1280", "-screen-height", "720", "-monitor", "1"]
+        # The capture worker's launch, exactly: on this host -batchmode with a windowed 720p
+        # surface segfaults under Vulkan right after asset load (2026-09-13, twice), while the
+        # fullscreen launch has carried every photograph. The caches are written on world load
+        # whatever is rendered, so nothing is gained by rendering less.
+        command = ["./start_game_bepinex.sh", "-console", "-screen-fullscreen", "1",
+                   "-screen-width", "3840", "-screen-height", "2160", "-monitor", "1"]
         environment = os.environ.copy()
         environment.update(DISPLAY=":0", SDL_VIDEODRIVER="x11", XDG_CONFIG_HOME=str(attempt / "xdg"))
         with (attempt / "stdout.log").open("wb") as log:
@@ -251,14 +316,11 @@ class Worker:
                 self.process = None
 
         destination = self.root / era["slug"] / "caches"
-        destination.mkdir(parents=True)
-        frozen = {}
-        for suffix, spec in outputs.items():
-            source_path = Path(spec["path"])
-            target = destination / source_path.name
-            shutil.copy2(source_path, target)
-            verify(target, spec, f"frozen {era['slug']} {suffix}")
-            frozen[suffix] = {"path": str(target), **stamp(target), "width": 2048, "height": 2048}
+        destination.mkdir(parents=True, exist_ok=True)     # a failed attempt may have left it empty
+        # The 1.0 client moves the original .fwl to a _backup name on quit; the staged copy is
+        # the same bytes and is always there.
+        frozen_specs, provenance = freeze_cache_set(outputs, destination, world, source / staged["files"]["fwl"]["name"])
+        frozen = {suffix: {"path": str(destination / f"{world}_{suffix}"), **spec} for suffix, spec in frozen_specs.items()}
         logs = {}
         for label, path in (("player", saves / "Player.log"),
                             ("bepinex", self.game / "BepInEx/LogOutput.log")):
@@ -266,6 +328,23 @@ class Worker:
                 target = self.root / era["slug"] / f"{label}.log"
                 shutil.copy2(path, target)
                 logs[label] = {"path": str(target), **stamp(target)}
+        # The client's own account of the load is the independent witness to the parser's
+        # counts. The declared total must be the catalog's; the conversion counters are
+        # recorded for the cross-check, not asserted here.
+        player_log = saves / "Player.log"
+        census = load_census(player_log.read_text(encoding="utf-8", errors="replace")) if player_log.is_file() else {}
+        if census.get("declaredZdos") not in (None, era.get("declaredZdos")):
+            raise ValueError(f"{era['slug']}: client loaded {census['declaredZdos']:,} objects, "
+                             f"catalog declares {era.get('declaredZdos'):,}")
+        source_files = {kind: staged["files"][kind] for kind in ("db", "fwl")}
+        source_files["db"] = {**source_files["db"], "path": str(source / staged["files"]["db"]["name"])}
+        converted = converted_world(worlds, world, source_files, self.root / era["slug"] / "converted")
+        if converted.get("resaved") and converted.get("files") and converted.get("format") != "chunked-db2":
+            write(self.root / era["slug"] / "converted" / "receipt.json", {
+                "schema": "steward-converted-world/v1", "era": era["slug"], "worldId": world,
+                "sourceKey": era["sourceKey"], "snapshotId": era["snapshotId"], "host": "AM4",
+                "gameVersion": census.get("gameVersion"), "gameBuild": game_build(self.game),
+                "writtenAt": now(), **converted})
         receipt = {
             "schema": "steward-current-client-terrain-cache/v1", "status": "verified",
             "host": "AM4", "era": era["slug"], "worldId": world,
@@ -273,6 +352,8 @@ class Worker:
             "startedAt": started, "completedAt": now(), "stagedReceipt": stamp(source / "receipt.json"),
             "source": {kind: staged["files"][kind] for kind in ("db", "fwl")},
             "outputs": frozen, "logs": logs,
+            "gameBuild": game_build(self.game), "loadCensus": census, "provenance": provenance,
+            "convertedWorld": converted if converted.get("resaved") else None,
         }
         write(receipt_path, receipt)
         scratch = attempt / "xdg"
@@ -300,7 +381,9 @@ class Worker:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             signal.signal(signal.SIGTERM, lambda *_: setattr(self, "stopping", True))
             signal.signal(signal.SIGINT, lambda *_: setattr(self, "stopping", True))
-            handoff = self.wait_for_handoff()
+            # A campaign hands the game over when it finishes; with no campaign there is
+            # nothing to wait for, and verify_runtime() still refuses a live game or service.
+            handoff = "no-campaign" if self.args.no_handoff else self.wait_for_handoff()
             self.verify_runtime()
             completed = []
             try:
@@ -318,7 +401,10 @@ def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--catalog", type=Path, required=True)
     result.add_argument("--staged-root", type=Path, required=True)
-    result.add_argument("--capture-status", type=Path, required=True)
+    result.add_argument("--capture-status", type=Path,
+                        help="campaign status.json to wait on; required unless --no-handoff")
+    result.add_argument("--no-handoff", action="store_true",
+                        help="no photography campaign exists on this host; start once the game and capture service are idle")
     result.add_argument("--capture-service", default="steward-era14-capture.service")
     result.add_argument("--output", type=Path, required=True)
     result.add_argument("--game-root", type=Path, required=True)
@@ -327,7 +413,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--capture-plugin-sha256", required=True)
     result.add_argument("--portal-plugin-sha256", required=True)
     result.add_argument("--poll-seconds", type=int, default=60)
-    result.add_argument("--timeout-minutes", type=int, default=45)
+    result.add_argument("--timeout-minutes", type=int, default=60,
+                        help="pre-Mistlands saves (v26-28) spend minutes in conversion passes before caches appear")
     return result
 
 

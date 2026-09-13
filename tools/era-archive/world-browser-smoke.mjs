@@ -1,5 +1,6 @@
 import {spawn} from 'node:child_process';
-import {mkdir,readFile,readdir,writeFile} from 'node:fs/promises';
+import {mkdir,mkdtemp,readFile,readdir,rm,writeFile} from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 const [baseArg,casesFile,outputArg]=process.argv.slice(2);
 if(!baseArg||!casesFile||!outputArg)throw Error('Usage: world-browser-smoke.mjs <world-url> <build-cases.json> <output-dir>');
@@ -36,7 +37,9 @@ for(const era of classified){
 }
 await mkdir(output,{recursive:true});await mkdir(path.join(output,'downloads'),{recursive:true});
 const chrome=process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const browser=spawn(chrome,['--headless=new','--no-first-run','--disable-extensions','--disable-background-networking','--disable-component-update','--disable-sync','--mute-audio','--enable-features=WebGPUDeveloperFeatures','--remote-debugging-port=0','--remote-allow-origins=*','--window-size=1600,1000',`--user-data-dir=${path.join(output,'profile')}`,'about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:true});
+// The Chrome profile is a cache, not a receipt: temp dir, removed with the browser.
+const profile=await mkdtemp(path.join(os.tmpdir(),'steward-world-smoke-'));
+const browser=spawn(chrome,['--headless=new','--no-first-run','--disable-extensions','--disable-background-networking','--disable-component-update','--disable-sync','--mute-audio','--enable-features=WebGPUDeveloperFeatures','--remote-debugging-port=0','--remote-allow-origins=*','--window-size=1600,1000',`--user-data-dir=${profile}`,'about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:true});
 let socket,stderr='';
 try{
   const ws=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Chrome startup timeout')),15000);browser.stderr.on('data',b=>{stderr+=b;const m=stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/);if(m){clearTimeout(timer);resolve(m[1]);}});browser.once('exit',()=>reject(Error('Chrome exited')));});
@@ -127,4 +130,4 @@ try{
   if(errors.length)throw Error(errors.join('\n'));
   results.status='passed';await writeFile(path.join(output,'receipt.json'),JSON.stringify(results,null,2));
   console.log(JSON.stringify({status:results.status,eras:results.eras,builds:results.builds.map(b=>({era:b.era,pieces:b.scene.pieces})),exports:results.downloads.length}));
-}finally{socket?.close();browser.kill();}
+}finally{socket?.close();browser.kill();await new Promise(r=>setTimeout(r,500));await rm(profile,{recursive:true,force:true}).catch(()=>{});}

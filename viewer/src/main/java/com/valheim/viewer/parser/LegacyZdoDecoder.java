@@ -6,16 +6,23 @@ import java.nio.ByteOrder;
 /** Reads the length-delimited pre-v31 format without loading or upgrading a world in Valheim.
  * Property payloads are retained verbatim; only framing/counts and quaternion orientation are
  * adapted to the existing compact decoder. No game-side property stripping is performed.
+ * Formats 26–30 share one package layout; the only difference is that the byte-array group
+ * (the seventh) arrived at v27, so a v26 package carries six counts instead of seven.
  */
 final class LegacyZdoDecoder {
+    /** Revisions, persistent, owner, ticks, pgwVersion, type, distant, prefab, sector, position, quaternion. */
+    static final int FIXED_BYTES = 71;
     private ByteBuffer output = ByteBuffer.allocate(4096).order(ByteOrder.LITTLE_ENDIAN);
 
+    static int groups(int version) { return version >= 27 ? 7 : 6; }
+
     ByteBuffer next(ByteBuffer world, int version) {
-        if (version != 29 && version != 30) throw new IllegalArgumentException("Unsupported legacy version " + version);
+        if (version < WorldParser.MIN_WORLD_VERSION || version > 30) throw new IllegalArgumentException("Unsupported legacy version " + version);
         world.getLong(); // Saved ZDO user ID; construction attribution is the creator property.
         world.getInt();
         int length = world.getInt();
-        if (length < 78 || length > world.remaining()) throw new IllegalArgumentException("Invalid legacy ZDO package length " + length);
+        int groups = groups(version);
+        if (length < FIXED_BYTES + groups || length > world.remaining()) throw new IllegalArgumentException("Invalid legacy ZDO package length " + length);
         ByteBuffer body = world.slice().order(ByteOrder.LITTLE_ENDIAN);
         body.limit(length);
         world.position(world.position() + length);
@@ -37,7 +44,7 @@ final class LegacyZdoDecoder {
         output.putFloat(x).putFloat(y).putFloat(z).putInt(prefab);
         for (float angle : rotation) output.putFloat(angle);
         int[] strides = {8, 16, 20, 8, 12, 0, -1};
-        for (int group = 0; group < strides.length; group++) {
+        for (int group = 0; group < groups; group++) {
             int count = readCount(body);
             if (count == 0) continue;
             flags |= 2 << group;

@@ -17,14 +17,21 @@ texture actually is. The fan gains `up20` (the top-down the occlusion ladder fou
 accident) and `c75` is offered once per build and only while the frame is under-filled:
 closer twice walks into texture resolution.
 
-    ~/venvs/torch-xpu/bin/python refine_worker.py --prepare --root R --from-root V5 --framing F --builds 8
-    python3 install_capture_worker.py --root R ...      # freezes runtime.json; single-use root
-    ~/venvs/torch-xpu/bin/python refine_worker.py --root R --builds 8 --rounds 2 --threads 8
+v3 (after 77 blind pairs judged by the eye, 2026-09-12): the fan is off. Keeping the
+planned pose beat the loop's pick 25:18 on the pairs that could be decided, and every
+metric the loop climbed points away from what the eye keeps (sky, light). Every planned
+pose of a build is now shot once and judged for the veto only; a vetoed pose earns one
+forced re-aim; `--rounds` defaults to 0 and the improver runs only when asked. Ranking
+among the poses that pass is rank_frames.py's job, and the light table's after that.
 
-Receipts: refine-journal.jsonl (every launch/plan/judgement/decision), refine.json (the
-winner per build with its pose, metrics and `needs`), refine-summary.md, plus the masters
-under images/<run>/ and the usual state.json journal. Nothing here imports, derives or
-publishes.
+    python refine_worker.py --prepare --root R --from-root V5 [--frames-per-build 5]
+    python3 install_capture_worker.py --root R ...      # freezes runtime.json; single-use root
+    ~/venvs/torch-xpu/bin/python refine_worker.py --root R --builds N --threads 8
+
+Receipts: refine-journal.jsonl (every launch/plan/judgement/decision), refine.json
+(steward-refine/v3: per build the first pose's record at top level for older readers, and
+every pose under `poses`), refine-summary.md, plus the masters under images/<run>/ and the
+usual state.json journal. Nothing here imports, derives or publishes.
 """
 import argparse
 import hashlib
@@ -179,12 +186,19 @@ def prepare(root, from_root, framing_path, n):
         print(f"  {s['framingKey']:<18} live {s['liveTileShare']:.3f}  {s['buildKey'][:8]}")
 
 
-def prepare_all(root, from_root):
-    """campaign.json = every build of the source campaign, first shot each (the full detail tier)."""
+def prepare_all(root, from_root, frames_per_build=None):
+    """campaign.json = every build of the source campaign with every planned pose.
+
+    The 84-build run of 2026-09-12 sliced this to shots[:1]; the planner had already given each
+    sprawling build a shot per mass, and those were never fired. Poses are kept in the planner's
+    order (forecast-ranked when the planner ranked them), optionally capped per build."""
     root = Path(root); src = read(Path(from_root) / 'campaign.json')
-    builds = [{**{k: v for k, v in b.items() if k != 'shots'}, 'shots': b['shots'][:1]} for b in src['builds'] if b['shots']]
-    write_campaign(root, src, builds, {'fromRoot': str(Path(from_root).resolve()), 'sample': 'all-first-shots'})
-    print(f'prepared {len(builds)} builds in {root}')
+    cap = slice(None) if not frames_per_build else slice(frames_per_build)
+    builds = [{**{k: v for k, v in b.items() if k != 'shots'}, 'shots': b['shots'][cap]} for b in src['builds'] if b['shots']]
+    write_campaign(root, src, builds, {'fromRoot': str(Path(from_root).resolve()), 'sample': 'all-planned-poses',
+                                       'framesPerBuild': frames_per_build})
+    shots = sum(len(b['shots']) for b in builds)
+    print(f'prepared {len(builds)} builds, {shots} planned poses in {root}')
 
 
 def read_json_stream(text):
@@ -435,10 +449,9 @@ class RefineWorker(Worker):
                                                    'sourceKey': self.plan['sourceKey'], 'era': self.plan['era'],
                                                    'requests': self.results})
 
-    def refine_build(self, judge, build, rounds):
-        import frame_judge
-        cid, key, label = build['localClusterId'], build['buildKey'], f'Build {build["buildKey"][:8]}'
-        shot = build['shots'][0]
+    def shoot_pose(self, judge, build, shot):
+        """Feed one planned pose (once more if the world never loaded), then judge the frame."""
+        cid, key = build['localClusterId'], build['buildKey']
         allowed = {(cid, shot['shot']): shot}
         receipt = None
         for attempt in ('r0', 'r0b'):
@@ -447,18 +460,48 @@ class RefineWorker(Worker):
             receipts = self.wait_plan(name, allowed, timeout=240)
             receipt = receipts.get((cid, shot['shot']))
             if receipt is not None and receipt.get('skipped') == 'world_never_loaded' and attempt == 'r0':
-                self.journal('retry', build=key[:8], reason='world_never_loaded on the incumbent; feeding it once more')
+                self.journal('retry', build=key[:8], reason='world_never_loaded on the planned pose; feeding it once more')
                 continue
             break
-        incumbent = self.judge_shot(judge, {'name': shot['shot'], 'shotKey': shot['shotKey'], 'receipt': receipt})
+        return self.judge_shot(judge, {'name': shot['shot'], 'shotKey': shot['shotKey'], 'receipt': receipt})
+
+    def refine_build(self, judge, build, rounds):
+        """Shoot every planned pose once; move the camera only off a vetoed one.
+
+        The judge's job here is the veto. On the 77 blind pairs of 2026-09-12 the planned pose was
+        the better photograph 25 times against the fan's 18, and every metric the fan climbs
+        (liveTileShare·gradMean) points away from what the eye keeps (sky, light). So a pose that
+        passes is kept as planned; a pose the gate vetoes with a forced move gets that one re-aim;
+        and the improver climb only runs when --rounds asks for it, which the evidence says not to."""
+        import frame_judge
+        poses = {}
+        for shot in build['shots']:
+            poses[shot['shot']] = self.refine_pose(judge, build, shot, rounds)
+        first = build['shots'][0]['shot']
+        self.results[build['buildKey']] = {**poses[first], 'poses': poses}
+        write(self.root / 'refine.json', {'schema': 'steward-refine/v3', 'sourceKey': self.plan['sourceKey'],
+                                          'era': self.plan['era'], 'builds': self.results})
+
+    def refine_pose(self, judge, build, shot, rounds):
+        import frame_judge
+        cid, key, label = build['localClusterId'], build['buildKey'], f'Build {build["buildKey"][:8]}'
+        incumbent = self.shoot_pose(judge, build, shot)
         history = [incumbent]
         needs, forced_moves = self.gate(incumbent)
         rounds_run, c75_used = 0, False
         if needs and not forced_moves:
             self.journal('decision', build=key[:8], round=0, incumbent=incumbent['name'], winner=incumbent['name'],
                          reason=f'gated: needs-{needs}; no fan spent', candidates=[], needs=needs)
-            rounds = 0
-        for round_no in range(1, rounds + 1):
+            budget = 0
+        elif needs:
+            budget = 1      # a vetoed pose earns exactly one forced re-aim
+        else:
+            budget = rounds
+            if budget == 0:
+                self.journal('decision', build=key[:8], round=0, incumbent=incumbent['name'], winner=incumbent['name'],
+                             reason='planned pose kept; the improver is off (measured 42% against the eye)',
+                             candidates=[], needs=None)
+        for round_no in range(1, budget + 1):
             moves = forced_moves if forced_moves else self.fan_moves(incumbent, c75_used)
             pose, fan = candidate_poses(incumbent['receipt'], incumbent['metrics'], moves)
             if not fan:
@@ -501,13 +544,17 @@ class RefineWorker(Worker):
                 c75_used = True
             history.append(incumbent)
             if forced_moves:
-                break       # a gated build gets one re-aim, not a climb
-        self.results[key] = {
+                break       # a gated pose gets one re-aim, not a climb
+        return {
             'localClusterId': cid, 'shot': shot['shot'], 'incumbent': history[0]['name'], 'winner': incumbent['name'],
             'needs': needs, 'rounds': rounds_run, 'path': [h['name'] for h in history],
             'winnerFile': incumbent.get('file'), 'winnerShotKey': incumbent['shotKey'],
+            'forecast': shot.get('forecast'),
             'pose': ({k: incumbent['receipt'].get(k) for k in ('lens', 'placed', 'aim', 'yaw', 'pitch', 'clearance')}
                      if incumbent['receipt'] else None),
+            'files': {h['name']: h.get('file') for h in history},
+            'placed': {h['name']: [h['receipt']['placed'][k] for k in ('x', 'y', 'z')]
+                       for h in history if h.get('receipt') and h['receipt'].get('placed')},
             'metrics': {h['name']: {'score': h['score'], 'vetoes': h['vetoes'],
                                     **({'liveTileShare': h['metrics']['master']['liveTileShare'],
                                         'centralLiveShare': h['metrics']['master'].get('centralLiveShare'),
@@ -517,8 +564,6 @@ class RefineWorker(Worker):
                                         'skyFraction': h['metrics']['geometry']['skyFraction']} if h['metrics'] else {})}
                         for h in history},
         }
-        write(self.root / 'refine.json', {'schema': 'steward-refine/v2', 'sourceKey': self.plan['sourceKey'],
-                                          'era': self.plan['era'], 'builds': self.results})
 
     def finish(self):
         (self.feed / 'STOP').write_text('', encoding='utf-8')
@@ -550,7 +595,8 @@ class RefineWorker(Worker):
         lines = ['| build | shot | needs | inc score | inc live | inc luma | winner | win score | Δ | rounds | vetoes |',
                  '|---|---|---|---|---|---|---|---|---|---|---|']
         fmt = lambda v, p=4: '-' if v is None else f'{v:.{p}f}'
-        for key, r in self.results.items():
+        for key, build in self.results.items():
+          for r in (build.get('poses') or {'': build}).values():
             inc = r['metrics'].get(r['incumbent'], {}); best = r['metrics'].get(r['winner'], {})
             delta = (best['score'] - inc['score']) if best.get('score') is not None and inc.get('score') is not None else None
             lines.append(f"| {key[:8]} | {r['shot']} | {r['needs'] or '-'} | {fmt(inc.get('score'), 6)} | {fmt(inc.get('liveTileShare'), 2)} | "
@@ -577,7 +623,7 @@ class RefineWorker(Worker):
                     if self.stopped():
                         self.journal('operator_stop')
                         break
-                    if requests_mode or rounds == 0:
+                    if requests_mode:
                         self.request_build(judge, build)
                     else:
                         self.refine_build(judge, build, rounds)
@@ -594,7 +640,11 @@ if __name__ == '__main__':
     parser.add_argument('--framing', type=Path, help='master_detail JSON whose lowest liveTileShare picks the sample; omit for every build')
     parser.add_argument('--requests', type=Path, help='viewer shot-request ledger (steward-shot-request/v1 JSONL): shoot the requested poses, no fan')
     parser.add_argument('--builds', type=int, default=8)
-    parser.add_argument('--rounds', type=int, default=2)
+    parser.add_argument('--rounds', type=int, default=0,
+                        help='improver rounds around a pose that passed the veto; 0 keeps the planned pose '
+                             '(the fan measured 42%% against the eye on 43 decided pairs; opt in with cause)')
+    parser.add_argument('--frames-per-build', type=int, default=None,
+                        help='--prepare: cap the planned poses kept per build (default: all the planner made)')
     parser.add_argument('--threads', type=int, default=8)
     parser.add_argument('--idle-seconds', type=int, default=600)
     args = parser.parse_args()
@@ -606,7 +656,7 @@ if __name__ == '__main__':
         elif args.framing:
             prepare(args.root, args.from_root, args.framing, args.builds)
         else:
-            prepare_all(args.root, args.from_root)
+            prepare_all(args.root, args.from_root, args.frames_per_build)
         sys.exit(0)
     worker = RefineWorker(args.root, threads=args.threads, idle_seconds=args.idle_seconds)
     try:

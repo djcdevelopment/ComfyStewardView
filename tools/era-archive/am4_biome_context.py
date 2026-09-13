@@ -111,7 +111,8 @@ def build(args: argparse.Namespace) -> None:
                    "--height-cache", caches["heightTexCache"]["path"],
                    "--forest-cache", caches["forestMaskTexCache"]["path"],
                    "--artifact-manifest", str(args.manifests / f"{slug}.json"),
-                   "--output-dir", str(context)]
+                   "--output-dir", str(context),
+                   "--save-world-name", era["worldId"]]
         context.mkdir(parents=True)
         with (context / "build.log").open("wb") as log:
             subprocess.run(command, check=True, stdout=log, stderr=subprocess.STDOUT)

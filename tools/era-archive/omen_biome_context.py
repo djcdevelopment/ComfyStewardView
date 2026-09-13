@@ -49,7 +49,11 @@ def runtime_versions(player_log: Path) -> dict[str, object]:
     text = player_log.read_text(encoding="utf-8-sig", errors="replace")
     game = re.search(r"Valheim version:\s*([^\s]+)", text)
     unity = re.search(r"Running under Unity v([^\s]+)", text)
-    generators = re.findall(r"Worldgenerator version setup:(\d+)", text)
+    # The generator that made the caches is the one set up for the world: the last "setup:"
+    # line before "Load world:" (the menu logs its own first; a client that refused the
+    # world and bounced back to the menu logs another afterwards -- era 4, 2026-09-13).
+    loaded = text.find("Load world:")
+    generators = re.findall(r"Worldgenerator version setup:(\d+)", text[:loaded] if loaded >= 0 else text)
     if not game or not unity or not generators:
         raise ValueError(f"Runtime versions missing from {player_log}")
     return {"gameVersion": game.group(1), "unityVersion": unity.group(1),
@@ -164,7 +168,8 @@ def build(args: argparse.Namespace) -> None:
                    "--height-cache", caches["heightTexCache"]["path"],
                    "--forest-cache", caches["forestMaskTexCache"]["path"],
                    "--artifact-manifest", str(artifact_manifest(args.output_root, era)),
-                   "--output-dir", str(context)]
+                   "--output-dir", str(context),
+                   "--save-world-name", era["worldId"]]
         context.mkdir(parents=True)
         with (context / "build.log").open("wb") as log:
             subprocess.run(command, check=True, stdout=log, stderr=subprocess.STDOUT)

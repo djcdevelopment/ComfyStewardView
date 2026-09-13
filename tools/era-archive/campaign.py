@@ -58,11 +58,15 @@ def select_named(jobs, era, build_keys):
                 and job.get('snapshotId') == era['snapshotId']
                 and job['buildKey'] not in by_build):
             by_build[job['buildKey']] = job
+    # A requested build with no job is one project() kept out of the queue -- a stamped copy
+    # whose first instance already holds the job, or a subject below its floor. The coverage
+    # plan can still name it for the builder it adds. That is one line in the receipt, not a
+    # reason to abandon the era.
     missing = [k for k in build_keys if k not in by_build]
     if missing:
-        raise ValueError(f'{len(missing)} requested build(s) have no photography job for '
-                         f'this era; first {missing[0]}')
-    return [by_build[k] for k in build_keys]
+        print(f'{len(missing)} requested build(s) have no photography job for this era and are '
+              f'left out; first {missing[0][:12]}', file=sys.stderr, flush=True)
+    return [by_build[k] for k in build_keys if k in by_build], missing
 
 
 def prepare(root, era_slug, destination, limit, pilot_path, receipt_path,
@@ -72,9 +76,10 @@ def prepare(root, era_slug, destination, limit, pilot_path, receipt_path,
         raise ValueError('Use a new immutable campaign directory')
     era = next(e for e in load(root / 'catalog.json')['eras'] if e['slug'] == era_slug)
     jobs = load(root / 'analysis/jobs.json')['jobs']
+    unqueued = []
     if build_keys:
         completed = set()
-        selected = select_named(jobs, era, build_keys)
+        selected, unqueued = select_named(jobs, era, build_keys)
     else:
         receipts = [json.loads(x) for x in receipt_path.read_text(encoding='utf-8-sig').splitlines() if x.strip()]
         completed = completed_builds(load(pilot_path), receipts, era['sourceKey'])
@@ -134,7 +139,8 @@ def prepare(root, era_slug, destination, limit, pilot_path, receipt_path,
               'stallSeconds':900, 'maxAttempts':2, 'excludedCompleted':sorted(completed), 'builds':ordered}
     save(destination/'campaign.json',result)
     save(destination/'plan-receipt.json',{'sourceKey':era['sourceKey'],'campaign':digest(destination/'campaign.json'),
-                                       'tsv':digest(tsv),'builds':count,'shots':count*4,'exactMembership':True})
+                                       'tsv':digest(tsv),'builds':count,'shots':count*4,'exactMembership':True,
+                                       'unqueued':unqueued})
     print(json.dumps({'builds':count,'shots':count*4,'campaignBytes':(destination/'campaign.json').stat().st_size}))
 
 

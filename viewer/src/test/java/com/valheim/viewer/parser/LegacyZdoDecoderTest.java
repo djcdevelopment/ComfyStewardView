@@ -13,7 +13,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class LegacyZdoDecoderTest {
     @TempDir Path temp;
 
-    static ByteBuffer record(int floats, boolean corruptLength) {
+    static ByteBuffer record(int floats, boolean corruptLength) { return record(floats, corruptLength, 29); }
+
+    /** v26 packages end after the string group: the byte-array count byte only exists from v27. */
+    static ByteBuffer record(int floats, boolean corruptLength, int version) {
         ByteBuffer b = ByteBuffer.allocate(8192).order(ByteOrder.LITTLE_ENDIAN);
         b.putLong(17).putInt(3).putInt(0);
         int start = b.position();
@@ -26,19 +29,19 @@ class LegacyZdoDecoderTest {
         b.put((byte)0).put((byte)0).put((byte)0);
         b.put((byte)1).putInt(WorldParser.sh("creator")).putLong(9007199254740993L);
         b.put((byte)1).putInt(WorldParser.sh("text")).put((byte)3).put(new byte[]{'h','e','j'});
-        b.put((byte)0);
+        if (LegacyZdoDecoder.groups(version) == 7) b.put((byte)0);
         b.putInt(12, corruptLength ? Integer.MAX_VALUE : b.position() - start);
         b.flip(); return b;
     }
 
     @Test void legacyPropertiesAndLargeCharacterCountsReachTheNormalCache() throws Exception {
-        for (int count : new int[]{1,128,200}) {
-            ByteBuffer record = record(count, false);
+        for (int version : new int[]{26,27,29}) for (int count : new int[]{1,128,200}) {
+            ByteBuffer record = record(count, false, version);
             ByteBuffer world = ByteBuffer.allocate(28 + record.remaining()).order(ByteOrder.LITTLE_ENDIAN);
-            world.putInt(29).putDouble(10).putLong(1).putInt(2).putInt(1).put(record);
-            Path save = temp.resolve("legacy" + count + ".db");
+            world.putInt(version).putDouble(10).putLong(1).putInt(2).putInt(1).put(record);
+            Path save = temp.resolve("legacy" + version + "-" + count + ".db");
             Files.write(save, world.array());
-            try (AnalyticsCache cache = new AnalyticsCache(temp.resolve("cache" + count + ".duckdb").toFile(),true,true)) {
+            try (AnalyticsCache cache = new AnalyticsCache(temp.resolve("cache" + version + "-" + count + ".duckdb").toFile(),true,true)) {
                 var parser = new WorldParser(); parser.setAnalyticsCache(cache); parser.parse(save.toFile()); cache.finish();
                 try (var st = cache.connection().createStatement(); var rows=st.executeQuery("SELECT creator_id,x,y,z FROM zdo")) {
                     assertTrue(rows.next()); assertEquals(9007199254740993L,rows.getLong(1));
@@ -49,6 +52,19 @@ class LegacyZdoDecoderTest {
                 }
             }
         }
+    }
+
+    @Test void byteArrayGroupIsGatedOnVersionTwentySeven() {
+        // A v27 package read as v26 leaves its byte-array count unconsumed; a v26 package read
+        // as v27 runs out of bytes looking for one. Neither may be silently accepted.
+        assertTrue(new LegacyZdoDecoder().next(record(1,false,26),26).remaining() > 0);
+        assertTrue(new LegacyZdoDecoder().next(record(1,false,27),27).remaining() > 0);
+        IllegalArgumentException unconsumed = assertThrows(IllegalArgumentException.class,
+            ()->new LegacyZdoDecoder().next(record(1,false,27),26));
+        assertTrue(unconsumed.getMessage().startsWith("Unconsumed legacy ZDO bytes"), unconsumed.getMessage());
+        assertThrows(RuntimeException.class,()->new LegacyZdoDecoder().next(record(1,false,26),27));
+        assertThrows(IllegalArgumentException.class,()->new LegacyZdoDecoder().next(record(1,false,26),25));
+        assertThrows(IllegalArgumentException.class,()->new LegacyZdoDecoder().next(record(1,false,29),31));
     }
 
     @Test void corruptPackageLengthsFailBeforeAllocation() {

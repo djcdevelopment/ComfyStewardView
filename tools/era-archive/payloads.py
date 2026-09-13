@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 import uuid
 import duckdb
-from archive import artifact,checked_file,digest,load,now,save,sql_path,verify_package,verify_sources,writer_lock
+from archive import artifact,checked_file,digest,load,now,save,sql_path,verified_eras,verify_package,verify_sources,writer_lock
 from records import ITEMS,records
 
 
@@ -47,7 +47,7 @@ def main():
     args=parser.parse_args();root=args.output_root.resolve()
     with writer_lock(root):
         catalog=load(root/'catalog.json')
-        results=[extract(root,e) for e in catalog['eras']]
+        results=[extract(root,e) for e in verified_eras(catalog)]
         save(root/'payloads/catalog.json',{'schema':'steward-payload-catalog/v1','eras':results})
         with duckdb.connect(str(root/'world-cache.duckdb')) as con:
             paths=','.join(sql_path(checked_file(root,r['artifact'])) for r in results)

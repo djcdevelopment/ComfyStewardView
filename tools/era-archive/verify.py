@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import duckdb
-from archive import artifact,digest,load,now,save,verify_sources
+from archive import artifact,digest,load,now,save,verified_eras,verify_sources
 
 
 def main():
@@ -14,7 +14,7 @@ def main():
     results=[]
     with duckdb.connect(str(root/'world-cache.duckdb'),read_only=True) as con:
         con.execute('SET threads=4');con.execute("SET memory_limit='8GB'")
-        for era in catalog['eras']:
+        for era in verified_eras(catalog):
             verify_sources(era);snapshot=era['snapshotId'];counts={}
             for table in ('zdo','zdo_field','container_item'):
                 counts[table]=con.execute(f'SELECT count(*) FROM {table} WHERE snapshot_id=?',[snapshot]).fetchone()[0]

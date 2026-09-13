@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import uuid
 import duckdb
-from archive import artifact,digest,load,now,rebuild_read_model,save,sql_path,writer_lock
+from archive import artifact,digest,load,now,rebuild_read_model,save,sql_path,verified_eras,writer_lock
 
 
 def main():
@@ -42,7 +42,7 @@ def main():
             write('build_photo',({'build_key':b['buildKey'],'era':b['era'],'photo_id':p['id'],'thumb':p['thumb'],'large':p['large'],'gallery_url':p['href']} for b in document['builds'] for p in b['photos']))
         catalog=load(root/'catalog.json')
         receipt={'schema':'steward-community-tables/v1','createdAt':now(),'source':digest(source),'counts':counts,'tables':refs,
-                 'sourceKeys':[e['sourceKey'] for e in catalog['eras']]}
+                 'sourceKeys':[e['sourceKey'] for e in verified_eras(catalog)]}
         save(root/'analysis/read-model.json',receipt)
         rebuild_read_model(root,catalog)
         print(json.dumps(counts),flush=True)

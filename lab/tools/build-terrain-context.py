@@ -617,6 +617,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--forest-cache", type=Path, required=True)
     parser.add_argument("--artifact-manifest", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--save-world-name", default=None,
+                        help="Name the game knows the save by (FWL world name, cache prefix); "
+                             "defaults to the snapshot worldId, which differs only for the two "
+                             "pre-convention worlds (Booty, comfy)")
     return parser.parse_args()
 
 
@@ -644,13 +648,14 @@ def main() -> int:
         db_hash = sha256_file(db_path)
         if db_hash != expected_db_hash:
             raise ValueError(f"world DB hash does not match snapshot #{snapshot_id}")
+        save_name = (args.save_world_name or world_id).strip()
         world_info = read_world_file(world_file)
-        if world_info["worldName"] != world_id:
+        if world_info["worldName"] != save_name:
             raise ValueError(
-                f"world companion names {world_info['worldName']!r}, expected {world_id!r}")
+                f"world companion names {world_info['worldName']!r}, expected {save_name!r}")
         for cache in (map_cache, height_cache, forest_cache):
-            if not cache.name.startswith(world_id + "_"):
-                raise ValueError(f"cache is not named for {world_id}: {cache}")
+            if not cache.name.startswith(save_name + "_"):
+                raise ValueError(f"cache is not named for {save_name}: {cache}")
 
         print(f"Snapshot #{snapshot_id} is hash-matched to {db_path}", flush=True)
         map_image = require_image(map_cache, "RGB")

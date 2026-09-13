@@ -100,7 +100,7 @@ def camera_pose(receipt):
 def apply_refine(plan, refine):
     """Swap each build's planned shot for its judged winner; return the builds the loop
     could not fix, keyed by buildKey -> needs."""
-    if refine.get("schema") not in ("steward-refine/v1", "steward-refine/v2"):
+    if refine.get("schema") not in ("steward-refine/v1", "steward-refine/v2", "steward-refine/v3"):
         raise SystemExit(f"unsupported refine schema: {refine.get('schema')}")
     if refine.get("sourceKey") != plan["sourceKey"]:
         raise SystemExit("refine.json belongs to another campaign")
@@ -118,6 +118,39 @@ def apply_refine(plan, refine):
                                           "rounds": record.get("rounds"), "score": metrics.get("score"),
                                           "vetoes": metrics.get("vetoes")}}]
     return needs
+
+
+def apply_verdicts(plan, verdicts, ranking=None):
+    """The light table decides what a build publishes (steward-pair-verdicts/v2).
+
+    A pair verdict keeps the chosen frame, both, or neither; a single-frame verdict keeps or
+    sends to reshoot. Every build the verdicts do not mention publishes nothing -- unjudged
+    is not the same as approved -- and the reshoot list carries the builds the eye refused.
+    The frame records come from the pairs file the verdicts were harvested against, so the
+    shot names and masters are exactly the ones the judge saw."""
+    if verdicts.get("schema") != "steward-pair-verdicts/v2":
+        raise SystemExit(f"unsupported verdicts schema: {verdicts.get('schema')}")
+    if verdicts.get("sourceKey") not in (None, plan["sourceKey"]):
+        raise SystemExit("pair-verdicts.json belongs to another campaign")
+    import hashlib
+    by_build = {v["buildKey"]: v for v in verdicts["verdicts"]}
+    needs, unjudged = {}, []
+    for build in plan["builds"]:
+        row = by_build.get(build["buildKey"])
+        if row is None:
+            unjudged.append(build["buildKey"])
+            build["shots"] = []
+            continue
+        chosen = {"a": [row.get("aFrame")], "b": [row.get("bFrame")], "both": [row.get("aFrame"), row.get("bFrame")],
+                  "keep": [row.get("aFrame")], "incumbent": [row.get("aFrame")], "winner": [row.get("bFrame")]}.get(row["chose"], [])
+        frames = [f for f in chosen if f]
+        if not frames:
+            needs[build["buildKey"]] = "verdict-" + row["chose"]
+        build["shots"] = [{"shotKey": hashlib.sha256(f"{plan['sourceKey']}:{build['buildKey']}:{f['name']}".encode()).hexdigest(),
+                           "shot": f["name"], "verdict": {"chose": row["chose"], "pick": row.get("pick"), "at": row.get("at"),
+                                                          "mode": row.get("mode")}}
+                          for f in frames]
+    return needs, unjudged
 
 
 def receipt_reject(receipt):
@@ -181,6 +214,10 @@ def parse_args():
                    help="refine.json from refine_worker.py: publish each build's judged "
                         "winner instead of its planned pose, and send the builds the loop "
                         "could not fix (needs aim/demist/sky) to the re-shoot worklist")
+    p.add_argument("--verdicts", type=Path, default=None,
+                   help="pair-verdicts.json from light_table.py harvest: publish exactly the "
+                        "frames the eye kept; builds it refused go to the re-shoot worklist and "
+                        "builds it has not seen publish nothing")
     p.add_argument("--cameras", type=Path, default=None,
                    help="also collect the absolute camera pose per photograph (lens, aim, "
                         "yaw, pitch, fov) in one file for the world view's bundle")
@@ -193,13 +230,17 @@ def photo_id(slug, build_key, shot):
     return f"{slug}-{build_key[:12]}-{shot.replace('~', '-')}"
 
 
-def collect(root, slug, base, quality=None, gate=True, refine=None):
+def collect(root, slug, base, quality=None, gate=True, refine=None, verdicts=None):
     plan = read(root / "campaign.json")
     state = read(root / "state.json")
     if state["sourceKey"] != plan["sourceKey"]:
         raise SystemExit("state.json belongs to another campaign")
     completed = state["completed"]
     needs = apply_refine(plan, refine) if refine else {}
+    if verdicts:
+        needs, unjudged = apply_verdicts(plan, verdicts)
+        if unjudged:
+            print(f"{len(unjudged)} build(s) have no verdict yet and publish nothing", flush=True)
 
     verdicts = (quality or {}).get("frames", {})
     builds, worklist, rejects, cameras = {}, [], [], {}
@@ -227,6 +268,10 @@ def collect(root, slug, base, quality=None, gate=True, refine=None):
                 # useful: the aim is off the mass, the build is in mist, or it points at sky.
                 # That is a planner problem, so the album goes to the re-shoot list, not live.
                 reason, stage = "refine: needs-" + needs[build["buildKey"]], "refine"
+            if shot.get("verdict"):
+                photos_verdict = shot["verdict"]
+            else:
+                photos_verdict = None
             if reason:
                 counts["rejected"] += 1
                 counts["rejected_" + stage] += 1
@@ -252,6 +297,7 @@ def collect(root, slug, base, quality=None, gate=True, refine=None):
                 **({"camera": camera_facts(receipt)} if camera_facts(receipt) else {}),
                 **({"pose": camera_pose(receipt)} if camera_pose(receipt) else {}),
                 **({"refine": shot["refine"]} if shot.get("refine") else {}),
+                **({"verdict": photos_verdict} if photos_verdict else {}),
                 # A viewer asked for this camera (requests root, prepare_requests): publish who
                 # and why with the frame. The pose above is where the game actually put it.
                 **({"request": {k: shot["request"].get(k) for k in ("id", "at", "requestedBy", "note")}}
@@ -283,6 +329,11 @@ def collect(root, slug, base, quality=None, gate=True, refine=None):
         elif dropped:
             # Say why rather than leading with a frame the gate just called unusable.
             counts["emptied_albums"] += 1
+        if not dropped and not photos and build["buildKey"] in needs and str(needs[build["buildKey"]]).startswith("verdict-"):
+            # The eye refused every frame of this build; there is no frame to journal, but
+            # the build still belongs on the reshoot list, with the verdict as the reason.
+            dropped.append({"id": None, "stage": "verdict", "reason": needs[build["buildKey"]], "verdict": needs[build["buildKey"]]})
+            counts["emptied_albums"] += 1
         if dropped:
             rejects.append({"buildKey": build["buildKey"], "kept": len(photos),
                             "frames": dropped})
@@ -312,8 +363,9 @@ def main():
     if quality and quality.get("era") not in (None, slug):
         raise SystemExit(f"quality file is for {quality['era']}, not {slug}")
     refine = read(args.refine) if args.refine else None
+    verdicts = read(args.verdicts) if args.verdicts else None
     plan, builds, worklist, counts, rejects, cameras, needs = collect(
-        root, slug, base, quality, gate=not args.keep_rejects, refine=refine)
+        root, slug, base, quality, gate=not args.keep_rejects, refine=refine, verdicts=verdicts)
 
     out = args.out or root / f"captures-{slug}.json"
     write(out, {
@@ -336,6 +388,7 @@ def main():
         "gate": {"applied": not args.keep_rejects,
                  "quality": str(args.quality) if args.quality else None},
         "refined": bool(refine),
+        "judged": bool(verdicts),
         "builds": builds,
     })
     print(f"{counts['albums']:,} albums, {counts['photographs']:,} photographs, "

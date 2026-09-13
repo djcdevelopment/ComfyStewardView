@@ -36,6 +36,13 @@ BED_RECIPE = {"schema": "steward-bed-residency/v1", "category": "BED", "marginXZ
               "marginY": 3, "owner": "owner_id", "ambiguity": "smallest-xz-area"}
 BED_RECIPE_HASH = hashlib.sha256(json.dumps(BED_RECIPE, sort_keys=True).encode()).hexdigest()
 
+# One prefab multiset, one identity. Shared by the clustering pass (grouped by cluster id)
+# and the sidecar backfill (grouped by build key over the saved membership) so the two can
+# never drift apart.
+TEMPLATE_KEY_SQL = """SELECT {group},sha256(string_agg(signature,',' ORDER BY signature))
+    FROM (SELECT {key} AS {group},prefab_hash::VARCHAR||':'||count(*) AS signature FROM {source} GROUP BY {key},prefab_hash)
+    GROUP BY {group}"""
+
 
 def clean_name(value):
     value = re.sub(r"<[^>]*>", "", str(value or ""))
@@ -169,6 +176,23 @@ def analyze_era(root, entry):
             save(receipt_path, result)
             print(f"{entry['slug']}: residents re-derived (bed recipe {BED_RECIPE_HASH[:12]}), "
                   f"build keys unchanged", flush=True)
+        # Build identity (templateKey) is likewise a sidecar: it is derived from the same
+        # membership the key already fixes, so an analysis written before it was recorded
+        # can catch up in place. Without it, project() cannot see stamped lots and the
+        # capture queue photographs the same walls hundreds of times over.
+        if any("templateKey" not in build for build in result["builds"]):
+            with duckdb.connect(":memory:") as con:
+                con.execute("SET threads=4"); con.execute("SET memory_limit='8GB'")
+                con.execute(f"CREATE VIEW zdo AS SELECT * FROM read_parquet({sql_path(package['zdo'])})")
+                con.execute(f"CREATE VIEW membership AS SELECT * FROM read_parquet({sql_path(dest / 'membership.parquet')})")
+                templates = dict(con.execute(TEMPLATE_KEY_SQL.format(group="build_key",
+                    source="membership m JOIN zdo z USING(zdo_index)", key="m.build_key")).fetchall())
+            for build in result["builds"]:
+                build["templateKey"] = templates[build["buildKey"]]
+            result["templateBackfilledAt"] = now()
+            save(receipt_path, result)
+            print(f"{entry['slug']}: build identity backfilled for {len(templates):,} builds, "
+                  f"build keys unchanged", flush=True)
         return result
     dest.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(":memory:") as con:
@@ -204,9 +228,7 @@ def analyze_era(root, entry):
         # owners. Keyed on prefab_hash, not the resolved name: a dictionary gap reports
         # several distinct prefabs as one null name, and grouping on that would merge
         # genuinely different buildings into a single identity.
-        templates = dict(con.execute("""SELECT cid,sha256(string_agg(signature,',' ORDER BY signature))
-            FROM (SELECT cid,prefab_hash::VARCHAR||':'||count(*) AS signature FROM members GROUP BY cid,prefab_hash)
-            GROUP BY cid""").fetchall())
+        templates = dict(con.execute(TEMPLATE_KEY_SQL.format(group="cid", source="members", key="cid")).fetchall())
         contributors = defaultdict(list)
         for cid, creator, n in con.execute("SELECT cid,creator_id::VARCHAR,count(*) FROM members WHERE creator_id IS NOT NULL AND creator_id<>0 GROUP BY 1,2 ORDER BY 1,3 DESC,2").fetchall():
             contributors[cid].append({"characterId": creator, "pieces": n})
@@ -361,13 +383,41 @@ def attach_captures(builds, manifests):
     return receipts,attached,unknown,superseded
 
 
-def project(root, analyses, links_path=None, legacy_config=None, capture_manifests=None):
+def project(root, analyses, links_path=None, legacy_config=None, capture_manifests=None, allow_fewer_captures=False):
     root = Path(root)
     settings_path = root / "analysis" / "identity-registry.json"
     settings = load(settings_path) if settings_path.exists() else {"namespace":str(uuid.uuid4())}
     save(settings_path,settings)
     namespace=uuid.UUID(settings["namespace"]); links=read_links(links_path)
     builders={}; all_builds=[]; unknown_patterns=defaultdict(list); era_reports=[]; jobs=[]
+
+    # Omitting --legacy-galleries is not "no legacy galleries", it is "drop the ones you
+    # had": the projection is rebuilt from scratch every run, so a forgotten flag silently
+    # removed 535 albums and 5,176 photographs, and the only visible sign was a builder
+    # count falling from 3,328 to 3,194. Refuse to do that quietly.
+    previous=root/"analysis/community-private.json"
+    had_legacy=had_captures=0
+    if previous.exists() and (not legacy_config or not allow_fewer_captures):
+        try:
+            before=load(previous)
+            had_legacy=len(before.get("legacyImports",[]));had_captures=len(before.get("captureImports",[]))
+        except (ValueError,OSError):pass
+    if not legacy_config and had_legacy:
+        raise ValueError(
+            f"The current projection imports {had_legacy} legacy gallery/galleries, but no "
+            f"--legacy-galleries was given. Re-running would drop those albums and "
+            f"their photographs. Pass the config, or delete "
+            f"analysis/community-private.json to say the loss is intended.")
+    # The same trap on the other flag. --captures is repeatable and every manifest has to be
+    # named on every run; the era-16 rebuild on 2026-09-12 named none, and the projection
+    # went from 13,931 photographs to 5,176 with nothing but a smaller number to show for it.
+    given=len(capture_manifests or [])
+    if had_captures>given and not allow_fewer_captures:
+        raise ValueError(
+            f"The current projection imports {had_captures} capture manifest(s), but only "
+            f"{given} --captures were given. Re-running would drop the photographs the "
+            f"missing manifests attached. Pass every manifest (the run manifest lists them), "
+            f"or --allow-fewer-captures to say the loss is intended.")
 
     def ensure(character):
         key=builder_key(namespace,character,links)
@@ -433,22 +483,6 @@ def project(root, analyses, links_path=None, legacy_config=None, capture_manifes
             if r.get("provisional"):
                 print(f"  NOTE: {r['era']} frames are {r['resolution'][0]}x{r['resolution'][1]}, "
                       f"below the 3840x2160 standard -- provisional until re-shot",flush=True)
-
-    # Omitting --legacy-galleries is not "no legacy galleries", it is "drop the ones you
-    # had": the projection is rebuilt from scratch every run, so a forgotten flag silently
-    # removed 535 albums and 5,176 photographs, and the only visible sign was a builder
-    # count falling from 3,328 to 3,194. Refuse to do that quietly.
-    if not legacy_config:
-        previous=root/"analysis/community-private.json"
-        if previous.exists():
-            try:had=len(load(previous).get("legacyImports",[]))
-            except (ValueError,OSError):had=0
-            if had:
-                raise ValueError(
-                    f"The current projection imports {had} legacy gallery/galleries, but no "
-                    f"--legacy-galleries was given. Re-running would drop those albums and "
-                    f"their photographs. Pass the config, or delete "
-                    f"analysis/community-private.json to say the loss is intended.")
 
     legacy,legacy_receipts=import_legacy(legacy_config,namespace,links)
     for build in legacy:
@@ -543,11 +577,13 @@ def main():
     parser.add_argument("--legacy-galleries",type=Path)
     parser.add_argument("--captures",type=Path,action="append",default=[],
                         help="capture gallery manifest from import_captures.py; repeatable")
+    parser.add_argument("--allow-fewer-captures",action="store_true",
+                        help="permit a projection that imports fewer capture manifests than the current one")
     args=parser.parse_args();root=args.output_root.resolve()
     with writer_lock(root/"analysis"):
         catalog=load(root/"catalog.json")
         analyses=[analyze_era(root,e) for e in catalog["eras"] if e["ingestion"].get("status")=="verified"]
-        project(root,analyses,args.links,args.legacy_galleries,args.captures)
+        project(root,analyses,args.links,args.legacy_galleries,args.captures,args.allow_fewer_captures)
 
 
 if __name__=="__main__":main()

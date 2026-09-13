@@ -325,6 +325,42 @@ class ArchiveTest(unittest.TestCase):
             (source/'Wrong.fwl').write_bytes(db.with_suffix('.fwl').read_bytes())
             with self.assertRaises(ValueError):archive.source_entry(source/'Wrong.db')
 
+    def test_pre_convention_worlds_take_their_era_from_the_folder_and_bad_saves_are_reported(self):
+        """The first two worlds predate the ComfyEraN naming (Booty, comfy), one bad file must
+        not abort the whole catalog refresh, and an era whose source goes missing stays catalogued."""
+        def pair(folder,name,version,count=1):
+            folder.mkdir(parents=True,exist_ok=True);db=folder/(name+'.db')
+            db.write_bytes(struct.pack('<idqii',version,100.,1,2,count))
+            raw=name.encode();body=struct.pack('<i',29)+bytes([len(raw)])+raw+b'\x04seed'+struct.pack('<iq',123,456)
+            db.with_suffix('.fwl').write_bytes(struct.pack('<i',len(body))+body);return db
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);source=root/'source';out=root/'processed'
+            pair(source/'ComfyEra1','Booty',26);pair(source/'ComfyEra7_20230101_1201','ComfyEra7',29)
+            pair(source/'ComfyEra3_20211010','ComfyEra3',12);pair(source/'NotAnEra','Weird',29)
+            catalog=archive.inventory(source,out);report=archive.load(out/'intake-report.json')
+            self.assertEqual([1,7],[e['era'] for e in catalog['eras']])
+            booty,seven=catalog['eras']
+            self.assertEqual(('Booty','ComfyEra1','era1','directory'),(booty['worldId'],booty['archiveWorldId'],booty['slug'],booty['eraSource']))
+            self.assertEqual(('ComfyEra7','ComfyEra7','fwl-name'),(seven['worldId'],seven['archiveWorldId'],seven['eraSource']))
+            self.assertEqual([1001,1002],[e['snapshotId'] for e in catalog['eras']])
+            self.assertEqual({'ComfyEra3.db':'Unsupported world header','Weird.db':'Expected an explicit Comfy era identity'},
+                             {Path(r['path']).name:r['reason'].split(':')[0] for r in report['rejected']})
+            self.assertEqual([],report['missingSources']);self.assertEqual(['era1','era7'],[a['slug'] for a in report['accepted']])
+            # The source of era 7 disappears; the catalog keeps it and the report says so.
+            for file in (source/'ComfyEra7_20230101_1201').iterdir():file.unlink()
+            again=archive.inventory(source,out);report=archive.load(out/'intake-report.json')
+            self.assertEqual([1,7],[e['era'] for e in again['eras']]);self.assertEqual([1001,1002],[e['snapshotId'] for e in again['eras']])
+            self.assertEqual(['era7'],[m['slug'] for m in report['missingSources']]);self.assertEqual(['era1'],[a['slug'] for a in report['accepted']])
+            # Only a scan that finds nothing, with nothing catalogued, is an error.
+            with self.assertRaises(ValueError):archive.inventory(source/'NotAnEra',root/'empty')
+
+    def test_version_gate_is_shared_with_the_java_parser(self):
+        import re
+        from records import MAX_WORLD_VERSION,MIN_WORLD_VERSION
+        java=(archive.REPO/'viewer/src/main/java/com/valheim/viewer/parser/WorldParser.java').read_text(encoding='utf-8')
+        low=int(re.search(r'MIN_WORLD_VERSION\s*=\s*(\d+)',java)[1]);high=int(re.search(r'MAX_WORLD_VERSION\s*=\s*(\d+)',java)[1])
+        self.assertEqual((26,37),(MIN_WORLD_VERSION,MAX_WORLD_VERSION));self.assertEqual((low,high),(MIN_WORLD_VERSION,MAX_WORLD_VERSION))
+
     def test_artifact_path_and_digest_are_enforced(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);file=root/'data';file.write_text('verified')
@@ -335,11 +371,12 @@ class ArchiveTest(unittest.TestCase):
 
     def test_legacy_and_compact_payloads_have_matching_identities(self):
         self.assertEqual(1305470367,stable_hash('TCData'))
-        for version in (29,32,33,34,35):
+        for version in (26,27,29,32,33,34,35):
             with self.subTest(version=version),tempfile.TemporaryDirectory() as temp:
                 raw=b'\x00\x01\xff'
                 strings=b'\x01'+struct.pack('<i',ITEMS)+b'\x03abc'
-                blobs=b'\x01'+struct.pack('<ii',123,len(raw))+raw
+                # The launch format has no byte-array group at all; it arrived at v27.
+                blobs=b'' if version<27 else b'\x01'+struct.pack('<ii',123,len(raw))+raw
                 if version<31:
                     prefix=bytearray(71);struct.pack_into('<i',prefix,31,42);struct.pack_into('<fff',prefix,43,1,2,3)
                     payload=bytes(prefix)+b'\x00'*5+strings+blobs
@@ -347,7 +384,13 @@ class ArchiveTest(unittest.TestCase):
                 else:record=struct.pack('<Hhhfffi',192,0,0,1,2,3,42)+strings+blobs
                 path=Path(temp)/'world.db';path.write_bytes(struct.pack('<idqii',version,10.,1,2,1)+record)
                 row=list(records(path))[0]
-                self.assertEqual((0,42,1,2,3),row[:5]);self.assertEqual([('string',ITEMS,'abc'),('bytearray',123,raw)],row[5])
+                expected=[('string',ITEMS,'abc')]+([] if version<27 else [('bytearray',123,raw)])
+                self.assertEqual((0,42,1,2,3),row[:5]);self.assertEqual(expected,row[5])
+                if version==26:
+                    # A v26 package carrying a seventh count is a framing error, not a feature.
+                    path.write_bytes(struct.pack('<idqii',26,10.,1,2,1)+struct.pack('<qii',1,2,len(payload)+1)+payload+b'\x00')
+                    with self.assertRaises(ValueError):list(records(path))
+                    path.write_bytes(struct.pack('<idqii',version,10.,1,2,1)+record)
                 path.write_bytes(path.read_bytes()[:-1])
                 with self.assertRaises(ValueError):list(records(path))
         self.assertEqual((200,1),count(bytes([200]),0,32))
@@ -531,6 +574,94 @@ class ArchiveTest(unittest.TestCase):
                 self.assertEqual(1,len(threads))
                 for sleeper in (named,unnamed):
                     self.assertFalse((Path(out)/'threads'/(sleeper+'.json')).exists())
+
+    def test_build_identity_backfills_in_place_without_rotating_build_keys(self):
+        """Seven of eight first-pass analyses predate templateKey, so project() could not see
+        stamped lots and said so. The identity is a function of the saved membership, so the
+        cached receipt can catch up exactly as the bed sidecar does -- keys untouched."""
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);package={}
+            with duckdb.connect(':memory:') as con:
+                con.execute('CREATE TABLE world_snapshot(snapshot_id BIGINT)');con.execute('INSERT INTO world_snapshot VALUES (1001)')
+                con.execute('CREATE TABLE zdo(snapshot_id BIGINT,zdo_index BIGINT,category VARCHAR,prefab_hash INTEGER,prefab_name VARCHAR,x DOUBLE,y DOUBLE,z DOUBLE,creator_id BIGINT,owner_id BIGINT)')
+                # Two identical two-piece lots 100 m apart, and a third lot with a different multiset.
+                con.execute("""INSERT INTO zdo VALUES
+                    (1001,1,'BUILDING',1,'wall',0,0,0,1,0),(1001,2,'BUILDING',2,'roof',1,0,0,1,0),
+                    (1001,3,'BUILDING',1,'wall',100,0,0,2,0),(1001,4,'BUILDING',2,'roof',101,0,0,2,0),
+                    (1001,5,'BUILDING',1,'wall',200,0,0,3,0),(1001,6,'BUILDING',1,'wall',201,0,0,3,0)""")
+                con.execute('CREATE TABLE zdo_field(snapshot_id BIGINT,zdo_index BIGINT,field_name VARCHAR,string_value VARCHAR)')
+                con.execute('CREATE TABLE container_item(crafter_id BIGINT,crafter_name VARCHAR,container_zdo_index BIGINT)')
+                for table in ('world_snapshot','zdo','zdo_field','container_item'):
+                    path=root/(table+'.parquet');con.execute(f'COPY {table} TO {archive.sql_path(path)} (FORMAT PARQUET)');package[table]=path
+            entry={'era':7,'slug':'era7','sourceKey':'a'*64,'snapshotId':1001,'ingestion':{'artifacts':{}}}
+            with patch.object(community,'verify_package',return_value=package):
+                first=community.analyze_era(root,entry)
+            expected={b['buildKey']:b['templateKey'] for b in first['builds']}
+            self.assertEqual(3,len(expected));self.assertEqual(2,len(set(expected.values())))
+            analysis_json=next((root/'analysis'/'era7').rglob('analysis.json'))
+            membership=next((root/'analysis'/'era7').rglob('membership.parquet'));before=membership.read_bytes()
+            stale=archive.load(analysis_json)
+            for build in stale['builds']:del build['templateKey']
+            archive.save(analysis_json,stale)
+            with patch.object(community,'verify_package',return_value=package):
+                second=community.analyze_era(root,entry)
+            self.assertEqual(expected,{b['buildKey']:b['templateKey'] for b in second['builds']})
+            self.assertEqual(before,membership.read_bytes());self.assertTrue(second.get('templateBackfilledAt'))
+            # And the projection now sees the stamped pair.
+            projection=community.project(root,[second])
+            copies=sorted(b['templateCopies'] for b in projection['builds'])
+            self.assertEqual([1,2,2],copies)
+
+    def test_the_light_table_verdict_decides_what_a_build_publishes(self):
+        """Compare-and-reshoot: a pair verdict keeps the chosen frame, both or neither; a
+        single-frame verdict keeps or sends to reshoot; a build the eye has not seen publishes
+        nothing. Shot keys are derived the way the refine worker derives them, so the frame
+        published is exactly the master the judge looked at."""
+        import hashlib
+        src = "s" * 64
+        def key(build, name): return hashlib.sha256(f"{src}:{build}:{name}".encode()).hexdigest()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            planned = lambda n: [{"shot": f"detail{i}", "shotKey": key(n * 64, f"detail{i}")} for i in (1, 2, 3)]
+            archive.save(root / "campaign.json", {"era": "era1", "sourceKey": src, "snapshotId": 1009, "world": "Booty",
+                "width": 3840, "height": 2160,
+                "builds": [{"buildKey": c * 64, "shots": planned(c)} for c in "abcde"]})
+            receipt = {"clearance": "planned", "occluded": False, "pieces_near_aim": 900}
+            completed = {key(c * 64, f"detail{i}"): {"file": f"images/{c}{i}.png", "sha256": f"h{c}{i}",
+                                                    "metadata": {"dimensions": [3840, 2160]}, "receipt": receipt}
+                         for c in "abcde" for i in (1, 2, 3)}
+            archive.save(root / "state.json", {"sourceKey": src, "completed": completed})
+            frame = lambda n: {"name": n, "file": None}
+            verdicts = {"schema": "steward-pair-verdicts/v2", "era": "era1", "sourceKey": src, "verdicts": [
+                {"buildKey": "a" * 64, "build": "aaaaaaaa", "mode": "pair", "chose": "b", "pick": "right", "aFrame": frame("detail1"), "bFrame": frame("detail2")},
+                {"buildKey": "b" * 64, "build": "bbbbbbbb", "mode": "pair", "chose": "both", "pick": "both", "aFrame": frame("detail1"), "bFrame": frame("detail3")},
+                {"buildKey": "c" * 64, "build": "cccccccc", "mode": "pair", "chose": "neither", "pick": "neither", "aFrame": frame("detail1"), "bFrame": frame("detail2")},
+                {"buildKey": "d" * 64, "build": "dddddddd", "mode": "single", "chose": "keep", "pick": "keep", "aFrame": frame("detail2"), "bFrame": None}]}
+            _, builds, worklist, counts, rejects, _, needs = import_captures.collect(root, "era1", "https://h/e1/", verdicts=verdicts)
+            self.assertEqual({"a" * 64: ["detail2"], "b" * 64: ["detail1", "detail3"], "d" * 64: ["detail2"]},
+                             {k: [p["shot"] for p in v] for k, v in builds.items()})
+            self.assertEqual("b", builds["a" * 64][0]["verdict"]["chose"])
+            self.assertEqual({"c" * 64: "verdict-neither"}, needs)
+            self.assertEqual(["c" * 64], [r["buildKey"] for r in rejects if r["kept"] == 0])
+            self.assertEqual(4, counts["photographs"]); self.assertEqual(4, len(worklist))
+            self.assertNotIn("e" * 64, builds)   # unjudged publishes nothing
+
+    def test_rebuilding_with_fewer_capture_manifests_refuses_to_drop_those_photographs(self):
+        """The --captures twin of the legacy guard: on 2026-09-12 an era-16 rebuild named no
+        manifests and the projection fell from 13,931 photographs to 5,176 without a word."""
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            archive.save(root/'analysis/community-private.json',
+                         {'legacyImports':[],'captureImports':[{'bytes':1,'sha256':'x'},{'bytes':2,'sha256':'y'}]})
+            with self.assertRaises(ValueError) as caught:
+                community.project(root,[],None,None,[])
+            self.assertIn('--captures',str(caught.exception))
+            with self.assertRaises(ValueError):
+                community.project(root,[],None,None,[root/'one.json'])
+            # Saying so explicitly is allowed; and a first run has nothing to lose.
+            community.project(root,[],None,None,[],allow_fewer_captures=True)
+            archive.save(root/'analysis/community-private.json',{'legacyImports':[],'captureImports':[]})
+            community.project(root,[],None,None,[])
 
     def test_projection_refuses_a_template_without_head_markers(self):
         with self.assertRaises(ValueError):

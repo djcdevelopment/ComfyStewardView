@@ -7,14 +7,14 @@ from pathlib import Path
 import shutil
 import subprocess
 import uuid
-from archive import REPO,artifact,checked_file,digest,load,now,save,verify_package,verify_sources,writer_lock
+from archive import REPO,artifact,checked_file,digest,load,now,save,verified_eras,verify_package,verify_sources,writer_lock
 
 
 def rasters(root,java,jar):
     catalog=load(root/'catalog.json');stamp=digest(jar)
     results=[]
     with writer_lock(root/'raster-jobs'):
-        for era in catalog['eras']:
+        for era in verified_eras(catalog):
             package=verify_package(root,era)
             dest=root/'rasters'/era['slug']/stamp['sha256'][:16]
             receipt=dest/'receipt.json'

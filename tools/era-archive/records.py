@@ -19,6 +19,16 @@ def stable_hash(text):
 
 ITEMS=stable_hash('items')
 
+# The one version gate. archive.py imports these; WorldParser.java mirrors them and a test
+# asserts the two agree. 26 is the launch format (2021-02); 27 added the byte-array group.
+MIN_WORLD_VERSION,MAX_WORLD_VERSION=26,37
+LEGACY_FIXED_BYTES=71  # revisions, persistent, owner, ticks, pgwVersion, type, distant, prefab, sector, pos, quat
+
+
+def legacy_groups(version):
+    """Typed property groups in a length-delimited (pre-v31) ZDO: byte arrays arrived at v27."""
+    return 7 if version>=27 else 6
+
 
 def count(data, offset, version):
     first=data[offset];offset+=1
@@ -44,7 +54,7 @@ def records(path, wanted_prefabs=None):
     """Yield (index,prefab,x,y,z,payloads) in source order. Validate every record."""
     with open(path,'rb') as handle, mmap.mmap(handle.fileno(),0,access=mmap.ACCESS_READ) as data:
         version,_,_,_,total=struct.unpack_from('<idqii',data)
-        if not 29<=version<=37 or total<0:raise ValueError('Unsupported world header')
+        if not MIN_WORLD_VERSION<=version<=MAX_WORLD_VERSION or total<0:raise ValueError('Unsupported world header')
         offset=28
         for index in range(total):
             try:
@@ -52,10 +62,12 @@ def records(path, wanted_prefabs=None):
                 if version<31:
                     length=struct.unpack_from('<i',data,offset+12)[0]
                     start=offset+16;end=start+length
-                    if length<78 or end>len(data):raise ValueError('Invalid legacy package length')
+                    if length<LEGACY_FIXED_BYTES+legacy_groups(version) or end>len(data):raise ValueError('Invalid legacy package length')
                     prefab=struct.unpack_from('<i',data,start+31)[0]
                     x,y,z=struct.unpack_from('<fff',data,start+43)
-                    offset=start+71;flags=254
+                    # Every group is present in the legacy framing (a zero count still costs a
+                    # byte), so the flag word claims all of them; v26 simply has no byte arrays.
+                    offset=start+LEGACY_FIXED_BYTES;flags=254 if legacy_groups(version)==7 else 126
                 else:
                     flags=struct.unpack_from('<H',data,offset)[0]
                     x,y,z=struct.unpack_from('<fff',data,offset+6)

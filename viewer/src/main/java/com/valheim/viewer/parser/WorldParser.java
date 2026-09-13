@@ -31,6 +31,10 @@ import java.util.Base64;
 public class WorldParser {
 
     private static final Logger log = LoggerFactory.getLogger(WorldParser.class);
+    /** The one version gate. tools/era-archive/records.py mirrors these two numbers and a test
+     *  asserts they agree. 26 is the 2021 launch format; 27 added the byte-array property group. */
+    static final int MIN_WORLD_VERSION = 26;
+    static final int MAX_WORLD_VERSION = 37;
 
     // ----- Pre-computed StableHashCode for all property names we access -----
     private static final int H_CREATOR      = sh("creator");
@@ -254,8 +258,9 @@ public class WorldParser {
 
             // --- Header ---
             int worldVersion = buf.getInt();
-            if (worldVersion < 29 || worldVersion > 37) {
-                throw new IllegalArgumentException("Unsupported world format " + worldVersion + "; supported formats are 29–37");
+            if (worldVersion < MIN_WORLD_VERSION || worldVersion > MAX_WORLD_VERSION) {
+                throw new IllegalArgumentException("Unsupported world format " + worldVersion + "; supported formats are "
+                    + MIN_WORLD_VERSION + "–" + MAX_WORLD_VERSION);
             }
             store.worldVersion = worldVersion;
             store.netTimeSeconds = buf.getDouble();

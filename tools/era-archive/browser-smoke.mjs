@@ -1,5 +1,6 @@
 import {spawn} from 'node:child_process';
-import {mkdir,writeFile} from 'node:fs/promises';
+import {mkdir,mkdtemp,rm,writeFile} from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 const [gallery,world,output,worldFlag]=process.argv.slice(2);
 // The world view deploys on its own lane and is not always up; the creator lane has to
@@ -15,7 +16,10 @@ const strictWorld=worldFlag==='--strict-world'||process.env.SMOKE_STRICT_WORLD==
 const worldBase=world?new URL(world.endsWith('/')?world:world+'/'):null;
 await mkdir(output,{recursive:true});
 const chrome=process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const browser=spawn(chrome,['--headless','--disable-gpu','--no-first-run','--no-default-browser-check','--remote-debugging-port=0','--window-size=1440,1000',`--user-data-dir=${path.resolve(output,'profile')}`,'about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:true});
+// A Chrome profile is a cache, not a receipt: it lives in the temp dir and is removed with
+// the browser. Nineteen of them (~7k files) had accumulated under receipt folders.
+const profile=await mkdtemp(path.join(os.tmpdir(),'steward-smoke-'));
+const browser=spawn(chrome,['--headless','--disable-gpu','--no-first-run','--no-default-browser-check','--remote-debugging-port=0','--window-size=1440,1000',`--user-data-dir=${profile}`,'about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:true});
 let stderr='';const ws=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Chrome startup timeout')),10000);browser.stderr.on('data',b=>{stderr+=b;const m=stderr.match(/DevTools listening on (ws:\/\/[^\s]+)/);if(m){clearTimeout(timer);resolve(m[1]);}});browser.once('exit',()=>reject(Error('Chrome exited')));});
 const http=ws.replace('ws://','http://').replace(/\/devtools\/browser\/.*$/,'');
 const target=await fetch(http+'/json/new?about:blank',{method:'PUT'}).then(r=>r.json());
@@ -416,4 +420,4 @@ try{
     await finish();
   }
   throw error;
-}finally{socket.close();browser.kill();}
+}finally{socket.close();browser.kill();await new Promise(r=>setTimeout(r,500));await rm(profile,{recursive:true,force:true}).catch(()=>{});}

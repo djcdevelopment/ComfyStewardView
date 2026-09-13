@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 import sys
 import duckdb
-from archive import REPO,artifact,checked_file,load,now,save,sql_path,verify_package
+from archive import REPO,artifact,checked_file,load,now,save,sql_path,verified_eras,verify_package
 sys.path.insert(0,str(REPO/'tools/selfie-stick'))
 from plan_shots import camera_for,elevation_for,orbit_azimuths,validate_tsv
 
@@ -14,7 +14,7 @@ def main():
     args=parser.parse_args();root=args.output_root.resolve()
     community=load(root/'analysis/community-private.json');builds={b['buildKey']:b for b in community['builds']}
     jobs=load(root/'analysis/jobs.json')['jobs'];analyses={a['slug']:a for a in load(root/'analysis/catalog.json')['eras']}
-    for era in load(root/'catalog.json')['eras']:
+    for era in verified_eras(load(root/'catalog.json')):
         selected=[j for j in jobs if j.get('pilotCandidate') and j['era']==era['era']]
         package=verify_package(root,era);membership=checked_file(root,analyses[era['slug']]['membership'])
         dest=root/'pilots'/era['slug'];dest.mkdir(parents=True,exist_ok=True)

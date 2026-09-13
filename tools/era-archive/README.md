@@ -20,21 +20,47 @@ output directories in separate trees:
 
 ```powershell
 .\tools\era-archive\Invoke-EraArchive.ps1 `
-  -InputRoot <original-world-pairs> -OutputRoot <processing-root> `
-  -Java <java-executable> -Python <python-executable> `
-  -LegacyGalleries <private-gallery-inputs.json>
+  -InputRoot <original-world-pairs> -OutputRoot <processing-root> [-WhatIf]
 ```
 
+The driver takes every cross-era flag from `<processing-root>/run-manifest.json`
+(`steward-run-manifest/v1`: `legacyGalleries`, `links`, every `captures` manifest, the
+parser and lab jars, `java`), never from the command line. Omitting one of those flags
+is not "none", it is "drop what you had" -- it cost 535 albums on 2026-09-10 and every
+photograph on 2026-09-12. A run snapshots `analysis/` to `analysis-backup-<stamp>-auto`
+(the last three are kept), ingests every pending era with `--no-rebuild`, runs payloads,
+community, community tables, rasters and pilots over the verified eras, rebuilds the read
+model once, verifies, removes stale read-model candidates, headless-Chrome `profile/`
+directories under receipts and `analysis/*.bak-*`, and writes
+`runs/<stamp>/run-receipt.json` (with a transcript). `run_receipt.py` fails the run if the
+projection imported fewer capture manifests than the run manifest names; `community.py`
+refuses that on its own too (`--allow-fewer-captures` to say the loss is intended).
+`-WhatIf` prints every command and every deletion without doing anything. `-Era <slug>`
+restricts ingest; later stages still cover all verified eras.
+
 Each intake pair is identified by both SHA-256 hashes and byte counts. Directory
-dates are not save timestamps. Versions 29/30 use length-delimited legacy records;
-31/32 use compact byte counts; 33–37 use compact extended counts. Only 29, 32, 33,
-34 and 35 have been exercised against this seven-era archive.
+dates are not save timestamps. `inventory` judges each `.db` on its own and writes
+`intake-report.json` (`accepted`, `rejected` with reasons, `missingSources`): one
+unreadable save never stops the others, and a catalogued era whose source did not
+answer the scan stays catalogued. The era comes from the FWL world name (`ComfyEraN`) or,
+for the two pre-convention worlds (`Booty`, `comfy`), from the archive folder; the entry
+records `worldId` (what the game calls the save -- every stage that copies a save or
+reads the client's caches keys on it) beside `archiveWorldId` (`ComfyEraN`, stamped into
+every snapshot). Versions 26-30 use length-delimited legacy records (26 has no
+byte-array group); 31/32 use compact byte counts; 33-37 use compact extended counts.
+The one version gate is `records.MIN_WORLD_VERSION`/`MAX_WORLD_VERSION` (26/37),
+mirrored by `WorldParser` and asserted equal by a test. Formats 26, 27, 28, 29, 32, 33,
+34, 35, 36 and 37 have all been exercised against the sixteen-era archive.
 
 The writer freezes its parser JAR and stages each extraction separately. A package
 is promoted only after source rechecks, declared/actual object reconciliation,
 unique object-index checks, inventory extraction, typed-field export and geometry
-membership checks. Failed candidates remain evidence. Reruns use the frozen parser;
-an explicit different parser requires a new processing catalog.
+membership checks. Failed candidates remain evidence. Reruns use the catalog's newest
+accepted parser. A rebuilt parser is admitted by `archive.py parser-check --jar <new>
+--era era7 --era era16`: it re-parses the named verified eras into scratch, requires every
+content table (and the geometry parquet) to be row-identical to the frozen package, and
+records the jar in `catalog.parsers` as superseding the digests it reproduced. A jar not
+in that lineage still refuses verified eras.
 
 `payloads.py` retains exact binary fields and original inventory strings. These
 supplement fields the older analytics schema represented only by length. `zdo_field_full`
