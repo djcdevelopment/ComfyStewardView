@@ -260,6 +260,8 @@ class RefineWorker(Worker):
         self.threads, self.idle_seconds = threads, idle_seconds
         self.journal_path = self.root / 'refine-journal.jsonl'
         self.counter = 0
+        self.consecutive_timeouts = 0
+        self.max_consecutive_timeouts = 2
         self.results = {}
         self.builds_n = len(self.plan['builds'])
         self.dest = None; self.saves = None; self.log = None; self.prefs = None
@@ -485,7 +487,23 @@ class RefineWorker(Worker):
     def refine_pose(self, judge, build, shot, rounds):
         import frame_judge
         cid, key, label = build['localClusterId'], build['buildKey'], f'Build {build["buildKey"][:8]}'
-        incumbent = self.shoot_pose(judge, build, shot)
+        try:
+            incumbent = self.shoot_pose(judge, build, shot)
+        except RuntimeError as error:
+            # One pose the client never finished (era 13, 2026-09-13: an outland build 18 km
+            # out took 210 s for a pose and never returned the next) is a vetoed pose, not the
+            # end of the era. Two in a row means the client is wedged, and then it is.
+            if 'did not finish within' not in str(error):
+                raise
+            self.consecutive_timeouts += 1
+            self.journal('timeout', build=key[:8], name=shot['shot'], consecutive=self.consecutive_timeouts, reason=str(error)[:160])
+            if self.consecutive_timeouts >= self.max_consecutive_timeouts:
+                raise RuntimeError(f'{self.consecutive_timeouts} consecutive plan timeouts; the client is not answering') from error
+            return {'localClusterId': cid, 'shot': shot['shot'], 'incumbent': shot['shot'], 'winner': shot['shot'],
+                    'needs': 'timeout', 'rounds': 0, 'path': [shot['shot']], 'winnerFile': None, 'winnerShotKey': shot['shotKey'],
+                    'forecast': shot.get('forecast'), 'pose': None, 'files': {}, 'placed': {},
+                    'metrics': {shot['shot']: {'score': None, 'vetoes': ['timeout']}}}
+        self.consecutive_timeouts = 0
         history = [incumbent]
         needs, forced_moves = self.gate(incumbent)
         rounds_run, c75_used = 0, False
