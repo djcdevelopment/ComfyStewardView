@@ -75,10 +75,28 @@ ssh am4.tail8e749c.ts.net 'cat ~/valheim-capture/overnight-20260913.log; cat ~/v
 pose the client never finished. The earlier root `era13-20260913` (no `b`) is a stopped first
 attempt (145 shots, killed after an outland build wedged the client) — keep it, don't reuse it.
 
-Masters (10 MB 4K PNGs) stay on AM4 under `<root>/images/<run>/`. Only `derivatives/large`
+**fx99 (second capture host, added 2026-09-13 ~12:00 UTC)** user unit **`steward-fx99-overnight`**
+runs `/home/derek/valheim-capture/fx99-overnight.sh`: `era1-fx99-20260913b` (161 builds / 645
+poses) → `era2-fx99-20260913` (331 / 1,334) → `era3-fx99-20260913` (328 / 1,298); same per-root
+shape (`~/venvs/judge` CPU torch, `--threads 4`, nice 5, `HF_HUB_OFFLINE=1`). The script stops
+**ollama** for the run and restores it in an EXIT trap, and does `sudo chvt 3` first (see §6).
+Smoke gate passed 12:12Z: 10 builds / 50 poses, median 10.2 s, no timeouts, no swap growth,
+creators site 200 throughout (`era1-fx99-20260913-smoke`, keep). Check:
+```
+ssh fx99.tail8e749c.ts.net '~/valheim-capture/smoke-status.sh era2-fx99-20260913 steward-fx99-overnight; cat ~/valheim-capture/fx99-overnight.log'
+```
+fx99's client is Steam build **25253764 = Valheim 1.0.12 (n-40)** on Derek's second account
+(`durracktu`) — a third instrument beside OMEN 1.0.12 and AM4 l-1.0.7; every root's
+`runtime.json` records it. Provisioning receipt + verified-launch proof:
+`E:\omen\steward-multi-era\fx99-setup-20260913\{receipt.json, launch-fx99-plugins.json}`;
+staged worlds `E:\omen\steward-multi-era\fx99-staging-20260913\`.
+
+Masters (10 MB 4K PNGs) stay on the host that shot them (AM4 or fx99) under `<root>/images/<run>/`. Only `derivatives/large`
 and `derivatives/thumb` webps need to travel. Do not shuttle masters until verdicts exist.
 
 ## 4. NEXT STEPS, in order (the compare-and-reshoot loop)
+
+(Applies to every finished root on **either host** — AM4 roots `~/valheim-capture/<era>-20260913b`, fx99 roots `~/valheim-capture/<era>-fx99-20260913[b]`; the ssh target is the only difference.)
 
 1. **Pull results to OMEN** for each finished root (`era11-reshoot-20260913`, `era13-20260913b`,
    `era15-20260913b`): `rank-<era>.json`, `refine.json`, `state.json`, `derivatives/large/*.webp`
@@ -161,6 +179,18 @@ delete an attempt directory**; rename it with the reason (`runs/<x>-failed-<why>
   the run (the client is wedged). If a run stops that way, `pkill -KILL -x valheim.x86_64`, then
   `systemctl --user reset-failed <unit>` before restarting anything, and clear
   `~/valheim/BepInEx/config/shotplan-feed/` (`STOP`, `*.tsv`, `*.done`).
+- **fx99 specifics**: Xorg `:0` is headless (virtual DP-0, 3840×2160) on VT 3 with `-novtswitch`;
+  if any other VT is in the foreground X is "switched away" and GL crawls at ~1 FPS with nothing
+  presented. `fleet-dash.service` used to `chvt 2` on start (line commented out 2026-09-13,
+  backup `fleet-dash.service.bak-20260913`); the chain script re-asserts `chvt 3` anyway. No
+  monitor is attached or needed: Steam login goes over `ssh -L 5900:localhost:5900
+  fx99.tail8e749c.ts.net` + TigerVNC to `localhost:5900` (x11vnc is localhost-only,
+  `fx99-x11vnc.service`); `xdotool` is installed for moving windows into the viewer's corner.
+  The Steam client must stay logged in (`~/.local/share/Steam/logs/connection_log.txt` says
+  `Logged On`). ollama pins 4.7 GiB of the 8 GiB VRAM — never run a capture with it up. Roots
+  are single-use here too (`runs/refine-attempt-01` is hard-coded): a second launch on the same
+  root fails with `FileExistsError` — make a `b` root (`scripts/*.py` + the campaign pair +
+  `install_capture_worker.py`). Judge is ~2.8 s/frame on this CPU (AM4 0.8 s).
 - **Not scoped, worth doing**: prune `community-tables/` hashes not referenced by
   `analysis/read-model.json` (~1.1 GB); decide whether `omen-capture-era8` (11 GB) and
   `omen-capture-era11` (5 GB) raw OMEN masters at the lake root move under `captures/`;
