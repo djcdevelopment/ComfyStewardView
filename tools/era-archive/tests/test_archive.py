@@ -683,6 +683,38 @@ class ArchiveTest(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 import_captures.collect(root, "era1", "https://h/e1/", rank={**rank, "sourceKey": "t" * 64})
 
+    def test_gallery_index_is_derived_from_the_capture_manifest_without_coordinates(self):
+        """The /valheim/<era>/ picker gallery reads a build_valheim_index.py index; for eras whose
+        masters stay on the capture host it is derived from the capture manifest: same ids, receipt
+        facets carried over, no x/y/z and no creator ids, aesthetic absent, pieces from the campaign,
+        and one eras.json per directory naming itself current."""
+        import gallery_index_from_captures as gi
+        src = "s" * 64
+        manifest = {"schema": "steward-capture-gallery/v1", "era": "era1", "sourceKey": src, "world": "Booty", "ranked": True, "judged": False,
+                    "builds": {"a" * 64: [
+                        {"id": "era1-aaaaaaaaaaaa-detail2-045-26", "shot": "detail2-045-26", "label": "Build aaaaaaaa",
+                         "capture": {"environment": "Clear", "time_of_day": 0.64, "occluded": False, "pieces_near_aim": 900, "x": 1.0},
+                         "rank": {"order": 1}},
+                        {"id": "era1-aaaaaaaaaaaa-detail1-200-18", "shot": "detail1-200-18", "label": "Build aaaaaaaa",
+                         "capture": {"environment": "Misty"}, "rank": {"order": 2}}],
+                        "b" * 64: [{"id": "era1-bbbbbbbbbbbb-orbit3", "shot": "orbit3", "label": "Build bbbbbbbb", "capture": {}}]}}
+        campaign = {"sourceKey": src, "builds": [{"buildKey": "a" * 64, "pieces": 120}, {"buildKey": "b" * 64, "pieces": 4000}]}
+        doc = gi.index_from_manifest(manifest, campaign, generated=1)
+        self.assertEqual((3, 3, "Booty", ["Clear", "Misty"], ["detail", "orbit"]),
+                         (doc["n"], doc["joined"], doc["world"], doc["environments"], doc["perspectives"]))
+        self.assertEqual(["era1-bbbbbbbbbbbb-orbit3", "era1-aaaaaaaaaaaa-detail2-045-26", "era1-aaaaaaaaaaaa-detail1-200-18"],
+                         [r["id"] for r in doc["images"]])                      # pieces desc, then rank order
+        row = doc["images"][1]
+        self.assertEqual(("aaaaaaaaaaaa", "detail2-045-26", "detail", "rank", 120, 900, 1), (row["cluster_id"], row["variant"], row["perspective"], row["source"], row["pieces"], row["pieces_near_aim"], row["rank"]))
+        for r in doc["images"]:
+            self.assertFalse({"x", "y", "z", "top_creator_id", "aesthetic"} & set(r))
+        with self.assertRaises(ValueError):
+            gi.index_from_manifest(manifest, {**campaign, "sourceKey": "t" * 64})
+        docs = gi.eras_manifests(["era1", "era17"], {"era1": "ComfyEra1", "era17": "ComfyEra17"}, "/valheim/", "era17")
+        self.assertEqual({"", "era1"}, set(docs))
+        self.assertEqual("era1", docs["era1"]["current"]); self.assertEqual("era17", docs[""]["current"])
+        self.assertEqual([("era1", "/valheim/era1/"), ("era17", "/valheim/")], [(e["slug"], e["href"]) for e in docs[""]["eras"]])
+
     def test_rebuilding_with_fewer_capture_manifests_refuses_to_drop_those_photographs(self):
         """The --captures twin of the legacy guard: on 2026-09-12 an era-16 rebuild named no
         manifests and the projection fell from 13,931 photographs to 5,176 without a word."""
