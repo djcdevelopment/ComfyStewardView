@@ -700,12 +700,25 @@ class ArchiveTest(unittest.TestCase):
                         "b" * 64: [{"id": "era1-bbbbbbbbbbbb-orbit3", "shot": "orbit3", "label": "Build bbbbbbbb", "capture": {}}]}}
         campaign = {"sourceKey": src, "builds": [{"buildKey": "a" * 64, "pieces": 120}, {"buildKey": "b" * 64, "pieces": 4000}]}
         doc = gi.index_from_manifest(manifest, campaign, generated=1)
-        self.assertEqual((3, 3, "Booty", ["Clear", "Misty"], ["detail", "orbit"]),
+        self.assertEqual((3, 3, "Booty", ["Clear", "Misty"], ["drone"]),            # legacy vocabulary
                          (doc["n"], doc["joined"], doc["world"], doc["environments"], doc["perspectives"]))
         self.assertEqual(["era1-bbbbbbbbbbbb-orbit3", "era1-aaaaaaaaaaaa-detail2-045-26", "era1-aaaaaaaaaaaa-detail1-200-18"],
                          [r["id"] for r in doc["images"]])                      # pieces desc, then rank order
         row = doc["images"][1]
-        self.assertEqual(("aaaaaaaaaaaa", "detail2-045-26", "detail", "rank", 120, 900, 1), (row["cluster_id"], row["variant"], row["perspective"], row["source"], row["pieces"], row["pieces_near_aim"], row["rank"]))
+        self.assertEqual(("aaaaaaaaaaaa", "detail2-045-26", "drone", "rank", 120, 900, 1), (row["cluster_id"], row["variant"], row["perspective"], row["source"], row["pieces"], row["pieces_near_aim"], row["rank"]))
+        self.assertEqual([], doc["kinds"]); self.assertNotIn("kind", row)
+        # With archive facts every row gets the legacy facets: kind from the landmark counts, a
+        # 2 km-grid area named after its largest build, region, and the label reads "kind · pieces".
+        facts = {"a" * 64: {"pieces": 120, "height_m": 12.0, "footprint_m2": 400.0, "builders": 2, "region": "in-world", "sky": False,
+                            "score": 5.0, "center_x": 100.0, "center_z": 100.0, "portals": 12, "beds": 0, "signs": 0, "item_stands": 0, "cluster_rank": 2},
+                 "b" * 64: {"pieces": 4000, "height_m": 95.0, "footprint_m2": 9000.0, "builders": 9, "region": "outland", "sky": True,
+                            "score": 9.0, "center_x": 150.0, "center_z": 120.0, "portals": 0, "beds": 0, "signs": 0, "item_stands": 0, "cluster_rank": 1}}
+        doc = gi.index_from_manifest(manifest, campaign, generated=1, facts=facts)
+        by = {r["id"]: r for r in doc["images"]}
+        self.assertEqual(("hub", "in-world", "hub · 120", 12), (by["era1-aaaaaaaaaaaa-detail2-045-26"]["kind"], by["era1-aaaaaaaaaaaa-detail2-045-26"]["region"], by["era1-aaaaaaaaaaaa-detail2-045-26"]["label"], by["era1-aaaaaaaaaaaa-detail2-045-26"]["portals"]))
+        self.assertEqual(("sky tower", "outland", "near sky tower · 4,000"), (by["era1-bbbbbbbbbbbb-orbit3"]["kind"], by["era1-bbbbbbbbbbbb-orbit3"]["region"], by["era1-bbbbbbbbbbbb-orbit3"]["area_label"]))
+        self.assertEqual(by["era1-aaaaaaaaaaaa-detail2-045-26"]["area_id"], by["era1-bbbbbbbbbbbb-orbit3"]["area_id"])   # same 2 km cell
+        self.assertEqual((["hub", "sky tower"], ["in-world", "outland"], ["near sky tower · 4,000"]), (doc["kinds"], doc["regions"], doc["areas"]))
         for r in doc["images"]:
             self.assertFalse({"x", "y", "z", "top_creator_id", "aesthetic"} & set(r))
         with self.assertRaises(ValueError):

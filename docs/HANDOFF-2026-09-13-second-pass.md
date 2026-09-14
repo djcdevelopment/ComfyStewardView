@@ -115,8 +115,11 @@ the eye yet. What is live:
   `projections/smoke-20260914-rank-picks`, deployed as release `74dfa053a3d4-c5a15ddc269d`
   (`projections/deploy-20260914-rank-picks.json`); chronicles release `20260914T195137Z-f6625418aaba`.
 - The `/valheim/` picker galleries for the seven new eras: `captures/<era>/index-<era>.json` from
-  the new `gallery_index_from_captures.py` (commit `7677747`), viewer page + `eras.json` pushed to
-  every era dir (old `eras.json` retained in `/srv/sites/valheim/.picker-releases/20260914/`).
+  the new `gallery_index_from_captures.py index --archive-root E:\omen\steward-multi-era ...`
+  (legacy facets — kind of place, landmarks, 2 km areas, region — derived from the community
+  analysis + package, so the Filters panel works like era 17's), viewer page + `eras.json` pushed
+  to every era dir (old `eras.json` retained in `/srv/sites/valheim/.picker-releases/20260914/`).
+  Re-run it for an era after any re-import (step 3 below) and push `index.json` again.
 - Light tables are BUILT and chunked, not yet published: `campaigns/<era>/run/<root>/light-table-parts/`
   (22 parts of ≤120 pairs, each ≤241 files / ≤45 MB — the artifact limits are 255 files and 64 MB per
   publish); `parts.json` in each lists them. Era 11's uses `light-table-derivatives/` (old + new frames).
