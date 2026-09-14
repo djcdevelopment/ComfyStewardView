@@ -646,6 +646,43 @@ class ArchiveTest(unittest.TestCase):
             self.assertEqual(4, counts["photographs"]); self.assertEqual(4, len(worklist))
             self.assertNotIn("e" * 64, builds)   # unjudged publishes nothing
 
+    def test_the_rank_file_decides_what_a_build_publishes_until_verdicts_exist(self):
+        """Publish-rank-picks-now: rank_frames' keepers publish best-first with the ranker's
+        order on each photograph; a build with no survivor goes to the reshoot list; a build
+        the rank file does not mention publishes nothing; the manifest is ranked, not judged."""
+        import hashlib
+        src = "s" * 64
+        def key(build, name): return hashlib.sha256(f"{src}:{build}:{name}".encode()).hexdigest()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            planned = lambda n: [{"shot": f"detail{i}", "shotKey": key(n * 64, f"detail{i}")} for i in (1, 2, 3)]
+            archive.save(root / "campaign.json", {"era": "era1", "sourceKey": src, "snapshotId": 1009, "world": "Booty",
+                "width": 3840, "height": 2160,
+                "builds": [{"buildKey": c * 64, "shots": planned(c)} for c in "abcd"]})
+            receipt = {"clearance": "planned", "occluded": False, "pieces_near_aim": 900}
+            completed = {key(c * 64, f"detail{i}"): {"file": f"images/{c}{i}.png", "sha256": f"h{c}{i}",
+                                                    "metadata": {"dimensions": [3840, 2160]}, "receipt": receipt}
+                         for c in "abcd" for i in (1, 2, 3)}
+            archive.save(root / "state.json", {"sourceKey": src, "completed": completed})
+            kept = lambda b, name, order: {"name": name, "pose": name, "shotKey": key(b * 64, name), "order": order,
+                                          "metrics": {"score": 0.01 * order, "skyFraction": 0.2, "lumaMean": 0.4},
+                                          "forecast": {"rank": 0.5}}
+            rank = {"schema": "steward-frame-rank/v1", "era": "era1", "sourceKey": src, "keep": 3, "builds": {
+                "a" * 64: {"kept": [kept("a", "detail3", 2), kept("a", "detail1", 1)], "dropped": [], "reshoot": False},
+                "b" * 64: {"kept": [kept("b", "detail2", 1)], "dropped": [], "reshoot": False},
+                "c" * 64: {"kept": [], "dropped": [{"name": "detail1", "reason": "veto"}], "reshoot": True}}}
+            _, builds, worklist, counts, rejects, _, needs = import_captures.collect(root, "era1", "https://h/e1/", rank=rank)
+            self.assertEqual({"a" * 64: ["detail1", "detail3"], "b" * 64: ["detail2"]},
+                             {k: [p["shot"] for p in v] for k, v in builds.items()})          # best-first
+            self.assertEqual([1, 2], [p["rank"]["order"] for p in builds["a" * 64]])
+            self.assertNotIn("verdict", builds["a" * 64][0])
+            self.assertEqual({"c" * 64: "rank-no-survivor"}, needs)
+            self.assertEqual(["c" * 64], [r["buildKey"] for r in rejects if r["kept"] == 0])
+            self.assertEqual(3, counts["photographs"]); self.assertEqual(3, len(worklist))
+            self.assertNotIn("d" * 64, builds)   # unranked publishes nothing
+            with self.assertRaises(SystemExit):
+                import_captures.collect(root, "era1", "https://h/e1/", rank={**rank, "sourceKey": "t" * 64})
+
     def test_rebuilding_with_fewer_capture_manifests_refuses_to_drop_those_photographs(self):
         """The --captures twin of the legacy guard: on 2026-09-12 an era-16 rebuild named no
         manifests and the projection fell from 13,931 photographs to 5,176 without a word."""

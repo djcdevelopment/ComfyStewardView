@@ -120,6 +120,40 @@ def apply_refine(plan, refine):
     return needs
 
 
+def apply_rank(plan, rank, top=None):
+    """rank_frames.py decides what a build publishes until the light table has (steward-frame-rank/v1).
+
+    The pruner on the capture host vetoes, dedupes and orders every shot of a build and keeps
+    the best 1-3; those keepers publish best-first, each carrying the ranker's order and
+    metrics so the projection can say the machine picked it. A build with no keeper goes to
+    the reshoot list; a build the rank file does not mention publishes nothing. Verdicts,
+    when they arrive, replace this: `judged` stays False on a ranked manifest."""
+    if rank.get("schema") != "steward-frame-rank/v1":
+        raise SystemExit(f"unsupported rank schema: {rank.get('schema')}")
+    if rank.get("sourceKey") != plan["sourceKey"]:
+        raise SystemExit("rank file belongs to another campaign")
+    needs, unranked = {}, []
+    for build in plan["builds"]:
+        record = rank["builds"].get(build["buildKey"])
+        if record is None:
+            unranked.append(build["buildKey"])
+            build["shots"] = []
+            continue
+        kept = sorted(record.get("kept", []), key=lambda f: f.get("order", 0))
+        if top:
+            kept = kept[:top]
+        if not kept:
+            needs[build["buildKey"]] = "rank-" + (record.get("reshoot") if isinstance(record.get("reshoot"), str) else "no-survivor")
+        build["shots"] = [{"shotKey": f["shotKey"], "shot": f["name"],
+                           "rank": {"order": f.get("order"), "keep": rank.get("keep"),
+                                    "score": (f.get("metrics") or {}).get("score"),
+                                    "skyFraction": (f.get("metrics") or {}).get("skyFraction"),
+                                    "lumaMean": (f.get("metrics") or {}).get("lumaMean"),
+                                    "forecast": (f.get("forecast") or {}).get("rank")}}
+                          for f in kept]
+    return needs, unranked
+
+
 def apply_verdicts(plan, verdicts, ranking=None):
     """The light table decides what a build publishes (steward-pair-verdicts/v2).
 
@@ -214,6 +248,9 @@ def parse_args():
                    help="refine.json from refine_worker.py: publish each build's judged "
                         "winner instead of its planned pose, and send the builds the loop "
                         "could not fix (needs aim/demist/sky) to the re-shoot worklist")
+    p.add_argument("--rank", type=Path, default=None,
+                   help="rank-<era>.json from rank_frames.py: publish each build's ranked "
+                        "keepers best-first (the machine's pick, until verdicts exist)")
     p.add_argument("--verdicts", type=Path, default=None,
                    help="pair-verdicts.json from light_table.py harvest: publish exactly the "
                         "frames the eye kept; builds it refused go to the re-shoot worklist and "
@@ -230,13 +267,17 @@ def photo_id(slug, build_key, shot):
     return f"{slug}-{build_key[:12]}-{shot.replace('~', '-')}"
 
 
-def collect(root, slug, base, quality=None, gate=True, refine=None, verdicts=None):
+def collect(root, slug, base, quality=None, gate=True, refine=None, verdicts=None, rank=None):
     plan = read(root / "campaign.json")
     state = read(root / "state.json")
     if state["sourceKey"] != plan["sourceKey"]:
         raise SystemExit("state.json belongs to another campaign")
     completed = state["completed"]
     needs = apply_refine(plan, refine) if refine else {}
+    if rank:
+        needs, unranked = apply_rank(plan, rank)
+        if unranked:
+            print(f"{len(unranked)} build(s) are not in the rank file and publish nothing", flush=True)
     if verdicts:
         needs, unjudged = apply_verdicts(plan, verdicts)
         if unjudged:
@@ -297,6 +338,7 @@ def collect(root, slug, base, quality=None, gate=True, refine=None, verdicts=Non
                 **({"camera": camera_facts(receipt)} if camera_facts(receipt) else {}),
                 **({"pose": camera_pose(receipt)} if camera_pose(receipt) else {}),
                 **({"refine": shot["refine"]} if shot.get("refine") else {}),
+                **({"rank": shot["rank"]} if shot.get("rank") else {}),
                 **({"verdict": photos_verdict} if photos_verdict else {}),
                 # A viewer asked for this camera (requests root, prepare_requests): publish who
                 # and why with the frame. The pose above is where the game actually put it.
@@ -329,7 +371,7 @@ def collect(root, slug, base, quality=None, gate=True, refine=None, verdicts=Non
         elif dropped:
             # Say why rather than leading with a frame the gate just called unusable.
             counts["emptied_albums"] += 1
-        if not dropped and not photos and build["buildKey"] in needs and str(needs[build["buildKey"]]).startswith("verdict-"):
+        if not dropped and not photos and build["buildKey"] in needs and str(needs[build["buildKey"]]).startswith(("verdict-", "rank-")):
             # The eye refused every frame of this build; there is no frame to journal, but
             # the build still belongs on the reshoot list, with the verdict as the reason.
             dropped.append({"id": None, "stage": "verdict", "reason": needs[build["buildKey"]], "verdict": needs[build["buildKey"]]})
@@ -364,8 +406,11 @@ def main():
         raise SystemExit(f"quality file is for {quality['era']}, not {slug}")
     refine = read(args.refine) if args.refine else None
     verdicts = read(args.verdicts) if args.verdicts else None
+    rank = read(args.rank) if args.rank else None
+    if rank and rank.get("era") not in (None, slug):
+        raise SystemExit(f"rank file is for {rank['era']}, not {slug}")
     plan, builds, worklist, counts, rejects, cameras, needs = collect(
-        root, slug, base, quality, gate=not args.keep_rejects, refine=refine, verdicts=verdicts)
+        root, slug, base, quality, gate=not args.keep_rejects, refine=refine, verdicts=verdicts, rank=rank)
 
     out = args.out or root / f"captures-{slug}.json"
     write(out, {
@@ -388,6 +433,7 @@ def main():
         "gate": {"applied": not args.keep_rejects,
                  "quality": str(args.quality) if args.quality else None},
         "refined": bool(refine),
+        "ranked": bool(rank),
         "judged": bool(verdicts),
         "builds": builds,
     })
@@ -411,6 +457,9 @@ def main():
     if counts["retired_albums"]:
         print(f"  {counts['retired_albums']:,} retired build(s) still hold journalled "
               f"photographs; they are excluded from this manifest by design")
+    if rank:
+        print(f"  rank: keepers published best-first (machine pick, judged=False); "
+              f"{sum(1 for v in needs.values() if str(v).startswith('rank-')):,} build(s) had no survivor")
     if refine:
         moved = sum(1 for b in plan["builds"] for s in b["shots"]
                     if s.get("refine") and s["refine"].get("planned") != s["shot"])
