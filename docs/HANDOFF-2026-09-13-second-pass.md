@@ -60,7 +60,7 @@ Java (only if `viewer/` or `lab/` Java changes): `JAVA_HOME=C:\work\ComfySteward
   `rank-era11.json` kept 98 frames, all 33 builds reach the light table as pairs, derivatives made.
   Nothing has been judged or published from it yet.
 
-## 3. What is RUNNING right now (started 2026-09-13 07:47 UTC)
+## 3. What is RUNNING right now (started 2026-09-13 07:47 UTC) — NOTHING as of 2026-09-14 01:15 UTC: every chain below completed; see §4.0
 
 AM4 user unit **`steward-overnight-20260913`** runs `/home/derek/valheim-capture/overnight-20260913.sh`:
 `era13-20260913b` (236 builds / 949 poses) then `era15-20260913b` (255 / 1,020). Per root:
@@ -95,6 +95,52 @@ Masters (10 MB 4K PNGs) stay on the host that shot them (AM4 or fx99) under `<ro
 and `derivatives/thumb` webps need to travel. Do not shuttle masters until verdicts exist.
 
 ## 4. NEXT STEPS, in order (the compare-and-reshoot loop)
+
+### 4.0 STATUS 2026-09-14 20:10 UTC — the live gallery is on RANK PICKS, pending Derek's verdicts
+
+Every era the plan assigned has been shot, ranked and **published with the machine's picks**
+(Derek's decision 2026-09-14: publish now, judge later). Steps 1 and 6 below are DONE for all
+eight roots; steps 2–5 (the light table) are NOT — nothing on the live site has been judged by
+the eye yet. What is live:
+
+- Capture manifests `captures/<era>/captures-<era>.json` (+ `captures-era11-reshoot.json`) for
+  eras 1, 2, 3, 5, 6, 13, 15 — built with the new `import_captures.py --rank <run>/rank-<era>.json`
+  (commit `74dfa05`): every rank_frames keeper publishes best-first, each photo carries a `rank`
+  block, the manifest says `"ranked": true, "judged": false`. 2,044 albums, 5,851 photographs.
+- Derivatives on fx99 `/srv/sites/valheim/<era>/{large,thumb}/` (`publication-<era>.json` receipts);
+  masters still on AM4 / fx99 under `<root>/images/` (~90 GB) — NOT shuttled.
+- `run-manifest.json` lists 18 capture manifests; driver run `runs/20260914T193524Z/` (19,867
+  photographs, 4,827 builds with photos, no failures).
+- Creators projection `projections/20260914-rank-picks` (5,734 threads, 55,805 albums), smoke
+  `projections/smoke-20260914-rank-picks`, deployed as release `74dfa053a3d4-c5a15ddc269d`
+  (`projections/deploy-20260914-rank-picks.json`); chronicles release `20260914T195137Z-f6625418aaba`.
+- The `/valheim/` picker galleries for the seven new eras: `captures/<era>/index-<era>.json` from
+  the new `gallery_index_from_captures.py` (commit `7677747`), viewer page + `eras.json` pushed to
+  every era dir (old `eras.json` retained in `/srv/sites/valheim/.picker-releases/20260914/`).
+- Light tables are BUILT and chunked, not yet published: `campaigns/<era>/run/<root>/light-table-parts/`
+  (22 parts of ≤120 pairs, each ≤241 files / ≤45 MB — the artifact limits are 255 files and 64 MB per
+  publish); `parts.json` in each lists them. Era 11's uses `light-table-derivatives/` (old + new frames).
+
+**What to do later (the verdict pass), in order:**
+1. Publish each part as an Artifact with `capabilities: {db: {}}` (load the `artifact-capabilities`
+   skill first), page `light-table.html` + its `files.json` map as supporting files. Derek judges
+   part by part (~16 min per 120 pairs; ~4.5 h in total across 2,044 pairs + 42 singles).
+2. Harvest per part: `read_db` collection `verdicts` (`out_dir` a folder), then
+   `light_table.py harvest --pairs <part pairs file> --verdicts <folder> --out <run>/pair-verdicts.part-NN.json
+   --append C:\work\baseline\docs\evidence\pair-verdicts-all.json --judged-by "Derek Ciula, <date>"`;
+   merge the parts' `verdicts` lists into one `<run>/pair-verdicts.json` per era (same header).
+3. Re-import with the eye's picks: `import_captures.py --root <run> --base .../valheim/<era>/
+   --verdicts <run>/pair-verdicts.json --out captures/<era>/captures-<era>.json` (same path → the
+   manifest flips to `judged: true`; unjudged builds publish nothing, so judge a whole era before
+   re-importing it). Rebuild that era's `index-<era>.json` with `gallery_index_from_captures.py`.
+4. `publish_captures.py` again for that era (only adds/removes changed derivatives), push the
+   index, then ONE driver run + `gallery.py` + gate/diff (expect photo counts to FALL — that is the
+   eye pruning, check `removed` is only judged builds) + smoke + `deploy_gallery.py` + chronicles.
+5. Reshoot list = rank `reshoot` builds (era1 7, era2 16, era3 22, era5 16, era6 18, era13 6, era15 6)
+   plus every `neither`/`reshoot` verdict → replan (next-ranked poses) → short sessions per §5 → back
+   to step 1 for those builds only.
+6. Shuttle keeper masters once (`shuttle_masters.py`, batches, sha-verified) after verdicts, then
+   prune the losers on the hosts. Until then do not delete anything under `<root>/images/`.
 
 (Applies to every finished root on **either host** — AM4 roots `~/valheim-capture/<era>-20260913b`, fx99 roots `~/valheim-capture/<era>-fx99-20260913[b]`; the ssh target is the only difference.)
 
