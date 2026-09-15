@@ -23,6 +23,7 @@ from one previously absent era.  That mode permits its unphotographed albums and
 recorded-name observations while holding every pre-existing album and photograph fixed.
 """
 import argparse
+import hashlib
 import json
 import sys
 from collections import Counter
@@ -251,6 +252,41 @@ def validate_capture_transitions(old_root, new_root, manifest_pairs):
                                document.get("photographs"), actual_photos))
         if malformed:
             continue
+        judgement = after.get("judgement")
+        if not isinstance(judgement, dict):
+            errors.append(("judged manifest lacks judgement provenance", str(new_path)))
+            continue
+        judged = judgement.get("judgedBuilds")
+        unjudged = judgement.get("unjudgedBuilds")
+        if (not isinstance(judged, list) or not isinstance(unjudged, list)
+                or not all(isinstance(key, str) for key in judged + unjudged)
+                or len(judged) != len(set(judged)) or len(unjudged) != len(set(unjudged))
+                or set(judged) & set(unjudged)):
+            errors.append(("malformed judgement membership", str(new_path)))
+            continue
+        if unjudged or judgement.get("complete") is not True:
+            errors.append(("capture judgement is incomplete", str(new_path), len(unjudged)))
+        receipt = judgement.get("receipt")
+        receipt_path = Path(receipt.get("path", "")) if isinstance(receipt, dict) else Path()
+        receipt_valid = (isinstance(receipt, dict) and receipt_path.is_file()
+                         and receipt_path.stat().st_size == receipt.get("bytes")
+                         and hashlib.sha256(receipt_path.read_bytes()).hexdigest() == receipt.get("sha256"))
+        receipt_document = load(receipt_path) if receipt_valid else {}
+        receipt_rows = receipt_document.get("verdicts", [])
+        receipt_builds = ([row.get("buildKey") for row in receipt_rows]
+                          if isinstance(receipt_rows, list)
+                          and all(isinstance(row, dict) for row in receipt_rows) else [])
+        if (not receipt_valid or receipt_document.get("schema") != "steward-pair-verdicts/v2"
+                or receipt_document.get("era") != after.get("era")
+                or receipt_document.get("sourceKey") not in (None, after.get("sourceKey"))
+                or len(receipt_builds) != len(set(receipt_builds))
+                or set(receipt_builds) != set(judged)):
+            errors.append(("verdict receipt provenance failed", str(new_path)))
+        old_scope = set(before.get("builds", {})) | set(before.get("rejectedBuilds", []))
+        resolved = set(judged) | set(after.get("rejectedBuilds", []))
+        if old_scope != resolved:
+            errors.append(("judged manifest does not resolve the old campaign", str(new_path),
+                           sorted(old_scope - resolved)[:3], sorted(resolved - old_scope)[:3]))
         try:
             era = int(str(after["era"]).removeprefix("era"))
         except (KeyError, TypeError, ValueError):

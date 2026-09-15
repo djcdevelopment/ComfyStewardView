@@ -38,6 +38,7 @@ Usage:
 """
 import argparse
 import collections
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -158,21 +159,36 @@ def apply_verdicts(plan, verdicts, ranking=None):
     """The light table decides what a build publishes (steward-pair-verdicts/v2).
 
     A pair verdict keeps the chosen frame, both, or neither; a single-frame verdict keeps or
-    sends to reshoot. Every build the verdicts do not mention publishes nothing -- unjudged
-    is not the same as approved -- and the reshoot list carries the builds the eye refused.
+    sends to reshoot. Every build the verdicts do not mention publishes nothing, except a
+    no-survivor row from the accompanying rank receipt remains explicitly rejected. Unjudged
+    is not the same as approved, and the reshoot list carries both kinds of refusal.
     The frame records come from the pairs file the verdicts were harvested against, so the
     shot names and masters are exactly the ones the judge saw."""
     if verdicts.get("schema") != "steward-pair-verdicts/v2":
         raise SystemExit(f"unsupported verdicts schema: {verdicts.get('schema')}")
     if verdicts.get("sourceKey") not in (None, plan["sourceKey"]):
         raise SystemExit("pair-verdicts.json belongs to another campaign")
-    import hashlib
-    by_build = {v["buildKey"]: v for v in verdicts["verdicts"]}
+    if verdicts.get("era") not in (None, plan["era"]):
+        raise SystemExit("pair-verdicts.json belongs to another era")
+    rows = verdicts.get("verdicts", [])
+    by_build = {v.get("buildKey"): v for v in rows}
+    if None in by_build or len(by_build) != len(rows):
+        raise SystemExit("pair-verdicts.json has duplicate or missing build keys")
+    plan_keys = {build["buildKey"] for build in plan["builds"]}
+    foreign = sorted(set(by_build) - plan_keys)
+    if foreign:
+        raise SystemExit(f"pair-verdicts.json names a build outside this campaign: {foreign[0]}")
+    ranked_builds = (ranking or {}).get("builds", {})
     needs, unjudged = {}, []
     for build in plan["builds"]:
         row = by_build.get(build["buildKey"])
         if row is None:
-            unjudged.append(build["buildKey"])
+            ranked = ranked_builds.get(build["buildKey"])
+            if ranked is not None and not ranked.get("kept"):
+                reason = ranked.get("reshoot")
+                needs[build["buildKey"]] = "rank-" + (reason if isinstance(reason, str) else "no-survivor")
+            else:
+                unjudged.append(build["buildKey"])
             build["shots"] = []
             continue
         chosen = {"a": [row.get("aFrame")], "b": [row.get("bFrame")], "both": [row.get("aFrame"), row.get("bFrame")],
@@ -184,7 +200,7 @@ def apply_verdicts(plan, verdicts, ranking=None):
                            "shot": f["name"], "verdict": {"chose": row["chose"], "pick": row.get("pick"), "at": row.get("at"),
                                                           "mode": row.get("mode")}}
                           for f in frames]
-    return needs, unjudged
+    return needs, unjudged, sorted(by_build)
 
 
 def receipt_reject(receipt):
@@ -224,6 +240,12 @@ def write(path, value):
     temporary.replace(path)
 
 
+def artifact(path):
+    path = Path(path).resolve()
+    return {"path": str(path), "bytes": path.stat().st_size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -250,7 +272,8 @@ def parse_args():
                         "could not fix (needs aim/demist/sky) to the re-shoot worklist")
     p.add_argument("--rank", type=Path, default=None,
                    help="rank-<era>.json from rank_frames.py: publish each build's ranked "
-                        "keepers best-first (the machine's pick, until verdicts exist)")
+                        "keepers best-first (the machine's pick, until verdicts exist); pass "
+                        "it with --verdicts to retain no-survivor reshoot rows")
     p.add_argument("--verdicts", type=Path, default=None,
                    help="pair-verdicts.json from light_table.py harvest: publish exactly the "
                         "frames the eye kept; builds it refused go to the re-shoot worklist and "
@@ -274,12 +297,15 @@ def collect(root, slug, base, quality=None, gate=True, refine=None, verdicts=Non
         raise SystemExit("state.json belongs to another campaign")
     completed = state["completed"]
     needs = apply_refine(plan, refine) if refine else {}
+    judgement = None
     if rank:
         needs, unranked = apply_rank(plan, rank)
         if unranked:
             print(f"{len(unranked)} build(s) are not in the rank file and publish nothing", flush=True)
     if verdicts:
-        needs, unjudged = apply_verdicts(plan, verdicts)
+        needs, unjudged, judged = apply_verdicts(plan, verdicts, rank)
+        judgement = {"judgedBuilds": judged, "unjudgedBuilds": sorted(unjudged),
+                     "complete": not unjudged}
         if unjudged:
             print(f"{len(unjudged)} build(s) have no verdict yet and publish nothing", flush=True)
 
@@ -390,7 +416,7 @@ def collect(root, slug, base, quality=None, gate=True, refine=None, verdicts=Non
                 continue
             counts["retired_albums"] += 1
     counts["needs"] = len(needs)
-    return plan, builds, worklist, counts, rejects, cameras, needs
+    return plan, builds, worklist, counts, rejects, cameras, needs, judgement
 
 
 def main():
@@ -409,7 +435,7 @@ def main():
     rank = read(args.rank) if args.rank else None
     if rank and rank.get("era") not in (None, slug):
         raise SystemExit(f"rank file is for {rank['era']}, not {slug}")
-    plan, builds, worklist, counts, rejects, cameras, needs = collect(
+    plan, builds, worklist, counts, rejects, cameras, needs, judgement = collect(
         root, slug, base, quality, gate=not args.keep_rejects, refine=refine, verdicts=verdicts, rank=rank)
 
     out = args.out or root / f"captures-{slug}.json"
@@ -435,6 +461,8 @@ def main():
         "refined": bool(refine),
         "ranked": bool(rank),
         "judged": bool(verdicts),
+        **({"rankReceipt": artifact(args.rank)} if args.rank else {}),
+        **({"judgement": {**judgement, "receipt": artifact(args.verdicts)}} if verdicts else {}),
         "builds": builds,
     })
     print(f"{counts['albums']:,} albums, {counts['photographs']:,} photographs, "
@@ -457,9 +485,12 @@ def main():
     if counts["retired_albums"]:
         print(f"  {counts['retired_albums']:,} retired build(s) still hold journalled "
               f"photographs; they are excluded from this manifest by design")
-    if rank:
+    if rank and not verdicts:
         print(f"  rank: keepers published best-first (machine pick, judged=False); "
               f"{sum(1 for v in needs.values() if str(v).startswith('rank-')):,} build(s) had no survivor")
+    elif rank and verdicts:
+        print(f"  rank: preserved {sum(1 for v in needs.values() if str(v).startswith('rank-')):,} "
+              "no-survivor build(s) beside the eye's verdicts")
     if refine:
         moved = sum(1 for b in plan["builds"] for s in b["shots"]
                     if s.get("refine") and s["refine"].get("planned") != s["shot"])

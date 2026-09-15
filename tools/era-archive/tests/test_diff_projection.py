@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -150,6 +151,10 @@ class JudgedCaptureDiffTests(unittest.TestCase):
         self.old, self.new = root / "old", root / "new"
         (self.old / "threads").mkdir(parents=True); (self.new / "threads").mkdir(parents=True)
         self.old_manifest, self.new_manifest = root / "old-capture.json", root / "new-capture.json"
+        self.verdict_receipt = root / "pair-verdicts.json"
+        receipt = {"schema": "steward-pair-verdicts/v2", "era": "era1",
+                   "sourceKey": "source", "verdicts": [{"buildKey": "build"}]}
+        self.verdict_receipt.write_text(json.dumps(receipt), encoding="utf-8")
         self.photo1 = {"id": "p1", "thumb": "https://x/p1t", "large": "https://x/p1",
                        "href": "https://x/#b", "label": "B", "shot": "one"}
         self.photo2 = {"id": "p2", "thumb": "https://x/p2t", "large": "https://x/p2",
@@ -165,6 +170,11 @@ class JudgedCaptureDiffTests(unittest.TestCase):
         self.old_capture = {**base, "judged": False, "photographs": 2,
                             "builds": {"build": [self.photo1, self.photo2]}}
         self.new_capture = {**base, "judged": True, "photographs": 1,
+                            "judgement": {"complete": True, "judgedBuilds": ["build"],
+                                          "unjudgedBuilds": [],
+                                          "receipt": {"path": str(self.verdict_receipt),
+                                                      "bytes": self.verdict_receipt.stat().st_size,
+                                                      "sha256": hashlib.sha256(self.verdict_receipt.read_bytes()).hexdigest()}},
                             "builds": {"build": [self.photo2]}}
         self.write_manifests()
 
@@ -221,6 +231,21 @@ class JudgedCaptureDiffTests(unittest.TestCase):
         result = self.run_diff()
         self.assertNotEqual(0, result.returncode)
         self.assertIn("capture photograph count", result.stdout)
+
+    def test_rejects_incomplete_or_modified_verdict_provenance(self):
+        self.new_capture["judgement"]["complete"] = False
+        self.new_capture["judgement"]["unjudgedBuilds"] = ["missing"]
+        self.write_manifests()
+        result = self.run_diff()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("judgement is incomplete", result.stdout)
+        self.new_capture["judgement"]["complete"] = True
+        self.new_capture["judgement"]["unjudgedBuilds"] = []
+        self.verdict_receipt.write_text("changed", encoding="utf-8")
+        self.write_manifests()
+        result = self.run_diff()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("verdict receipt provenance failed", result.stdout)
 
 
 if __name__ == "__main__":

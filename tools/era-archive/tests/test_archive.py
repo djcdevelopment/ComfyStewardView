@@ -625,11 +625,11 @@ class ArchiveTest(unittest.TestCase):
             planned = lambda n: [{"shot": f"detail{i}", "shotKey": key(n * 64, f"detail{i}")} for i in (1, 2, 3)]
             archive.save(root / "campaign.json", {"era": "era1", "sourceKey": src, "snapshotId": 1009, "world": "Booty",
                 "width": 3840, "height": 2160,
-                "builds": [{"buildKey": c * 64, "shots": planned(c)} for c in "abcde"]})
+                "builds": [{"buildKey": c * 64, "shots": planned(c)} for c in "abcdef"]})
             receipt = {"clearance": "planned", "occluded": False, "pieces_near_aim": 900}
             completed = {key(c * 64, f"detail{i}"): {"file": f"images/{c}{i}.png", "sha256": f"h{c}{i}",
                                                     "metadata": {"dimensions": [3840, 2160]}, "receipt": receipt}
-                         for c in "abcde" for i in (1, 2, 3)}
+                         for c in "abcdef" for i in (1, 2, 3)}
             archive.save(root / "state.json", {"sourceKey": src, "completed": completed})
             frame = lambda n: {"name": n, "file": None}
             verdicts = {"schema": "steward-pair-verdicts/v2", "era": "era1", "sourceKey": src, "verdicts": [
@@ -637,14 +637,20 @@ class ArchiveTest(unittest.TestCase):
                 {"buildKey": "b" * 64, "build": "bbbbbbbb", "mode": "pair", "chose": "both", "pick": "both", "aFrame": frame("detail1"), "bFrame": frame("detail3")},
                 {"buildKey": "c" * 64, "build": "cccccccc", "mode": "pair", "chose": "neither", "pick": "neither", "aFrame": frame("detail1"), "bFrame": frame("detail2")},
                 {"buildKey": "d" * 64, "build": "dddddddd", "mode": "single", "chose": "keep", "pick": "keep", "aFrame": frame("detail2"), "bFrame": None}]}
-            _, builds, worklist, counts, rejects, _, needs = import_captures.collect(root, "era1", "https://h/e1/", verdicts=verdicts)
+            rank = {"schema": "steward-frame-rank/v1", "era": "era1", "sourceKey": src,
+                    "builds": {"e" * 64: {"kept": [], "reshoot": True}}}
+            _, builds, worklist, counts, rejects, _, needs, judgement = import_captures.collect(
+                root, "era1", "https://h/e1/", verdicts=verdicts, rank=rank)
             self.assertEqual({"a" * 64: ["detail2"], "b" * 64: ["detail1", "detail3"], "d" * 64: ["detail2"]},
                              {k: [p["shot"] for p in v] for k, v in builds.items()})
             self.assertEqual("b", builds["a" * 64][0]["verdict"]["chose"])
-            self.assertEqual({"c" * 64: "verdict-neither"}, needs)
-            self.assertEqual(["c" * 64], [r["buildKey"] for r in rejects if r["kept"] == 0])
+            self.assertEqual({"c" * 64: "verdict-neither", "e" * 64: "rank-no-survivor"}, needs)
+            self.assertEqual(["c" * 64, "e" * 64], [r["buildKey"] for r in rejects if r["kept"] == 0])
             self.assertEqual(4, counts["photographs"]); self.assertEqual(4, len(worklist))
-            self.assertNotIn("e" * 64, builds)   # unjudged publishes nothing
+            self.assertNotIn("f" * 64, builds)   # unjudged publishes nothing
+            self.assertFalse(judgement["complete"])
+            self.assertEqual(["f" * 64], judgement["unjudgedBuilds"])
+            self.assertEqual(sorted(v["buildKey"] for v in verdicts["verdicts"]), judgement["judgedBuilds"])
 
     def test_the_rank_file_decides_what_a_build_publishes_until_verdicts_exist(self):
         """Publish-rank-picks-now: rank_frames' keepers publish best-first with the ranker's
@@ -671,7 +677,7 @@ class ArchiveTest(unittest.TestCase):
                 "a" * 64: {"kept": [kept("a", "detail3", 2), kept("a", "detail1", 1)], "dropped": [], "reshoot": False},
                 "b" * 64: {"kept": [kept("b", "detail2", 1)], "dropped": [], "reshoot": False},
                 "c" * 64: {"kept": [], "dropped": [{"name": "detail1", "reason": "veto"}], "reshoot": True}}}
-            _, builds, worklist, counts, rejects, _, needs = import_captures.collect(root, "era1", "https://h/e1/", rank=rank)
+            _, builds, worklist, counts, rejects, _, needs, _ = import_captures.collect(root, "era1", "https://h/e1/", rank=rank)
             self.assertEqual({"a" * 64: ["detail1", "detail3"], "b" * 64: ["detail2"]},
                              {k: [p["shot"] for p in v] for k, v in builds.items()})          # best-first
             self.assertEqual([1, 2], [p["rank"]["order"] for p in builds["a" * 64]])
