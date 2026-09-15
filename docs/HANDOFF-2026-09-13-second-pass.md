@@ -5,7 +5,7 @@ Read this before touching anything; the receipts named here are the ground truth
 ever disagree. The operator is Derek (pronouns unknown — use they/them); the Steam account
 `Zephar410` is shared between OMEN (their gaming PC) and AM4 (the capture host).
 
-## 0. STATUS UPDATE 2026-09-15 04:50 UTC
+## 0. STATUS UPDATE 2026-09-15 05:00 UTC
 
 - **Era 17 is repaired and live.** The missing save was outside the canonical intake root,
   not overwritten by Era 4's different Charon identity. Hash-identical copies now live under
@@ -38,9 +38,12 @@ ever disagree. The operator is Derek (pronouns unknown — use they/them); the S
   `campaigns\era3\run\era3-fx99-20260913\verdicts\pair-verdicts.json`.
   Era 2 is complete at 315/315 (65 first survivor, 95 second survivor, 89 both,
   59 neither, 7 reshoot-single), with all three part hashes bound by
-  `campaigns\era2\run\era2-fx99-20260913\verdicts\pair-verdicts.json`. Cumulative evidence
-  commit `48b66610` contains 1,287 verdicts / 676 decided pairs across six runs. Per-part
-  exports and receipts live under each `<run>\verdicts\` directory.
+  `campaigns\era2\run\era2-fx99-20260913\verdicts\pair-verdicts.json`.
+  Era 5 is complete at 363/363 (102 first survivor, 83 second survivor, 123 both,
+  51 neither, 1 keep-single, 3 reshoot-single). Its single whole-era receipt is
+  `campaigns\era5\run\era5-20260913\verdicts\pair-verdicts.json`. Cumulative evidence
+  commit `93cf696d` contains 1,650 verdicts / 861 decided pairs across seven runs.
+  Exports and receipts live under each `<run>\verdicts\` directory.
 - **The judged transition was proved on real data without touching live state.** The isolated
   Era 11 candidate is under
   `campaigns\era11-reshoot\run\era11-reshoot-20260913\judged-candidate\`: 18 current-root
@@ -55,12 +58,11 @@ ever disagree. The operator is Derek (pronouns unknown — use they/them); the S
   receipt and cannot execute until every keeper is present locally and SHA-verified by an exact
   matching relocation receipt.
 
-Next: judge Era 5 (363 items; whole-page export suffix `ad7b1a746afe.json`), then Era 6
-(394 items; suffix `6c609cf51e89.json`). Each page lives at its run's
-`light-table\light-table.html`; the older `light-table-parts\` pages remain for evidence but
-should not be mixed with the new whole-page storage keys. Harvest each single whole-era export
-against that run's `ab-pairs.json` with `--require-complete`; no part merge is needed. Complete
-both before replacing any live rank-pick manifest. A judged import must pass **both** `--rank`
+Next: judge Era 6 (394 items; whole-page export suffix `6c609cf51e89.json`) at
+`campaigns\era6\run\era6-20260913\light-table\light-table.html`. Harvest its single whole-era
+export against `ab-pairs.json` with `--require-complete`; no part merge is needed. Complete
+the first-pass verdicts before replacing any live rank-pick manifest. A judged import must pass
+**both** `--rank`
 and `--verdicts`, so original rank no-survivor builds remain on the reshoot list. No master
 transfer, remote prune, judged manifest replacement, or judged gallery deploy has happened yet.
 
