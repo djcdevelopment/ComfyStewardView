@@ -5,6 +5,46 @@ Read this before touching anything; the receipts named here are the ground truth
 ever disagree. The operator is Derek (pronouns unknown — use they/them); the Steam account
 `Zephar410` is shared between OMEN (their gaming PC) and AM4 (the capture host).
 
+## 0. STATUS UPDATE 2026-09-15 02:20 UTC
+
+- **Era 17 is repaired and live.** The missing save was outside the canonical intake root,
+  not overwritten by Era 4's different Charon identity. Hash-identical copies now live under
+  `E:\omen\gallery\valheim\ComfyEra17_20260822\`; driver receipt
+  `runs\20260915T012402Z\run-receipt.json` verifies all 17 eras. Creator release
+  `fdfd76dc59dc-d54b59fa7e9d` and Chronicles release
+  `20260915T014500Z-8b2f4aca84e7` are live. Era 17 Charon is
+  `558504476a9953e58d01620fdaf9f616` (22 public albums); Era 4 Charon remains the separate
+  `dfec5cb...` identity. The single-era intake exception is commit `fdfd76d`.
+- **The light table now works locally.** It stores each part under a deterministic page key,
+  autosaves to localStorage, exports/imports a fingerprinted JSON envelope, and harvests with
+  `--require-complete`; no Artifact DB is involved. Baseline commits are `66503516` (local
+  workflow) and `5b76e0b7` (safe multipart cumulative append plus explicit `merge`). The 22
+  prepared parts were regenerated with this version and are served from the lake when judging.
+- **Human verdicts so far:** Era 11 reshoot is complete at 33/33 (5 earlier, 15 replanned,
+  3 both, 10 neither). Era 1 part 1 is complete at 120/120 (41 first, 39 second, 10 both,
+  30 neither); part 2 (34 rows) is the current operator task. The cumulative evidence contains
+  153 verdicts before part 2 is harvested. Per-part exports and receipts live under each
+  `<run>\verdicts\` directory.
+- **The judged transition was proved on real data without touching live state.** The isolated
+  Era 11 candidate is under
+  `campaigns\era11-reshoot\run\era11-reshoot-20260913\judged-candidate\`: 18 current-root
+  keeper frames, 10 human-refused builds, 33 judged and zero unjudged. Against the live
+  projection, `diff_projection.py --capture-transition` verified exactly 33 changed builds and
+  80 photograph removals, with no unrelated public change. Its keeper shuttle dry run selected
+  exactly 18 masters and omitted 136 completed losers; it transferred and deleted nothing.
+- **Safety tooling is pushed.** Comfy commits `550cc61` and `8ba8579` add the manifest-pair
+  transition gate, verdict-receipt hash/membership/completeness checks, rank no-survivor
+  preservation, keeper-only shuttling, and receipt-first exact-path loser pruning. The full
+  archive suite is 229 passed / 4 skipped. `prune_capture_losers.py` defaults to a candidate
+  receipt and cannot execute until every keeper is present locally and SHA-verified by an exact
+  matching relocation receipt.
+
+Next: harvest Era 1 part 2 with `--require-complete`, then merge its two part receipts with
+`light_table.py merge`. Continue the remaining first-pass light tables before replacing any
+live rank-pick manifest. A judged import must pass **both** `--rank` and `--verdicts`, so original
+rank no-survivor builds remain on the reshoot list. No master transfer, remote prune, judged
+manifest replacement, or judged gallery deploy has happened yet.
+
 ## 1. Where things are
 
 | Thing | Where |
