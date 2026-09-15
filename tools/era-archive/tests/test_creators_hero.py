@@ -103,11 +103,11 @@ class HeroShellTests(unittest.TestCase):
             self.assertNotIn(target, directory, f"the directory renderer reaches for #{target}")
 
     def test_the_builder_page_tells_one_story_in_order(self):
-        # The work, then who they built beside, then the albums -- renderThread() appends
-        # them in that order, and each is a real section a reader (and a test) can find.
+        # Photographs stay global; the atlas and bounded build explorer follow them,
+        # with the compact co-builder summary last.
         thread = self.js[self.js.index("function renderThread()"):]
         order = [thread.index(marker) for marker in
-                 ("renderBrowseToolbar()", "renderWorkCarousel()", "renderKinshipEmbed()", "renderRestLedger()")]
+                 ("renderWorkCarousel()", "renderBrowseToolbar()", "renderEraAtlas()", "renderBuildExplorer()", "renderKinshipEmbed()")]
         order.append(thread.rindex("renderThreadNotes()"))  # the empty-profile path ends early
         self.assertEqual(order, sorted(order), "the builder page lost its order")
         # The attribution sentence is said once for the page, not once per album.
@@ -116,16 +116,15 @@ class HeroShellTests(unittest.TestCase):
         # The carousel: a banner over the viewport, the details article under it, a rail.
         for marker in ("'work-banner'", "'album work-details'", "'photos work-rail'", "paintWorkStage()"):
             self.assertIn(marker, self.js, f"the carousel lost {marker}")
-        # The rest: era, build, the world-viewer link, a Details drop-down, the feedback marks.
-        for marker in ("'album rest-row'", "'rest-link'", "'album-toggle rest-toggle'", "'rest-feedback'",
-                       "'radiogroup'", "setAlbumExpanded("):
-            self.assertIn(marker, self.js, f"the rest table lost {marker}")
+        # All qualifying builds use a semantic twenty-row table and one selected detail.
+        for marker in ("PAGE_SIZE_EXPLORER = 20", "'build-explorer-table'", "'build-focus-host'", "'rest-feedback'", "'radiogroup'"):
+            self.assertIn(marker, self.js, f"the build explorer lost {marker}")
         # Feedback rides the participation rails like a claim: stored locally, exported.
         self.assertIn("priorities: Object.values(state.priorities || {})", self.js)
         self.assertIn("state.priorities = fresh.priorities", self.js)
-        # The tree is drawn on the profile with the shared drawing, and the ribbon is its
-        # caption: no second heading for the same eight names.
-        self.assertIn("drawKinshipTree(", self.js)
+        # The full drawing belongs on the standalone kinship page, not the profile.
+        compact = self.js[self.js.index("function renderKinshipEmbed()"):self.js.index("function renderThreadNotes()")]
+        self.assertNotIn("drawKinshipTree(", compact)
         self.assertNotIn("'Top 8 · Shield-wall fellows'", self.js)
         self.assertIn("top8-kinship-link", self.js)
 

@@ -106,12 +106,11 @@ try{
   // The one-story page (pass 3): the carousel of photographed builds sits under the hero
   // with its banner and its details article, the attribution sentence is said once, every
   // Details drop-down in the rest table starts folded, and the notes strip renders.
-  results.story=await evaluate("({stage:document.querySelectorAll('#work .work-banner').length,rail:document.querySelectorAll('#work .work-tile').length,details:document.querySelectorAll('#work article.album.work-details button.primary').length,notes:document.querySelectorAll('.albums-note').length,restRows:document.querySelectorAll('article.album.rest-row').length,feedback:document.querySelectorAll('.rest-feedback [role=radio]').length,folded:[...document.querySelectorAll('article.album .album-more')].every(m=>m.hidden),notesStrip:!document.getElementById('thread-notes')?.hidden})");
+  results.story=await evaluate("({stage:document.querySelectorAll('#work .work-banner').length,rail:document.querySelectorAll('#work .work-tile').length,details:document.querySelectorAll('#work article.album.work-details button.primary').length,notes:document.querySelectorAll('.albums-note').length,atlas:document.querySelectorAll('.era-atlas-tile').length,buildRows:document.querySelectorAll('#build-explorer tbody tr').length,tree:document.querySelectorAll('#kin-beside .kin-branch').length,notesStrip:!document.getElementById('thread-notes')?.hidden})");
   if(results.story.stage!==1||results.story.rail<1)throw Error('Builder page drew no work carousel for a photographed thread');
   if(results.story.details!==1)throw Error('The carousel details lost the claim control');
   if(results.story.notes!==1)throw Error('Attribution sentence is not said exactly once');
-  if(results.story.restRows&&results.story.feedback!==results.story.restRows*3)throw Error('The rest table lost its feedback marks');
-  if(!results.story.folded)throw Error('A Details drop-down did not start folded');
+  if(!results.story.atlas||results.story.buildRows>20||results.story.tree)throw Error('Profile atlas is missing, explorer is unbounded, or the full tree is still embedded');
   if(!results.story.notesStrip)throw Error('The notes strip at the foot did not render');
   // The check that would have caught a modal whose sheet was display:none inside a
   // visible overlay: every participation dialog opened as an empty black screen.
@@ -201,16 +200,18 @@ try{
   // legal, so the whole leg sits inside the "there is a ribbon" branch rather than
   // failing a builder for having worked alone.
   if(await evaluate("!!document.querySelector('.top8')")){
+    if(await evaluate("!document.getElementById('pair-view').hidden"))throw Error('Pair ledger opened before a visitor selected a co-builder');
+    await evaluate("document.querySelector('.top8-chip').click()");
     await wait("!!document.querySelector('.top8 button.top8-chip[aria-pressed=\"true\"]')");
     results.pair=await evaluate("({chips:document.querySelectorAll('.top8-chip').length,hidden:document.getElementById('pair-view')?.hidden,ledgerRows:document.querySelectorAll('#pair-ledger tbody tr').length})");
     if(results.pair.hidden!==false)throw Error('Pair view stayed hidden with a co-builder selected');
     if(!results.pair.ledgerRows)throw Error('Pair view drew no shared builds for the selected pairing');
     // The tree is drawn on the profile beside the ribbon, the pair's detail starts folded,
     // and the branch of the selected pairing is the one lit.
-    results.tree=await evaluate("({branches:document.querySelectorAll('#kin-beside .kin-branch').length,active:document.querySelector('#kin-beside .kin-branch.is-active')?.dataset.builderKey||null,pressed:document.querySelector('.top8-chip[aria-pressed=\"true\"]')?.dataset.builderKey||null,moreOpen:document.getElementById('pair-more')?.open})");
-    if(!results.tree.branches)throw Error('Builder page drew no kinship tree beside the ribbon');
-    if(results.tree.active!==results.tree.pressed)throw Error('The lit branch and the pressed chip disagree');
+    results.tree=await evaluate("({branches:document.querySelectorAll('#kin-beside .kin-branch').length,pressed:document.querySelector('.top8-chip[aria-pressed=\"true\"]')?.dataset.builderKey||null,moreOpen:document.getElementById('pair-more')?.open})");
+    if(results.tree.branches)throw Error('The full kinship tree is still mounted on the profile');
     if(results.tree.moreOpen!==false)throw Error('Pair view detail did not start folded');
+    if(results.pair.ledgerRows>20)throw Error('Pair ledger exceeded its twenty-row window');
     await screenshot('pair-view');
     // Slim pair (pass 3b): no tab strip and no second photograph -- the standing chip sits
     // in the head row, the ally and the reverse link share a row, the ledger runs full
@@ -278,39 +279,70 @@ try{
   // filter away. The original complaint was an Era 4–6 large build buried behind
   // eleven append-only "more" clicks; a named build link should land on its exact page.
   const prolific=directory.builders.slice().sort((a,b)=>b.albums-a.albums)[0];
+  const largestThread=await fetch(new URL(`threads/${prolific.builderKey}.json`,gallery)).then(r=>r.json());
+  const largest16=largestThread.eras.find(e=>e.era===16)?.albums.length||0;
+  if(prolific.albums<2929||largest16<696)throw Error('Largest-scale profile fixture is smaller than the checked release');
   await cdp('Page.navigate',{url:new URL(prolific.builderKey+'/',gallery).href});
-  await wait("!!document.getElementById('build-browse-summary')");
-  results.explorer=await evaluate("({sort:document.getElementById('build-sort').value,work:document.querySelectorAll('#work .work-tile').length,rest:document.querySelectorAll('#rest article.album.rest-row').length,eraOptions:document.getElementById('build-era').options.length,summary:document.getElementById('build-browse-summary').textContent})");
-  if(results.explorer.sort!=='mine'||results.explorer.work>40||results.explorer.rest>40)throw Error('Prolific profile is unbounded or does not start with my pieces');
-  if(results.explorer.eraOptions<3)throw Error('Prolific profile offers no cross-era picker');
-  const firstRest=await evaluate("document.querySelector('#rest article.album.rest-row')?.dataset.buildKey");
-  await evaluate("document.querySelector('#rest .build-pager button:last-child').click()");
-  await wait("document.querySelector('#rest .build-page-status')?.textContent.includes('page 2 of')");
-  results.explorer.pageTwo=await evaluate("({rest:document.querySelectorAll('#rest article.album.rest-row').length,first:document.querySelector('#rest article.album.rest-row')?.dataset.buildKey,status:document.querySelector('#rest .build-page-status').textContent})");
-  if(results.explorer.pageTwo.rest>40||results.explorer.pageTwo.first===firstRest)throw Error('Next replaced neither the page nor its forty-row window');
+  await wait("!!document.getElementById('build-explorer')");
+  results.explorer=await evaluate("({sort:document.getElementById('build-sort').value,work:document.querySelectorAll('#work .work-tile').length,rows:document.querySelectorAll('#build-explorer tbody tr').length,atlas:document.querySelectorAll('.era-atlas-tile').length})");
+  if(results.explorer.sort!=='mine'||results.explorer.work>40||results.explorer.rows>20||results.explorer.atlas<3)throw Error('Largest profile is unbounded or missing the atlas');
+  const era16Tile=await evaluate("document.querySelector('.era-atlas-tile[data-era=\"16\"] .era-atlas-count')?.textContent");
+  if(Number(era16Tile.replaceAll(',',''))!==largest16)throw Error('Largest profile era 16 atlas count differs from its published thread');
+  const firstBuild=await evaluate("document.querySelector('#build-explorer tbody tr')?.dataset.buildKey");
+  await evaluate("document.querySelector('#build-explorer .build-pager button:last-child').click()");
+  await wait("document.querySelector('#build-explorer .build-page-status')?.textContent.includes('page 2 of')");
+  results.explorer.pageTwo=await evaluate("({rows:document.querySelectorAll('#build-explorer tbody tr').length,first:document.querySelector('#build-explorer tbody tr')?.dataset.buildKey})");
+  if(results.explorer.pageTwo.rows>20||results.explorer.pageTwo.first===firstBuild)throw Error('Next did not replace the twenty-row window');
+  await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  results.explorer.mobile=await evaluate("({width:document.documentElement.scrollWidth,viewport:innerWidth,tiles:document.querySelectorAll('.era-atlas-tile').length})");
+  if(results.explorer.mobile.width>results.explorer.mobile.viewport+2)throw Error('Mobile profile has horizontal overflow');
+  await evaluate("document.getElementById('era-atlas').scrollIntoView({block:'start'})");
+  await screenshot('creator-era-atlas-mobile');
+  await cdp('Emulation.clearDeviceMetricsOverride');
   const oldBuilder='1dd405b7d09e57419b20fc4df6f18716';
   const oldThread=await fetch(new URL(`threads/${oldBuilder}.json`,gallery)).then(r=>r.json());
+  const old16=oldThread.eras.find(e=>e.era===16)?.albums.length||0;
+  if(old16<184)throw Error('Ibocain scale fixture lost its era 16 albums');
   const older=oldThread.eras.flatMap(e=>e.albums).find(a=>a.era<=6&&!a.photos.length&&a.pieces>=1000);
-  if(!older)throw Error('No older large Ibocain build survived the profile cutoff');
+  if(!older)throw Error('No older large Ibocain build survived the cutoff');
   await cdp('Page.navigate',{url:new URL(oldBuilder+'/',gallery).href});
-  await wait("!!document.getElementById('build-era')");
-  await evaluate(`document.getElementById('build-era').value=${JSON.stringify(String(older.era))};document.getElementById('build-era').dispatchEvent(new Event('change'))`);
-  await wait(`document.getElementById('build-era').value===${JSON.stringify(String(older.era))}`);
-  results.explorer.oldEra=await evaluate("({era:document.getElementById('build-era').value,summary:document.getElementById('build-browse-summary').textContent,work:document.querySelectorAll('#work .work-tile').length,rest:document.querySelectorAll('#rest article.album.rest-row').length})");
-  if(results.explorer.oldEra.rest>40||results.explorer.oldEra.work>40)throw Error('Older era still rendered an unbounded build lane');
+  await wait("!!document.getElementById('build-explorer')");
+  await evaluate("document.getElementById('era-atlas').scrollIntoView({block:'start'})");
+  await screenshot('creator-era-atlas-ibocain-overview');
+  const stageBefore=await evaluate("document.querySelector('#work .work-details')?.dataset.buildKey");
+  await evaluate(`document.querySelector('.era-atlas-tile[data-era="${older.era}"]').click()`);
+  results.explorer.oldEra=await evaluate("({era:document.getElementById('build-era').value,rows:document.querySelectorAll('#build-explorer tbody tr').length,stage:document.querySelector('#work .work-details')?.dataset.buildKey})");
+  if(results.explorer.oldEra.era!==String(older.era)||results.explorer.oldEra.rows>20||results.explorer.oldEra.stage!==stageBefore)throw Error('Era atlas failed to focus the explorer while preserving carousel');
   await evaluate(`document.getElementById('build-search').value=${JSON.stringify(older.buildKey)};document.getElementById('build-search').dispatchEvent(new Event('input'))`);
   await wait("document.getElementById('build-browse-summary')?.textContent.startsWith('1 build of')");
-  results.explorer.find=await evaluate("({summary:document.getElementById('build-browse-summary').textContent,rows:document.querySelectorAll('#rest article.album.rest-row').length})");
-  if(results.explorer.find.rows!==1)throw Error('Name/key search did not narrow the older build to one row');
+  results.explorer.find=await evaluate("document.querySelectorAll('#build-explorer tbody tr').length");
+  if(results.explorer.find!==1)throw Error('Search did not narrow to one build');
   await cdp('Page.navigate',{url:new URL(oldBuilder+'/?build='+older.buildKey,gallery).href});
-  try {
-    await wait(`document.querySelector('article.album.rest-row[data-build-key=${JSON.stringify(older.buildKey)}]')?.dataset.expanded==='true'`);
-  } catch (error) {
-    const observed=await evaluate(`(()=>{const row=document.querySelector('article.album.rest-row[data-build-key=${JSON.stringify(older.buildKey)}]');return {url:location.href,era:document.getElementById('build-era')?.value,summary:document.getElementById('build-browse-summary')?.textContent,notice:document.getElementById('build-browse-notice')?.textContent,rest:document.querySelectorAll('#rest article.album.rest-row').length,target:!!row,expanded:row?.dataset.expanded,moreHidden:row?.querySelector('.album-more')?.hidden,focus:document.activeElement?.className};})()`);
-    throw Error(error.message+' · '+JSON.stringify(observed));
-  }
-  results.explorer.directLink=await evaluate(`({era:document.getElementById('build-era').value,rest:document.querySelectorAll('#rest article.album.rest-row').length,open:document.querySelector('article.album.rest-row[data-build-key=${JSON.stringify(older.buildKey)}]')?.dataset.expanded==='true',url:location.search})`);
-  if(results.explorer.directLink.era!==String(older.era)||!results.explorer.directLink.open||results.explorer.directLink.rest>40||!results.explorer.directLink.url.includes('build='+older.buildKey))throw Error('Older build deep link did not reveal its exact bounded page and preserve its address');
+  await wait(`!!document.querySelector('#build-focus-host article.album[data-build-key="${older.buildKey}"]')`);
+  results.explorer.directLink=await evaluate("({era:document.getElementById('build-era').value,rows:document.querySelectorAll('#build-explorer tbody tr').length,detail:!!document.querySelector('#build-focus-host article.album'),url:location.search})");
+  if(results.explorer.directLink.era!==String(older.era)||!results.explorer.directLink.detail||results.explorer.directLink.rows>20||!results.explorer.directLink.url.includes('build='+older.buildKey))throw Error('Build deep link failed');
+  await screenshot('creator-era-atlas-ibocain');
+  const allyKey='17a1605b1fdb58c68c6334e49e2b0b74';
+  const shared16=oldThread.eras.flatMap(e=>e.albums).filter(a=>a.era===16&&(a.contributors||[]).some(c=>c.builderKey===allyKey&&c.pieces>=20));
+  const linked=shared16[shared16.length-1];
+  if(!linked)throw Error('Ibocain pair has no era 16 build for deep-link test');
+  await cdp('Page.navigate',{url:new URL(oldBuilder+'/?kin='+allyKey+'&build='+linked.buildKey,gallery).href});
+  await wait(`!!document.querySelector('#pair-ledger tr[aria-selected="true"][data-build-key="${linked.buildKey}"]')`);
+  results.explorer.pairDeep=await evaluate("({era:document.getElementById('build-era').value,pairEra:document.getElementById('pair-era').value,rows:document.querySelectorAll('#pair-ledger tbody tr').length,total:document.querySelector('#pair-ledger caption')?.textContent,selected:document.querySelector('#pair-ledger tr[aria-selected=true]')?.dataset.buildKey,detail:document.querySelector('#build-focus-host article.album')?.dataset.buildKey,pairDetail:document.querySelector('#pair-selected-build h4')?.textContent})");
+  if(results.explorer.pairDeep.era!=='16'||results.explorer.pairDeep.pairEra!=='16'||results.explorer.pairDeep.rows>20||results.explorer.pairDeep.selected!==linked.buildKey||results.explorer.pairDeep.detail!==linked.buildKey||!results.explorer.pairDeep.pairDetail)throw Error('Ibocain pair deep link failed to focus its era and bounded selected row');
+  await screenshot('creator-ibocain-pair-deep-link');
+  await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+  results.explorer.pairMobile=await evaluate("({width:document.documentElement.scrollWidth,viewport:innerWidth,rows:document.querySelectorAll('#pair-ledger tbody tr').length})");
+  if(results.explorer.pairMobile.width>results.explorer.pairMobile.viewport+2||results.explorer.pairMobile.rows>20)throw Error('Mobile pair ledger overflows the page or exceeds its row window');
+  await evaluate("document.getElementById('pair-view').scrollIntoView({block:'start'})");
+  await screenshot('creator-ibocain-pair-mobile');
+  await cdp('Emulation.clearDeviceMetricsOverride');
+  const oneEra=directory.builders.find(b=>b.albums>0&&b.eras.length===1);
+  if(!oneEra)throw Error('No single-era builder exists for atlas edge case');
+  await cdp('Page.navigate',{url:new URL(oneEra.builderKey+'/',gallery).href});
+  await wait("!!document.getElementById('era-atlas')");
+  results.explorer.oneEra=await evaluate("({tiles:document.querySelectorAll('.era-atlas-tile').length,rows:document.querySelectorAll('#build-explorer tbody tr').length})");
+  if(results.explorer.oneEra.tiles!==2||results.explorer.oneEra.rows>20)throw Error('Single-era profile drew too many atlas tiles or rows');
   const empty=directory.builders.find(b=>b.albums===0);
   if(!empty)throw Error('The agreed searchable empty profiles disappeared');
   await cdp('Page.navigate',{url:new URL(empty.builderKey+'/',gallery).href});

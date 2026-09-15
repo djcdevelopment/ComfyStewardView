@@ -219,7 +219,7 @@ class ChroniclerStyleTests(unittest.TestCase):
         # link on one row, the ledger full width, Details folded.
         pair = (WEB / "pair.js").read_text(encoding="utf-8")
         for marker in ("pairNode('div', null, 'pair-head')", "pairNode('div', null, 'pair-who')",
-                       "pairHeadEl(), pairWhoEl(), pairLedgerEl(), pairDownloadEl(), pairMoreEl(",
+                       "pairHeadEl(), pairWhoEl(), pairEraControlEl(), pairLedgerEl(), pairSelectedBuildEl(), pairDownloadEl(), pairMoreEl(",
                        "revealAlbum(buildKey, {scroll: false})", "pairFact(dl, 'On this page'"):
             self.assertIn(marker, pair, f"the slim pair view lost {marker}")
         for gone in ("pair-tab-viewer", "Switch to World viewer", "pairState.view", "pairSetView(",
@@ -234,14 +234,15 @@ class ChroniclerStyleTests(unittest.TestCase):
         self.assertIn("#pair-view .pair-head {", css)
         self.assertIn("#pair-view .pair-who {", css)
 
-    def test_the_tree_drawing_is_shared_by_both_pages(self):
+    def test_the_full_tree_drawing_stays_on_the_kinship_page(self):
         tree = (WEB / "kin-tree.js").read_text(encoding="utf-8")
         kinship = (WEB / "kinship.js").read_text(encoding="utf-8")
         creators = (WEB / "creators.js").read_text(encoding="utf-8")
         self.assertIn("function drawKinshipTree(", tree)
         self.assertIn("function layoutKinshipTree(", tree)
-        for name, source in (("kinship.js", kinship), ("creators.js", creators)):
-            self.assertIn("drawKinshipTree(", source, f"{name} does not draw with the shared tree")
+        self.assertIn("drawKinshipTree(", kinship)
+        self.assertNotIn("drawKinshipTree(", creators, "the profile still draws the full tree")
+        self.assertIn("new URL(`kinship/?builder=${thread.builderKey}`, base)", creators)
         # A classic script's top-level names are page globals; a second declaration is a
         # load-time SyntaxError that takes the whole page script down with it.
         for moved in ("const KIN_LAYOUT", "function layoutKinshipTree", "function kinBranchCap", "function isUnnamed", "function renderNodes", "function showTip"):

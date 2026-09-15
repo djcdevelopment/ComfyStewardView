@@ -10,7 +10,7 @@ const {
   SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, compareBuilders, matchScore,
   computeTopEight, portraitIndex, eraBounds, heroAliases,
   majorityOwner, tagCandidates, leadingBuilderNote, buildKinshipTree, mergeKinshipTags, kinshipTagRecord, StewardParticipation,
-  KINSHIP_TAG_IDS, pickMosaicAlbums, profileBrowseRows, profileBrowsePage, hasMinimumCredit, qualifyingSharedCredit, distinctAttributions,
+  KINSHIP_TAG_IDS, pickMosaicAlbums, profileBrowseRows, profileBrowsePage, profileEraAtlas, profileCoBuilderSummary, hasMinimumCredit, qualifyingSharedCredit, distinctAttributions,
 } = require(path.join(__dirname, '..', 'web', 'creators.js'));
 
 function builder(overrides) {
@@ -923,4 +923,23 @@ test('leadingBuilderNote names the rule and the fact about this build that appli
     {contributors: [{builderKey: me, share: 0.44}, {builderKey: other, share: 0.246}]},
     {contributors: [{builderKey: me, share: 0.778}]},
   ]) assert.notEqual(majorityOwner(album, me), null);
+});
+test('era atlas uses fixed density bins, exact photo counts and zero gaps', () => {
+  const make = (era, count, photographed = 0) => ({era, albums: Array.from({length: count}, (_, i) => ({era, photos: i < photographed ? [{}, {}] : []}))});
+  const atlas = profileEraAtlas({eras: [make(4, 1, 1), make(6, 10, 2), make(7, 50, 3), make(8, 200, 4)]});
+  assert.deepEqual(atlas.map((row) => [row.era, row.albums, row.photographed, row.photos, row.density]), [
+    [4, 1, 1, 2, 1], [5, 0, 0, 0, 0], [6, 10, 2, 4, 2], [7, 50, 3, 6, 3], [8, 200, 4, 8, 4],
+  ]);
+  assert.deepEqual(profileEraAtlas({eras: []}), []);
+});
+
+test('co-builder summary scopes each era without relaxing the twenty-piece credit rule', () => {
+  const self = 'a'.repeat(32), ally = 'b'.repeat(32);
+  const make = (era, selfPieces, allyPieces) => ({era, buildKey: String(era).repeat(64), contributors: [
+    {builderKey: self, pieces: selfPieces}, {builderKey: ally, pieces: allyPieces},
+  ]});
+  const thread = {builderKey: self, eras: [{era: 4, albums: [make(4, 20, 20)]}, {era: 5, albums: [make(5, 30, 19)]}]};
+  assert.equal(profileCoBuilderSummary(thread).ranked[0].sharedAlbums, 1);
+  assert.equal(profileCoBuilderSummary(thread, '4').total, 1);
+  assert.equal(profileCoBuilderSummary(thread, '5').total, 0);
 });

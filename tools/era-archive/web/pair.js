@@ -343,8 +343,15 @@ const PAIR_TERRAIN_WORDS = {
 
 const pairState = {
   host: null, ctx: null, coBuilders: [], allyKey: null, buildKey: null,
-  open: false, model: null, onClick: null,
+  open: false, model: null, onClick: null, era: 'all', page: 0,
 };
+
+const PAIR_PAGE_SIZE = 20;
+
+function pairVisibleRows() {
+  const rows = pairState.model?.sharedBuilds || [];
+  return pairState.era === 'all' ? rows : rows.filter((row) => String(row.era) === pairState.era);
+}
 
 /* ---- small makers ---- */
 
@@ -877,22 +884,28 @@ function pairSplitCellEl(row) {
 
 function pairLedgerEl() {
   const model = pairState.model;
+  const rows = pairVisibleRows();
+  const pages = Math.max(1, Math.ceil(rows.length / PAIR_PAGE_SIZE));
+  pairState.page = Math.max(0, Math.min(pairState.page, pages - 1));
+  const shown = rows.slice(pairState.page * PAIR_PAGE_SIZE, (pairState.page + 1) * PAIR_PAGE_SIZE);
   const wrap = pairNode('div', null, 'stats-table-wrap pair-ledger-wrap');
   wrap.id = 'pair-ledger-wrap';
   const table = pairNode('table', null, 'stats-table');
   table.id = 'pair-ledger';
-  const caption = pairNode('caption', 'Shared builds', 'pair-ledger-caption');
+  const caption = pairNode('caption', `${pairPlural(rows.length, 'shared build')} ${pairState.era === 'all' ? 'across all eras' : `in era ${pairState.era}`}`, 'pair-ledger-caption');
   table.append(caption);
   const head = pairNode('thead');
   const headRow = pairNode('tr');
   for (const [label, left] of [['Build', true], ['Era', false], ['Pieces', false], ['Split', true], ['Status', true]]) {
-    headRow.append(pairNode('th', label, left ? 'text-left' : null));
+    const cell = pairNode('th', label, left ? 'text-left' : null);
+    cell.scope = 'col';
+    headRow.append(cell);
   }
   head.append(headRow);
   table.append(head);
 
   const body = pairNode('tbody');
-  for (const row of model.sharedBuilds) {
+  for (const row of shown) {
     const tr = pairNode('tr');
     tr.dataset.buildKey = row.buildKey;
     tr.setAttribute('aria-selected', String(row.buildKey === pairState.buildKey));
@@ -909,7 +922,71 @@ function pairLedgerEl() {
   }
   table.append(body);
   wrap.append(table);
+  const pager = pairNode('div', null, 'build-pager pair-ledger-pager');
+  const previous = pairButton('Previous', 'secondary', 'page');
+  previous.dataset.page = String(pairState.page - 1);
+  previous.disabled = pairState.page === 0;
+  const next = pairButton('Next', 'secondary', 'page');
+  next.dataset.page = String(pairState.page + 1);
+  next.disabled = pairState.page >= pages - 1;
+  const first = rows.length ? pairState.page * PAIR_PAGE_SIZE + 1 : 0;
+  const status = pairNode('span', `${first.toLocaleString()}–${(first ? first + shown.length - 1 : 0).toLocaleString()} of ${rows.length.toLocaleString()} · page ${pairState.page + 1} of ${pages}`, 'build-page-status');
+  status.tabIndex = -1;
+  status.setAttribute('aria-live', 'polite');
+  pager.append(previous, status, next);
+  wrap.append(pager);
   return wrap;
+}
+
+function pairEraControlEl() {
+  const label = pairNode('label', null, 'pair-era-control');
+  label.append(pairNode('span', 'Shared era'));
+  const select = pairNode('select');
+  select.id = 'pair-era';
+  for (const era of ['all', ...pairState.model.eras.map(String)]) {
+    const option = pairNode('option', era === 'all' ? 'All eras' : `Era ${era}`);
+    option.value = era;
+    select.append(option);
+  }
+  select.value = pairState.era;
+  select.onchange = () => pairSetEra(select.value);
+  label.append(select);
+  return label;
+}
+
+function pairSelectedBuildEl() {
+  const row = pairState.model.activeBuild;
+  const panel = pairNode('section', null, 'pair-selected-build');
+  panel.id = 'pair-selected-build';
+  panel.setAttribute('aria-label', 'Selected shared build');
+  if (!pairVisibleRows().length) {
+    panel.append(pairNode('p', 'No shared builds in this era.', 'muted'));
+    return panel;
+  }
+  const activeIndex = pairVisibleRows().findIndex((item) => item.buildKey === row.buildKey);
+  if (activeIndex < 0 || Math.floor(activeIndex / PAIR_PAGE_SIZE) !== pairState.page) {
+    panel.append(pairNode('p', 'Select a build on this page to see its details.', 'muted'));
+    return panel;
+  }
+  panel.append(pairNode('h4', row.label));
+  const measured = row.legacy || row.anchorPieces == null || row.allyPieces == null
+    ? 'Saved shares were not measured in this historical import'
+    : `You placed ${row.anchorPieces.toLocaleString()} pieces; your co-builder placed ${row.allyPieces.toLocaleString()}`;
+  panel.append(pairNode('p', `Era ${row.era} · ${row.pieces.toLocaleString()} total pieces · ${pairLedgerStatus(row)} · ${measured}`, 'pair-selected-facts'));
+  const links = pairNode('div', null, 'links');
+  if (row.worldUrl) {
+    const a = pairNode('a', 'Open in world viewer');
+    a.href = row.worldUrl;
+    links.append(a);
+  }
+  if (row.galleryUrl) {
+    const a = pairNode('a', 'Open original gallery');
+    a.href = row.galleryUrl;
+    links.append(a);
+  }
+  if (row.photographed) links.append(pairButton('See photographs above', 'secondary', 'reveal'));
+  panel.append(links);
+  return panel;
 }
 
 function pairPaintLedgerRows() {
@@ -955,7 +1032,7 @@ function pairKinshipHref() {
 // reverse link, the shared-builds ledger, its download, and Details folded.
 function pairRenderAll() {
   const host = pairState.host;
-  host.replaceChildren(pairTitleEl(), pairHeadEl(), pairWhoEl(), pairLedgerEl(), pairDownloadEl(), pairMoreEl({open: pairMoreOpen()}));
+  host.replaceChildren(pairTitleEl(), pairHeadEl(), pairWhoEl(), pairEraControlEl(), pairLedgerEl(), pairSelectedBuildEl(), pairDownloadEl(), pairMoreEl({open: pairMoreOpen()}));
   host.hidden = false;
 }
 
@@ -964,6 +1041,13 @@ function pairRenderAll() {
 // and leaves the scroll position and the focused ledger button where they were.
 function pairRenderActiveBuild() {
   pairSwap('pair-more', pairMoreEl({open: pairMoreOpen()}));
+  pairSwap('pair-selected-build', pairSelectedBuildEl());
+  const index = pairVisibleRows().findIndex((row) => row.buildKey === pairState.buildKey);
+  if (index >= 0 && Math.floor(index / PAIR_PAGE_SIZE) !== pairState.page) {
+    pairState.page = Math.floor(index / PAIR_PAGE_SIZE);
+    pairSwap('pair-ledger-wrap', pairLedgerEl());
+    pairSwap('pair-selected-build', pairSelectedBuildEl());
+  }
   pairPaintLedgerRows();
   const download = pairQuery('#pair-download');
   if (download) pairPaintDownload(download);
@@ -1001,9 +1085,14 @@ function pairSyncUrl() {
 
 function pairSetBuild(buildKey) {
   if (!buildKey || buildKey === pairState.buildKey) return;
-  if (!pairState.model.sharedBuilds.some((row) => row.buildKey === buildKey)) return;
+  const picked = pairState.model.sharedBuilds.find((row) => row.buildKey === buildKey);
+  if (!picked) return;
   pairRebuildModel(buildKey);
-  pairRenderActiveBuild();
+  if (pairState.era !== 'all' && String(picked.era) !== pairState.era) {
+    pairState.era = String(picked.era);
+    pairState.page = 0;
+    pairRenderAll();
+  } else pairRenderActiveBuild();
   pairSyncUrl();
   pairEmit();
   // The page owns the pictures now: a photographed build picked here turns the carousel
@@ -1014,10 +1103,30 @@ function pairSetBuild(buildKey) {
   }
 }
 
+function pairSetEra(value) {
+  if (!pairState.host || !pairState.model) return;
+  pairState.era = value === 'all' || pairState.model.eras.some((era) => String(era) === String(value)) ? String(value) : 'all';
+  if (!pairState.open) return;
+  const rows = pairVisibleRows();
+  const index = rows.findIndex((row) => row.buildKey === pairState.buildKey);
+  pairState.page = index < 0 ? 0 : Math.floor(index / PAIR_PAGE_SIZE);
+  if (rows.length && index < 0) pairRebuildModel(rows[0].buildKey);
+  pairRenderAll();
+  pairSyncUrl();
+  pairEmit();
+}
+
 function pairOnClick(event) {
   const target = event.target && event.target.closest ? event.target.closest('[data-pair-action]') : null;
   if (!target || !pairState.host || !pairState.host.contains(target)) return;
   const action = target.dataset.pairAction;
+  if (action === 'page') {
+    pairState.page = Number(target.dataset.page) || 0;
+    pairSwap('pair-ledger-wrap', pairLedgerEl());
+    pairSwap('pair-selected-build', pairSelectedBuildEl());
+    pairQuery('#pair-ledger-wrap .build-page-status')?.focus({preventScroll: true});
+    return;
+  }
   if (action === 'build') return pairSetBuild(target.dataset.buildKey);
   if (action === 'reveal' && typeof pairState.ctx.revealAlbum === 'function') {
     pairState.ctx.revealAlbum(pairState.buildKey);
@@ -1071,6 +1180,8 @@ function pairMount(host, ctx) {
   if (!host || !ctx || !ctx.thread) return;
   pairState.host = host;
   pairState.ctx = ctx;
+  pairState.era = ctx.era || 'all';
+  pairState.page = 0;
   host.classList.add('pair-view');
   if (!host.id) host.id = 'pair-view';
   host.setAttribute('role', 'region');
@@ -1090,6 +1201,8 @@ function pairMount(host, ctx) {
     return;
   }
   pairState.open = true;
+  const initialIndex = pairVisibleRows().findIndex((row) => row.buildKey === pairState.buildKey);
+  if (initialIndex >= 0) pairState.page = Math.floor(initialIndex / PAIR_PAGE_SIZE);
   pairState.onClick = pairOnClick;
   host.addEventListener('click', pairState.onClick);
   pairRenderAll();
@@ -1132,6 +1245,9 @@ function pairSelect(key) {
     return null;
   }
   pairState.open = true;
+  pairState.page = 0;
+  const filtered = pairVisibleRows();
+  if (filtered.length) pairRebuildModel(filtered[0].buildKey);
   pairRenderAll();
   pairSyncUrl();
   pairEmit();
@@ -1189,6 +1305,8 @@ function pairUnmount() {
   pairState.buildKey = null;
   pairState.open = false;
   pairState.model = null;
+  pairState.era = 'all';
+  pairState.page = 0;
   pairState.onClick = null;
 }
 
@@ -1196,7 +1314,7 @@ function pairUnmount() {
 // creators.js is older than this file renders without a pair view rather than throwing
 // on the first click.
 if (PAIR_READY) {
-  globalThis.StewardPair = {mount: pairMount, update: pairUpdate, select: pairSelect, unmount: pairUnmount};
+  globalThis.StewardPair = {mount: pairMount, update: pairUpdate, select: pairSelect, setEra: pairSetEra, unmount: pairUnmount};
 }
 
 if (typeof module !== 'undefined') {
