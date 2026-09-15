@@ -832,7 +832,8 @@ function openLb(i){
     : null;
   $('lbhint').innerHTML = (r.cluster_id!=null
     ? `<a href="/valheim/creators/">claim this build or ask for more shots on the builders page</a>`
-    : '') + (view3d ? ` · <a href="${esc(view3d)}" target=_blank rel=noopener>open the 3D scene at this camera</a>` : '');
+    : '') + (view3d ? ` · <a href="${esc(view3d)}" target=_blank rel=noopener>open the 3D scene at this camera</a>` : '')
+    + (DB.worldUrl ? ` · <a href="${esc(DB.worldUrl)}/capture.html?photo=${encodeURIComponent(r.id)}" title="Adjust this photograph's camera and framing">▣ Compose photograph</a>` : '');
   $('lbstar').onclick=()=>toggleStar(r.id,true);
   if($('actall')) $('actall').onclick=()=>drillTo('structure', structKey(r), r.id);
   if($('actarea')) $('actarea').onclick=()=>drillTo('area', 'a'+r.area_id, r.id);

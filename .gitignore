@@ -25,3 +25,10 @@ __pycache__/
 # browser-smoke.mjs writes screenshots and a report here on every run; it is
 # evidence for the person who ran it, not source.
 /smoke-front/
+
+# Local capture candidates, game evidence, and browser screenshots.
+/artifacts/capture-*/
+/artifacts/capture-*.zip
+/artifacts/capture-*.json
+/artifacts/capture-*.log
+/artifacts/gallery-capture-*/

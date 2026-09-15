@@ -50,6 +50,7 @@ def main() -> int:
     p.add_argument("--depth", type=Path, default=None,
                    help="depth-<era>.json; also copied beside index.json by the caller")
     p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--capture-archive", type=Path, help="archive inventory for the versioned capture catalog; absent identity keeps photos browse-only")
     p.add_argument("--world-url", default=None,
                    help="origin of the world viewer (https://host/world); with it the gallery "
                         "can open a photograph's camera in the 3D scene")
@@ -154,6 +155,7 @@ def main() -> int:
         "world": manifest.get("world"),
         "era": manifest.get("era"),
         "worldUrl": args.world_url.rstrip("/") if args.world_url else None,
+        "captureCatalog": "capture-catalog.json",
         "n": len(images),
         "runs": 1,
         "joined": len(images),
@@ -167,6 +169,8 @@ def main() -> int:
         "images": images,
     }
     write(args.out, document)
+    from capture_catalog import project
+    write(args.out.with_name("capture-catalog.json"), project(manifests, read(args.capture_archive) if args.capture_archive else {"eras": []}))
     scored = sum(1 for r in images if "aesthetic" in r)
     print(f"{len(images):,} images, {len(by_build):,} albums -> {args.out}")
     print(f"  aesthetic on {scored:,} | depth on {sum(1 for r in images if 'fog' in r):,}"

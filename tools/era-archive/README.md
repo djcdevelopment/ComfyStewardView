@@ -83,6 +83,20 @@ Historical photos use the exact private index that produced their gallery. Their
 recorded leading contributor is preserved; full historical membership remains
 unresolved. An old cluster number is never replayed against a different snapshot.
 
+The active `build_era_index.py` also writes `capture-catalog.json` beside its
+gallery `index.json`. Pass `--capture-archive <inventory.json>` with the exact
+archive inventory and `--world-url <viewer-url>` for the photo lightbox's Compose
+link. The catalog keeps photo/build/world identity, hosted image derivatives,
+original camera and lighting receipts, and the read-only scene reference. A photo
+without the needed pose or world metadata remains in the gallery with an explicit
+availability reason; it is not assigned an inferred camera. The older
+`gallery_index_from_captures.py` producer on the second-pass branch can emit
+the same catalog after that branch is integrated; `build_era_index.py` is
+the producer included in this `main` release.
+Steward's [composer guide](../../docs/gallery-capture-composer.md) describes the
+catalog/detail/scene/export APIs and proof-gated download staging. The local
+photography runner belongs to SelfieStick, not this archive projection.
+
 ## Runtime audit and capture queue
 
 `analysis/unknown-assets.json` reports recurring unknown prefab hashes by era.

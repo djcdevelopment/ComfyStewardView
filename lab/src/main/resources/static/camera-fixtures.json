@@ -1,0 +1,268 @@
+{
+  "schema": "selfiestick-camera-fixtures/v1",
+  "origin": [
+    100,
+    10,
+    -900
+  ],
+  "camera": {
+    "lens": [
+      123,
+      45,
+      -876
+    ],
+    "yaw": 90,
+    "pitch": 30,
+    "roll": 0,
+    "verticalFov": 65,
+    "width": 1920,
+    "height": 1080,
+    "targetDistance": 40
+  },
+  "localLens": [
+    -23,
+    35,
+    24
+  ],
+  "playerFeet": [
+    123,
+    43.3,
+    -876
+  ],
+  "projections": [
+    {
+      "verticalFov": 90,
+      "frame": [
+        16,
+        9
+      ],
+      "longestEdge": 1920,
+      "width": 1920,
+      "height": 1080,
+      "distance": 10,
+      "halfHeight": 9.999999999999998,
+      "halfWidth": 17.777777777777775
+    },
+    {
+      "verticalFov": 90,
+      "frame": [
+        16,
+        9
+      ],
+      "longestEdge": 3840,
+      "width": 3840,
+      "height": 2160,
+      "distance": 10,
+      "halfHeight": 9.999999999999998,
+      "halfWidth": 17.777777777777775
+    },
+    {
+      "verticalFov": 90,
+      "frame": [
+        1,
+        1
+      ],
+      "longestEdge": 1920,
+      "width": 1920,
+      "height": 1920,
+      "distance": 10,
+      "halfHeight": 9.999999999999998,
+      "halfWidth": 9.999999999999998
+    },
+    {
+      "verticalFov": 90,
+      "frame": [
+        1,
+        1
+      ],
+      "longestEdge": 3840,
+      "width": 3840,
+      "height": 3840,
+      "distance": 10,
+      "halfHeight": 9.999999999999998,
+      "halfWidth": 9.999999999999998
+    },
+    {
+      "verticalFov": 90,
+      "frame": [
+        9,
+        16
+      ],
+      "longestEdge": 1920,
+      "width": 1080,
+      "height": 1920,
+      "distance": 10,
+      "halfHeight": 9.999999999999998,
+      "halfWidth": 5.624999999999999
+    },
+    {
+      "verticalFov": 90,
+      "frame": [
+        9,
+        16
+      ],
+      "longestEdge": 3840,
+      "width": 2160,
+      "height": 3840,
+      "distance": 10,
+      "halfHeight": 9.999999999999998,
+      "halfWidth": 5.624999999999999
+    },
+    {
+      "verticalFov": 65,
+      "frame": [
+        16,
+        9
+      ],
+      "longestEdge": 1920,
+      "width": 1920,
+      "height": 1080,
+      "distance": 10,
+      "halfHeight": 6.370702608074932,
+      "halfWidth": 11.325693525466546
+    },
+    {
+      "verticalFov": 65,
+      "frame": [
+        16,
+        9
+      ],
+      "longestEdge": 3840,
+      "width": 3840,
+      "height": 2160,
+      "distance": 10,
+      "halfHeight": 6.370702608074932,
+      "halfWidth": 11.325693525466546
+    },
+    {
+      "verticalFov": 65,
+      "frame": [
+        1,
+        1
+      ],
+      "longestEdge": 1920,
+      "width": 1920,
+      "height": 1920,
+      "distance": 10,
+      "halfHeight": 6.370702608074932,
+      "halfWidth": 6.370702608074932
+    },
+    {
+      "verticalFov": 65,
+      "frame": [
+        1,
+        1
+      ],
+      "longestEdge": 3840,
+      "width": 3840,
+      "height": 3840,
+      "distance": 10,
+      "halfHeight": 6.370702608074932,
+      "halfWidth": 6.370702608074932
+    },
+    {
+      "verticalFov": 65,
+      "frame": [
+        9,
+        16
+      ],
+      "longestEdge": 1920,
+      "width": 1080,
+      "height": 1920,
+      "distance": 10,
+      "halfHeight": 6.370702608074932,
+      "halfWidth": 3.5835202170421496
+    },
+    {
+      "verticalFov": 65,
+      "frame": [
+        9,
+        16
+      ],
+      "longestEdge": 3840,
+      "width": 2160,
+      "height": 3840,
+      "distance": 10,
+      "halfHeight": 6.370702608074932,
+      "halfWidth": 3.5835202170421496
+    },
+    {
+      "verticalFov": 35,
+      "frame": [
+        16,
+        9
+      ],
+      "longestEdge": 1920,
+      "width": 1920,
+      "height": 1080,
+      "distance": 10,
+      "halfHeight": 3.152987888789835,
+      "halfWidth": 5.6053118022930395
+    },
+    {
+      "verticalFov": 35,
+      "frame": [
+        16,
+        9
+      ],
+      "longestEdge": 3840,
+      "width": 3840,
+      "height": 2160,
+      "distance": 10,
+      "halfHeight": 3.152987888789835,
+      "halfWidth": 5.6053118022930395
+    },
+    {
+      "verticalFov": 35,
+      "frame": [
+        1,
+        1
+      ],
+      "longestEdge": 1920,
+      "width": 1920,
+      "height": 1920,
+      "distance": 10,
+      "halfHeight": 3.152987888789835,
+      "halfWidth": 3.152987888789835
+    },
+    {
+      "verticalFov": 35,
+      "frame": [
+        1,
+        1
+      ],
+      "longestEdge": 3840,
+      "width": 3840,
+      "height": 3840,
+      "distance": 10,
+      "halfHeight": 3.152987888789835,
+      "halfWidth": 3.152987888789835
+    },
+    {
+      "verticalFov": 35,
+      "frame": [
+        9,
+        16
+      ],
+      "longestEdge": 1920,
+      "width": 1080,
+      "height": 1920,
+      "distance": 10,
+      "halfHeight": 3.152987888789835,
+      "halfWidth": 1.7735556874442822
+    },
+    {
+      "verticalFov": 35,
+      "frame": [
+        9,
+        16
+      ],
+      "longestEdge": 3840,
+      "width": 2160,
+      "height": 3840,
+      "distance": 10,
+      "halfHeight": 3.152987888789835,
+      "halfWidth": 1.7735556874442822
+    }
+  ]
+}

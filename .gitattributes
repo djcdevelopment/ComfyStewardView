@@ -1,3 +1,9 @@
 # Container entrypoints run on Linux; CRLF would break their shebangs.
 entrypoint.sh text eol=lf
 lab/entrypoint-public.sh text eol=lf
+
+# The composer package hashes these raw assets; keep its source bytes stable.
+lab/src/main/resources/static/camera-fixtures.json text eol=lf
+lab/src/main/resources/static/camera-model.js text eol=lf
+lab/src/main/resources/static/creator-scene.js text eol=lf
+lab/src/main/resources/static/capture-* text eol=lf

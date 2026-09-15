@@ -14,6 +14,15 @@ from Git.
 
 Run commands in this README from the `lab/` directory.
 
+The gallery-capture workspace is a separate archived-world photography path in this
+lab server. It reads a versioned photo catalog and scene, mounts the same
+Lens/Outside component in the gallery and Quest Studio, and returns a portable
+SelfieStick still-capture ZIP only when exact runner/game proof is staged. Its scene
+uses read-only archive geometry rather than the gameplay target limits of the public
+Era 17 explorer. See the [composer guide](../docs/gallery-capture-composer.md) for
+controls, packaging and release status; candidate proof does not imply the live
+`/world/` deployment serves downloads.
+
 ## Public Comfy Era 17 view
 
 The live public profile is deliberately narrower than the lab.

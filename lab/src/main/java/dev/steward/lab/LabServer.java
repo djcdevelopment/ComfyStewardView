@@ -39,6 +39,7 @@ public final class LabServer {
     private final ScenePackage scenes;
     private final FidelityWorkbench fidelity;
     private final EraCatalog eraCatalog;
+    private final CaptureCatalog captures;
     private final SlidingWindowRateLimiter queryRate = new SlidingWindowRateLimiter(30, Duration.ofMinutes(1));
     private final SlidingWindowRateLimiter sceneRate = new SlidingWindowRateLimiter(6, Duration.ofMinutes(1));
     private final SlidingWindowRateLimiter feedbackRate = new SlidingWindowRateLimiter(3, Duration.ofMinutes(10));
@@ -96,6 +97,8 @@ public final class LabServer {
                 javalin.bundledPlugins.enableCors(cors -> cors.addRule(rule -> rule.anyHost()));
             }
         });
+        String captureRoot=System.getenv("STEWARD_CAPTURE_ROOT");
+        captures=new CaptureCatalog(captureRoot==null||captureRoot.isBlank()?null:Path.of(captureRoot),mapper);
         routes();
         if (useExternal) {
             log.info("Serving UI from {} (jar copy is the fallback)", staticOverride);
@@ -132,6 +135,15 @@ public final class LabServer {
         app.get("/api/items", ctx -> boundedQuery(ctx, this::items));
         app.get("/api/scene", ctx -> sceneQuery(ctx, this::scene));
         app.get("/api/creator/scene", ctx -> sceneQuery(ctx, this::authoringScene));
+        app.get("/api/captures",ctx->ctx.json(captures.catalog()));
+        app.get("/api/captures/{id}",ctx->ctx.json(captures.photo(ctx.pathParam("id"))));
+        app.get("/api/captures/{id}/scene",ctx->sceneQuery(ctx,this::captureScene));
+        app.post("/api/captures/{id}/export",ctx->boundedQuery(ctx, c->{
+            if(c.bodyAsBytes().length>8192)throw new IllegalArgumentException("Capture request is too large");
+            var body=mapper.readTree(c.body());
+            byte[] bytes=captures.export(c.pathParam("id"),body.path("camera"));
+            c.contentType("application/zip");c.header("Content-Disposition","attachment; filename=\"capture-"+c.pathParam("id")+".zip\"");c.result(bytes);
+        }));
         if (config.publicMode()) {
             app.get("/api/auth/discord/start", this::startDiscordAuthorization);
             app.get("/api/auth/discord/callback", this::finishDiscordAuthorization);
@@ -447,6 +459,30 @@ public final class LabServer {
         ctx.header("X-Steward-Scene-Pieces", Integer.toString(scene.pieces()));
         ctx.header("X-Steward-Scene-Instances", Integer.toString(scene.renderInstances()));
         ctx.result(scene.bytes());
+    }
+
+    private void captureScene(Context ctx) throws Exception {
+        var photo=captures.photo(ctx.pathParam("id"));
+        if(!photo.path("availability").path("compose").asBoolean())throw new IllegalArgumentException(photo.path("availability").path("reason").asText());
+        String slug=photo.path("scene").path("era").asText();
+        EraCatalog.Era era=eraCatalog==null?null:eraCatalog.ready(slug);
+        // A single-era host may have no era catalog. Its configured snapshot is
+        // usable only when the exact archive hash below proves the same world.
+        var source=era==null?snapshots:era.snapshots();
+        long snapshot=era==null?config.snapshotId():era.snapshotId();
+        var saved=source.requireSnapshot(snapshot);
+        if(!saved.fileHash().equalsIgnoreCase(photo.path("source").path("world").path("db").path("sha256").asText()))throw new IllegalArgumentException("Archived scene identity mismatch");
+        var build=source.forBuild(photo.path("source").path("buildKey").asText());
+        try(var connection=build.open();var query=connection.prepareStatement("SELECT min(x),max(x),min(z),max(z),count(*) FROM zdo WHERE snapshot_id=?")) {
+            query.setLong(1,snapshot);
+            try(var row=query.executeQuery()) {
+                row.next();if(row.getLong(5)==0)throw new IllegalArgumentException("Archived build has no scene geometry");
+                // Read-only photography retains public presentation limits, independently of the 5k authoring limit.
+                var scene=new ScenePackage(build,mapper,null).build(snapshot,"build-density",row.getDouble(1)-1,row.getDouble(2)+1,row.getDouble(3)-1,row.getDouble(4)+1,
+                    List.of(),true,config.releaseVersion(),"candidate",false,true);
+                ctx.contentType(ScenePackage.CONTENT_TYPE);ctx.result(scene.bytes());
+            }
+        }
     }
 
     private void requireQuestOperator(Context ctx) {

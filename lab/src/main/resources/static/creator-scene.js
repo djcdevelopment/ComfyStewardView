@@ -42,17 +42,35 @@ export async function parseCreatorScene(input) {
   };
 }
 
+// Photography uses the public read-only scene, with anonymous instance identities.
+// It never calls the Creator authoring endpoint or imports gameplay targets.
+export async function parseCaptureScene(input) {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  if (bytes.length < 16 || text.decode(bytes.subarray(0,4)) !== 'SV3D') throw Error('capture_scene_magic_invalid');
+  const view = new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+  const length=view.getUint32(8,true),offset=view.getUint32(12,true);
+  if (view.getUint32(4,true)!==2 || length>1048576 || offset<16+length || offset%4 || offset>bytes.length) throw Error('capture_scene_layout_invalid');
+  const manifest=JSON.parse(text.decode(bytes.subarray(16,16+length)));
+  if (manifest.schema!=='steward-zdo-scene/v2' || !Number.isInteger(manifest.renderInstances) || manifest.renderInstances<0 || manifest.renderInstances>500000 || manifest.instanceStride!==80 || manifest.instanceBytes!==manifest.renderInstances*80 || offset+manifest.instanceBytes!==bytes.length || !finite3(manifest.rndCameraOrigin)) throw Error('capture_scene_manifest_invalid');
+  if (hex(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes.subarray(offset))))!==manifest.instanceSha256) throw Error('capture_scene_integrity_mismatch');
+  manifest.absoluteOrigin=[...manifest.rndCameraOrigin];
+  const identities=new Uint32Array(manifest.renderInstances);
+  for(let i=0;i<identities.length;i++) identities[i]=i;
+  return {manifest,instances:bytes.slice(offset),identities:new Uint8Array(identities.buffer)};
+}
+
 const perspective = (fovy, aspect, near, far) => {
   const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far), out = new Float32Array(16);
   out[0] = f / aspect; out[5] = f; out[10] = (far + near) * nf;
   out[11] = -1; out[14] = 2 * far * near * nf;
   return out;
 };
-const lookAt = (eye, center) => {
+const lookAt = (eye, center, up = [0,1,0]) => {
   let zx = eye[0] - center[0], zy = eye[1] - center[1], zz = eye[2] - center[2];
   let len = Math.hypot(zx, zy, zz) || 1; zx /= len; zy /= len; zz /= len;
-  let xx = zz, xy = 0, xz = -zx; len = Math.hypot(xx, xz) || 1; xx /= len; xz /= len;
-  const yx = zy * xz, yy = zz * xx - zx * xz, yz = -zy * xx;
+  let xx = up[1]*zz-up[2]*zy, xy = up[2]*zx-up[0]*zz, xz = up[0]*zy-up[1]*zx;
+  len = Math.hypot(xx,xy,xz) || 1; xx /= len; xy /= len; xz /= len;
+  const yx = zy*xz-zz*xy, yy = zz*xx-zx*xz, yz = zx*xy-zy*xx;
   return new Float32Array([
     xx, yx, zx, 0, xy, yy, zy, 0, xz, yz, zz, 0,
     -(xx * eye[0] + xy * eye[1] + xz * eye[2]),
@@ -68,9 +86,9 @@ const multiply = (a, b) => {
   return out;
 };
 
-export async function mountCreatorScene(canvas, input, onSelection = () => {}) {
+export async function mountCreatorScene(canvas, input, onSelection = () => {}, options = {}) {
   if (!navigator.gpu) throw new Error("webgpu_unavailable");
-  const scene = await parseCreatorScene(input);
+  const scene = await (options.capture ? parseCaptureScene(input) : parseCreatorScene(input));
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
   if (!adapter) throw new Error("webgpu_adapter_unavailable");
   const device = await adapter.requestDevice();
@@ -151,6 +169,7 @@ struct VertexOut { @builtin(position) position: vec4f, @location(0) color: vec4f
   const target = [...(scene.manifest.home?.target || [0, 0, 0])];
   let yaw = .7, pitch = .5, distance = Math.max(12, Number(scene.manifest.home?.radiusM || 5) * 2.5);
   let selected = 0xffffffff, depth, pickTexture, frame = 0, disposed = false;
+  let externalCamera = null, interactive = true, lastCamera = null, lastMatrix = null;
 
   const resize = () => {
     const ratio = Math.min(devicePixelRatio || 1, 2);
@@ -168,8 +187,10 @@ struct VertexOut { @builtin(position) position: vec4f, @location(0) color: vec4f
     const eye = [target[0] + distance * Math.cos(pitch) * Math.sin(yaw),
       target[1] + distance * Math.sin(pitch),
       target[2] + distance * Math.cos(pitch) * Math.cos(yaw)];
-    const vp = multiply(perspective(Math.PI / 3, canvas.width / canvas.height, .05,
-      Math.max(20000, distance * 20)), lookAt(eye, target));
+    lastCamera = externalCamera || {eye,target:[...target],up:[0,1,0],verticalFov:60,aspect:canvas.width/canvas.height};
+    const vp = multiply(perspective(lastCamera.verticalFov*Math.PI/180, lastCamera.aspect, .05,
+      Math.max(20000, distance * 20)), lookAt(lastCamera.eye, lastCamera.target, lastCamera.up));
+    lastMatrix = vp;
     const data = new ArrayBuffer(80); new Float32Array(data, 0, 16).set(vp);
     new DataView(data).setUint32(64, selected, true); return data;
   };
@@ -187,12 +208,14 @@ struct VertexOut { @builtin(position) position: vec4f, @location(0) color: vec4f
     if (disposed) return; resize(); device.queue.writeBuffer(uniformBuffer, 0, cameraBytes());
     const encoder = device.createCommandEncoder(); pass(encoder, context.getCurrentTexture().createView());
     device.queue.submit([encoder.finish()]);
+    options.onView?.(lastMatrix);
   };
   const requestDraw = () => { if (disposed) return; cancelAnimationFrame(frame); frame = requestAnimationFrame(draw); };
   const observer = new ResizeObserver(requestDraw); observer.observe(canvas);
   const events = new AbortController();
   let drag = null, moved = false;
   canvas.addEventListener("pointerdown", event => {
+    if (!interactive) return;
     drag = [event.clientX, event.clientY]; moved = false; canvas.setPointerCapture(event.pointerId);
   }, { signal: events.signal });
   canvas.addEventListener("pointermove", event => {
@@ -215,8 +238,11 @@ struct VertexOut { @builtin(position) position: vec4f, @location(0) color: vec4f
       device.queue.submit([encoder.finish()]); await read.mapAsync(GPUMapMode.READ);
       if (disposed) return;
       const slot = new Uint32Array(read.getMappedRange())[0];
-      if (slot) { selected = identities[slot - 1]; onSelection({
-        zdoIndex: selected, instanceIndex: slot - 1, manifest: scene.manifest }); requestDraw(); }
+      if (slot) { selected = identities[slot - 1];
+        const values=new Float32Array(scene.instances.buffer,scene.instances.byteOffset+(slot-1)*80,20);
+        // Exact ray/box intersection against the same transformed cube the renderer draws.
+        const position=pickSurface(values,lastCamera,(x+.5)/canvas.width,(y+.5)/canvas.height);
+        onSelection({zdoIndex: selected, instanceIndex: slot - 1, position, manifest: scene.manifest }); requestDraw(); }
     } catch (error) {
       if (!disposed) onSelection({ error: "webgpu_pick_failed" });
     } finally {
@@ -225,14 +251,38 @@ struct VertexOut { @builtin(position) position: vec4f, @location(0) color: vec4f
     }
   }, { signal: events.signal });
   canvas.addEventListener("wheel", event => {
+    if (!interactive) return;
     event.preventDefault(); distance = Math.max(.5, Math.min(25000, distance * Math.exp(event.deltaY * .001)));
     requestDraw();
   }, { passive: false, signal: events.signal });
   device.lost.then(() => { if (!disposed) onSelection({ error: "webgpu_device_lost" }); });
   requestDraw();
-  return { scene, reset() { yaw = .7; pitch = .5;
+  return { scene, setCamera(value) { externalCamera=value; requestDraw(); },
+    setInteractive(value) { interactive=value; drag=null; },
+    view() { return {camera:lastCamera,matrix:lastMatrix}; },
+    reset() { yaw = .7; pitch = .5;
     distance = Math.max(12, Number(scene.manifest.home?.radiusM || 5) * 2.5); requestDraw(); },
     dispose() { disposed = true; events.abort(); observer.disconnect(); cancelAnimationFrame(frame);
       instanceBuffer.destroy(); identityBuffer.destroy(); uniformBuffer.destroy(); depth?.destroy(); pickTexture?.destroy();
       device.destroy(); } };
+}
+
+function pickSurface(m,c,u,v) {
+  const norm=a=>{const n=Math.hypot(...a)||1;return a.map(x=>x/n);};
+  const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+  const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
+  const forward=norm(c.target.map((x,i)=>x-c.eye[i])),right=norm(cross(forward,c.up)),up=cross(right,forward);
+  const h=Math.tan(c.verticalFov*Math.PI/360);
+  const ray=norm(forward.map((x,i)=>x+right[i]*(2*u-1)*h*c.aspect+up[i]*(1-2*v)*h));
+  const a=[m[0],m[1],m[2]],b=[m[4],m[5],m[6]],d=[m[8],m[9],m[10]],det=dot(a,cross(b,d));
+  if(Math.abs(det)<1e-12) return null;
+  const inverse=[cross(b,d),cross(d,a),cross(a,b)].map(row=>row.map(x=>x/det));
+  const eye=c.eye.map((x,i)=>x-m[12+i]),o=inverse.map(row=>dot(row,eye)),dir=inverse.map(row=>dot(row,ray));
+  let near=0,far=Infinity;
+  for(let i=0;i<3;i++) {
+    if(Math.abs(dir[i])<1e-12) {if(Math.abs(o[i])>.5)return null;continue;}
+    const t1=(-.5-o[i])/dir[i],t2=(.5-o[i])/dir[i];
+    near=Math.max(near,Math.min(t1,t2));far=Math.min(far,Math.max(t1,t2));
+  }
+  return far<near?null:c.eye.map((x,i)=>x+near*ray[i]);
 }

@@ -7,6 +7,15 @@ saves into Parquet and DuckDB, builds contributor-aware albums and capture queue
 and publishes creator threads alongside the existing Valheim galleries. Its world
 catalog keeps each era bound to its own terrain, item queries and exact 3D membership.
 
+Archived photography now has a shared Lens/Outside composer for gallery photographs
+and Creator/DM. Steward owns its read-only capture catalog, matching scene, camera
+model and deterministic download service; Studio consumes a pinned JavaScript/CSS
+artifact, and SelfieStick renders the PNG locally. Start with the
+[user and maintainer guide](docs/gallery-capture-composer.md) and the
+[local proof index](docs/evidence/gallery-capture-20260915.json). The current
+implementation is a verified candidate; public downloads await a release cut from
+pushed source and the exact proof-gated archive deployment.
+
 ## Applications and repository structure
 
 This repository contains two separately built and deployed Java applications:
@@ -211,6 +220,9 @@ Useful entry points:
 - Unified World / Changes / History / Explore shell with grouped World navigation, explicit time-scope badges, legacy deep-link redirects, and a segmented Coin trail view.
 - Snapshot-aware Map, Explore, and selection workflows; boot-snapshot views are labeled rather than silently following the snapshot selector.
 - The isolated `/world/` lab can open a bounded public inspection as an exact, selection-local WebGPU scene with shaded/wireframe rendering, dense-cluster Home/full-selection camera framing, mouse-orbit plus WASD travel or pointer-locked free flight, and browser-side PNG capture. Its shared right-column gate permits 5,000 pieces directly or 250,000 after confirmation without sampling; world-spanning biome actions are labeled explicitly as worldwide scope.
+- The archived-photograph composer retains a reference thumbnail, edits an exact
+  still lens, estimates coverage in an independent Outside view, and exports one
+  portable local capture when its measured SelfieStick proof gate is satisfied.
 - Snapshot-backed Quest sphere export and a hash-verified Runtime evidence overlay backed by a dedicated DuckDB store.
 - Snapshot Map rasters for Build density, Dropped, All ZDOs, and Coins at every cell size advertised by the manifest, with client-side ramp and opacity controls.
 - Changes Map rasters for Build activity and All ZDO change, composited from aligned added/removed gray8 channels with a dual logarithmic legend. Changes and Map share the same ordered comparison pair.
@@ -237,6 +249,9 @@ This is the consolidated backlog pulled from the handoff docs and batch analytic
 - Portal hub analysis with outgoing destination mapping.
 - Targeted custom-field watchlists backed by `--cache-fields`.
 - Replace public prefab envelopes with vetted native mesh, terrain, collision, and object-picking layers where their provenance and disclosure boundaries are understood.
+- Promote the archived-photograph composer and exact SelfieStick runner from pinned
+  candidates to clean, proof-gated public releases; then define moving-camera
+  capture against an observed local video contract.
 - Per-container inventory drill-down in the live UI.
 - Alert noise reduction for orphaned portals.
 - The remaining v4 operational-polish work: consistent stale/retry states across every leaf view, spawn-time aggregate/histogram, accessibility and reduced-motion checks, responsive regression coverage, and publish telemetry.

@@ -1,0 +1,755 @@
+{
+  "schema": "gallery-capture-evidence/v1",
+  "recordedUtc": "2026-09-15T10:44:55.954634+00:00",
+  "implementation": "verified local candidates",
+  "publicDeploymentChanged": false,
+  "sourceBases": {
+    "baseline": {
+      "root": "C:\\work\\baseline",
+      "revision": "833fc59e5b0c0347f0220bf928eef9e418178a99",
+      "workingChangesIncluded": true
+    },
+    "SelfieStick": {
+      "root": "C:\\work\\SelfieStick",
+      "revision": "47b311c9ba2c6d44399538396bc800c2d7ad2b9c",
+      "workingChangesIncluded": true
+    },
+    "ComfyStewardView": {
+      "root": "C:\\work\\ComfyStewardView",
+      "revision": "2f2f51dcf9f9569442e1f36f42c8739496d1f965",
+      "workingChangesIncluded": true
+    },
+    "comfy-quest": {
+      "root": "C:\\work\\comfy-quest",
+      "revision": "ee0b2f7b049962df98b8b57d2a00088a17bcbce3",
+      "workingChangesIncluded": true
+    }
+  },
+  "versions": {
+    "composer": "1.0.0-preview.3",
+    "SelfieStick": "0.3.1",
+    "Studio": "0.9.14-gallery.2",
+    "contract": "selfiestick-capture/v1"
+  },
+  "artifacts": {
+    "composer": {
+      "path": "C:\\work\\ComfyStewardView\\artifacts\\capture-composer-r3.zip",
+      "bytes": 15566,
+      "sha256": "c74c72ccd6d692e763cfb8236a7d1d61cb1b49123d554fba1f8d153fc3dd441e"
+    },
+    "runner": {
+      "path": "C:\\work\\SelfieStick\\artifacts\\capture-candidate-r4\\selfiestick-runner-0.3.1.zip",
+      "bytes": 69157,
+      "sha256": "963acc29433c070b04bc797ee814b63abca8a37e48bb457a9863ef66d005fe57"
+    },
+    "cameraPlugin": {
+      "path": "C:\\work\\SelfieStick\\artifacts\\capture-candidate-r4\\runner\\mods\\CameraProof.dll",
+      "bytes": 108032,
+      "sha256": "4ca95350bac1006765b2949937d07fc2c8af56f3d708372e2127558f439afe2c"
+    },
+    "studioPackage": {
+      "path": "C:\\work\\comfy-quest\\artifacts\\gallery-capture-r2\\Comfy.Quest.Studio.0.9.14-gallery.2.nupkg",
+      "bytes": 574396,
+      "sha256": "4ed1ddaf2e01a5615417fbbfb8e53f8f88ca98df7a8771f1a389241b7c9f79fa"
+    },
+    "stewardServer": {
+      "path": "C:\\work\\ComfyStewardView\\artifacts\\gallery-capture-r2\\steward-spatial-lab-capture.jar",
+      "bytes": 94091501,
+      "sha256": "51efacc6e0774383d6b47bd6807a56520951d94268784e7b5496c7eb310dd5c0"
+    },
+    "galleryEntry": {
+      "path": "C:\\work\\ComfyStewardView\\artifacts\\gallery-capture-r2\\gallery\\index.html",
+      "bytes": 61264,
+      "sha256": "a199150a9e3b3b6e3990845df1a8bf2db72fc7a2da0219df2be9498c760cea3f"
+    },
+    "captureDeployment": {
+      "path": "C:\\work\\ComfyStewardView\\artifacts\\capture-data-r4\\deployment-manifest.json",
+      "bytes": 25359,
+      "sha256": "ae46713a6ad4b311dd07639352e6453803006b20b23bb5c04516b715d684a654"
+    },
+    "exampleDownload": {
+      "path": "C:\\work\\ComfyStewardView\\artifacts\\capture-integration-r6\\gallery-capture.zip",
+      "bytes": 109541,
+      "sha256": "0b0f0bcb48e9b1203af56f9fab868664ed69bf10c730c43c55c40fa7e40b9aca"
+    },
+    "sourceTransfer": {
+      "path": "C:\\work\\SelfieStick\\provenance\\baseline-camera-kit-20260915.zip",
+      "bytes": 16737,
+      "sha256": "8a5e3703759d29cf19c66edce2df3fb0c955266612042211ba0336926a4d8b49"
+    }
+  },
+  "verification": [
+    {
+      "area": "Steward Java",
+      "status": "VERIFIED",
+      "tests": 56,
+      "failed": 0
+    },
+    {
+      "area": "Steward archive Python",
+      "status": "VERIFIED",
+      "tests": 236,
+      "skipped": 4,
+      "failed": 0,
+      "note": "PYTHONPATH=tools/era-archive; initial invocation without it failed to import load_census."
+    },
+    {
+      "area": "Camera JavaScript",
+      "status": "VERIFIED",
+      "tests": 6,
+      "failed": 0
+    },
+    {
+      "area": "SelfieStick Python",
+      "status": "VERIFIED",
+      "tests": 7,
+      "failed": 0
+    },
+    {
+      "area": "Shared camera fixtures",
+      "status": "VERIFIED",
+      "tests": 18,
+      "receipt": {
+        "path": "C:\\work\\SelfieStick\\artifacts\\shared-camera-fixtures-r2.json",
+        "bytes": 485,
+        "sha256": "aab8cd05e45c98f45b526d1c2b689bd164c1032e98ad8f9384cd2023d2cefb3d"
+      }
+    },
+    {
+      "area": "Studio xUnit",
+      "status": "VERIFIED",
+      "tests": 149,
+      "failed": 0
+    },
+    {
+      "area": "Quest Python",
+      "status": "VERIFIED",
+      "tests": 455,
+      "failed": 0
+    },
+    {
+      "area": "Baseline hub",
+      "status": "VERIFIED",
+      "tests": 119,
+      "commands": [
+        {
+          "command": [
+            "python",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests",
+            "-v"
+          ],
+          "exitCode": 0,
+          "log": "check-1.log"
+        },
+        {
+          "command": [
+            "python",
+            "tools/corpus/test_corpus.py"
+          ],
+          "exitCode": 0,
+          "log": "check-2.log"
+        },
+        {
+          "command": [
+            "python",
+            "tools/corpus/build.py",
+            "--check"
+          ],
+          "exitCode": 0,
+          "log": "check-3.log"
+        },
+        {
+          "command": [
+            "python",
+            "-m",
+            "unittest",
+            "tests.test_entrypoint_links",
+            "-v"
+          ],
+          "exitCode": 0,
+          "log": "check-4.log"
+        },
+        {
+          "command": [
+            "git",
+            "diff",
+            "--check"
+          ],
+          "exitCode": 0,
+          "log": "check-5.log"
+        }
+      ]
+    },
+    {
+      "area": "Gallery lightbox and WebGPU controls",
+      "status": "VERIFIED",
+      "receipt": {
+        "path": "C:\\work\\ComfyStewardView\\artifacts\\capture-browser-r7\\receipt.json",
+        "bytes": 416,
+        "sha256": "aed9379441c273c8f5077359ec6b0ba66947b6316010c141d88ec0bfd3ce5876"
+      }
+    },
+    {
+      "area": "Both applications and identical exports",
+      "status": "VERIFIED",
+      "receipt": {
+        "path": "C:\\work\\ComfyStewardView\\artifacts\\capture-integration-r6\\receipt.json",
+        "bytes": 1150,
+        "sha256": "aea305edebfb0530b790b75a52260168cc224464332c9dd6a651b064aad9b818"
+      }
+    },
+    {
+      "area": "Wrong version/archive/camera/photo rejection",
+      "status": "VERIFIED",
+      "receipt": {
+        "path": "C:\\work\\ComfyStewardView\\artifacts\\capture-negative-r1\\receipt.json",
+        "bytes": 576,
+        "sha256": "66f5fb1b03305624be3610f58a570ad2fc0c464f6d7909bb188363a502c042d3"
+      }
+    },
+    {
+      "area": "Downloaded Windows launcher",
+      "status": "VERIFIED",
+      "receipt": {
+        "path": "C:\\work\\ComfyStewardView\\artifacts\\capture-launcher-proof-r1\\capture-20260915T033427\\capture-receipt.json",
+        "bytes": 6066,
+        "sha256": "576e309bea3af830d6eea4ff59deea0015b17dc288546dca5d8d981bb2071994"
+      },
+      "restoration": {
+        "pluginsAndControls": true,
+        "sourceSavesUnchanged": true,
+        "discoverySavesUnchanged": true
+      }
+    }
+  ],
+  "realCapture": [
+    {
+      "host": "OMEN",
+      "status": "VERIFIED",
+      "proof": {
+        "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\capture-proof.json",
+        "bytes": 5430,
+        "sha256": "ffd350c557a2a2154da487d655b8f83125acd10c3dbb64d9f0f185d8c6487076"
+      },
+      "exactCases": 12,
+      "legacyCases": 2,
+      "restoration": {
+        "pluginsAndControls": true,
+        "sourceSavesUnchanged": true,
+        "discoverySavesUnchanged": true,
+        "beforeSha256": "f04a2e769b2d2366655f39347611c706e9db1cc47718417b087949bff350f74c",
+        "afterSha256": "f04a2e769b2d2366655f39347611c706e9db1cc47718417b087949bff350f74c"
+      },
+      "cases": [
+        {
+          "frame": "Landscape",
+          "verticalFov": 90,
+          "width": 1920,
+          "height": 1080,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\landscape-90-1920.json",
+            "bytes": 4653,
+            "sha256": "bb155d86946209b73ffbd43a45fd667a308845f0cf6ceb22f4007d52d0e3c399"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\20260915-032014\\0000_landscape-90-1920.png",
+            "bytes": 3209847,
+            "sha256": "4def20adf6c3fb4c93955ddff00519a5a949fbbd169fd8fa900a4dea762b9096"
+          }
+        },
+        {
+          "frame": "Square",
+          "verticalFov": 90,
+          "width": 1920,
+          "height": 1920,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\square-90-1920.json",
+            "bytes": 4644,
+            "sha256": "28d561e27cf747591fcca83c58e59eb1ba56dbb48bb3920586893de6313cecd4"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\20260915-032014\\0000_square-90-1920.png",
+            "bytes": 5700146,
+            "sha256": "1f3ba22d19322f95cb02d897cd2d7db4bae70fb6676fd51fa585a4ef9b680cb1"
+          }
+        },
+        {
+          "frame": "Portrait",
+          "verticalFov": 90,
+          "width": 1080,
+          "height": 1920,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\portrait-90-1920.json",
+            "bytes": 4650,
+            "sha256": "970819e3598daee11f9f17b3011559bef0754ff956988f75b6ae0e4288aba4c3"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\20260915-032014\\0000_portrait-90-1920.png",
+            "bytes": 3254936,
+            "sha256": "a138209a1eedb955c04cab602239d774088a9ed7d8d1e805c5d35d6098cbb561"
+          }
+        },
+        {
+          "frame": "Landscape",
+          "verticalFov": 65,
+          "width": 1920,
+          "height": 1080,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\landscape-65-1920.json",
+            "bytes": 4653,
+            "sha256": "197bd38fa4dea28cafd318efbfccbbccdd9e4f8142e70a8d098587a620de1ae2"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\20260915-032014\\0000_landscape-65-1920.png",
+            "bytes": 3398184,
+            "sha256": "809ecadb62c29f76154680a56306b68454e513cda00f15fcb9060176fb459bed"
+          }
+        },
+        {
+          "frame": "Square",
+          "verticalFov": 65,
+          "width": 1920,
+          "height": 1920,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\square-65-1920.json",
+            "bytes": 4644,
+            "sha256": "0d06c8db2a94f1fd61c34d984bdb2febefa2c0f070c30ba343ec93896e5d15a6"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\20260915-032014\\0000_square-65-1920.png",
+            "bytes": 6126965,
+            "sha256": "b69f2bcb5afb1d555d63c5a97920322c559349cb08fd324f749796491206bf97"
+          }
+        },
+        {
+          "frame": "Portrait",
+          "verticalFov": 65,
+          "width": 1080,
+          "height": 1920,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\portrait-65-1920.json",
+            "bytes": 4650,
+            "sha256": "17f04f4d817a98e7abe66e674920db9d8a3abc0a5561d74a288c5f25408ead05"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\20260915-032014\\0000_portrait-65-1920.png",
+            "bytes": 3452602,
+            "sha256": "2773bab33317000a6cffebcd2aafcc2ff8bbca1f9c3dc9b5200981d489075f51"
+          }
+        },
+        {
+          "frame": "Landscape",
+          "verticalFov": 35,
+          "width": 1920,
+          "height": 1080,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\landscape-35-1920.json",
+            "bytes": 4653,
+            "sha256": "2768c230d488588456d9b76b42a76ddac4188a7b3132ba222fc865c0a3e9f628"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\20260915-032014\\0000_landscape-35-1920.png",
+            "bytes": 3772089,
+            "sha256": "3bf830b9d4eaa7108f5132af0db17e87ea3660741b4cfdd1520a5038776c10c5"
+          }
+        },
+        {
+          "frame": "Square",
+          "verticalFov": 35,
+          "width": 1920,
+          "height": 1920,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\square-35-1920.json",
+            "bytes": 4644,
+            "sha256": "58a467116869d551dee7696ede9ac40a28275378f05b267aaab7b73e2418cb3d"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\20260915-032014\\0000_square-35-1920.png",
+            "bytes": 5688291,
+            "sha256": "1e721752593377a1278826679d7567ba8af1666074ea444ddcb322fb33c8ec8f"
+          }
+        },
+        {
+          "frame": "Portrait",
+          "verticalFov": 35,
+          "width": 1080,
+          "height": 1920,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\portrait-35-1920.json",
+            "bytes": 4650,
+            "sha256": "69c569fd1910e16d4735f8dfa2d3435cc18891e882a2b6774174943f9a38671e"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\20260915-032014\\0000_portrait-35-1920.png",
+            "bytes": 3256663,
+            "sha256": "3f995d1ef40bf75bfc1bd49fb83816d91f888be43a23a7599062763fd1241688"
+          }
+        },
+        {
+          "frame": "Landscape",
+          "verticalFov": 65,
+          "width": 3840,
+          "height": 2160,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\landscape-65-3840.json",
+            "bytes": 4654,
+            "sha256": "66594cf274438582035213a33d725ca9f4ebe55b6db3c7af8c92f95a683027a4"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\20260915-032014\\0000_landscape-65-3840.png",
+            "bytes": 12477709,
+            "sha256": "90c3071fb733d8fa41737a1bb3ee6595b04e2c0661d5f714fe22bdcaf6a5fec8"
+          }
+        },
+        {
+          "frame": "Square",
+          "verticalFov": 65,
+          "width": 3840,
+          "height": 3840,
+          "roll": 12,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\square-65-3840.json",
+            "bytes": 4647,
+            "sha256": "b4c16b81b7f92f332185715c009ba99bed910dffee3a1c0fd99c991e1dbac4d4"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\20260915-032014\\0000_square-65-3840.png",
+            "bytes": 20773056,
+            "sha256": "56ce762ae1cf003edc0de99c4d29772bf09074f5bf94915e7c8e9c3117540f71"
+          }
+        },
+        {
+          "frame": "Portrait",
+          "verticalFov": 65,
+          "width": 2160,
+          "height": 3840,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\portrait-65-3840.json",
+            "bytes": 4651,
+            "sha256": "c2d510a12666466e55dfae5c9b7defffaace1d88229ecc087ef19319d0f4dff2"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-omen-matrix-r4\\20260915-032014\\0000_portrait-65-3840.png",
+            "bytes": 12194454,
+            "sha256": "9e977c290d07f04c1dbfd64dd234f6d03c687598fa79e152af3e061f58cb14ce"
+          }
+        }
+      ]
+    },
+    {
+      "host": "AM4",
+      "status": "VERIFIED",
+      "proof": {
+        "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\capture-proof.json",
+        "bytes": 5276,
+        "sha256": "2e2734959d68de9da645bc07e446dad50bc06dcb40c061e4e0b938415a9bfa0b"
+      },
+      "exactCases": 12,
+      "legacyCases": 2,
+      "restoration": {
+        "pluginsAndControls": true,
+        "sourceSavesUnchanged": true,
+        "discoverySavesUnchanged": true,
+        "beforeSha256": "652861da2e04e2bdb07474d868bff3c609b297071904321f5463c2b06df6e9c9",
+        "afterSha256": "652861da2e04e2bdb07474d868bff3c609b297071904321f5463c2b06df6e9c9"
+      },
+      "cases": [
+        {
+          "frame": "Landscape",
+          "verticalFov": 90,
+          "width": 1920,
+          "height": 1080,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\landscape-90-1920.json",
+            "bytes": 4488,
+            "sha256": "e4e2615691ee7d950dc8121dd118306219d54cb08f8c5f894cc99e665bb92e14"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\20260915-102749\\0000_landscape-90-1920.png",
+            "bytes": 3110327,
+            "sha256": "a25305c7093d64b63932385cd82b7e3fc9dd131591adb630e99a11c1ec51186c"
+          }
+        },
+        {
+          "frame": "Square",
+          "verticalFov": 90,
+          "width": 1920,
+          "height": 1920,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\square-90-1920.json",
+            "bytes": 4479,
+            "sha256": "a14d0b5ac490d2b18d099c8a5e58e9737e9ddcf46f3871b95e512a53a2ec8948"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\20260915-102749\\0000_square-90-1920.png",
+            "bytes": 5437119,
+            "sha256": "288451af95c6a3cb12b297b050bca3d0671042d6bc73165af5ab9767bfe3e45f"
+          }
+        },
+        {
+          "frame": "Portrait",
+          "verticalFov": 90,
+          "width": 1080,
+          "height": 1920,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\portrait-90-1920.json",
+            "bytes": 4485,
+            "sha256": "ecc9505cbb8c6bc04bdb02774125fe03878cfb46b6fc9bb3968ab72622b05074"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\20260915-102749\\0000_portrait-90-1920.png",
+            "bytes": 3206032,
+            "sha256": "f4836dd62a6aabafa87104e56e1e269ad26ff7900d84e5757463d3cd3db8d88d"
+          }
+        },
+        {
+          "frame": "Landscape",
+          "verticalFov": 65,
+          "width": 1920,
+          "height": 1080,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\landscape-65-1920.json",
+            "bytes": 4488,
+            "sha256": "e1f928c417532152dbc95d2b7122491c0e522a4824d597d2c2ef772fb6157802"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\20260915-102749\\0000_landscape-65-1920.png",
+            "bytes": 3310835,
+            "sha256": "16034daca9b2bef9dd6fdd01f8826557ef27c0b71f5ff8ed365f16e89ff3adb2"
+          }
+        },
+        {
+          "frame": "Square",
+          "verticalFov": 65,
+          "width": 1920,
+          "height": 1920,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\square-65-1920.json",
+            "bytes": 4479,
+            "sha256": "d8c0830b0ced855573b6bcc927e265f9d32e7f26b2dc9947a883ac44ed54ce82"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\20260915-102749\\0000_square-65-1920.png",
+            "bytes": 5883385,
+            "sha256": "26d110c38c950d0fdae96d2f4a5c1014cf56dbdbf31793d28342fa1bb6a631b7"
+          }
+        },
+        {
+          "frame": "Portrait",
+          "verticalFov": 65,
+          "width": 1080,
+          "height": 1920,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\portrait-65-1920.json",
+            "bytes": 4485,
+            "sha256": "aa5d029986522ca3e606baab584570d7e0504db3d25dd0f9ac8dd40cd96eb83b"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\20260915-102749\\0000_portrait-65-1920.png",
+            "bytes": 3499341,
+            "sha256": "905533d39af54fb49b2a9dba8c2a7172f9f0d04f4d04e30e7f03cbb446b171ba"
+          }
+        },
+        {
+          "frame": "Landscape",
+          "verticalFov": 35,
+          "width": 1920,
+          "height": 1080,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\landscape-35-1920.json",
+            "bytes": 4488,
+            "sha256": "0f455d2e408ef59d43a42036caac1945e94bd3661ca302b1aeaec3aa205b4f7c"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\20260915-102749\\0000_landscape-35-1920.png",
+            "bytes": 3759601,
+            "sha256": "10f6c574c3016a7390ae1eaf6732259e2bf38eae4d1a7e49c198e233ebb0f50c"
+          }
+        },
+        {
+          "frame": "Square",
+          "verticalFov": 35,
+          "width": 1920,
+          "height": 1920,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\square-35-1920.json",
+            "bytes": 4479,
+            "sha256": "e369c966991804baa5986d908e4726577ee5aa28c3585fff7f649ed20517ac96"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\20260915-102749\\0000_square-35-1920.png",
+            "bytes": 5831466,
+            "sha256": "428323c1cf82208dbf0c41e793880cc0fe2b488c76e5699275d7cae0e4e76510"
+          }
+        },
+        {
+          "frame": "Portrait",
+          "verticalFov": 35,
+          "width": 1080,
+          "height": 1920,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\portrait-35-1920.json",
+            "bytes": 4485,
+            "sha256": "0f9fbe74dda4949a023977340a2bc225149555647fee9f8ebb4412e90c4c1778"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\20260915-102749\\0000_portrait-35-1920.png",
+            "bytes": 3360292,
+            "sha256": "9b50a77bf53b2e379ecd262cc3b5aee941c9f3078ef803c16ab6657aa5a02d0b"
+          }
+        },
+        {
+          "frame": "Landscape",
+          "verticalFov": 65,
+          "width": 3840,
+          "height": 2160,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\landscape-65-3840.json",
+            "bytes": 4489,
+            "sha256": "10575badd94c6b1b8749aead271b3fbb4e6ad3947c0d1660d4a5d5d5e938455e"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\20260915-102749\\0000_landscape-65-3840.png",
+            "bytes": 12029746,
+            "sha256": "5774f3c1e157b56f3a165f4dd9f3993de2f82fb206a857edac1e34cea05d5945"
+          }
+        },
+        {
+          "frame": "Square",
+          "verticalFov": 65,
+          "width": 3840,
+          "height": 3840,
+          "roll": 12,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\square-65-3840.json",
+            "bytes": 4482,
+            "sha256": "6e8153820815bb1cabdee0da3ecb65f5747ac63d349d7b76b2a6a88ed1ae1edd"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\20260915-102749\\0000_square-65-3840.png",
+            "bytes": 21064512,
+            "sha256": "4f2aebf33fe6cea16b6eced502244b4132019bec6ef353f24da5819c6e9e66d0"
+          }
+        },
+        {
+          "frame": "Portrait",
+          "verticalFov": 65,
+          "width": 2160,
+          "height": 3840,
+          "roll": 0,
+          "lensErrorMetres": 0.0,
+          "receipt": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\portrait-65-3840.json",
+            "bytes": 4486,
+            "sha256": "a618ab0b0a534a317a456260a1393f7e27bda517fd021ebc6e599a3411d2f9a0"
+          },
+          "image": {
+            "path": "C:\\work\\SelfieStick\\artifacts\\proof-am4-matrix-r4\\20260915-102749\\0000_portrait-65-3840.png",
+            "bytes": 11974887,
+            "sha256": "13f12bf9a6d9c94f582a7d8846a046c2c613d2f484d386bcd7639ad0466b9c91"
+          }
+        }
+      ]
+    }
+  ],
+  "imageReview": {
+    "status": "VERIFIED",
+    "scope": "Representative final wide/normal/telephoto, landscape/square/portrait, plus 3840 square with 12-degree roll on both hosts. Pose and dimensions verified for every case. Motion smearing in superseded r3 was corrected in r4.",
+    "pixelEqualityClaimed": false
+  },
+  "cleanup": {
+    "timeUtc": "2026-09-15T10:44:55.954634+00:00",
+    "temporaryServersStopped": true,
+    "finalGameRunsRestored": true,
+    "OMENValheimRunning": false,
+    "OMENParkedSaveDirectories": [],
+    "OMENCaptureLockPresent": false,
+    "initialSaveIncidentReversed": false,
+    "AM4IdleSteamStoppedAndLockAbsent": true
+  },
+  "incident": {
+    "status": "DISPOSITION_RESOLVED_CAPTURE_ONLY",
+    "description": "Early OMEN r1 saved cloud Questy and the existing local ComfyEra11 after -savedir was ignored. Initial restoration claims were invalid. Owner confirmed that both are capture-only. Their current post-run saves match preserved evidence and are retained. No older backup was restored; the original writes were not reversed. Recovery disposition is resolved.",
+    "preservation": {
+      "path": "C:\\work\\SelfieStick\\artifacts\\incident-omen-20260915\\preservation.json",
+      "bytes": 3615,
+      "sha256": "2a0fd9ea42aca487133f0432ca8229c4e29e3e804c35ca70443cff6d3951f230"
+    },
+    "questyBeforeBytes": 35705,
+    "questyAfterBytes": 44868,
+    "updatedUtc": "2026-09-15T20:13:00.159925+00:00",
+    "questyDisposition": {
+      "status": "RESOLVED_CAPTURE_ONLY",
+      "postRunSaveRetained": true,
+      "originalWriteReversed": false
+    },
+    "comfyEra11Disposition": {
+      "status": "RESOLVED_CAPTURE_ONLY",
+      "postRunWorldRetained": true,
+      "originalWriteReversed": false
+    },
+    "dispositionAddendum": {
+      "path": "C:\\work\\SelfieStick\\docs\\evidence\\save-incident-disposition-20260915.json",
+      "bytes": 1804,
+      "sha256": "ffa2cc7645c380da7f927403663f54184e428edccc607c1ccaca58d3d09c9251"
+    }
+  },
+  "accounting": {
+    "startedUtc": "2026-09-15T09:05:00Z",
+    "budgetSpecified": false,
+    "dollarCost": "not available",
+    "modelSwaps": 0,
+    "delegatedOutputAccepted": false,
+    "hearthReceipt": "br-20260915-090614-e56e7bbe",
+    "failedOffload": "WinError10061; work completed directly"
+  },
+  "delivery": "Prepared local candidates; no commits, pushes or public deployments by this agent. Concurrent SelfieStick commit 47b311c9ba2c6d44399538396bc800c2d7ad2b9c preserved."
+}
