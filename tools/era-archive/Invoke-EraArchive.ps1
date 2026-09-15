@@ -92,10 +92,12 @@ try {
         if ($PSCmdlet.ShouldProcess($backup, 'snapshot analysis/')) {
             Copy-Item -Recurse -LiteralPath $analysis -Destination $backup
         }
-        $keep = 3; if ($spec.analysisBackupsToKeep) { $keep = [int]$spec.analysisBackupsToKeep }
-        $auto = Get-ChildItem -LiteralPath $OutputRoot -Directory -Filter 'analysis-backup-*-auto' | Sort-Object Name -Descending
-        foreach ($old in ($auto | Select-Object -Skip $keep)) {
-            if ($PSCmdlet.ShouldProcess($old.FullName, 'prune old analysis snapshot')) { Remove-Item -Recurse -Force -LiteralPath $old.FullName }
+        if (-not $SkipCleanup) {
+            $keep = 3; if ($spec.analysisBackupsToKeep) { $keep = [int]$spec.analysisBackupsToKeep }
+            $auto = Get-ChildItem -LiteralPath $OutputRoot -Directory -Filter 'analysis-backup-*-auto' | Sort-Object Name -Descending
+            foreach ($old in ($auto | Select-Object -Skip $keep)) {
+                if ($PSCmdlet.ShouldProcess($old.FullName, 'prune old analysis snapshot')) { Remove-Item -Recurse -Force -LiteralPath $old.FullName }
+            }
         }
     }
 
