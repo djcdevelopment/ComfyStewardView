@@ -107,7 +107,8 @@ class HeroShellTests(unittest.TestCase):
         # them in that order, and each is a real section a reader (and a test) can find.
         thread = self.js[self.js.index("function renderThread()"):]
         order = [thread.index(marker) for marker in
-                 ("renderWorkCarousel()", "renderKinshipEmbed()", "'The rest'", "renderThreadNotes()")]
+                 ("renderBrowseToolbar()", "renderWorkCarousel()", "renderKinshipEmbed()", "renderRestLedger()")]
+        order.append(thread.rindex("renderThreadNotes()"))  # the empty-profile path ends early
         self.assertEqual(order, sorted(order), "the builder page lost its order")
         # The attribution sentence is said once for the page, not once per album.
         self.assertIn("distinctAttributions(", self.js)

@@ -168,29 +168,21 @@ def classify_volume_tier(pieces):
     return "Explorer"
 
 
-def is_qualifying_album(build, contributor, min_build_pieces=20, min_builder_pieces=10, min_builder_share=0.05):
-    """Retain substantial construction and all photographed frames; prune trail markers."""
-    if min_build_pieces <= 0 and min_builder_pieces <= 0:
-        return True
-    if build.get("photos") or build.get("photoStatus") == "rejected":
-        return True
-    if build.get("pieces", 0) < min_build_pieces:
+def is_qualifying_album(build, contributor, min_build_pieces=20, min_builder_pieces=20, min_builder_share=0.0):
+    """A measured profile credit needs 20 saved pieces; legacy imports stay unmeasured."""
+    pieces = contributor.get("pieces")
+    if pieces is None:
+        return contributor.get("evidence") == "legacy-leading-contributor"
+    if not isinstance(pieces, int) or isinstance(pieces, bool):
         return False
-    pieces = contributor.get("pieces") or 0
-    share = contributor.get("share") or 0.0
-    if pieces >= min_builder_pieces:
-        return True
-    if pieces >= min_builder_pieces and share >= min_builder_share:
-        return True
-    if pieces >= 5 and share >= 0.25:
-        return True
-    if share >= 0.50:
-        return True
-    return False
+    if pieces < min_builder_pieces or build.get("pieces", 0) < min_build_pieces:
+        return False
+    share = contributor.get("share")
+    return min_builder_share <= 0 or (isinstance(share, (int, float)) and share >= min_builder_share)
 
 
-def project(document, destination, world_url, analysis_root=None, min_build_pieces=20, min_builder_pieces=10, min_builder_share=0.05,
-            portrait_library=None):
+def project(document, destination, world_url, analysis_root=None, min_build_pieces=20, min_builder_pieces=20, min_builder_share=0.0,
+            portrait_library=None, retain_empty_from=None):
     destination=Path(destination)
     if not world_url.startswith("https://"):
         raise ValueError("World URL must use HTTPS")
@@ -255,6 +247,10 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
         raise ValueError(f"{portrait_library} is not a portrait library manifest")
 
     builds={b["buildKey"]:b for b in document["builds"]}
+    retained_builder_keys = set()
+    if retain_empty_from is not None:
+        previous = load(Path(retain_empty_from) / "directory.json")
+        retained_builder_keys = {b["builderKey"] for b in previous["builders"]}
     directory=[]
     template=(REPO/"tools/era-archive/web/index.html").read_text(encoding="utf-8")
     if HEAD_START not in template or HEAD_END not in template:
@@ -267,7 +263,7 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
             b=builds[key]
             contributor = next((c for c in b.get("contributors", []) if c.get("builderKey") == builder["builderKey"]), None)
             if contributor is None:
-                contributor = {"pieces": b.get("pieces", 0), "share": 1.0}
+                raise ValueError(f"Builder {builder['builderKey']} lists build {key} without a saved-piece credit")
             if not is_qualifying_album(b, contributor, min_build_pieces, min_builder_pieces, min_builder_share):
                 continue
             public={k:b[k] for k in ("buildKey","era","slug","label","pieces","contributors","photos")}
@@ -287,7 +283,7 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
             public["galleryUrl"]=b.get("galleryUrl")
             eras[b["era"]].append(public)
             published_build_keys.add(key)
-        if not eras:
+        if not eras and builder["builderKey"] not in retained_builder_keys:
             continue
         builder_pieces = sum(
             c["pieces"] for bs in eras.values() for b in bs
@@ -317,18 +313,23 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
     # `eras` only covers analysed world saves, so eras 16-17 -- which exist solely as
     # legacy gallery imports and carry photographs -- are absent from it. The page has to
     # say which eras are photographed and which are still being shot, so count from the
-    # albums themselves, across every era that produced one.
+    # albums themselves, across every era that produced one. A photographed build can
+    # be below every participant's profile threshold without its public photographs
+    # disappearing from the archive-wide photography count.
     era_albums=defaultdict(int);era_shot=defaultdict(int);era_photos=defaultdict(int)
+    global_build_keys=published_build_keys | {b["buildKey"] for b in builds.values() if b["photos"]}
     for b in builds.values():
-        if b["buildKey"] not in published_build_keys:
+        if b["buildKey"] not in global_build_keys:
             continue
         era_albums[b["era"]]+=1
         if b["photos"]:
             era_shot[b["era"]]+=1;era_photos[b["era"]]+=len(b["photos"])
+    directory_keys = {r["builderKey"] for r in directory}
     photography={"eras":[{"era":e,"albums":era_albums[e],"albumsWithPhotos":era_shot[e],"photos":era_photos[e]}
             for e in sorted(era_albums)],
         "photos":sum(era_photos.values()),"albumsWithPhotos":sum(era_shot.values()),
-        "buildersWithPhotos":sum(1 for r in directory if r["photos"])}
+        "buildersWithPhotos":len({c["builderKey"] for b in builds.values() if b["photos"]
+            for c in b.get("contributors", []) if c.get("builderKey") in directory_keys})}
     save(destination/"directory.json",{"schema":"steward-creator-directory/v1","generatedAt":document["generatedAt"],
         "builders":sorted(directory,key=lambda b:(b["displayName"].casefold(),b["builderKey"])),
         "eras":document["eras"],"photography":photography,
@@ -401,11 +402,13 @@ def main():
     parser.add_argument("--destination",type=Path,required=True)
     parser.add_argument("--world-url",required=True)
     parser.add_argument("--min-build-pieces",type=int,default=20)
-    parser.add_argument("--min-builder-pieces",type=int,default=10)
-    parser.add_argument("--min-builder-share",type=float,default=0.05)
+    parser.add_argument("--min-builder-pieces",type=int,default=20)
+    parser.add_argument("--min-builder-share",type=float,default=0.0)
     parser.add_argument("--portrait-library",type=Path,default=None,
                         help="a portrait library manifest (a build_manifest.py tree's manifest.json or a built portraits.json); "
                              "every builder record then carries the archive's pick as `portrait`")
+    parser.add_argument("--retain-empty-from",type=Path,default=None,
+                        help="an existing creators projection whose searchable builder identities must remain even if the new credit threshold leaves them with no albums")
     args=parser.parse_args()
     if args.destination.exists(): raise ValueError("Use a new immutable projection directory")
     receipt=project(
@@ -417,6 +420,7 @@ def main():
         min_builder_pieces=args.min_builder_pieces,
         min_builder_share=args.min_builder_share,
         portrait_library=args.portrait_library,
+        retain_empty_from=args.retain_empty_from,
     )
     print(f"VERIFIED projection: {receipt['builders']:,} creator threads; {receipt['albums']:,} albums")
 

@@ -7,8 +7,8 @@
 // anchor's own thread JSON, the directory record the page already holds, and the
 // public participation file. No endpoint, no data file, no second request.
 //
-// The rule the whole model obeys: a shared build is a build both of them placed a
-// saved piece on. That is the only claim the archive can make about two people
+// The rule the whole model obeys: a shared build is a build both of them placed
+// at least twenty saved pieces on. That is the claim the archive can make about two people
 // without asking either of them, and it is the claim this view draws.
 // ---------------------------------------------------------------------------
 
@@ -28,7 +28,7 @@ const PAIR_READY = (() => {
   if (typeof module !== 'undefined' && typeof require === 'function') {
     try {
       const shared = require('./creators.js');
-      for (const name of ['computeTopEight', 'majorityOwner', 'mergeKinshipTags',
+      for (const name of ['computeTopEight', 'qualifyingSharedCredit', 'majorityOwner', 'mergeKinshipTags',
         'portraitIndex', 'PLACEHOLDER_NAME', 'KINSHIP_TAGS', 'StewardParticipation']) {
         if (shared[name] !== undefined && globalThis[name] === undefined) globalThis[name] = shared[name];
       }
@@ -37,6 +37,7 @@ const PAIR_READY = (() => {
     }
   }
   return typeof computeTopEight === 'function'
+    && typeof qualifyingSharedCredit === 'function'
     && typeof majorityOwner === 'function'
     && typeof mergeKinshipTags === 'function'
     && typeof portraitIndex === 'function'
@@ -95,7 +96,7 @@ function kinshipAffinity(thread, allyKey) {
   for (const {album} of pairAlbums(thread)) {
     const mine = pairContributor(album, self);
     const theirs = pairContributor(album, allyKey);
-    if (!mine || !theirs) continue;
+    if (!qualifyingSharedCredit(album, self, allyKey)) continue;
     if (mine.share == null || theirs.share == null) continue;
     // log10(0) is -Infinity for an album with no recorded pieces; the floor at 0 keeps
     // that out of the sum instead of poisoning it.
@@ -131,7 +132,7 @@ function sharedBuildsBetween(thread, allyKey) {
   const self = thread && thread.builderKey;
   if (!self || !allyKey || self === allyKey) return [];
   return pairAlbums(thread)
-    .filter(({album}) => pairContributor(album, self) && pairContributor(album, allyKey))
+    .filter(({album}) => qualifyingSharedCredit(album, self, allyKey))
     .map(({album}) => album)
     .sort((a, b) => (b.pieces || 0) - (a.pieces || 0) || String(a.buildKey).localeCompare(String(b.buildKey)));
 }
@@ -1092,7 +1093,10 @@ function pairMount(host, ctx) {
   pairState.onClick = pairOnClick;
   host.addEventListener('click', pairState.onClick);
   pairRenderAll();
-  pairSyncUrl();
+  // A plain profile (or a direct ?build= link into its archive) can show the default
+  // pair without changing that address. Only an explicitly linked pair, or a later
+  // visitor choice, owns the kin/build query parameters.
+  if (initial.kin) pairSyncUrl();
   // The ribbon cannot know which chip mount settled on -- an invalid ?kin= falls back to
   // rank 1 -- so it hears the opening pair the same way it hears every later one.
   pairEmit();

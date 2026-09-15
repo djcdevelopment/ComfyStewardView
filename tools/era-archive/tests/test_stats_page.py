@@ -188,7 +188,7 @@ class StatsComputeTests(unittest.TestCase):
         self.assertEqual((4, 3, 730), (t6[1]["records"], t6[1]["builders"], t6[1]["pieces"]), "placed >= 5")
         self.assertEqual((2, 1, 680), (t6[4]["records"], t6[4]["builders"], t6[4]["pieces"]), "placed >= 50")
         shipped = t6[-1]
-        self.assertEqual("As shipped in the directory (Recommended)", shipped["label"])
+        self.assertEqual("Qualifying profile albums (20 saved pieces of your own)", shipped["label"])
         self.assertEqual((5, 4, 4, 730, 2), (shipped["records"], shipped["albums"], shipped["builders"], shipped["pieces"], shipped["exemplar"]))
 
     def test_photographs_and_residency(self):
@@ -234,6 +234,7 @@ class StatsProjectionTests(unittest.TestCase):
             self.assertEqual(receipt["albums"], shipped["albums"])
             self.assertEqual(receipt["builders"], shipped["builders"])
             self.assertIn(f"<strong>{shipped['albums']} distinct albums for {shipped['builders']} builders</strong>", page)
+            self.assertIn("Searchable identity pages remain", page)
             # And section 7 is directory.json's photography block, restated.
             photography = json.loads((dest / "directory.json").read_text(encoding="utf-8"))["photography"]
             self.assertEqual(photography["photos"], figures["table_7"]["photos"])
@@ -247,19 +248,22 @@ class StatsProjectionTests(unittest.TestCase):
     def test_is_qualifying_album_pruning_and_preservation(self):
         # 1-piece unphotographed drop is pruned
         self.assertFalse(is_qualifying_album({"pieces": 1, "photos": []}, {"pieces": 1, "share": 1.0}))
-        # 1-piece drop WITH photos is preserved
-        self.assertTrue(is_qualifying_album({"pieces": 1, "photos": [{"id": "p1"}]}, {"pieces": 1, "share": 1.0}))
-        # 1-piece drop with rejected photoStatus is preserved
-        self.assertTrue(is_qualifying_album({"pieces": 1, "photoStatus": "rejected", "photos": []}, {"pieces": 1, "share": 1.0}))
+        # Photography and rejection do not confer a substantial personal credit.
+        self.assertFalse(is_qualifying_album({"pieces": 1, "photos": [{"id": "p1"}]}, {"pieces": 1, "share": 1.0}))
+        self.assertFalse(is_qualifying_album({"pieces": 1, "photoStatus": "rejected", "photos": []}, {"pieces": 1, "share": 1.0}))
         # 15-piece structure without photos is below threshold
         self.assertFalse(is_qualifying_album({"pieces": 15, "photos": []}, {"pieces": 15, "share": 1.0}))
         # 25-piece structure solo is preserved
         self.assertTrue(is_qualifying_album({"pieces": 25, "photos": []}, {"pieces": 25, "share": 1.0}))
         # Incidental 1-piece touch on a 1000-piece build is pruned
         self.assertFalse(is_qualifying_album({"pieces": 1000, "photos": []}, {"pieces": 1, "share": 0.001}))
+        self.assertFalse(is_qualifying_album({"pieces": 1000, "photos": [{"id": "p1"}]}, {"pieces": 19, "share": 0.019}))
+        self.assertTrue(is_qualifying_album({"pieces": 1000, "photos": []}, {"pieces": 20, "share": 0.02}))
         # Real 35-piece contribution on a 1000-piece build is preserved
         self.assertTrue(is_qualifying_album({"pieces": 1000, "photos": []}, {"pieces": 35, "share": 0.035}))
         self.assertFalse(is_qualifying_album({"pieces": 1000, "photos": []}, {"pieces": 35, "share": 0.035}, min_builder_pieces=50))
+        self.assertTrue(is_qualifying_album({"pieces": None, "photos": [{"id": "p1"}]}, {"pieces": None, "evidence": "legacy-leading-contributor"}))
+        self.assertFalse(is_qualifying_album({"pieces": None, "photos": []}, {"pieces": None}))
 
     def test_classify_volume_tier(self):
         from gallery import classify_volume_tier

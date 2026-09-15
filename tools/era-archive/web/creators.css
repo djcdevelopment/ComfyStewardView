@@ -610,6 +610,8 @@ fieldset input {
 }
 
 .rest-name {
+  display: grid;
+  gap: 2px;
   margin: 0;
   min-width: 0;
   font-family: var(--font-display);
@@ -619,6 +621,14 @@ fieldset input {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.rest-pieces {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 400;
+  color: var(--outline);
 }
 
 .rest-link {
@@ -845,6 +855,58 @@ fieldset input {
 
 /* The work: one carousel of the photographed builds -- the viewport with its banner,
    the details plainly under it, the rail of builds as the selector. */
+.build-browse {
+  margin: 0 0 24px;
+  padding: 16px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 6px;
+  background: var(--surface-container-low);
+}
+
+.build-browse h2 {
+  font-size: 1.25rem;
+  margin: 0 0 12px;
+}
+
+.build-browse-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.build-browse-field {
+  min-width: 0;
+}
+
+.build-browse-summary,
+.build-browse-notice {
+  margin: 12px 0 0;
+  font-size: 0.85rem;
+}
+
+.build-browse-notice {
+  color: var(--ember);
+}
+
+.build-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 0;
+}
+
+.build-pager button {
+  margin: 0;
+  padding: 8px 12px;
+}
+
+.build-page-status {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--outline);
+}
+
 .work {
   margin: 0 0 32px;
 }

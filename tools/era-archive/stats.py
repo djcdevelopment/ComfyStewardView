@@ -170,7 +170,7 @@ def cells(values, strong=()):
 
 # ---------------------------------------------------------------- census
 
-def compute(document, qualifies, thresholds=(20, 10, 0.05), exemplar_builder_key=EXEMPLAR_BUILDER_KEY):
+def compute(document, qualifies, thresholds=(20, 20, 0.0), exemplar_builder_key=EXEMPLAR_BUILDER_KEY):
     """Every figure on the page, unformatted. Reads the document; never writes to it."""
     builds = document.get("builds", [])
     builders = document.get("builders", [])
@@ -272,17 +272,17 @@ def compute(document, qualifies, thresholds=(20, 10, 0.05), exemplar_builder_key
     ]
 
     # The shipped rule, walked exactly the way project() walks it: builder by builder, each
-    # of their builds, the credit found or synthesised, then the predicate.
+    # of their builds, the saved-piece credit found, then the predicate.
     by_key = {b["buildKey"]: b for b in builds}
-    shipped = {"label": "As shipped in the directory (Recommended)", "records": 0, "pieces": 0, "exemplar": 0}
-    shipped_builders, shipped_builds, builders_with_photos = set(), set(), set()
+    shipped = {"label": "Qualifying profile albums (20 saved pieces of your own)", "records": 0, "pieces": 0, "exemplar": 0}
+    shipped_builders, shipped_builds = set(), set()
     for builder in builders:
         key = builder.get("builderKey")
         for build_key in builder.get("builds", []) or []:
             b = by_key[build_key]
             c = next((c for c in b.get("contributors", []) or [] if c.get("builderKey") == key), None)
             if c is None:
-                c = {"pieces": b.get("pieces", 0), "share": 1.0}
+                raise ValueError(f"Builder {key} lists build {build_key} without a saved-piece credit")
             if not qualifies(b, c):
                 continue
             shipped["records"] += 1
@@ -290,15 +290,16 @@ def compute(document, qualifies, thresholds=(20, 10, 0.05), exemplar_builder_key
             shipped["exemplar"] += key == exemplar_builder_key
             shipped_builders.add(key)
             shipped_builds.add(build_key)
-            if b.get("photos"):
-                builders_with_photos.add(key)
     shipped["builders"] = len(shipped_builders)
     shipped["albums"] = len(shipped_builds)
     table_6.append(shipped)
 
     # Table 7: what the directory's albums carry beyond a credit.
     era_albums, era_shot, era_photos = defaultdict(int), defaultdict(int), defaultdict(int)
-    for build_key in shipped_builds:
+    # Photographs belong to the archive even when no contributor reaches the profile
+    # threshold. Keep Table 7 aligned with directory.photography, not profile credits.
+    global_build_keys = shipped_builds | {b["buildKey"] for b in builds if b.get("photos")}
+    for build_key in global_build_keys:
         b = by_key[build_key]
         era_albums[b["era"]] += 1
         if b.get("photos"):
@@ -308,8 +309,9 @@ def compute(document, qualifies, thresholds=(20, 10, 0.05), exemplar_builder_key
     table_7 = {
         "eras": [{"era": e, "albums": era_albums[e], "photographed": era_shot[e], "photos": era_photos[e]}
                  for e in sorted(era_albums)],
-        "albums": len(shipped_builds), "photographed": sum(era_shot.values()), "photos": sum(era_photos.values()),
-        "builders_with_photos": len(builders_with_photos),
+        "albums": len(global_build_keys), "photographed": sum(era_shot.values()), "photos": sum(era_photos.values()),
+        "builders_with_photos": len({c["builderKey"] for b in builds if b.get("photos")
+                                     for c in b.get("contributors", []) if c.get("builderKey") in builder_keys}),
         "builders_with_bed": len({r["builderKey"] for _, r in residents}),
         "beds": sum(r.get("beds", 0) or 0 for _, r in residents),
         "albums_with_beds": len({k for k, _ in residents}),
@@ -481,8 +483,8 @@ def main():
     parser.add_argument("--out", type=Path, required=True, help="where to write the rendered page")
     parser.add_argument("--json", type=Path, default=None, help="also write the unformatted figures")
     parser.add_argument("--min-build-pieces", type=int, default=20)
-    parser.add_argument("--min-builder-pieces", type=int, default=10)
-    parser.add_argument("--min-builder-share", type=float, default=0.05)
+    parser.add_argument("--min-builder-pieces", type=int, default=20)
+    parser.add_argument("--min-builder-share", type=float, default=0.0)
     args = parser.parse_args()
     from archive import REPO, load
     from gallery import is_qualifying_album

@@ -13,7 +13,7 @@ if(!gallery||!output)throw Error('Usage: browser-smoke.mjs <creator-base-url> <w
 const strictWorld=worldFlag==='--strict-world'||process.env.SMOKE_STRICT_WORLD==='1';
 // `new URL('api/eras', 'https://host/world')` resolves to https://host/api/eras -- the
 // path segment is a file, not a directory, until it ends in a slash.
-const worldBase=world?new URL(world.endsWith('/')?world:world+'/'):null;
+const worldBase=world&&world!=='-'?new URL(world.endsWith('/')?world:world+'/'):null;
 await mkdir(output,{recursive:true});
 const chrome=process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 // A Chrome profile is a cache, not a receipt: it lives in the temp dir and is removed with
@@ -274,6 +274,50 @@ try{
   await evaluate("document.querySelector('button.kin-tag-btn').click()");
   await wait("document.getElementById('toast').classList.contains('show')");
   results.kinship.gated=true;
+  // A prolific profile must keep both build lanes bounded while older eras stay one
+  // filter away. The original complaint was an Era 4–6 large build buried behind
+  // eleven append-only "more" clicks; a named build link should land on its exact page.
+  const prolific=directory.builders.slice().sort((a,b)=>b.albums-a.albums)[0];
+  await cdp('Page.navigate',{url:new URL(prolific.builderKey+'/',gallery).href});
+  await wait("!!document.getElementById('build-browse-summary')");
+  results.explorer=await evaluate("({sort:document.getElementById('build-sort').value,work:document.querySelectorAll('#work .work-tile').length,rest:document.querySelectorAll('#rest article.album.rest-row').length,eraOptions:document.getElementById('build-era').options.length,summary:document.getElementById('build-browse-summary').textContent})");
+  if(results.explorer.sort!=='mine'||results.explorer.work>40||results.explorer.rest>40)throw Error('Prolific profile is unbounded or does not start with my pieces');
+  if(results.explorer.eraOptions<3)throw Error('Prolific profile offers no cross-era picker');
+  const firstRest=await evaluate("document.querySelector('#rest article.album.rest-row')?.dataset.buildKey");
+  await evaluate("document.querySelector('#rest .build-pager button:last-child').click()");
+  await wait("document.querySelector('#rest .build-page-status')?.textContent.includes('page 2 of')");
+  results.explorer.pageTwo=await evaluate("({rest:document.querySelectorAll('#rest article.album.rest-row').length,first:document.querySelector('#rest article.album.rest-row')?.dataset.buildKey,status:document.querySelector('#rest .build-page-status').textContent})");
+  if(results.explorer.pageTwo.rest>40||results.explorer.pageTwo.first===firstRest)throw Error('Next replaced neither the page nor its forty-row window');
+  const oldBuilder='1dd405b7d09e57419b20fc4df6f18716';
+  const oldThread=await fetch(new URL(`threads/${oldBuilder}.json`,gallery)).then(r=>r.json());
+  const older=oldThread.eras.flatMap(e=>e.albums).find(a=>a.era<=6&&!a.photos.length&&a.pieces>=1000);
+  if(!older)throw Error('No older large Ibocain build survived the profile cutoff');
+  await cdp('Page.navigate',{url:new URL(oldBuilder+'/',gallery).href});
+  await wait("!!document.getElementById('build-era')");
+  await evaluate(`document.getElementById('build-era').value=${JSON.stringify(String(older.era))};document.getElementById('build-era').dispatchEvent(new Event('change'))`);
+  await wait(`document.getElementById('build-era').value===${JSON.stringify(String(older.era))}`);
+  results.explorer.oldEra=await evaluate("({era:document.getElementById('build-era').value,summary:document.getElementById('build-browse-summary').textContent,work:document.querySelectorAll('#work .work-tile').length,rest:document.querySelectorAll('#rest article.album.rest-row').length})");
+  if(results.explorer.oldEra.rest>40||results.explorer.oldEra.work>40)throw Error('Older era still rendered an unbounded build lane');
+  await evaluate(`document.getElementById('build-search').value=${JSON.stringify(older.buildKey)};document.getElementById('build-search').dispatchEvent(new Event('input'))`);
+  await wait("document.getElementById('build-browse-summary')?.textContent.startsWith('1 build of')");
+  results.explorer.find=await evaluate("({summary:document.getElementById('build-browse-summary').textContent,rows:document.querySelectorAll('#rest article.album.rest-row').length})");
+  if(results.explorer.find.rows!==1)throw Error('Name/key search did not narrow the older build to one row');
+  await cdp('Page.navigate',{url:new URL(oldBuilder+'/?build='+older.buildKey,gallery).href});
+  try {
+    await wait(`document.querySelector('article.album.rest-row[data-build-key=${JSON.stringify(older.buildKey)}]')?.dataset.expanded==='true'`);
+  } catch (error) {
+    const observed=await evaluate(`(()=>{const row=document.querySelector('article.album.rest-row[data-build-key=${JSON.stringify(older.buildKey)}]');return {url:location.href,era:document.getElementById('build-era')?.value,summary:document.getElementById('build-browse-summary')?.textContent,notice:document.getElementById('build-browse-notice')?.textContent,rest:document.querySelectorAll('#rest article.album.rest-row').length,target:!!row,expanded:row?.dataset.expanded,moreHidden:row?.querySelector('.album-more')?.hidden,focus:document.activeElement?.className};})()`);
+    throw Error(error.message+' · '+JSON.stringify(observed));
+  }
+  results.explorer.directLink=await evaluate(`({era:document.getElementById('build-era').value,rest:document.querySelectorAll('#rest article.album.rest-row').length,open:document.querySelector('article.album.rest-row[data-build-key=${JSON.stringify(older.buildKey)}]')?.dataset.expanded==='true',url:location.search})`);
+  if(results.explorer.directLink.era!==String(older.era)||!results.explorer.directLink.open||results.explorer.directLink.rest>40||!results.explorer.directLink.url.includes('build='+older.buildKey))throw Error('Older build deep link did not reveal its exact bounded page and preserve its address');
+  const empty=directory.builders.find(b=>b.albums===0);
+  if(!empty)throw Error('The agreed searchable empty profiles disappeared');
+  await cdp('Page.navigate',{url:new URL(empty.builderKey+'/',gallery).href});
+  await wait("!!document.getElementById('build-browse-summary')");
+  results.explorer.empty=await evaluate("({message:document.getElementById('build-browse-summary').textContent,albums:document.querySelectorAll('article.album').length})");
+  if(!/No substantial build albums/.test(results.explorer.empty.message)||results.explorer.empty.albums)throw Error('Retained identity has no clear empty state');
+  await screenshot('creator-explorer-empty-profile');
   // The builder's own page and the portrait picker on it. Every builder wears a painted
   // face by the archive's pick; the avatar on the builder page is the door to the profile
   // page, where anyone may try another: 96 portraits, Trade=Carpenter leaves four, +red
@@ -367,7 +411,7 @@ try{
   if(errors.length)throw Error(errors.join('\n'));
   const errorsBeforeWorld=errors.length;
   let spatialFailure=null;
-  if(!world){
+  if(!worldBase){
     results.spatial={status:'skipped',reason:'no world base URL'};
     results.status='passed';
   }else{

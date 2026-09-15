@@ -10,7 +10,7 @@ const {
   SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, compareBuilders, matchScore,
   computeTopEight, portraitIndex, eraBounds, heroAliases,
   majorityOwner, tagCandidates, leadingBuilderNote, buildKinshipTree, mergeKinshipTags, kinshipTagRecord, StewardParticipation,
-  KINSHIP_TAG_IDS, pickMosaicAlbums, distinctAttributions,
+  KINSHIP_TAG_IDS, pickMosaicAlbums, profileBrowseRows, profileBrowsePage, hasMinimumCredit, qualifyingSharedCredit, distinctAttributions,
 } = require(path.join(__dirname, '..', 'web', 'creators.js'));
 
 function builder(overrides) {
@@ -173,7 +173,7 @@ test('computeTopEight caps the panel at eight and never lists the builder themse
   assert.ok(!top.some((t) => t.builderKey === SELF), 'the builder is never their own co-builder');
 });
 
-test('computeTopEight counts a legacy contributor (pieces: null) as a shared album worth zero pieces', () => {
+test('computeTopEight does not infer twenty-piece kinship from an unmeasured legacy import', () => {
   const thread = {
     builderKey: SELF,
     eras: [{era: 16, albums: [
@@ -183,7 +183,7 @@ test('computeTopEight counts a legacy contributor (pieces: null) as a shared alb
       ]},
     ]}],
   };
-  assert.deepEqual(computeTopEight(thread), [{builderKey: BIG, sharedAlbums: 1, sharedPieces: 0}]);
+  assert.deepEqual(computeTopEight(thread), []);
 });
 
 test('computeTopEight breaks a full tie on builderKey so the panel does not reshuffle', () => {
@@ -201,6 +201,17 @@ test('computeTopEight returns nothing for a solo builder, so the panel can hide 
   assert.deepEqual(computeTopEight(solo), []);
   assert.deepEqual(computeTopEight(null), []);
   assert.deepEqual(computeTopEight({builderKey: SELF, eras: []}), []);
+});
+
+test('automatic kinship starts at twenty saved pieces for each builder', () => {
+  const shared = album('threshold', [
+    {builderKey: SELF, pieces: 20}, {builderKey: BIG, pieces: 19}, {builderKey: MID, pieces: 20},
+  ]);
+  assert.equal(hasMinimumCredit({pieces: 19}), false);
+  assert.equal(hasMinimumCredit({pieces: 20}), true);
+  assert.equal(hasMinimumCredit({pieces: null}), false);
+  assert.equal(qualifyingSharedCredit(shared, SELF, BIG), false);
+  assert.equal(qualifyingSharedCredit(shared, SELF, MID), true);
 });
 
 test('computeTopEight survives an album with no contributors array', () => {
@@ -357,7 +368,7 @@ test('buildKinshipTree spans a co-builder across every era they appear in', () =
   assert.equal(tree.anchor.displayName, 'Skald');
   assert.deepEqual(tree.anchor.eras, [7, 9, 16], 'the anchor states its own eras ascending');
   assert.deepEqual(tree.eras, [7, 9, 16], 'every era block on the thread, ascending');
-  assert.equal(tree.coBuilderCount, 4);
+  assert.equal(tree.coBuilderCount, 3);
 
   const x = branchFor(tree, CO_X);
   assert.deepEqual(x.spans.map((s) => s.era), [7, 9], 'spans run ascending, one per era');
@@ -377,21 +388,15 @@ test('buildKinshipTree spans a co-builder across every era they appear in', () =
   assert.equal(x.legacyOnly, false);
 });
 
-test('buildKinshipTree keeps a legacy-only branch, worth an album and no pieces', () => {
+test('buildKinshipTree leaves an unmeasured legacy album on the profile but out of kinship', () => {
   const tree = buildKinshipTree(kinshipThread());
-  const y = branchFor(tree, CO_Y);
-  assert.equal(y.legacyOnly, true);
-  assert.equal(y.totalSharedAlbums, 1);
-  assert.equal(y.totalSharedPieces, 0, 'a legacy contributor adds no pieces to the overlap');
-  assert.equal(y.spans.length, 1);
-  assert.equal(y.spans[0].legacy, true);
-  assert.equal(y.spans[0].anchorMajority, false, 'nobody owns a build with no shares on it');
-  assert.deepEqual(y.spans[0].builds, [BUILD_LEGACY]);
+  assert.equal(branchFor(tree, CO_Y), undefined);
+  assert.equal(tree.majorityBuilds.some((b) => b.buildKey === BUILD_LEGACY), false);
 });
 
 test('buildKinshipTree ranks on shared pieces, then albums, then the key', () => {
   const tree = buildKinshipTree(kinshipThread());
-  assert.deepEqual(tree.branches.map((b) => b.builderKey), [CO_X, CO_Z, CO_W, CO_Y]);
+  assert.deepEqual(tree.branches.map((b) => b.builderKey), [CO_X, CO_Z, CO_W]);
   // CO_Z and CO_W tie exactly -- one album, min(200, 250) pieces each -- so the full
   // 32-hex key decides, and the order is fixed between renders instead of reshuffling.
   assert.equal(branchFor(tree, CO_Z).totalSharedPieces, branchFor(tree, CO_W).totalSharedPieces);
@@ -426,7 +431,7 @@ test('buildKinshipTree folds confirmed and pending tags onto the branch they bel
   assert.deepEqual(x.tags.confirmed, ['basemate', 'mason']);
   assert.deepEqual(x.tags.pending, ['roof'], 'a pending tag that has been confirmed is not pending any more');
   // Both stray records name a different anchor and belong on that builder's own tree.
-  assert.deepEqual(branchFor(tree, CO_Y).tags, {confirmed: [], pending: []});
+  assert.equal(branchFor(tree, CO_Y), undefined);
 });
 
 test('buildKinshipTree returns an empty tree rather than throwing on a missing thread', () => {
@@ -773,6 +778,27 @@ test('pickMosaicAlbums keeps photographed albums only, own pieces first, then ph
   assert.deepEqual(pickMosaicAlbums(doc, 2).map((a) => a.buildKey[0]), ['2', '4']);
   assert.deepEqual(pickMosaicAlbums(null), []);
   assert.deepEqual(pickMosaicAlbums({builderKey: me, eras: [{era: 1, albums: [album('9', 1, 1, 0, 1)]}]}), []);
+});
+
+test('a prolific profile can filter every era and page without losing older large builds', () => {
+  const me = 'a'.repeat(32);
+  const make = (index, era, mine, pieces) => ({buildKey: index.toString(16).padStart(64, '0'),
+    era, label: `Build ${index}`, pieces, photos: index % 9 === 0 ? [{id: `p${index}`}] : [],
+    contributors: [{builderKey: me, pieces: mine, share: mine / pieces}]});
+  const recent = Array.from({length: 3700}, (_, i) => make(i + 1, 16, 20 + i % 40, 100 + i));
+  const old = make(4001, 4, 6000, 7000);
+  const thread = {builderKey: me, eras: [{era: 16, albums: recent}, {era: 4, albums: [old]}]};
+  const mineFirst = profileBrowseRows(thread);
+  assert.equal(mineFirst[0].buildKey, old.buildKey);
+  assert.equal(profileBrowsePage(mineFirst, 0).shown.length, 40);
+  const last = profileBrowsePage(mineFirst, 1000);
+  assert.equal(last.page, last.pages - 1);
+  assert.equal(last.total, 3701);
+  assert.equal(last.shown.length, 21);
+  assert.deepEqual(profileBrowseRows(thread, {era: '4'}).map((a) => a.buildKey), [old.buildKey]);
+  assert.deepEqual(profileBrowseRows(thread, {query: old.buildKey.slice(-12)}).map((a) => a.buildKey), [old.buildKey]);
+  assert.equal(profileBrowseRows(thread, {sort: 'size'})[0].buildKey, old.buildKey);
+  assert.equal(profileBrowseRows(thread, {sort: 'newest'})[0].era, 16);
 });
 
 test('distinctAttributions says each sentence once, the standard one first', () => {

@@ -210,7 +210,8 @@ class ArchiveTest(unittest.TestCase):
                 "builders": [{"builderKey": "b" * 32, "displayName": "A", "aliases": [],
                               "nameStatus": "recorded", "builds": ["a" * 64]}],
                 "builds": [dict(builds[0], era=14, slug="era14", label="Hall", pieces=9,
-                                attribution="x")]}, projection, "https://world.example/w/")
+                                attribution="x")]}, projection, "https://world.example/w/",
+                min_build_pieces=0, min_builder_pieces=0)
             thread = archive.load(projection / "threads" / ("b" * 32 + ".json"))
             self.assertEqual("rejected", thread["eras"][0]["albums"][0]["photoStatus"])
 
@@ -425,7 +426,7 @@ class ArchiveTest(unittest.TestCase):
                            'residents':[{'builderKey':sleeper,'beds':2,'evidence':'bed-owner-in-footprint',
                                          'characterId':'-8675309','x':4242.5}],
                            'bounds':{'minX':123.45},'sourceKey':'secret-source','snapshotId':1001}]}
-            gallery.project(doc,Path(temp),'https://world.example/world/',min_build_pieces=0)
+            gallery.project(doc,Path(temp),'https://world.example/world/',min_build_pieces=0,min_builder_pieces=0)
             raw=''.join(p.read_text() for p in Path(temp).rglob('*.json'))
             for private in ('9007199254740993','private-evidence','123.45','secret-source','characterIds','observations',
                             '-8675309','4242.5'):
@@ -447,7 +448,7 @@ class ArchiveTest(unittest.TestCase):
                 'builders':[{'builderKey':key,'displayName':'Softstyles & Co','aliases':[],'nameStatus':'recorded','builds':[build]}],
                 'builds':[{'buildKey':build,'era':14,'slug':'era14','label':'Hall','pieces':9,'photos':[photo],
                            'contributors':[{'builderKey':key,'pieces':9,'share':1,'evidence':'saved-piece-creator'}]}]}
-            gallery.project(doc,Path(temp),'https://world.example/world/')
+            gallery.project(doc,Path(temp),'https://world.example/world/',min_build_pieces=0,min_builder_pieces=0)
             page=(Path(temp)/key/'index.html').read_text(encoding='utf-8')
             # A pasted Discord link has to name this builder and show their photograph.
             self.assertIn('<title>Softstyles &amp; Co · Comfy builders</title>',page)
@@ -564,7 +565,7 @@ class ArchiveTest(unittest.TestCase):
             self.assertNotIn(named,[c['builderKey'] for c in public['contributors']])
             self.assertNotIn(unnamed,[c['builderKey'] for c in public['contributors']])
             with tempfile.TemporaryDirectory() as out:
-                gallery.project(projection,Path(out),'https://world.example/world/',min_build_pieces=0)
+                gallery.project(projection,Path(out),'https://world.example/world/',min_build_pieces=0,min_builder_pieces=0)
                 threads=sorted((Path(out)/'threads').glob('*.json'))
                 album=archive.load(threads[0])['eras'][0]['albums'][0]
                 self.assertEqual(public['residents'],album['residents'])

@@ -267,7 +267,9 @@ const initKinshipPage = async () => {
   function otherSharedBuilds() {
     const held = new Set(majorityBuilds().map((b) => b.buildKey));
     return visibleAlbums
-      .filter((album) => !held.has(album.buildKey) && (album.contributors || []).length > 1)
+      .filter((album) => !held.has(album.buildKey)
+        && (album.contributors || []).some((c) => c && c.builderKey !== anchor
+          && qualifyingSharedCredit(album, anchor, c.builderKey)))
       .sort((a, b) => (b.pieces || 0) - (a.pieces || 0) || a.buildKey.localeCompare(b.buildKey));
   }
 
@@ -621,7 +623,7 @@ const initKinshipPage = async () => {
     const tally = new Map();
     for (const build of majorityBuilds()) {
       for (const c of contributorsOf(build)) {
-        if (!c || c.builderKey === anchor) continue;
+        if (!c || c.builderKey === anchor || !qualifyingSharedCredit(build, anchor, c.builderKey)) continue;
         const entry = tally.get(c.builderKey) || {builderKey: c.builderKey, pieces: 0, builds: []};
         entry.pieces += c.pieces || 0;
         entry.builds.push(build);

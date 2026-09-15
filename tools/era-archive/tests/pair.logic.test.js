@@ -37,9 +37,8 @@ function album(overrides) {
   };
 }
 
-// One anchor, one ally, four shared builds: a big one with a third contributor and an
-// unattributed remainder, two that tie on pieces, one of them a legacy import, and a
-// single-piece build whose log10 weight is exactly zero.
+// One anchor, one ally, two qualifying shared builds. An unmeasured legacy import
+// and a single-piece marker remain in the source thread but establish no kinship.
 function thread() {
   return {
     builderKey: ANCHOR,
@@ -71,7 +70,7 @@ function thread() {
             era: 8,
             label: 'Boat shed',
             pieces: 100,
-            contributors: [contributor(ANCHOR, 50, 0.5), contributor(ALLY, 10, 0.1)],
+            contributors: [contributor(ANCHOR, 50, 0.5), contributor(ALLY, 20, 0.2)],
           }),
           album({
             buildKey: TIE_B,
@@ -126,8 +125,8 @@ test('pair.js exports the model the profile page is coded against', () => {
 /* ---- affinity ---- */
 
 test('affinity weights the smaller share by log10 of the build', () => {
-  // 0.25 * log10(1000) + 0.1 * log10(100) + legacy 0 + single-piece 0
-  assert.equal(pair.kinshipAffinity(thread(), ALLY), 0.95);
+  // 0.25 * log10(1000) + 0.2 * log10(100); legacy and marker are excluded.
+  assert.equal(pair.kinshipAffinity(thread(), ALLY), 1.15);
 });
 
 test('a legacy album contributes nothing to affinity rather than a guess', () => {
@@ -175,7 +174,7 @@ test('rankTier bands the first eight places and nothing outside them', () => {
 
 test('sharedBuildsBetween is biggest first, then the build key', () => {
   const keys = pair.sharedBuildsBetween(thread(), ALLY).map((a) => a.buildKey);
-  assert.deepEqual(keys, [BIG, TIE_A, TIE_B, TINY]);
+  assert.deepEqual(keys, [BIG, TIE_A]);
 });
 
 test('sharedBuildsBetween skips a build only one of them touched', () => {
@@ -198,7 +197,7 @@ test('shareSplit accounts for every piece, pair first, with the remainder unattr
 });
 
 test('shareSplit flags a legacy import instead of inventing shares for it', () => {
-  const legacy = pair.sharedBuildsBetween(thread(), ALLY).find((a) => a.buildKey === TIE_B);
+  const legacy = thread().eras[1].albums.find((a) => a.buildKey === TIE_B);
   const split = pair.shareSplit(legacy, [ANCHOR, ALLY]);
   assert.equal(split.legacy, true);
   assert.deepEqual(split.segments.map((s) => s.pieces), [0, 0]);
@@ -241,12 +240,12 @@ test('buildKinshipPair opens on the largest shared build', () => {
   assert.equal(built.activeBuild.buildKey, BIG);
   assert.equal(built.activeBuild.photos.length, 2);
   assert.equal(built.activeBuild.allotment.unattributed.pieces, 50);
-  assert.equal(built.sharedBuildCount, 4);
-  // min(500,250) + min(50,10) + legacy 0 + min(1,1)
-  assert.equal(built.sharedPieces, 261);
-  assert.deepEqual(built.eras, [7, 8, 12]);
+  assert.equal(built.sharedBuildCount, 2);
+  // min(500,250) + min(50,20)
+  assert.equal(built.sharedPieces, 270);
+  assert.deepEqual(built.eras, [7, 8]);
   assert.equal(built.photographedCount, 1);
-  assert.equal(built.affinity, 0.95);
+  assert.equal(built.affinity, 1.15);
   assert.equal(built.standing, 'recorded');
   assert.equal(built.ally.displayName, 'Tugcow');
   assert.equal(built.ally.named, true);
@@ -254,7 +253,8 @@ test('buildKinshipPair opens on the largest shared build', () => {
 });
 
 test('buildKinshipPair honours an activeBuildKey and falls back from an unknown one', () => {
-  assert.equal(model({activeBuildKey: TINY}).activeBuild.buildKey, TINY);
+  assert.equal(model({activeBuildKey: TINY}).activeBuild.buildKey, BIG);
+  assert.equal(model({activeBuildKey: TIE_A}).activeBuild.buildKey, TIE_A);
   assert.equal(model({activeBuildKey: ELSEWHERE}).activeBuild.buildKey, BIG);
   assert.equal(model({activeBuildKey: 'not-a-build'}).activeBuild.buildKey, BIG);
 });
@@ -303,15 +303,7 @@ test('buildKinshipPair reads ownership and the legacy flag onto every row', () =
   assert.equal(big.legacy, false);
   assert.equal(big.photographed, true);
   assert.equal(big.photoCount, 2);
-  const legacy = rows.find((r) => r.buildKey === TIE_B);
-  assert.equal(legacy.legacy, true);
-  assert.equal(legacy.anchorShare, null);
-  assert.equal(legacy.anchorOwnership, null);
-  assert.equal(legacy.terrainStatus, 'historical-gallery');
-  assert.equal(legacy.worldUrl, null);
-  const tiny = rows.find((r) => r.buildKey === TINY);
-  assert.equal(tiny.photographed, false);
-  assert.equal(tiny.photoStatus, 'rejected');
+  assert.equal(rows.some((r) => r.buildKey === TIE_B || r.buildKey === TINY), false);
 });
 
 test('buildKinshipPair passes residents through only when the album publishes them', () => {
@@ -320,7 +312,7 @@ test('buildKinshipPair passes residents through only when the album publishes th
   withBeds.eras[0].albums[0].residents = [{builderKey: ALLY, beds: 2, evidence: 'bed-residency'}];
   const built = pair.buildKinshipPair(withBeds, ALLY, {builderFor});
   assert.deepEqual(built.activeBuild.residents, [{builderKey: ALLY, beds: 2, evidence: 'bed-residency'}]);
-  assert.equal(built.sharedBuilds.find((r) => r.buildKey === TINY).residents, null);
+  assert.equal(built.sharedBuilds.find((r) => r.buildKey === TIE_A).residents, null);
 });
 
 test('buildKinshipPair marks an unresolved directory record as unnamed', () => {
