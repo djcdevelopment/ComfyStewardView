@@ -120,26 +120,26 @@ def write_json(path,value):
 root=Path(settings['root']).resolve();incoming=Path(settings['archive'])
 assert root==Path('/home')/root.parts[2]/root.parts[3]
 assert stamp(incoming)=={'bytes':settings['bytes'],'sha256':settings['sha256']}
-old=json.loads(run('docker','inspect','steward-world'))[0];assert old['State']['Running'] is True
-base=old['Config']['Image'];assert base.startswith('steward-world:');run('docker','image','inspect',base)
-mounts={mount['Destination']:mount for mount in old['Mounts']}
+old_container=json.loads(run('docker','inspect','steward-world'))[0];assert old_container['State']['Running'] is True
+base=old_container['Config']['Image'];assert base.startswith('steward-world:');run('docker','image','inspect',base)
+mounts={mount['Destination']:mount for mount in old_container['Mounts']}
 source_catalog=Path(mounts['/catalog']['Source']).resolve();requests_dir=Path(mounts['/requests']['Source']).resolve()
 releases=(root/'releases').resolve()
 assert source_catalog.is_dir() and source_catalog.is_relative_to(releases)
 assert mounts['/catalog']['RW'] is False and (source_catalog/'catalog.json').is_file()
 assert requests_dir==(root/'shot-requests').resolve() and requests_dir.is_dir()
 live_catalog=json.loads((source_catalog/'catalog.json').read_text(encoding='utf-8'))
-old=[item for item in live_catalog['eras'] if item['slug']==settings['entry']['slug']]
-assert len(old)<=1
+old_entries=[item for item in live_catalog['eras'] if item['slug']==settings['entry']['slug']]
+assert len(old_entries)<=1
 if settings['replaceReady']:
-    assert len(old)==1 and old[0]['status']=='ready'
-    assert old[0]['snapshotId']==settings['expectedOldSnapshot']
-    old_cache=Path(old[0]['cache'])
+    assert len(old_entries)==1 and old_entries[0]['status']=='ready'
+    assert old_entries[0]['snapshotId']==settings['expectedOldSnapshot']
+    old_cache=Path(old_entries[0]['cache'])
     assert not old_cache.is_absolute() and '..' not in old_cache.parts and old_cache.parts[0]==settings['entry']['slug']
     assert stamp(source_catalog/old_cache)['sha256']==settings['expectedOldCacheSha256']
-    assert settings['entry']['snapshotId']==old[0]['snapshotId']
+    assert settings['entry']['snapshotId']==old_entries[0]['snapshotId']
 else:
-    assert not old or old[0]['status']!='ready'
+    assert not old_entries or old_entries[0]['status']!='ready'
 
 dest=releases/settings['release'];assert not dest.exists();dest.mkdir(parents=True)
 staging=dest/'incoming';staging.mkdir()
@@ -163,7 +163,7 @@ existing=[item for item in catalog_document['eras'] if item['slug']==slug]
 assert len(existing)<=1
 if existing:
     if settings['replaceReady']:
-        assert existing[0]==old[0]
+        assert existing[0]==old_entries[0]
         outgoing=dest/('outgoing-'+slug);assert not outgoing.exists()
         assert (catalog/slug).is_dir() and (catalog/slug).resolve().is_relative_to(catalog.resolve())
         os.replace(catalog/slug,outgoing) # preserve the old hardlinks outside the new catalog
@@ -188,10 +188,10 @@ receipt['files']+=entry['files'];receipt['files'].sort(key=lambda item:item['pat
 (catalog/'catalog.json').chmod(0o444);receipt_path.chmod(0o444)
 (staging/'entry.json').unlink();staging.rmdir()
 
-environment={line.split('=',1)[0]:line.split('=',1)[1] for line in old['Config']['Env']}
+environment={line.split('=',1)[0]:line.split('=',1)[1] for line in old_container['Config']['Env']}
 environment['STEWARD_RELEASE_VERSION']=settings['release'];environment['STEWARD_SOURCE_REVISION']=settings['revision']
 envfile=dest/'runtime.env';envfile.write_text(''.join(key+'='+value+'\n' for key,value in environment.items()));envfile.chmod(0o600)
-ui=dest/'ui';ui.mkdir();command=list(old['Config']['Cmd']);main='dev.steward.lab.LabMain'
+ui=dest/'ui';ui.mkdir();command=list(old_container['Config']['Cmd']);main='dev.steward.lab.LabMain'
 if '-jar' in command:
     marker=command.index('-jar');jvm=command[:marker];application=command[marker+2:]
 else:

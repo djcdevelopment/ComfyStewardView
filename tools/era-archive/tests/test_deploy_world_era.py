@@ -48,8 +48,10 @@ class DeployWorldEraTests(unittest.TestCase):
 
     def test_ready_replacement_is_exactly_preflighted_and_retains_outgoing_files(self):
         compile(MODULE.REMOTE,'<deploy-world-era-remote>','exec')
-        self.assertIn("old[0]['snapshotId']==settings['expectedOldSnapshot']",MODULE.REMOTE)
+        self.assertIn("old_entries[0]['snapshotId']==settings['expectedOldSnapshot']",MODULE.REMOTE)
         self.assertIn("stamp(source_catalog/old_cache)['sha256']==settings['expectedOldCacheSha256']",MODULE.REMOTE)
+        self.assertIn("old_container['Config']['Env']",MODULE.REMOTE)
+        self.assertIn("old_container['Config']['Cmd']",MODULE.REMOTE)
         self.assertIn("os.replace(catalog/slug,outgoing)",MODULE.REMOTE)
         self.assertIn("box['pieces']==settings['probePieces']",MODULE.REMOTE)
         self.assertIn("response.headers['X-Steward-Scene-Pieces']",MODULE.REMOTE)
