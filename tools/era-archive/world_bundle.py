@@ -34,6 +34,33 @@ def context_records(manifest):
     return records
 
 
+def validate_membership_remap(spec, source):
+    """A legacy public snapshot may reuse membership only from identical save bytes."""
+    original=spec.get('membershipSourceSnapshotId')
+    if original is None:return
+    if (int(original)!=int(source['snapshotId']) or
+            int(original)==int(spec['snapshotId'])):
+        raise ValueError('Membership snapshot remap does not match the archived source')
+
+
+def add_membership(con, membership, snapshot, source_snapshot):
+    source_snapshot=int(source_snapshot);snapshot=int(snapshot)
+    stats=con.execute(f'SELECT min(snapshot_id),max(snapshot_id),count(*),count(DISTINCT zdo_index) '
+                      f'FROM read_parquet({sql_path(membership)})').fetchone()
+    if stats[0]!=source_snapshot or stats[1]!=source_snapshot or stats[2]!=stats[3]:
+        raise ValueError('Build membership source snapshot or indices are not exact')
+    if source_snapshot!=snapshot:
+        rows=con.execute('SELECT count(*),count(DISTINCT zdo_index) FROM zdo').fetchone()
+        if stats[2]!=rows[0] or rows[0]!=rows[1]:
+            raise ValueError('Legacy membership does not cover the entire public snapshot')
+    con.execute(f'CREATE TABLE build_membership AS SELECT {snapshot}::BIGINT AS snapshot_id,'
+                f'build_key,zdo_index FROM read_parquet({sql_path(membership)})')
+    bad=con.execute("SELECT count(*) FROM build_membership m LEFT JOIN zdo z USING(snapshot_id,zdo_index) "
+                    "WHERE z.zdo_index IS NULL OR NOT regexp_full_match(m.build_key,'[a-f0-9]{64}')").fetchone()[0]
+    if bad:raise ValueError('Build membership is not exact for this public snapshot')
+    con.execute('CREATE INDEX membership_build ON build_membership(build_key)')
+
+
 def add_ready(root, spec):
     slug=spec['slug'];snapshot=int(spec['snapshotId'])
     if slug!='era'+str(int(slug.removeprefix('era'))):raise ValueError('Invalid era slug')
@@ -71,11 +98,7 @@ def add_ready(root, spec):
     if spec.get('membership'):
         membership=Path(spec['membership'])
         with duckdb.connect(str(output)) as con:
-            con.execute(f'CREATE TABLE build_membership AS SELECT snapshot_id,build_key,zdo_index FROM read_parquet({sql_path(membership)})')
-            bad=con.execute("SELECT count(*) FROM build_membership m LEFT JOIN zdo z USING(snapshot_id,zdo_index) WHERE z.zdo_index IS NULL OR NOT regexp_full_match(m.build_key,'[a-f0-9]{64}')").fetchone()[0]
-            duplicates=con.execute('SELECT count(*)-count(DISTINCT zdo_index) FROM build_membership').fetchone()[0]
-            if bad or duplicates:raise ValueError('Build membership is not exact for this public snapshot')
-            con.execute('CREATE INDEX membership_build ON build_membership(build_key)')
+            add_membership(con,membership,snapshot,spec.get('membershipSourceSnapshotId',snapshot))
     return {'slug':slug,'label':'Comfy Era '+slug[3:],'status':'ready','snapshotId':snapshot,
             'cache':output.relative_to(root).as_posix(),
             **({'contextManifest':(context_output/'manifest.json').relative_to(root).as_posix()} if context_output else {}),
@@ -104,6 +127,7 @@ def main():
             analysis=analyses[spec['slug']]
             if analysis['sourceKey']!=sources[spec['slug']]['sourceKey']:
                 raise ValueError('Build analysis source revision mismatch')
+            validate_membership_remap(spec,sources[spec['slug']])
             exact=checked_file(args.output_root,analysis['membership'])
             if not spec.get('membership') or digest(Path(spec['membership']))!=digest(exact):
                 raise ValueError('Archived era requires its verified exact build membership')

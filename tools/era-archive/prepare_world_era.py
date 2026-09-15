@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from archive import artifact, checked_file, digest, load, now, save
-from world_bundle import add_ready
+from world_bundle import add_ready, validate_membership_remap
 
 
 def prepare(output_root, ready_inputs, era_slug, destination):
@@ -24,6 +24,7 @@ def prepare(output_root, ready_inputs, era_slug, destination):
     analysis=analyses[era_slug]
     if analysis['sourceKey']!=source['sourceKey']:
         raise ValueError('Build analysis source revision mismatch')
+    validate_membership_remap(spec,source)
     exact=checked_file(output_root,analysis['membership'])
     if not spec.get('membership') or digest(Path(spec['membership']))!=digest(exact):
         raise ValueError('Incremental era requires its verified exact build membership')

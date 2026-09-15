@@ -48,11 +48,26 @@ def main():
     parser.add_argument('--revision',required=True)
     parser.add_argument('--ssh-target',default='am4')
     parser.add_argument('--remote-root',default='/home/derek/steward-world')
+    parser.add_argument('--replace-ready',action='store_true',
+                        help='replace one already-ready era in a new immutable release')
+    parser.add_argument('--expected-old-snapshot',type=int)
+    parser.add_argument('--expected-old-cache-sha256')
+    parser.add_argument('--probe-build')
+    parser.add_argument('--probe-pieces',type=int)
     parser.add_argument('--receipt',type=Path,required=True)
     args=parser.parse_args()
     if not re.fullmatch(r'[a-f0-9]{40}',args.revision):raise ValueError('Use a complete source commit')
     if not re.fullmatch(r'/home/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+',args.remote_root):raise ValueError('Invalid deployment root')
     if not re.fullmatch(r'[A-Za-z0-9_.@-]+',args.ssh_target):raise ValueError('Invalid SSH alias')
+    if args.replace_ready:
+        if (not args.expected_old_snapshot or
+                not re.fullmatch(r'[a-f0-9]{64}',args.expected_old_cache_sha256 or '') or
+                not re.fullmatch(r'[a-f0-9]{64}',args.probe_build or '') or
+                not args.probe_pieces or args.probe_pieces<=0):
+            raise ValueError('Ready replacement needs the exact old snapshot/cache and a build probe')
+    elif any(value is not None for value in (args.expected_old_snapshot,args.expected_old_cache_sha256,
+                                               args.probe_build,args.probe_pieces)):
+        raise ValueError('Replacement preflight flags require --replace-ready')
     head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=REPO,text=True).strip()
     dirty=subprocess.check_output(['git','status','--porcelain','--','lab','tools/era-archive'],cwd=REPO,text=True)
     if head!=args.revision or dirty.strip():raise ValueError('Commit the reviewed era implementation before release')
@@ -66,7 +81,8 @@ def main():
             for item in package['files']:
                 tar.add(root/item['path'],arcname=item['path'],recursive=False)
         archive_stamp=digest(archive)
-        release=(args.revision[:12]+'-add-'+entry['slug']+'-'+archive_stamp['sha256'][:12])
+        release=(args.revision[:12]+('-replace-' if args.replace_ready else '-add-')+
+                 entry['slug']+'-'+archive_stamp['sha256'][:12])
         target='/tmp/steward-world-'+release+'.tgz'
         remote(args.ssh_target,'import subprocess\nsubprocess.run(["docker","inspect","-f",'
                '"{{.State.Running}}","steward-world"],check=True,capture_output=True)\n')
@@ -74,16 +90,20 @@ def main():
                         args.ssh_target+':'+target],check=True)
         settings={'root':args.remote_root,'archive':target,'release':release,'revision':args.revision,
                   'sha256':archive_stamp['sha256'],'bytes':archive_stamp['bytes'],'jar':digest(jar),
-                  'entry':entry,'files':{item['path']:item for item in package['files']}}
+                  'entry':entry,'files':{item['path']:item for item in package['files']},
+                  'replaceReady':args.replace_ready,'expectedOldSnapshot':args.expected_old_snapshot,
+                  'expectedOldCacheSha256':args.expected_old_cache_sha256,
+                  'probeBuild':args.probe_build,'probePieces':args.probe_pieces}
         result=json.loads(remote(args.ssh_target,'settings='+repr(settings)+'\n'+REMOTE))
         save(args.receipt,{'schema':'steward-world-era-deployment/v1','deployedAt':now(),
                            'revision':args.revision,'era':entry['slug'],'snapshotId':entry['snapshotId'],
+                           'mode':'replace-ready' if args.replace_ready else 'add',
                            'archive':archive_stamp,'remote':result})
         print(json.dumps(result))
 
 
 REMOTE=r'''
-import datetime,hashlib,json,os,shutil,socket,subprocess,tarfile,time,urllib.request
+import datetime,hashlib,json,os,shutil,socket,subprocess,tarfile,time,urllib.request,urllib.parse
 from pathlib import Path
 
 def run(*args):return subprocess.check_output(args,text=True,stderr=subprocess.PIPE).strip()
@@ -108,6 +128,18 @@ releases=(root/'releases').resolve()
 assert source_catalog.is_dir() and source_catalog.is_relative_to(releases)
 assert mounts['/catalog']['RW'] is False and (source_catalog/'catalog.json').is_file()
 assert requests_dir==(root/'shot-requests').resolve() and requests_dir.is_dir()
+live_catalog=json.loads((source_catalog/'catalog.json').read_text(encoding='utf-8'))
+old=[item for item in live_catalog['eras'] if item['slug']==settings['entry']['slug']]
+assert len(old)<=1
+if settings['replaceReady']:
+    assert len(old)==1 and old[0]['status']=='ready'
+    assert old[0]['snapshotId']==settings['expectedOldSnapshot']
+    old_cache=Path(old[0]['cache'])
+    assert not old_cache.is_absolute() and '..' not in old_cache.parts and old_cache.parts[0]==settings['entry']['slug']
+    assert stamp(source_catalog/old_cache)['sha256']==settings['expectedOldCacheSha256']
+    assert settings['entry']['snapshotId']==old[0]['snapshotId']
+else:
+    assert not old or old[0]['status']!='ready'
 
 dest=releases/settings['release'];assert not dest.exists();dest.mkdir(parents=True)
 staging=dest/'incoming';staging.mkdir()
@@ -130,7 +162,13 @@ catalog_document=json.loads((catalog/'catalog.json').read_text(encoding='utf-8')
 existing=[item for item in catalog_document['eras'] if item['slug']==slug]
 assert len(existing)<=1
 if existing:
-    assert existing[0]['status']!='ready' and existing[0]['snapshotId']==entry['snapshotId']
+    if settings['replaceReady']:
+        assert existing[0]==old[0]
+        outgoing=dest/('outgoing-'+slug);assert not outgoing.exists()
+        assert (catalog/slug).is_dir() and (catalog/slug).resolve().is_relative_to(catalog.resolve())
+        os.replace(catalog/slug,outgoing) # preserve the old hardlinks outside the new catalog
+    else:
+        assert existing[0]['status']!='ready' and existing[0]['snapshotId']==entry['snapshotId']
     catalog_document['eras'].remove(existing[0])
 era_dir=catalog/slug;assert not era_dir.exists();os.replace(staging/slug,era_dir)
 for path in era_dir.rglob('*'):
@@ -192,6 +230,16 @@ def verify(port):
     if entry.get('contextManifest'):
         assert selected['context']['heightfieldAvailable'] is True
     page=text(port,'/scene.html');assert 'data-terrain="ghost"' in page and 'Ghost preserves underground rooms' in page
+    if settings['probeBuild']:
+        probe={'era':slug,'snapshot':entry['snapshotId'],'build':settings['probeBuild']}
+        box=get(port,'/api/build?'+urllib.parse.urlencode(probe))
+        assert box['pieces']==settings['probePieces']
+        scene={**probe,'lens':'build-density','format':3,'camera':'true',
+               'minX':box['minX']-8,'maxX':box['maxX']+8,
+               'minZ':box['minZ']-8,'maxZ':box['maxZ']+8}
+        with urllib.request.urlopen('http://127.0.0.1:'+str(port)+'/api/scene?'+urllib.parse.urlencode(scene),timeout=30) as response:
+            assert response.status==200 and int(response.headers['X-Steward-Scene-Pieces'])==settings['probePieces']
+            assert response.read()
     return eras
 
 candidate='steward-world-candidate-'+settings['release'];start(candidate,7083)
@@ -207,7 +255,9 @@ result={'release':settings['release'],'directory':str(dest),'container':containe
     'previousContainer':backup,'baseImage':base,'catalog':str(catalog),'eras':eras,
     'candidateVerified':True,'activeVerified':True,'port':7081,'uiOverride':str(ui),
     'transferredBytes':settings['bytes'],'catalogTransferred':False,'catalogClonedWithHardlinks':True,
-    'imageBuilt':False,'addedEra':slug,'addedSnapshot':entry['snapshotId']}
+    'imageBuilt':False,'mode':'replace-ready' if settings['replaceReady'] else 'add',
+    **({'replacedEra':slug,'replacedSnapshot':entry['snapshotId'],'outgoingEraRetained':True}
+       if settings['replaceReady'] else {'addedEra':slug,'addedSnapshot':entry['snapshotId']})}
 (dest/'deployment.json').write_text(json.dumps(result,indent=2));print(json.dumps(result))
 '''
 

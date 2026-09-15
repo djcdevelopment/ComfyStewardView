@@ -46,5 +46,13 @@ class DeployWorldEraTests(unittest.TestCase):
         self.assertIn("'imageBuilt':False",MODULE.REMOTE)
         self.assertNotIn("docker','build",MODULE.REMOTE)
 
+    def test_ready_replacement_is_exactly_preflighted_and_retains_outgoing_files(self):
+        compile(MODULE.REMOTE,'<deploy-world-era-remote>','exec')
+        self.assertIn("old[0]['snapshotId']==settings['expectedOldSnapshot']",MODULE.REMOTE)
+        self.assertIn("stamp(source_catalog/old_cache)['sha256']==settings['expectedOldCacheSha256']",MODULE.REMOTE)
+        self.assertIn("os.replace(catalog/slug,outgoing)",MODULE.REMOTE)
+        self.assertIn("box['pieces']==settings['probePieces']",MODULE.REMOTE)
+        self.assertIn("response.headers['X-Steward-Scene-Pieces']",MODULE.REMOTE)
+
 
 if __name__=='__main__':unittest.main()

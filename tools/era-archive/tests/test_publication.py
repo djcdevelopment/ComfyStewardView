@@ -9,7 +9,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from archive import artifact, load, save, sql_path
 from prepare_public import selected_eras, spatial_inputs
 from terrain_provenance import annotate
-from world_bundle import context_records, validate_cache_mode
+from world_bundle import add_membership, context_records, validate_cache_mode, validate_membership_remap
 
 
 class PublicationTests(unittest.TestCase):
@@ -40,6 +40,34 @@ class PublicationTests(unittest.TestCase):
                          [record['file'] for record in context_records(manifest)])
         with self.assertRaisesRegex(ValueError,'requires a heightfield'):
             context_records({'schemaVersion':3,'variants':[]})
+
+    def test_legacy_membership_remap_requires_matching_source_and_exact_coverage(self):
+        spec={'slug':'era17','snapshotId':107,'membershipSourceSnapshotId':1017}
+        validate_membership_remap(spec,{'snapshotId':1017})
+        with self.assertRaisesRegex(ValueError,'archived source'):
+            validate_membership_remap(spec,{'snapshotId':1016})
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);cache=root/'public.duckdb';members=root/'members.parquet'
+            with duckdb.connect(str(cache)) as con:
+                con.execute('CREATE TABLE zdo AS SELECT 107::BIGINT AS snapshot_id,1::BIGINT AS zdo_index '
+                            'UNION ALL SELECT 107,2')
+                con.execute(f"COPY (SELECT 1017::BIGINT AS snapshot_id,"
+                            f"'{ 'a'*64 }' AS build_key,zdo_index FROM zdo) TO {sql_path(members)} (FORMAT PARQUET)")
+                add_membership(con,members,107,1017)
+                self.assertEqual([(107,2)],con.execute('SELECT snapshot_id,count(*) '
+                                   'FROM build_membership GROUP BY 1').fetchall())
+                con.execute('DROP TABLE build_membership')
+                with self.assertRaisesRegex(ValueError,'source snapshot'):
+                    add_membership(con,members,107,1016)
+                con.execute(f"COPY (SELECT * FROM read_parquet({sql_path(members)}) WHERE zdo_index=1) "
+                            f"TO {sql_path(root/'missing.parquet')} (FORMAT PARQUET)")
+                with self.assertRaisesRegex(ValueError,'entire public snapshot'):
+                    add_membership(con,root/'missing.parquet',107,1017)
+                con.execute(f"COPY (SELECT * FROM read_parquet({sql_path(members)}) UNION ALL "
+                            f"SELECT * FROM read_parquet({sql_path(members)}) WHERE zdo_index=1) "
+                            f"TO {sql_path(root/'duplicate.parquet')} (FORMAT PARQUET)")
+                with self.assertRaisesRegex(ValueError,'indices are not exact'):
+                    add_membership(con,root/'duplicate.parquet',107,1017)
 
     def inputs(self, root, include_bad_member=False):
         cache=root/'source.duckdb';geometry=root/'geometry.parquet';members=root/'membership.parquet'
