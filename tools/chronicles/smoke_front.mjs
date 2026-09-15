@@ -139,7 +139,12 @@ try {
   await check('ArrowDown twice activates the second row',
     () => evaluate(`${Q}.getAttribute('aria-activedescendant')==='suggestion-1' && ${ROWS}[1].classList.contains('active')`));
   await key('Escape', 'Escape', 27);
-  await until(`document.querySelector('#suggestions').hidden`, 'list hidden after Escape');
+  try {
+    await until(`document.querySelector('#suggestions').hidden`, 'list hidden after Escape');
+  } catch (error) {
+    const state = await evaluate(`(()=>{const q=${Q};const list=document.querySelector('#suggestions');return {focused:document.activeElement===q,expanded:q.getAttribute('aria-expanded'),active:q.getAttribute('aria-activedescendant'),hidden:list.hidden,open:list.classList.contains('is-open'),value:q.value}})()`);
+    throw Error(`${error.message}: ${JSON.stringify(state)}`);
+  }
   await check('Escape closes the list and keeps the text',
     () => evaluate(`document.querySelector('#suggestions').hidden && ${Q}.value===${JSON.stringify(args.multi)}`));
   await typeInto('#q', 'zzqxv');

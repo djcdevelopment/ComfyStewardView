@@ -228,6 +228,8 @@ def parse_args():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--list", action="store_true", help="show releases and what the links point at")
     parser.add_argument("--rollback", metavar="RELEASE")
+    parser.add_argument("--no-prune", action="store_true",
+                        help="retain all older releases after a deploy or rollback")
     parser.add_argument("--receipt", type=Path)
     return parser.parse_args()
 
@@ -245,7 +247,7 @@ def main():
     if not args.out and not (args.list or args.rollback):
         raise SystemExit("--out is required to deploy")
 
-    settings = {"root": args.remote_root, "keep": KEEP_RELEASES}
+    settings = {"root": args.remote_root, "keep": 0 if args.no_prune else KEEP_RELEASES}
 
     if args.list:
         print(remote(args.ssh_target, "settings=" + repr(settings | {"mode": "list"}) + "\n" + REMOTE))

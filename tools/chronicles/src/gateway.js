@@ -447,6 +447,7 @@ function initGateway() {
       // needs preventDefault -- a bare <input type="search"> empties itself on Escape by
       // UA default, which would throw away the name the visitor just typed.
       event.preventDefault();
+      window.clearTimeout(debounceTimer);
       closeSuggestions();
       return;
     }
