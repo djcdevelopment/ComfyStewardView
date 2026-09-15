@@ -5,7 +5,7 @@ Read this before touching anything; the receipts named here are the ground truth
 ever disagree. The operator is Derek (pronouns unknown — use they/them); the Steam account
 `Zephar410` is shared between OMEN (their gaming PC) and AM4 (the capture host).
 
-## 0. STATUS UPDATE 2026-09-15 04:45 UTC
+## 0. STATUS UPDATE 2026-09-15 04:50 UTC
 
 - **Era 17 is repaired and live.** The missing save was outside the canonical intake root,
   not overwritten by Era 4's different Charon identity. Hash-identical copies now live under
@@ -20,8 +20,9 @@ ever disagree. The operator is Derek (pronouns unknown — use they/them); the S
   `--require-complete`; no Artifact DB is involved. Baseline commits are `66503516` (local
   workflow), `5b76e0b7` (safe multipart cumulative append plus explicit `merge`), and
   `5d971fe9` (standards-mode sizing) and `f1edee91` (a fixed viewport dock for single-frame
-  controls). Every remaining unjudged page was regenerated with the docked-footer fix and is
-  served from the lake when judging.
+  controls). Era 5 and Era 6 now use one whole-era page each rather than split parts. Both
+  `light-table\light-table.html` pages were regenerated with the docked-footer fix, verified
+  against the exact part-build unions, and served from the lake.
 - **Human verdicts so far:** Era 11 reshoot is complete at 33/33 (5 earlier, 15 replanned,
   3 both, 10 neither). Era 1 is complete at 154/154 across two hash-bound part receipts
   (52 first survivor, 45 second survivor, 22 both, 32 neither, 3 keep-single). The merged
@@ -54,11 +55,14 @@ ever disagree. The operator is Derek (pronouns unknown — use they/them); the S
   receipt and cannot execute until every keeper is present locally and SHA-verified by an exact
   matching relocation receipt.
 
-Next: judge Era 5, then Era 6 before
-replacing any live rank-pick manifest. Harvest every export with `--require-complete` and merge
-multipart receipts with `light_table.py merge`. A judged import must pass **both** `--rank` and
-`--verdicts`, so original rank no-survivor builds remain on the reshoot list. No master transfer,
-remote prune, judged manifest replacement, or judged gallery deploy has happened yet.
+Next: judge Era 5 (363 items; whole-page export suffix `ad7b1a746afe.json`), then Era 6
+(394 items; suffix `6c609cf51e89.json`). Each page lives at its run's
+`light-table\light-table.html`; the older `light-table-parts\` pages remain for evidence but
+should not be mixed with the new whole-page storage keys. Harvest each single whole-era export
+against that run's `ab-pairs.json` with `--require-complete`; no part merge is needed. Complete
+both before replacing any live rank-pick manifest. A judged import must pass **both** `--rank`
+and `--verdicts`, so original rank no-survivor builds remain on the reshoot list. No master
+transfer, remote prune, judged manifest replacement, or judged gallery deploy has happened yet.
 
 ## 1. Where things are
 
