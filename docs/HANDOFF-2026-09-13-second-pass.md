@@ -5,7 +5,7 @@ Read this before touching anything; the receipts named here are the ground truth
 ever disagree. The operator is Derek (pronouns unknown — use they/them); the Steam account
 `Zephar410` is shared between OMEN (their gaming PC) and AM4 (the capture host).
 
-## 0. STATUS UPDATE 2026-09-15 02:20 UTC
+## 0. STATUS UPDATE 2026-09-15 02:45 UTC
 
 - **Era 17 is repaired and live.** The missing save was outside the canonical intake root,
   not overwritten by Era 4's different Charon identity. Hash-identical copies now live under
@@ -18,13 +18,15 @@ ever disagree. The operator is Derek (pronouns unknown — use they/them); the S
 - **The light table now works locally.** It stores each part under a deterministic page key,
   autosaves to localStorage, exports/imports a fingerprinted JSON envelope, and harvests with
   `--require-complete`; no Artifact DB is involved. Baseline commits are `66503516` (local
-  workflow) and `5b76e0b7` (safe multipart cumulative append plus explicit `merge`). The 22
-  prepared parts were regenerated with this version and are served from the lake when judging.
+  workflow), `5b76e0b7` (safe multipart cumulative append plus explicit `merge`), and
+  `5d971fe9` (standards-mode viewport constraint for single-frame rows). Every remaining
+  unjudged page was regenerated with the viewport fix and is served from the lake when judging.
 - **Human verdicts so far:** Era 11 reshoot is complete at 33/33 (5 earlier, 15 replanned,
-  3 both, 10 neither). Era 1 part 1 is complete at 120/120 (41 first, 39 second, 10 both,
-  30 neither); part 2 (34 rows) is the current operator task. The cumulative evidence contains
-  153 verdicts before part 2 is harvested. Per-part exports and receipts live under each
-  `<run>\verdicts\` directory.
+  3 both, 10 neither). Era 1 is complete at 154/154 across two hash-bound part receipts
+  (52 first survivor, 45 second survivor, 22 both, 32 neither, 3 keep-single). The merged
+  receipt is `campaigns\era1\run\era1-fx99-20260913b\verdicts\pair-verdicts.json`.
+  Cumulative evidence commit `1e88f1d7` contains 187 verdicts / 117 decided pairs across the
+  two runs. Per-part exports and receipts live under each `<run>\verdicts\` directory.
 - **The judged transition was proved on real data without touching live state.** The isolated
   Era 11 candidate is under
   `campaigns\era11-reshoot\run\era11-reshoot-20260913\judged-candidate\`: 18 current-root
@@ -39,11 +41,11 @@ ever disagree. The operator is Derek (pronouns unknown — use they/them); the S
   receipt and cannot execute until every keeper is present locally and SHA-verified by an exact
   matching relocation receipt.
 
-Next: harvest Era 1 part 2 with `--require-complete`, then merge its two part receipts with
-`light_table.py merge`. Continue the remaining first-pass light tables before replacing any
-live rank-pick manifest. A judged import must pass **both** `--rank` and `--verdicts`, so original
-rank no-survivor builds remain on the reshoot list. No master transfer, remote prune, judged
-manifest replacement, or judged gallery deploy has happened yet.
+Next: judge Era 13 parts 1 and 2, then continue Era 15, Era 3, Era 2, Era 5, and Era 6 before
+replacing any live rank-pick manifest. Harvest every export with `--require-complete` and merge
+multipart receipts with `light_table.py merge`. A judged import must pass **both** `--rank` and
+`--verdicts`, so original rank no-survivor builds remain on the reshoot list. No master transfer,
+remote prune, judged manifest replacement, or judged gallery deploy has happened yet.
 
 ## 1. Where things are
 
