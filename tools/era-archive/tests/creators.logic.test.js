@@ -11,6 +11,7 @@ const {
   computeTopEight, portraitIndex, eraBounds, heroAliases,
   majorityOwner, tagCandidates, leadingBuilderNote, buildKinshipTree, mergeKinshipTags, kinshipTagRecord, StewardParticipation,
   KINSHIP_TAG_IDS, pickMosaicAlbums, profileBrowseRows, profileBrowsePage, profileEraAtlas, profileCoBuilderSummary, hasMinimumCredit, qualifyingSharedCredit, distinctAttributions,
+  profilePieceBand, profileBuildInventory,
 } = require(path.join(__dirname, '..', 'web', 'creators.js'));
 
 function builder(overrides) {
@@ -799,6 +800,27 @@ test('a prolific profile can filter every era and page without losing older larg
   assert.deepEqual(profileBrowseRows(thread, {query: old.buildKey.slice(-12)}).map((a) => a.buildKey), [old.buildKey]);
   assert.equal(profileBrowseRows(thread, {sort: 'size'})[0].buildKey, old.buildKey);
   assert.equal(profileBrowseRows(thread, {sort: 'newest'})[0].era, 16);
+});
+
+test('the contribution inventory counts every build, including crowded and historical cells', () => {
+  const me = 'a'.repeat(32);
+  const build = (i, era, mine, photographed = false) => ({buildKey: i.toString(16).padStart(64, '0'),
+    era, label: `Build ${i}`, pieces: mine == null ? 1000 : mine + 10,
+    contributors: [{builderKey: me, pieces: mine}], photos: photographed ? [{}] : []});
+  const crowded = Array.from({length: 165}, (_, i) => build(i + 1, 16, 691, i < 2));
+  const historical = build(166, 17, null, true);
+  const giant = build(167, 11, 20000);
+  const thread = {builderKey: me, eras: [
+    {era: 16, albums: crowded}, {era: 17, albums: [historical]}, {era: 11, albums: [giant]},
+  ]};
+  const inventory = profileBuildInventory(thread);
+  assert.equal([...inventory.cells.values()].reduce((n, cell) => n + cell.builds, 0), 167);
+  assert.deepEqual(inventory.cells.get('16:500-999'), {era: 16, band: '500-999', builds: 165, photographed: 2});
+  assert.equal(inventory.cells.get('17:unknown').photographed, 1);
+  assert.equal(profilePieceBand(null), 'unknown');
+  assert.equal(profileBrowseRows(thread, {era: '16', band: '500-999'}).length, 165);
+  assert.deepEqual(profileBrowseRows(thread, {band: '1000-4999'}), []);
+  assert.equal(profileBrowseRows(thread, {band: '5000+'})[0].buildKey, giant.buildKey);
 });
 
 test('distinctAttributions says each sentence once, the standard one first', () => {

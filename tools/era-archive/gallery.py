@@ -371,7 +371,7 @@ def project(document, destination, world_url, analysis_root=None, min_build_piec
         folder_dir = destination / folder
         folder_dir.mkdir(parents=True, exist_ok=True)
         (folder_dir / "index.html").write_text(
-            content.replace('"./creators.', '"../creators.').replace('"./kin-tree.js', '"../kin-tree.js').replace('"./kinship.js', '"../kinship.js').replace('"./portraits.js', '"../portraits.js').replace('"./portrait-picker.js', '"../portrait-picker.js').replace('"./profile.js', '"../profile.js'),
+            content.replace('"./creators.', '"../creators.').replace('"./kin-tree.js', '"../kin-tree.js').replace('"./pair.js', '"../pair.js').replace('"./kinship.js', '"../kinship.js').replace('"./portraits.js', '"../portraits.js').replace('"./portrait-picker.js', '"../portrait-picker.js').replace('"./profile.js', '"../profile.js'),
             encoding="utf-8")
         if keep_at_root:
             (destination / source_name).write_text(content, encoding="utf-8")

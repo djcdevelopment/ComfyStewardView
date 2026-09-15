@@ -331,6 +331,7 @@ class ChroniclerStyleTests(unittest.TestCase):
         self.assertIn('src="./creators.js?v=15"', self.kinship)
         self.assertIn('src="./portraits.js?v=15"', self.kinship)
         self.assertIn('src="./kin-tree.js?v=15"', self.kinship)
+        self.assertIn('src="./pair.js?v=16"', self.kinship)
         self.assertIn('src="./kinship.js"', self.kinship)
         self.assertNotIn("data-steward-page", self.index,
                          "the directory shell is the default route, not a named one")

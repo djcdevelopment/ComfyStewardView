@@ -6,7 +6,7 @@
     <meta name="creator-participation-endpoint" content="">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23121820'/%3E%3Cpath d='M32 10L48 24V40L32 54L16 40V24L32 10Z' fill='%231a232e' stroke='%23f59e0b' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%23f59e0b'/%3E%3C/svg%3E">
     <title>Kinship · Comfy builders</title>
-    <meta name="description" content="Who a builder built beside, era by era, drawn from the pieces they placed side by side in the saved world.">
+    <meta name="description" content="Explore a builder's co-builders by era, shared builds, pieces, and photographs.">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Comfy builders">
     <meta property="og:title" content="Kinship · Comfy builders">
@@ -16,6 +16,7 @@
     <script src="./creators.js?v=15" defer></script>
     <script src="./portraits.js?v=15" defer></script>
     <script src="./kin-tree.js?v=15" defer></script>
+    <script src="./pair.js?v=16" defer></script>
     <script src="./kinship.js" defer></script>
   </head>
   <body>
@@ -39,7 +40,7 @@
     <main id="kinship">
       <p class="eyebrow">THE COMFY COMMUNITY · KINSHIP</p>
       <h1 id="title">Who you built beside</h1>
-      <p id="intro" class="muted">Every branch is a builder who placed pieces on the same builds as the anchor, era by era, read from the saved world. Tags are what the build's majority owner adds on top.</p>
+      <p id="intro" class="muted">Find a co-builder in the era map or table, then open the builds you share. Credits come from the saved construction pieces; tags are added separately by people.</p>
       <p id="status" role="status" aria-live="polite"></p>
 
       <section id="kin-anchor" class="kin-anchor" aria-label="Anchor builder">
@@ -56,31 +57,29 @@
         </div>
       </section>
 
-      <div id="kin-tabs" class="kin-tabs" role="tablist" aria-label="View">
-        <button type="button" role="tab" id="kin-tab-tree" aria-selected="true" aria-controls="kin-tree-panel">Tree</button>
-        <button type="button" role="tab" id="kin-tab-ledger" aria-selected="false" aria-controls="kin-ledger-panel">Ledger</button>
-      </div>
-      <div id="kin-filters" class="kin-filters" role="group" aria-label="Filter builds">
-        <button type="button" class="era-chip active" data-kin-filter="all">All builds</button>
-        <button type="button" class="era-chip" data-kin-filter="majority">Majority-owned</button>
-        <button type="button" class="era-chip" data-kin-filter="photographed">Photographed</button>
-      </div>
-
       <div class="kin-layout">
         <div class="kin-main">
-          <section id="kin-tree-panel" role="tabpanel" aria-labelledby="kin-tab-tree">
-            <div class="kin-scroll kin-tree">
-              <div id="kin-tree" class="kin-canvas">
-                <svg id="kin-tree-svg" class="kin-tree-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" role="img" aria-label="Kinship tree"></svg>
-                <div id="kin-nodes" class="kin-nodes"></div>
-                <!-- Inside the canvas on purpose: the nodes are positioned against it, so
-                     the tooltip can be clamped to the same box with plain offsets. -->
-                <div id="kin-tip" class="kin-tip" role="tooltip" hidden></div>
-              </div>
+          <section id="kin-map-section" aria-labelledby="kin-map-title">
+            <h2 id="kin-map-title">Together across the eras</h2>
+            <p class="muted">The eight closest co-builders are shown here. Search the table below for anyone else; the selected builder is added to the map.</p>
+            <div id="kin-metrics" role="group" aria-label="Color the era map by">
+              <button type="button" data-kin-metric="builds" aria-pressed="true">Shared builds</button>
+              <button type="button" data-kin-metric="pieces" aria-pressed="false">Shared pieces</button>
+              <button type="button" data-kin-metric="photos" aria-pressed="false">Photographed builds</button>
             </div>
-            <p id="kin-legend" class="muted">Solid branches carry the pieces you placed side by side in that era. Dashed branches are eras kept only as photographs, where shares are unknown. A hairline is an era apart; the branch resumes when you built together again.</p>
+            <label id="kin-mobile-pick-label">Co-builder on this screen <select id="kin-mobile-pick"></select></label>
+            <div class="kin-map-wrap"><table id="kin-map-table"></table></div>
+            <p id="kin-map-legend" class="muted">Darker cells have higher values for the selected measure. Every value is printed; unknown historical piece totals are not zero.</p>
           </section>
-          <section id="kin-ledger-panel" role="tabpanel" aria-labelledby="kin-tab-ledger" hidden>
+          <section id="kin-pair-panel" aria-label="Selected co-builder relationship" hidden></section>
+          <section id="kin-ledger-panel" aria-labelledby="kin-ledger-title">
+            <h2 id="kin-ledger-title">Find any co-builder</h2>
+            <div class="kin-ledger-controls">
+              <label>Search name or key <input id="kin-co-search" type="search" placeholder="Co-builder name or key"></label>
+              <label>Era <select id="kin-co-era"><option value="all">All shared eras</option></select></label>
+              <label>Order <select id="kin-co-sort"><option value="pieces">Most shared pieces</option><option value="builds">Most shared builds</option><option value="name">Name A–Z</option></select></label>
+            </div>
+            <p id="kin-ledger-count" class="muted" aria-live="polite"></p>
             <div class="stats-table-wrap">
               <table class="stats-table" id="kin-ledger">
                 <thead>
@@ -89,10 +88,7 @@
                     <th scope="col">Eras together</th>
                     <th scope="col">Shared builds</th>
                     <th scope="col">Shared pieces</th>
-                    <th scope="col">Anchor's share</th>
-                    <th scope="col">Majority-owned</th>
-                    <th scope="col">Tags</th>
-                    <th scope="col"><span class="visually-hidden">Action</span></th>
+                    <th scope="col">Explore</th>
                   </tr>
                 </thead>
                 <tbody></tbody>
@@ -101,7 +97,7 @@
             <button type="button" id="kin-ledger-more" hidden>Show more co-builders</button>
           </section>
         </div>
-        <aside id="kin-aside" class="kin-aside">
+        <details class="kin-extra"><summary>Tag and inspect shared builds</summary><aside id="kin-aside" class="kin-aside">
           <section class="kin-card" id="kin-builds" aria-labelledby="kin-builds-h2">
             <h2 id="kin-builds-h2">Builds you hold</h2>
             <p class="muted" id="kin-builds-note">Only the majority owner of a build can tag its co-builders. Claim a build first, then tag.</p>
@@ -111,7 +107,7 @@
             <h2 id="kin-cohabs-h2">Cohabitants</h2>
             <div id="kin-cohab-list"></div>
           </section>
-        </aside>
+        </aside></details>
       </div>
 
       <footer>

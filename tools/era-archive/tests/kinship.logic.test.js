@@ -6,6 +6,19 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const kinship = require(path.join(__dirname, '..', 'web', 'kin-tree.js'));
+const {kinshipMetricValue} = require(path.join(__dirname, '..', 'web', 'kinship.js'));
+
+test('one kinship cell can rotate among shared builds, pieces, and photographed builds', () => {
+  const albums = new Map([
+    ['one', {photos: [{id: 'p'}]}], ['two', {photos: []}], ['three', {photos: [{id: 'q'}, {id: 'r'}]}],
+  ]);
+  const entry = {sharedAlbums: 3, sharedPieces: 240, legacy: false, builds: ['one', 'two', 'three']};
+  assert.equal(kinshipMetricValue(entry, 'builds', albums), 3);
+  assert.equal(kinshipMetricValue(entry, 'pieces', albums), 240);
+  assert.equal(kinshipMetricValue(entry, 'photos', albums), 2, 'counts photographed builds, not frames');
+  assert.equal(kinshipMetricValue({...entry, legacy: true}, 'pieces', albums), null, 'unknown is not zero');
+  assert.equal(kinshipMetricValue(null, 'builds', albums), null);
+});
 // The one import from next door, and deliberate: isUnnamed is only correct if it is fed
 // the same placeholder pattern the directory page sorts by, so the test proves the real
 // exported regex rather than a copy of it that could quietly drift.

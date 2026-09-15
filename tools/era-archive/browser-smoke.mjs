@@ -106,11 +106,11 @@ try{
   // The one-story page (pass 3): the carousel of photographed builds sits under the hero
   // with its banner and its details article, the attribution sentence is said once, every
   // Details drop-down in the rest table starts folded, and the notes strip renders.
-  results.story=await evaluate("({stage:document.querySelectorAll('#work .work-banner').length,rail:document.querySelectorAll('#work .work-tile').length,details:document.querySelectorAll('#work article.album.work-details button.primary').length,notes:document.querySelectorAll('.albums-note').length,atlas:document.querySelectorAll('.era-atlas-tile').length,buildRows:document.querySelectorAll('#build-explorer tbody tr').length,tree:document.querySelectorAll('#kin-beside .kin-branch').length,notesStrip:!document.getElementById('thread-notes')?.hidden})");
+  results.story=await evaluate("({stage:document.querySelectorAll('#work .work-banner').length,rail:document.querySelectorAll('#work .work-tile').length,details:document.querySelectorAll('#work article.album.work-details button.primary').length,notes:document.querySelectorAll('.albums-note').length,matrix:document.querySelectorAll('.build-matrix-cell').length,shortlist:document.querySelectorAll('.build-shortlist li').length,buildRows:document.querySelectorAll('#build-explorer tbody tr').length,tree:document.querySelectorAll('#kin-beside .kin-branch').length,notesStrip:!document.getElementById('thread-notes')?.hidden})");
   if(results.story.stage!==1||results.story.rail<1)throw Error('Builder page drew no work carousel for a photographed thread');
   if(results.story.details!==1)throw Error('The carousel details lost the claim control');
   if(results.story.notes!==1)throw Error('Attribution sentence is not said exactly once');
-  if(!results.story.atlas||results.story.buildRows>20||results.story.tree)throw Error('Profile atlas is missing, explorer is unbounded, or the full tree is still embedded');
+  if(!results.story.matrix||results.story.shortlist>5||results.story.buildRows||results.story.tree)throw Error('Profile matrix is missing, default explorer is unbounded, or the full tree is still embedded');
   if(!results.story.notesStrip)throw Error('The notes strip at the foot did not render');
   // The check that would have caught a modal whose sheet was display:none inside a
   // visible overlay: every participation dialog opened as an empty black screen.
@@ -195,154 +195,64 @@ try{
   await evaluate("document.getElementById('photo-viewer-close').click()");
   await wait("!document.getElementById('photo-viewer-modal').classList.contains('open')");
   if(await evaluate(`document.activeElement.id!==${JSON.stringify(triggerId)}`))throw Error('Closing the photo viewer did not return focus to the trigger thumbnail');
-  // The pair view: the Top 8 ribbon picks one co-builder and the panel below it draws that
-  // pairing. A thread whose every album is solo draws no ribbon at all and is perfectly
-  // legal, so the whole leg sits inside the "there is a ribbon" branch rather than
-  // failing a builder for having worked alone.
-  if(await evaluate("!!document.querySelector('.top8')")){
-    if(await evaluate("!document.getElementById('pair-view').hidden"))throw Error('Pair ledger opened before a visitor selected a co-builder');
-    await evaluate("document.querySelector('.top8-chip').click()");
-    await wait("!!document.querySelector('.top8 button.top8-chip[aria-pressed=\"true\"]')");
-    results.pair=await evaluate("({chips:document.querySelectorAll('.top8-chip').length,hidden:document.getElementById('pair-view')?.hidden,ledgerRows:document.querySelectorAll('#pair-ledger tbody tr').length})");
-    if(results.pair.hidden!==false)throw Error('Pair view stayed hidden with a co-builder selected');
-    if(!results.pair.ledgerRows)throw Error('Pair view drew no shared builds for the selected pairing');
-    // The tree is drawn on the profile beside the ribbon, the pair's detail starts folded,
-    // and the branch of the selected pairing is the one lit.
-    results.tree=await evaluate("({branches:document.querySelectorAll('#kin-beside .kin-branch').length,pressed:document.querySelector('.top8-chip[aria-pressed=\"true\"]')?.dataset.builderKey||null,moreOpen:document.getElementById('pair-more')?.open})");
-    if(results.tree.branches)throw Error('The full kinship tree is still mounted on the profile');
-    if(results.tree.moreOpen!==false)throw Error('Pair view detail did not start folded');
-    if(results.pair.ledgerRows>20)throw Error('Pair ledger exceeded its twenty-row window');
-    await screenshot('pair-view');
-    // Slim pair (pass 3b): no tab strip and no second photograph -- the standing chip sits
-    // in the head row, the ally and the reverse link share a row, the ledger runs full
-    // width. Picking a photographed row turns the work carousel to that build without
-    // moving the page; the Details fold stays put.
-    results.pair.slim=await evaluate("({modes:!!document.getElementById('pair-modes'),photos:!!document.getElementById('pair-photos'),standing:!!document.querySelector('#pair-view #pair-head #pair-standing'),who:!!document.querySelector('#pair-view #pair-who #pair-ally')&&!!document.querySelector('#pair-view #pair-who #pair-reverse')})");
-    if(results.pair.slim.modes||results.pair.slim.photos)throw Error('Pair view still draws the tab strip or the photograph panel');
-    if(!results.pair.slim.standing||!results.pair.slim.who)throw Error('Pair view lost its head row or its who row');
-    const pickable=await evaluate("(()=>{const rows=[...document.querySelectorAll('#pair-ledger tbody tr')];const tiles=new Set([...document.querySelectorAll('#work .work-tile')].map(t=>t.dataset.buildKey));const row=rows.find(r=>r.getAttribute('aria-selected')!=='true'&&tiles.has(r.dataset.buildKey));return row?row.dataset.buildKey:null})()");
-    if(pickable){
-      // "Did not move" is measured where the visitor is looking: the pair view's place in
-      // the viewport, with the view scrolled into it as a visitor would have. scrollY itself
-      // may shift, because the carousel above changes height when it turns and the
-      // browser's scroll anchoring keeps the pair view where it was.
-      const before=await evaluate("(()=>{const v=document.getElementById('pair-view');v.scrollIntoView({block:'start'});scrollBy(0,-40);return Math.round(v.getBoundingClientRect().top)})()");
-      await evaluate(`document.querySelector('#pair-ledger tr[data-build-key="${pickable}"] .pair-ledger-pick').click()`);
-      results.pair.pick=await evaluate(`({selected:document.querySelector('#pair-ledger tr[aria-selected="true"]')?.dataset.buildKey,tile:document.querySelector('#work .work-tile[aria-pressed="true"]')?.dataset.buildKey,top:Math.round(document.getElementById('pair-view').getBoundingClientRect().top),before:${before},url:location.search})`);
-      if(results.pair.pick.selected!==pickable)throw Error('Ledger pick did not select the row');
-      if(results.pair.pick.tile!==pickable)throw Error('Ledger pick did not turn the carousel to the build');
-      if(Math.abs(results.pair.pick.top-results.pair.pick.before)>2)throw Error('Ledger pick moved the pair view in the viewport');
-      if(/[?&]view=/.test(results.pair.pick.url))throw Error('Pair view still writes ?view=');
-    }else results.pair.pick='skipped: no photographed shared build besides the open one';
-    // A shared ?kin= link must open on that pairing, not on whichever one leads the
-    // ribbon -- the second chip proves it, because the first is what an unlinked page
-    // would have selected anyway.
-    const chipKeys=await evaluate("[...document.querySelectorAll('.top8-chip')].map(c=>c.dataset.builderKey)");
-    const deepKey=chipKeys[1]||chipKeys[0];
-    await cdp('Page.navigate',{url:new URL(photographed.builderKey+'/?kin='+deepKey,gallery).href});
-    await wait(`!!document.querySelector('.top8-chip[data-builder-key="${deepKey}"][aria-pressed="true"]')`);
-    results.pair.deepLink=true;
-  }else{
-    results.pair={status:'skipped',reason:'this thread shares no build with anybody'};
-  }
-  // Kinship: the branching tree of who a builder built beside. It needs an anchor who
-  // shares a build with somebody -- a thread whose every album is solo draws a trunk and
-  // nothing else, and this step would then be asserting against an empty canvas. The
-  // lead photographed builder is tried first, then the busiest threads, capped at ten
-  // fetches so a pathological archive cannot turn one smoke step into 2,682 requests.
+  // Profiles show a short co-builder summary; the detailed relationship lives on Kinship.
+  results.pair=await evaluate("({summary:document.querySelectorAll('#kin-beside .kin-profile-summary tbody tr').length,links:document.querySelectorAll('#kin-beside a').length,panel:!!document.getElementById('pair-view')})");
+  if(results.pair.panel)throw Error('Old inline pair ledger is still mounted on the profile');
+  if(results.pair.summary&&!results.pair.links)throw Error('Co-builder summary has no path to Kinship');
+
   const hasCoBuilder=doc=>(doc?.eras||[]).some(e=>(e.albums||[]).some(a=>(a.contributors||[]).some(c=>c&&c.builderKey!==doc.builderKey)));
   let kinshipKey=null;
   for(const candidate of [photographed,...directory.builders.slice().sort((a,b)=>b.albums-a.albums)].slice(0,10)){
-    const doc=await fetch(new URL(`threads/${candidate.builderKey}.json`,gallery)).then(r=>r.ok?r.json():null).catch(()=>null);
+    const doc=await fetch(new URL('threads/'+candidate.builderKey+'.json',gallery)).then(r=>r.ok?r.json():null).catch(()=>null);
     if(hasCoBuilder(doc)){kinshipKey=candidate.builderKey;break;}
   }
   if(!kinshipKey)throw Error('No builder in the archive shares a build with anyone');
   await cdp('Page.navigate',{url:new URL('kinship/?builder='+kinshipKey,gallery).href});
-  await wait("document.querySelectorAll('.kin-branch').length>0");
-  results.kinship=await evaluate("({branches:document.querySelectorAll('.kin-branch').length,segs:document.querySelectorAll('.kin-seg').length,nodes:document.querySelectorAll('#kin-nodes a.kin-node').length})");
-  if(!results.kinship.segs)throw Error('Kinship tree drew bands but no branch strokes');
-  if(!results.kinship.nodes)throw Error('Kinship tree drew no builder portraits');
-  await screenshot('kinship-tree');
-  await evaluate("document.getElementById('kin-tab-ledger').click()");
-  await wait("document.querySelectorAll('#kin-ledger tbody tr').length>0");
-  results.kinship.ledgerRows=await evaluate("document.querySelectorAll('#kin-ledger tbody tr').length");
-  // A fresh profile holds no claim, so every tag control must be gated -- and gated by
-  // class and aria, never by the disabled attribute, which swallows the very tap that
-  // would explain why it is off.
-  const tagGate=await evaluate("(()=>{const b=document.querySelector('button.kin-tag-btn');return b?{inert:b.classList.contains('inert'),aria:b.getAttribute('aria-disabled'),disabled:b.disabled}:null;})()");
-  if(!tagGate)throw Error('Kinship ledger offered no tag control');
-  if(!tagGate.inert||tagGate.aria!=='true'||tagGate.disabled)throw Error('Tag control is not gated on a build this browser has never claimed');
-  await evaluate("document.querySelector('button.kin-tag-btn').click()");
-  await wait("document.getElementById('toast').classList.contains('show')");
-  results.kinship.gated=true;
-  // A prolific profile must keep both build lanes bounded while older eras stay one
-  // filter away. The original complaint was an Era 4–6 large build buried behind
-  // eleven append-only "more" clicks; a named build link should land on its exact page.
+  await wait("document.querySelectorAll('#kin-map-table tbody tr').length>0&&document.querySelectorAll('#kin-ledger tbody tr').length>0");
+  results.kinship=await evaluate("({eras:document.querySelectorAll('#kin-map-table tbody tr').length,metrics:document.querySelectorAll('[data-kin-metric]').length,coBuilders:document.querySelectorAll('#kin-ledger tbody tr').length,tree:document.querySelectorAll('#kin-nodes .kin-node').length})");
+  if(!results.kinship.eras||results.kinship.metrics!==3||!results.kinship.coBuilders||results.kinship.coBuilders>50||results.kinship.tree)throw Error('Kinship is missing its bounded map or searchable ledger');
+  await screenshot('kinship-map');
+  await evaluate("document.querySelector('[data-kin-metric=pieces]').click()");
+  if(await evaluate("document.querySelector('[data-kin-metric=pieces]').getAttribute('aria-pressed')!=='true'"))throw Error('Kinship shared-piece metric did not activate');
+  await evaluate("document.querySelector('#kin-ledger tbody tr button.kin-pair-link').click()");
+  await wait("!document.getElementById('kin-pair-panel').hidden");
+  results.kinship.pair=await evaluate("({shortlist:document.querySelectorAll('.kin-pair-shortlist li').length,eraOptions:document.querySelectorAll('.kin-pair-era select option').length,fullRows:document.querySelectorAll('.kin-pair-table tbody tr').length})");
+  if(results.kinship.pair.shortlist>5||!results.kinship.pair.eraOptions||results.kinship.pair.fullRows)throw Error('Pair detail is unbounded by default or has no era path');
+  await screenshot('kinship-pair');
+
+  // The largest available profile is a scale fixture, without pinning its archive count.
   const prolific=directory.builders.slice().sort((a,b)=>b.albums-a.albums)[0];
-  const largestThread=await fetch(new URL(`threads/${prolific.builderKey}.json`,gallery)).then(r=>r.json());
-  const largest16=largestThread.eras.find(e=>e.era===16)?.albums.length||0;
-  if(prolific.albums<2929||largest16<696)throw Error('Largest-scale profile fixture is smaller than the checked release');
+  const largestThread=await fetch(new URL('threads/'+prolific.builderKey+'.json',gallery)).then(r=>r.json());
   await cdp('Page.navigate',{url:new URL(prolific.builderKey+'/',gallery).href});
-  await wait("!!document.getElementById('build-explorer')");
-  results.explorer=await evaluate("({sort:document.getElementById('build-sort').value,work:document.querySelectorAll('#work .work-tile').length,rows:document.querySelectorAll('#build-explorer tbody tr').length,atlas:document.querySelectorAll('.era-atlas-tile').length})");
-  if(results.explorer.sort!=='mine'||results.explorer.work>40||results.explorer.rows>20||results.explorer.atlas<3)throw Error('Largest profile is unbounded or missing the atlas');
-  const era16Tile=await evaluate("document.querySelector('.era-atlas-tile[data-era=\"16\"] .era-atlas-count')?.textContent");
-  if(Number(era16Tile.replaceAll(',',''))!==largest16)throw Error('Largest profile era 16 atlas count differs from its published thread');
-  const firstBuild=await evaluate("document.querySelector('#build-explorer tbody tr')?.dataset.buildKey");
-  await evaluate("document.querySelector('#build-explorer .build-pager button:last-child').click()");
-  await wait("document.querySelector('#build-explorer .build-page-status')?.textContent.includes('page 2 of')");
-  results.explorer.pageTwo=await evaluate("({rows:document.querySelectorAll('#build-explorer tbody tr').length,first:document.querySelector('#build-explorer tbody tr')?.dataset.buildKey})");
-  if(results.explorer.pageTwo.rows>20||results.explorer.pageTwo.first===firstBuild)throw Error('Next did not replace the twenty-row window');
+  await wait("!!document.querySelector('#build-matrix .build-matrix-cell')");
+  results.explorer=await evaluate("({sort:document.getElementById('build-sort').value,work:document.querySelectorAll('#work .work-tile').length,matrixCount:[...document.querySelectorAll('.build-matrix-cell strong')].reduce((n,e)=>n+Number(e.textContent.replaceAll(',','')),0),shortlist:document.querySelectorAll('.build-shortlist li').length,fullRows:document.querySelectorAll('#build-explorer tbody tr').length})");
+  if(results.explorer.sort!=='mine'||results.explorer.work>40||results.explorer.matrixCount!==largestThread.albums||results.explorer.shortlist>5||results.explorer.fullRows)throw Error('Largest profile is unbounded or loses builds from its inventory');
   await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
-  results.explorer.mobile=await evaluate("({width:document.documentElement.scrollWidth,viewport:innerWidth,tiles:document.querySelectorAll('.era-atlas-tile').length})");
+  results.explorer.mobile=await evaluate("({width:document.documentElement.scrollWidth,viewport:innerWidth})");
   if(results.explorer.mobile.width>results.explorer.mobile.viewport+2)throw Error('Mobile profile has horizontal overflow');
-  await evaluate("document.getElementById('era-atlas').scrollIntoView({block:'start'})");
-  await screenshot('creator-era-atlas-mobile');
+  await screenshot('creator-build-matrix-mobile');
   await cdp('Emulation.clearDeviceMetricsOverride');
+
   const oldBuilder='1dd405b7d09e57419b20fc4df6f18716';
-  const oldThread=await fetch(new URL(`threads/${oldBuilder}.json`,gallery)).then(r=>r.json());
-  const old16=oldThread.eras.find(e=>e.era===16)?.albums.length||0;
-  if(old16<184)throw Error('Ibocain scale fixture lost its era 16 albums');
+  const oldThread=await fetch(new URL('threads/'+oldBuilder+'.json',gallery)).then(r=>r.json());
   const older=oldThread.eras.flatMap(e=>e.albums).find(a=>a.era<=6&&!a.photos.length&&a.pieces>=1000);
   if(!older)throw Error('No older large Ibocain build survived the cutoff');
   await cdp('Page.navigate',{url:new URL(oldBuilder+'/',gallery).href});
-  await wait("!!document.getElementById('build-explorer')");
-  await evaluate("document.getElementById('era-atlas').scrollIntoView({block:'start'})");
-  await screenshot('creator-era-atlas-ibocain-overview');
-  const stageBefore=await evaluate("document.querySelector('#work .work-details')?.dataset.buildKey");
-  await evaluate(`document.querySelector('.era-atlas-tile[data-era="${older.era}"]').click()`);
-  results.explorer.oldEra=await evaluate("({era:document.getElementById('build-era').value,rows:document.querySelectorAll('#build-explorer tbody tr').length,stage:document.querySelector('#work .work-details')?.dataset.buildKey})");
-  if(results.explorer.oldEra.era!==String(older.era)||results.explorer.oldEra.rows>20||results.explorer.oldEra.stage!==stageBefore)throw Error('Era atlas failed to focus the explorer while preserving carousel');
-  await evaluate(`document.getElementById('build-search').value=${JSON.stringify(older.buildKey)};document.getElementById('build-search').dispatchEvent(new Event('input'))`);
-  await wait("document.getElementById('build-browse-summary')?.textContent.startsWith('1 build of')");
-  results.explorer.find=await evaluate("document.querySelectorAll('#build-explorer tbody tr').length");
-  if(results.explorer.find!==1)throw Error('Search did not narrow to one build');
+  await wait("!!document.querySelector('#build-matrix .build-matrix-cell')");
+  results.explorer.ibocain=await evaluate("({count:[...document.querySelectorAll('.build-matrix-cell strong')].reduce((n,e)=>n+Number(e.textContent.replaceAll(',','')),0),shortlist:document.querySelectorAll('.build-shortlist li').length})");
+  if(results.explorer.ibocain.count!==oldThread.albums||results.explorer.ibocain.shortlist>5)throw Error('Ibocain inventory is incomplete or default shortlist is large');
+  await screenshot('creator-build-matrix-ibocain');
   await cdp('Page.navigate',{url:new URL(oldBuilder+'/?build='+older.buildKey,gallery).href});
-  await wait(`!!document.querySelector('#build-focus-host article.album[data-build-key="${older.buildKey}"]')`);
-  results.explorer.directLink=await evaluate("({era:document.getElementById('build-era').value,rows:document.querySelectorAll('#build-explorer tbody tr').length,detail:!!document.querySelector('#build-focus-host article.album'),url:location.search})");
-  if(results.explorer.directLink.era!==String(older.era)||!results.explorer.directLink.detail||results.explorer.directLink.rows>20||!results.explorer.directLink.url.includes('build='+older.buildKey))throw Error('Build deep link failed');
-  await screenshot('creator-era-atlas-ibocain');
-  const allyKey='17a1605b1fdb58c68c6334e49e2b0b74';
-  const shared16=oldThread.eras.flatMap(e=>e.albums).filter(a=>a.era===16&&(a.contributors||[]).some(c=>c.builderKey===allyKey&&c.pieces>=20));
-  const linked=shared16[shared16.length-1];
-  if(!linked)throw Error('Ibocain pair has no era 16 build for deep-link test');
-  await cdp('Page.navigate',{url:new URL(oldBuilder+'/?kin='+allyKey+'&build='+linked.buildKey,gallery).href});
-  await wait(`!!document.querySelector('#pair-ledger tr[aria-selected="true"][data-build-key="${linked.buildKey}"]')`);
-  results.explorer.pairDeep=await evaluate("({era:document.getElementById('build-era').value,pairEra:document.getElementById('pair-era').value,rows:document.querySelectorAll('#pair-ledger tbody tr').length,total:document.querySelector('#pair-ledger caption')?.textContent,selected:document.querySelector('#pair-ledger tr[aria-selected=true]')?.dataset.buildKey,detail:document.querySelector('#build-focus-host article.album')?.dataset.buildKey,pairDetail:document.querySelector('#pair-selected-build h4')?.textContent})");
-  if(results.explorer.pairDeep.era!=='16'||results.explorer.pairDeep.pairEra!=='16'||results.explorer.pairDeep.rows>20||results.explorer.pairDeep.selected!==linked.buildKey||results.explorer.pairDeep.detail!==linked.buildKey||!results.explorer.pairDeep.pairDetail)throw Error('Ibocain pair deep link failed to focus its era and bounded selected row');
-  await screenshot('creator-ibocain-pair-deep-link');
-  await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
-  results.explorer.pairMobile=await evaluate("({width:document.documentElement.scrollWidth,viewport:innerWidth,rows:document.querySelectorAll('#pair-ledger tbody tr').length})");
-  if(results.explorer.pairMobile.width>results.explorer.pairMobile.viewport+2||results.explorer.pairMobile.rows>20)throw Error('Mobile pair ledger overflows the page or exceeds its row window');
-  await evaluate("document.getElementById('pair-view').scrollIntoView({block:'start'})");
-  await screenshot('creator-ibocain-pair-mobile');
-  await cdp('Emulation.clearDeviceMetricsOverride');
+  await wait("!!document.querySelector('#build-focus-host article.album[data-build-key=\""+older.buildKey+"\"]')");
+  results.explorer.directLink=await evaluate("({era:document.getElementById('build-era').value,detail:document.querySelector('#build-focus-host article.album')?.dataset.buildKey,url:location.search})");
+  if(results.explorer.directLink.era!==String(older.era)||results.explorer.directLink.detail!==older.buildKey||!results.explorer.directLink.url.includes('build='+older.buildKey))throw Error('Build deep link failed');
+
   const oneEra=directory.builders.find(b=>b.albums>0&&b.eras.length===1);
-  if(!oneEra)throw Error('No single-era builder exists for atlas edge case');
+  if(!oneEra)throw Error('No single-era builder exists for matrix edge case');
   await cdp('Page.navigate',{url:new URL(oneEra.builderKey+'/',gallery).href});
-  await wait("!!document.getElementById('era-atlas')");
-  results.explorer.oneEra=await evaluate("({tiles:document.querySelectorAll('.era-atlas-tile').length,rows:document.querySelectorAll('#build-explorer tbody tr').length})");
-  if(results.explorer.oneEra.tiles!==2||results.explorer.oneEra.rows>20)throw Error('Single-era profile drew too many atlas tiles or rows');
+  await wait("!!document.getElementById('build-matrix')");
+  results.explorer.oneEra=await evaluate("({rows:document.querySelectorAll('#build-matrix tbody tr').length,fullRows:document.querySelectorAll('#build-explorer tbody tr').length})");
+  if(results.explorer.oneEra.rows!==1||results.explorer.oneEra.fullRows)throw Error('Single-era profile drew a large default ledger');
   const empty=directory.builders.find(b=>b.albums===0);
   if(!empty)throw Error('The agreed searchable empty profiles disappeared');
   await cdp('Page.navigate',{url:new URL(empty.builderKey+'/',gallery).href});

@@ -95,15 +95,15 @@ class KinshipProjectionTests(unittest.TestCase):
             page = (dest / "kinship" / "index.html").read_text(encoding="utf-8")
             for marker in ('href="../creators.css?v=15"', 'src="../creators.js?v=15"',
                            'src="../portraits.js?v=15"',
-                           'src="../kin-tree.js?v=15"', 'src="../kinship.js"',
-                           'data-steward-page="kinship"', 'id="kin-tree"'):
+                           'src="../kin-tree.js?v=15"', 'src="../pair.js?v=16"', 'src="../kinship.js"',
+                           'data-steward-page="kinship"', 'id="kin-map-table"'):
                 self.assertIn(marker, page, f"projected kinship page lost {marker}")
             # The rewrite must not leave a same-directory link behind for any script.
             self.assertNotIn('"./creators.', page)
-            self.assertNotIn('"./kin-tree.js', page)
+            self.assertNotIn('"./pair.js', page)
             self.assertNotIn('"./kinship.js', page)
             self.assertTrue((dest / "kinship.js").exists(), "kinship.js ships beside creators.js")
-            self.assertTrue((dest / "kin-tree.js").exists(), "kin-tree.js ships beside kinship.js")
+            self.assertTrue((dest / "pair.js").exists(), "pair.js ships beside kinship.js")
             paths = {f["path"] for f in receipt["files"]}
             self.assertIn("kinship/index.html", paths)
             self.assertIn("kinship.js", paths)
@@ -159,13 +159,11 @@ class KinshipShellTests(unittest.TestCase):
             for word in BANNED_VOCABULARY:
                 self.assertNotIn(word, content.lower(), f"{name} says '{word}'")
 
-    def test_the_tree_and_the_ledger_link_into_the_pair_view(self):
-        # A co-builder node, a ledger row and a cohabitant row all lead to the same place:
-        # the anchor's own profile, opened on this pairing. Without the query the tree
-        # would keep dropping readers on a cold profile that has forgotten who they came
-        # from -- and a pair link that lost `?kin=` is exactly that regression.
-        self.assertIn("?kin=", self.script, "kinship.js no longer links into the pair view")
+    def test_the_map_and_the_ledger_open_a_focused_pair(self):
+        self.assertIn("&kin=", self.script, "kinship.js no longer deep-links into the pair view")
         self.assertIn("kin-pair-link", self.script)
+        self.assertIn('id="kin-pair-panel"', self.page)
+        self.assertIn('data-kin-metric="photos"', self.page)
 
     def test_creators_js_stands_down_here_but_still_lends_its_store(self):
         self.assertIn("!['kinship', 'profile'].includes(document.documentElement.dataset.stewardPage)", self.creators,

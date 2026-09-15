@@ -103,11 +103,11 @@ class HeroShellTests(unittest.TestCase):
             self.assertNotIn(target, directory, f"the directory renderer reaches for #{target}")
 
     def test_the_builder_page_tells_one_story_in_order(self):
-        # Photographs stay global; the atlas and bounded build explorer follow them,
+        # Photographs stay global; the inventory matrix and bounded build explorer follow,
         # with the compact co-builder summary last.
         thread = self.js[self.js.index("function renderThread()"):]
         order = [thread.index(marker) for marker in
-                 ("renderWorkCarousel()", "renderBrowseToolbar()", "renderEraAtlas()", "renderBuildExplorer()", "renderKinshipEmbed()")]
+                 ("renderWorkCarousel()", "renderBrowseToolbar()", "renderBuildMatrix()", "renderBuildExplorer()", "renderKinshipEmbed()")]
         order.append(thread.rindex("renderThreadNotes()"))  # the empty-profile path ends early
         self.assertEqual(order, sorted(order), "the builder page lost its order")
         # The attribution sentence is said once for the page, not once per album.
@@ -116,8 +116,8 @@ class HeroShellTests(unittest.TestCase):
         # The carousel: a banner over the viewport, the details article under it, a rail.
         for marker in ("'work-banner'", "'album work-details'", "'photos work-rail'", "paintWorkStage()"):
             self.assertIn(marker, self.js, f"the carousel lost {marker}")
-        # All qualifying builds use a semantic twenty-row table and one selected detail.
-        for marker in ("PAGE_SIZE_EXPLORER = 20", "'build-explorer-table'", "'build-focus-host'", "'rest-feedback'", "'radiogroup'"):
+        # All qualifying builds stay in the inventory; the complete ledger is opt-in and paged.
+        for marker in ("PAGE_SIZE_EXPLORER = 50", "'build-explorer-table'", "'build-focus-host'", "'rest-feedback'", "'radiogroup'"):
             self.assertIn(marker, self.js, f"the build explorer lost {marker}")
         # Feedback rides the participation rails like a claim: stored locally, exported.
         self.assertIn("priorities: Object.values(state.priorities || {})", self.js)

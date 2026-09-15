@@ -1,10 +1,16 @@
 'use strict';
 
-// Kinship page: the branching tree of who a builder built beside, era by era, and the
-// tagging that a build's majority owner may add on top. The layout and the drawing of
-// the tree live in kin-tree.js (the builder profile draws the same tree); this file is
-// the page around it. It runs only when a document exists and only when a creators.js
-// new enough to carry the participation store, and kin-tree.js, have loaded first.
+// Kinship page: a bounded era-by-co-builder map, a searchable co-builder ledger, and
+// focused pair details. Construction credit and local-first tagging remain separate.
+
+function kinshipMetricValue(span, metric, albumByKey) {
+  if (!span) return null;
+  if (metric === 'pieces') return span.legacy ? null : Number(span.sharedPieces) || 0;
+  if (metric === 'photos') return (span.builds || []).filter((key) => albumByKey.get(key)?.photos?.length).length;
+  return Number(span.sharedAlbums) || 0;
+}
+
+if (typeof module !== 'undefined') module.exports = {kinshipMetricValue};
 
 const initKinshipPage = async () => {
   const $ = (id) => document.getElementById(id);
@@ -21,9 +27,9 @@ const initKinshipPage = async () => {
     if (status) status.textContent = 'This page needs a newer creators.js. Reload once to pick it up.';
     return;
   }
-  if (typeof drawKinshipTree !== 'function' || typeof layoutKinshipTree !== 'function') {
+  if (typeof buildKinshipPair !== 'function') {
     const status = $('status');
-    if (status) status.textContent = 'This page needs kin-tree.js. Reload once to pick it up.';
+    if (status) status.textContent = 'This page needs pair.js. Reload once to pick it up.';
     return;
   }
 
@@ -54,11 +60,17 @@ const initKinshipPage = async () => {
   let confirmedTags = [];
   let portraitManifest = null;
   let tree = null;
-  let layout = null;
-  let treeHandle = null;
-  let activeFilter = 'all';
-  let branchCap = kinBranchCap();
-  let resizeTimer = 0;
+  let metric = ['builds', 'pieces', 'photos'].includes(params.get('metric')) ? params.get('metric') : 'builds';
+  let selectedKin = KEY_PATTERN.test(params.get('kin') || '') ? params.get('kin') : null;
+  let selectedEra = /^\d+$/.test(params.get('era') || '') ? params.get('era') : 'all';
+  let selectedBuild = /^[a-f0-9]{64}$/.test(params.get('build') || '') ? params.get('build') : null;
+  let pairLedgerOpen = params.get('mode') === 'pair-ledger';
+  let pairLedgerPage = 0;
+  let pairSearch = '';
+  let mobileKin = selectedKin;
+  let ledgerSearch = '';
+  let ledgerEra = 'all';
+  let ledgerSort = 'pieces';
   let ledgerShown = LEDGER_PAGE;
   let buildsShown = BUILD_PAGE;
   let suggestions = [];
@@ -86,12 +98,8 @@ const initKinshipPage = async () => {
   const kinPercent = (share) => `${Math.round(share * 100)}%`;
   const builderHref = (key) => new URL(`${key}/`, base).href;
   const kinshipHref = (key) => new URL(`kinship/?builder=${key}`, base).href;
-  // The pair view lives on the anchor's own profile page, so a link into it is that page
-  // plus the co-builder it should open on -- and, where the row knows one, the build the
-  // two of them share. The anchor's own node never gets one: a pairing of somebody with
-  // themselves is not a thing this page can draw.
   const pairHref = (key, buildKey) => new URL(
-    `${anchor}/?kin=${key}${buildKey ? `&build=${buildKey}` : ''}`, base).href;
+    `kinship/?builder=${anchor}&kin=${key}${buildKey ? `&build=${buildKey}` : ''}`, base).href;
 
   async function kinRead(name) {
     const response = await fetch(new URL(name, base));
@@ -400,8 +408,6 @@ const initKinshipPage = async () => {
   function ledgerRow(branch) {
     const tr = document.createElement('tr');
     tr.dataset.builderKey = branch.builderKey;
-    const builds = branchBuilds(branch);
-
     const who = kinNode('td', null, 'kin-ledger-who');
     who.append(kinPortrait(branch.builderKey), creditLink(branch.builderKey), unnamedChip(branch.builderKey));
     tr.append(who);
@@ -416,21 +422,11 @@ const initKinshipPage = async () => {
     pieces.append(kinNode('span', kinCount(branch.totalSharedPieces), 'counter'));
     tr.append(pieces);
 
-    tr.append(kinNode('td', anchorShareRange(builds)));
-    tr.append(kinNode('td', kinCount(builds.filter((album) => majorityOwner(album, anchor) !== null).length)));
-
-    const tags = kinNode('td');
-    tags.append(tagChips(branch.tags));
-    tr.append(tags);
-
     const action = kinNode('td');
-    const eligible = eligibleBuildsFor(branch.builderKey);
-    action.append(tagButton(eligible[0] || null, branch.builderKey, 'Tag'));
-    // The ledger row knows the pairing but not which of its builds to open on, so this
-    // link names only the co-builder and lets the pair view pick.
-    const pair = kinLink('Pair view', pairHref(branch.builderKey));
-    pair.className = 'kin-open kin-pair-link';
-    action.append(pair);
+    const explore = kinNode('button', 'Explore relationship', 'kin-open kin-pair-link');
+    explore.type = 'button';
+    explore.onclick = () => selectKin(branch.builderKey, 'all', null, {scroll: true});
+    action.append(explore);
     tr.append(action);
     return tr;
   }
@@ -438,13 +434,304 @@ const initKinshipPage = async () => {
   function renderLedger() {
     const body = $('kin-ledger').tBodies[0];
     body.replaceChildren();
-    const branches = tree.branches || [];
+    const query = ledgerSearch.trim().toLocaleLowerCase();
+    const branches = (tree?.branches || [])
+      .filter((branch) => ledgerEra === 'all' || branch.spans.some((span) => String(span.era) === ledgerEra))
+      .filter((branch) => !query || nameFor(branch.builderKey).toLocaleLowerCase().includes(query)
+        || branch.builderKey.includes(query))
+      .sort((a, b) => ledgerSort === 'builds'
+        ? b.totalSharedAlbums - a.totalSharedAlbums || b.totalSharedPieces - a.totalSharedPieces || a.builderKey.localeCompare(b.builderKey)
+        : ledgerSort === 'name' ? nameFor(a.builderKey).localeCompare(nameFor(b.builderKey)) || a.builderKey.localeCompare(b.builderKey)
+          : b.totalSharedPieces - a.totalSharedPieces || b.totalSharedAlbums - a.totalSharedAlbums || a.builderKey.localeCompare(b.builderKey));
     for (const branch of branches.slice(0, ledgerShown)) body.append(ledgerRow(branch));
+    $('kin-ledger-count').textContent = `${kinPlural(branches.length, 'co-builder')} match · ${kinPlural(Math.min(branches.length, ledgerShown), 'co-builder')} shown. Search or choose an era to narrow the table.`;
     const more = $('kin-ledger-more');
     const remaining = Math.max(0, branches.length - ledgerShown);
     more.hidden = remaining === 0;
-    more.textContent = `Show ${kinCount(remaining)} more co-builders`;
+    more.textContent = `Show ${kinCount(Math.min(LEDGER_PAGE, remaining))} more co-builders`;
     hydrateNames(body);
+  }
+
+  function syncKinUrl() {
+    const next = new URLSearchParams(location.search);
+    if (selectedKin) next.set('kin', selectedKin); else next.delete('kin');
+    if (selectedKin && selectedEra !== 'all') next.set('era', selectedEra); else next.delete('era');
+    if (selectedKin && selectedBuild) next.set('build', selectedBuild); else next.delete('build');
+    if (metric !== 'builds') next.set('metric', metric); else next.delete('metric');
+    if (pairLedgerOpen) next.set('mode', 'pair-ledger'); else next.delete('mode');
+    history.replaceState(null, '', `${location.pathname}?${next.toString()}`);
+  }
+
+  function selectKin(key, era = 'all', buildKey = null, {scroll = false} = {}) {
+    if (!tree?.branches.some((branch) => branch.builderKey === key)) return;
+    selectedKin = key;
+    selectedEra = era;
+    selectedBuild = buildKey;
+    mobileKin = key;
+    pairLedgerOpen = false;
+    pairLedgerPage = 0;
+    pairSearch = '';
+    renderHeatmap();
+    renderPairFocus();
+    syncKinUrl();
+    if (scroll) $('kin-pair-panel')?.scrollIntoView({block: 'start'});
+  }
+
+  function renderHeatmap() {
+    const all = tree?.branches || [];
+    const columns = all.slice(0, 8);
+    const pinned = all.find((branch) => branch.builderKey === selectedKin);
+    if (pinned && !columns.includes(pinned)) columns.push(pinned);
+    for (const button of document.querySelectorAll('[data-kin-metric]')) {
+      button.setAttribute('aria-pressed', String(button.dataset.kinMetric === metric));
+    }
+    const table = $('kin-map-table');
+    table.replaceChildren();
+    if (!columns.length) {
+      table.append(kinNode('caption', 'No co-builders have qualifying shared construction credit on this profile.'));
+      $('kin-mobile-pick-label').hidden = true;
+      return;
+    }
+    if (!columns.some((branch) => branch.builderKey === mobileKin)) mobileKin = selectedKin || columns[0].builderKey;
+    const mobile = $('kin-mobile-pick');
+    mobile.replaceChildren();
+    for (const branch of columns) {
+      const option = kinNode('option', nameFor(branch.builderKey));
+      option.value = branch.builderKey;
+      mobile.append(option);
+    }
+    mobile.value = mobileKin;
+    $('kin-mobile-pick-label').hidden = false;
+    table.append(kinNode('caption', `Era by co-builder map, colored by ${metric === 'builds' ? 'shared builds' : metric === 'pieces' ? 'shared pieces' : 'photographed shared builds'}. Select a nonempty cell to inspect that pair in the era.`));
+    const head = kinNode('thead');
+    const header = kinNode('tr');
+    const eraHead = kinNode('th', 'Era');
+    eraHead.scope = 'col';
+    header.append(eraHead);
+    for (const branch of columns) {
+      const th = kinNode('th', null);
+      th.scope = 'col';
+      th.dataset.key = branch.builderKey;
+      th.dataset.mobileActive = String(branch.builderKey === mobileKin);
+      th.append(nameSpan(branch.builderKey));
+      header.append(th);
+    }
+    head.append(header);
+    table.append(head);
+    const values = columns.flatMap((branch) => branch.spans.map((span) => kinshipMetricValue(span, metric, albumIndex)))
+      .filter((value) => value != null && value > 0);
+    const max = Math.max(1, ...values);
+    const body = kinNode('tbody');
+    for (const era of [...(tree.eras || [])].reverse()) {
+      const row = kinNode('tr');
+      const label = kinNode('th', `Era ${era}`);
+      label.scope = 'row';
+      row.append(label);
+      for (const branch of columns) {
+        const td = kinNode('td');
+        td.dataset.key = branch.builderKey;
+        td.dataset.mobileActive = String(branch.builderKey === mobileKin);
+        td.dataset.builderName = nameFor(branch.builderKey);
+        const span = branch.spans.find((entry) => entry.era === era);
+        if (span) {
+          const value = kinshipMetricValue(span, metric, albumIndex);
+          const level = value == null ? 'unknown' : value <= 0 ? '0' : String(Math.max(1, Math.ceil(Math.log1p(value) / Math.log1p(max) * 4)));
+          const cell = kinNode('button', value == null ? '?' : kinCount(value), 'kin-map-cell');
+          cell.type = 'button';
+          cell.dataset.level = level;
+          cell.dataset.key = branch.builderKey;
+          cell.setAttribute('aria-pressed', String(selectedKin === branch.builderKey && selectedEra === String(era)));
+          cell.setAttribute('aria-label', `Era ${era} with ${nameFor(branch.builderKey)}: ${value == null ? 'shared piece total unknown' : `${kinCount(value)} ${metric === 'photos' ? 'photographed shared builds' : metric === 'pieces' ? 'shared pieces' : 'shared builds'}`}. Select relationship.`);
+          cell.onclick = () => selectKin(branch.builderKey, String(era), null, {scroll: true});
+          td.append(cell);
+        } else td.append(kinNode('span', '–', 'kin-map-empty'));
+        row.append(td);
+      }
+      body.append(row);
+    }
+    table.append(body);
+    hydrateNames(table);
+  }
+
+  function renderPairFocus() {
+    const panel = $('kin-pair-panel');
+    panel.replaceChildren();
+    const branch = tree?.branches.find((entry) => entry.builderKey === selectedKin);
+    if (!branch) {
+      panel.hidden = true;
+      selectedKin = null;
+      selectedEra = 'all';
+      selectedBuild = null;
+      return;
+    }
+    const model = buildKinshipPair(thread, selectedKin, {
+      builderFor: (key) => buildersByKey.get(key), confirmedTags, localTags: state.kinshipTags,
+      activeBuildKey: selectedBuild,
+    });
+    if (!model) { panel.hidden = true; return; }
+    if (selectedEra !== 'all' && !model.eras.some((era) => String(era) === selectedEra)) selectedEra = 'all';
+    const scoped = selectedEra === 'all' ? model.sharedBuilds
+      : model.sharedBuilds.filter((row) => String(row.era) === selectedEra);
+    if (selectedBuild && !scoped.some((row) => row.buildKey === selectedBuild)) selectedBuild = null;
+    panel.hidden = false;
+    const title = kinNode('h2', `Built beside ${nameFor(selectedKin)}`);
+    panel.append(title, kinNode('p', `${kinPlural(model.sharedBuildCount, 'shared build')} · ${kinCount(model.sharedPieces)} shared pieces · eras ${model.eras.join(', ')} · ${kinPlural(model.photographedCount, 'photographed shared build')} · ${model.standing} kin`, 'kin-pair-intro'));
+    const links = kinNode('div', null, 'kin-pair-links');
+    links.append(kinLink('Back to era map', '#kin-map-section'), kinLink('Find another co-builder', '#kin-ledger-panel'));
+    links.append(kinLink('Open their builder page', builderHref(selectedKin)));
+    const download = kinNode('button', 'Download pair ledger (JSON)');
+    download.type = 'button';
+    download.onclick = () => {
+      const url = URL.createObjectURL(new Blob([JSON.stringify(model, null, 2)], {type: 'application/json'}));
+      const anchorEl = kinLink('', url);
+      anchorEl.download = `pair-${anchor}-${selectedKin}.json`;
+      anchorEl.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+    links.append(download);
+    panel.append(links);
+    const filter = kinNode('label', 'Shared era ', 'kin-pair-era');
+    const select = kinNode('select');
+    const all = kinNode('option', `All shared eras (${model.sharedBuildCount})`);
+    all.value = 'all';
+    select.append(all);
+    for (const era of model.eras) {
+      const count = model.sharedBuilds.filter((row) => row.era === era).length;
+      const option = kinNode('option', `Era ${era} (${count})`);
+      option.value = String(era);
+      select.append(option);
+    }
+    select.value = selectedEra;
+    select.onchange = () => {
+      selectedEra = select.value;
+      selectedBuild = null;
+      pairLedgerPage = 0;
+      renderHeatmap();
+      renderPairFocus();
+      syncKinUrl();
+    };
+    filter.append(select);
+    panel.append(filter);
+    const picks = scoped.slice(0, 5);
+    if (selectedBuild && !picks.some((row) => row.buildKey === selectedBuild)) {
+      const picked = scoped.find((row) => row.buildKey === selectedBuild);
+      if (picked) picks.push(picked);
+    }
+    panel.append(kinNode('h3', `Largest shared builds ${selectedEra === 'all' ? 'across all eras' : `in Era ${selectedEra}`}`));
+    const shortlist = kinNode('ul', null, 'kin-pair-shortlist');
+    for (const row of picks) {
+      const item = kinNode('li');
+      const choose = kinNode('button', null, 'kin-pair-pick');
+      choose.type = 'button';
+      choose.setAttribute('aria-pressed', String(row.buildKey === selectedBuild));
+      choose.append(kinNode('strong', row.label), kinNode('span', `Era ${row.era} · ${kinCount(row.pieces)} total pieces · you ${row.anchorPieces == null ? 'unmeasured' : kinCount(row.anchorPieces)} · ${nameFor(selectedKin)} ${row.allyPieces == null ? 'unmeasured' : kinCount(row.allyPieces)} · ${row.photoCount} photographs`));
+      choose.onclick = () => {
+        selectedBuild = row.buildKey;
+        renderPairFocus();
+        syncKinUrl();
+        $('kin-pair-build-detail')?.scrollIntoView({block: 'nearest'});
+      };
+      item.append(choose);
+      shortlist.append(item);
+    }
+    panel.append(shortlist);
+    if (selectedBuild) {
+      const row = scoped.find((entry) => entry.buildKey === selectedBuild);
+      const detail = kinNode('article', null, 'kin-pair-build-detail');
+      detail.id = 'kin-pair-build-detail';
+      detail.append(kinNode('h3', row.label), kinNode('p', `Era ${row.era} · ${kinCount(row.pieces)} pieces · you ${row.anchorPieces == null ? 'unmeasured' : kinCount(row.anchorPieces)} · ${nameFor(selectedKin)} ${row.allyPieces == null ? 'unmeasured' : kinCount(row.allyPieces)} · ${kinPlural(row.photoCount, 'photograph')}`));
+      const actions = kinNode('div', null, 'kin-pair-links');
+      actions.append(kinLink('Open build details and participation actions', new URL(`${anchor}/?build=${row.buildKey}`, base)));
+      if (row.worldUrl) actions.append(kinLink('Open in world viewer', row.worldUrl));
+      if (row.galleryUrl) actions.append(kinLink('Open original gallery', row.galleryUrl));
+      detail.append(actions);
+      panel.append(detail);
+    }
+    const reveal = kinNode('button', pairLedgerOpen ? 'Hide complete shared-build ledger' : `View all ${kinCount(scoped.length)} shared builds`, 'secondary');
+    reveal.type = 'button';
+    reveal.onclick = () => {
+      pairLedgerOpen = !pairLedgerOpen;
+      pairLedgerPage = 0;
+      renderPairFocus();
+      syncKinUrl();
+    };
+    panel.append(reveal);
+    if (pairLedgerOpen) {
+      const full = kinNode('section', null, 'kin-pair-ledger');
+      full.append(kinNode('h3', 'Complete shared-build ledger'));
+      const search = kinNode('input');
+      search.id = 'kin-pair-search';
+      search.type = 'search';
+      search.placeholder = 'Find a build name or key';
+      search.value = pairSearch;
+      search.setAttribute('aria-label', 'Find a shared build name or key');
+      search.oninput = () => {
+        const cursor = search.selectionStart;
+        pairSearch = search.value;
+        pairLedgerPage = 0;
+        renderPairFocus();
+        requestAnimationFrame(() => {
+          const next = $('kin-pair-search');
+          next?.focus({preventScroll: true});
+          next?.setSelectionRange(cursor, cursor);
+        });
+      };
+      full.append(search);
+      const query = pairSearch.trim().toLocaleLowerCase();
+      const rows = scoped.filter((row) => !query || row.label.toLocaleLowerCase().includes(query) || row.buildKey.includes(query));
+      const pageSize = 50;
+      const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+      pairLedgerPage = Math.max(0, Math.min(pairLedgerPage, pages - 1));
+      const shown = rows.slice(pairLedgerPage * pageSize, (pairLedgerPage + 1) * pageSize);
+      full.append(kinNode('p', `${kinPlural(rows.length, 'shared build')} match · ${shown.length} shown on page ${pairLedgerPage + 1} of ${pages}.`, 'muted'));
+      const wrap = kinNode('div', null, 'stats-table-wrap');
+      const table = kinNode('table', null, 'stats-table kin-pair-table');
+      const head = kinNode('thead');
+      const tr = kinNode('tr');
+      for (const label of ['Build', 'Era', 'Total pieces', 'Your pieces', 'Their pieces', 'Photos']) {
+        const th = kinNode('th', label);
+        th.scope = 'col';
+        tr.append(th);
+      }
+      head.append(tr);
+      table.append(head);
+      const body = kinNode('tbody');
+      for (const row of shown) {
+        const tr = kinNode('tr');
+        const name = kinNode('td');
+        const open = kinNode('button', row.label, 'kin-pair-ledger-pick');
+        open.type = 'button';
+        open.onclick = () => { selectedBuild = row.buildKey; renderPairFocus(); syncKinUrl(); };
+        name.append(open);
+        tr.append(name, kinNode('td', String(row.era)), kinNode('td', kinCount(row.pieces)), kinNode('td', row.anchorPieces == null ? 'unmeasured' : kinCount(row.anchorPieces)), kinNode('td', row.allyPieces == null ? 'unmeasured' : kinCount(row.allyPieces)), kinNode('td', String(row.photoCount)));
+        body.append(tr);
+      }
+      table.append(body);
+      wrap.append(table);
+      full.append(wrap);
+      const nav = kinNode('div', null, 'kin-pair-page');
+      const previous = kinNode('button', 'Previous');
+      previous.type = 'button';
+      previous.disabled = pairLedgerPage === 0;
+      previous.onclick = () => { pairLedgerPage -= 1; renderPairFocus(); };
+      const next = kinNode('button', 'Next');
+      next.type = 'button';
+      next.disabled = pairLedgerPage >= pages - 1;
+      next.onclick = () => { pairLedgerPage += 1; renderPairFocus(); };
+      const jump = kinNode('input');
+      jump.type = 'number';
+      jump.min = '1';
+      jump.max = String(pages);
+      jump.value = String(pairLedgerPage + 1);
+      jump.setAttribute('aria-label', `Go to shared-build page, 1 through ${pages}`);
+      jump.onchange = () => { pairLedgerPage = Math.max(0, Math.min(pages - 1, Number(jump.value || 1) - 1)); renderPairFocus(); };
+      const jumpLabel = kinNode('label', 'Page ');
+      jumpLabel.append(jump);
+      nav.append(previous, jumpLabel, next);
+      full.append(nav);
+      panel.append(full);
+    }
+    hydrateNames(panel);
   }
 
   /* ---- builds the anchor holds ---- */
@@ -845,41 +1132,40 @@ const initKinshipPage = async () => {
   function renderStatus() {
     const total = tree?.coBuilderCount || 0;
     const eras = tree?.eras?.length || 0;
-    const filterNote = activeFilter === 'majority' ? ' · builds you lead only'
-      : activeFilter === 'photographed' ? ' · photographed builds only' : '';
     $('status').textContent = total
-      ? `${thread.displayName} built beside ${kinPlural(total, 'builder')} across ${kinPlural(eras, 'era')}${filterNote}.`
-      : `No other builder placed a saved piece on ${thread.displayName}'s builds${filterNote}.`;
+      ? `${thread.displayName} built beside ${kinPlural(total, 'builder')} across ${kinPlural(eras, 'era')}.`
+      : `No other builder placed a saved piece on ${thread.displayName}'s builds.`;
+    if (params.get('kin') && !selectedKin) $('status').textContent += ' The linked co-builder is not credited on this profile; try the table below.';
   }
 
-  function selectTab(mode) {
-    const ledger = mode === 'ledger';
-    $('kin-tab-tree').setAttribute('aria-selected', String(!ledger));
-    $('kin-tab-ledger').setAttribute('aria-selected', String(ledger));
-    $('kin-tree-panel').hidden = ledger;
-    $('kin-ledger-panel').hidden = !ledger;
-    const next = new URLSearchParams(location.search);
-    if (ledger) next.set('mode', 'ledger');
-    else next.delete('mode');
-    const query = next.toString();
-    history.replaceState(null, '', query ? `${location.pathname}?${query}` : location.pathname);
-    if (!ledger && treeHandle) treeHandle.hideTip();
-  }
-
-  function wireTabs() {
-    $('kin-tab-tree').onclick = () => selectTab('tree');
-    $('kin-tab-ledger').onclick = () => selectTab('ledger');
+  function wireControls() {
+    for (const button of document.querySelectorAll('[data-kin-metric]')) {
+      button.onclick = () => {
+        metric = button.dataset.kinMetric;
+        renderHeatmap();
+        syncKinUrl();
+      };
+    }
+    $('kin-mobile-pick').onchange = () => selectKin($('kin-mobile-pick').value, 'all', null);
+    $('kin-co-search').oninput = () => {
+      ledgerSearch = $('kin-co-search').value;
+      ledgerShown = LEDGER_PAGE;
+      renderLedger();
+    };
+    $('kin-co-era').onchange = () => {
+      ledgerEra = $('kin-co-era').value;
+      ledgerShown = LEDGER_PAGE;
+      renderLedger();
+    };
+    $('kin-co-sort').onchange = () => {
+      ledgerSort = $('kin-co-sort').value;
+      ledgerShown = LEDGER_PAGE;
+      renderLedger();
+    };
     $('kin-ledger-more').onclick = () => {
       ledgerShown += LEDGER_PAGE;
       renderLedger();
     };
-    for (const chip of document.querySelectorAll('[data-kin-filter]')) {
-      chip.onclick = () => {
-        activeFilter = chip.dataset.kinFilter;
-        for (const other of document.querySelectorAll('[data-kin-filter]')) other.classList.toggle('active', other === chip);
-        rebuild();
-      };
-    }
     $('kin-copy-invite').onclick = async () => {
       const invite = kinshipHref(anchor);
       if (!navigator.clipboard?.writeText) return kinShowPayloadFallback(invite, 'Copy the invite link from this box.');
@@ -907,21 +1193,7 @@ const initKinshipPage = async () => {
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
       kinCloseAllModals();
-      if (treeHandle) treeHandle.hideTip();
       closeSuggestions();
-    });
-  }
-
-  // A rotate or a window drag fires resize by the dozen, and a rebuild is a full redraw of
-  // the tree, the ledger and both aside cards. Debounce it, and then redraw only when the
-  // answer actually changed: every resize inside one breakpoint costs nothing at all.
-  function wireViewport() {
-    addEventListener('resize', () => {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => {
-        if (!thread || kinBranchCap() === branchCap) return;
-        rebuild();
-      }, 150);
     });
   }
 
@@ -1000,27 +1272,35 @@ const initKinshipPage = async () => {
   /* ---- assembly ---- */
 
   function filteredThread() {
-    if (activeFilter === 'all') return thread;
-    const keep = activeFilter === 'majority'
-      ? (album) => majorityOwner(album, anchor) !== null
-      : (album) => Boolean(album.photos && album.photos.length);
-    const eras = (thread.eras || [])
-      .map((era) => ({...era, albums: (era.albums || []).filter(keep)}))
-      .filter((era) => era.albums.length);
-    return {...thread, eras};
+    return thread;
   }
 
   function rebuild() {
     const source = filteredThread();
     visibleAlbums = (source.eras || []).flatMap((era) => era.albums || []);
     tree = buildKinshipTree(source, {confirmedTags, localTags: state.kinshipTags});
-    branchCap = kinBranchCap();
-    // padBottom: room under the oldest band for the labels hanging off its nodes.
-    layout = layoutKinshipTree(tree, {maxBranches: branchCap, padBottom: 104});
+    if (selectedKin && !tree.branches.some((branch) => branch.builderKey === selectedKin)) {
+      selectedKin = null;
+      selectedEra = 'all';
+      selectedBuild = null;
+    }
     ledgerShown = LEDGER_PAGE;
     buildsShown = BUILD_PAGE;
-    renderTree();
+    const eraControl = $('kin-co-era');
+    eraControl.replaceChildren();
+    const all = kinNode('option', 'All shared eras');
+    all.value = 'all';
+    eraControl.append(all);
+    for (const era of [...tree.eras].reverse()) {
+      const option = kinNode('option', `Era ${era}`);
+      option.value = String(era);
+      eraControl.append(option);
+    }
+    if (!tree.eras.some((era) => String(era) === ledgerEra)) ledgerEra = 'all';
+    eraControl.value = ledgerEra;
+    renderHeatmap();
     renderLedger();
+    renderPairFocus();
     renderBuilds();
     renderCohabs();
     renderAnchorPill();
@@ -1030,15 +1310,12 @@ const initKinshipPage = async () => {
 
   function anchorBarOnly(message) {
     $('status').textContent = message;
-    $('kin-tabs').hidden = true;
-    $('kin-filters').hidden = true;
     document.querySelector('.kin-layout').hidden = true;
     $('kin-anchor-pill').hidden = true;
   }
 
-  wireTabs();
+  wireControls();
   wireSwitcher();
-  wireViewport();
 
   const directoryLoad = kinReadOptional('directory.json').then((doc) => {
     if (!doc) return;
@@ -1051,11 +1328,16 @@ const initKinshipPage = async () => {
       if (portraitManifest) hydratePortraits();
     }
     hydrateNames();
-    if (thread) renderAnchorPill();
+    if (thread) {
+      renderAnchorPill();
+      renderHeatmap();
+      renderLedger();
+      renderPairFocus();
+    }
   });
 
   if (!anchor || !KEY_PATTERN.test(anchor)) {
-    anchorBarOnly('Pick a builder to draw their tree.');
+    anchorBarOnly('Pick a builder to explore their co-builders.');
     await directoryLoad;
     $('kin-search').focus({preventScroll: true});
     return;
@@ -1064,14 +1346,16 @@ const initKinshipPage = async () => {
   try {
     thread = await kinRead(`threads/${anchor}.json`);
   } catch {
-    anchorBarOnly('That builder has no thread in this archive. Pick another to draw their tree.');
+    anchorBarOnly('That builder has no thread in this archive. Pick another builder.');
     await directoryLoad;
     return;
   }
 
   indexAlbums(thread);
   rebuild();
-  if (new URLSearchParams(location.search).get('mode') === 'ledger') selectTab('ledger');
+  if (selectedKin && selectedEra === 'all' && params.get('era')) syncKinUrl();
+  if (!location.hash && selectedKin) requestAnimationFrame(() => $('kin-pair-panel')?.scrollIntoView({block: 'start'}));
+  else if (params.get('mode') === 'ledger') requestAnimationFrame(() => $('kin-ledger-panel')?.scrollIntoView({block: 'start'}));
 
   kinReadOptional('participation.json').then((doc) => {
     const tags = Array.isArray(doc?.confirmedTags) ? doc.confirmedTags : [];
