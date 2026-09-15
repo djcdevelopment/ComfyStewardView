@@ -1,11 +1,64 @@
 # Handoff — second-pass era intake and compare-and-reshoot photography (2026-09-13)
 
-For the next agent picking this up cold. Everything below is true as of 2026-09-13 ~08:00 UTC.
-Read this before touching anything; the receipts named here are the ground truth if the two
-ever disagree. The operator is Derek (pronouns unknown — use they/them); the Steam account
+For the next agent picking this up cold. Section 0.1 is the current state; later dated sections
+are historical and must not be used as a live-status claim. Receipts are the ground truth if
+this document and the lake ever disagree. The operator is Derek (pronouns unknown — use
+they/them); the Steam account
 `Zephar410` is shared between OMEN (their gaming PC) and AM4 (the capture host).
 
-## 0. STATUS UPDATE 2026-09-15 05:00 UTC
+## 0.1 STATUS UPDATE 2026-09-15 05:47 UTC — FIRST-PASS JUDGED GALLERY LIVE
+
+- **All eight first-pass light tables are complete.** Era 11 reshoot 33, Era 1 154, Era 2 315,
+  Era 3 306, Era 5 363, Era 6 394, Era 13 230, Era 15 249: **2,044 complete human verdicts**
+  and 1,026 decided pairs. Every run's `verdicts/pair-verdicts.json` was harvested with
+  `--require-complete`; the cumulative evidence is
+  `C:\work\baseline\docs\evidence\pair-verdicts-all.json`, commit `85385359` (pushed).
+  Era 6's whole-page export suffix is `6c609cf51e89.json`, and its 394 rows were the last pass.
+- **The judged import is complete for the seven new eras and Era 11 reshoot.** Each candidate
+  under `campaigns/<era>/run/<root>/judged-candidate/` was built with *both* `--rank` and
+  `--verdicts`: eight complete manifest judgements, zero unjudged builds, original rank
+  no-survivor builds retained in the reshoot queue. The existing 18-manifest `run-manifest.json`
+  was not rewritten; eight capture manifests and seven new-era picker indexes were backed up
+  hash-identically under `judged-preview-20260915/live-backup/`, then promoted at their existing
+  lake paths. The Era 11 picker index is a separate historical 689-frame index and was not
+  replaced by the 18-frame reshoot manifest.
+- **The public transition was gated before publish.** The isolated
+  `judged-preview-20260915/projection/` uses the same 17 analysis receipts and 18 capture paths
+  with eight judged substitutions. The strict eight-pair `diff_projection.py
+  --capture-transition` gate verified exactly 1,988 changed builds and **3,756 removed photos**,
+  with no unrelated public change; local creators/world browser smoke passed. The ordinary
+  `gate_creators.py` no-content-change check predictably fails this intended photo transition,
+  so use the manifest-pair gate for judged imports. A single full driver run,
+  `runs/20260915T052855Z/run-receipt.json`, completed with 17 verified eras, 7,496 private
+  builders, 16,111 captured photographs from 18 manifests, and zero stale-item removal.
+  `Invoke-EraArchive.ps1 -SkipCleanup` now also skips analysis-backup pruning (commit `542bf67`).
+- **Live site agrees with the judged manifests.** Creators release
+  `542bf6743590-eeec135b9ba1` is live: 5,823 threads, 59,708 published albums, 16,111 public
+  photographs, 17 eras. The seven new-era `/valheim/era<era>/index.json` files were atomically
+  swapped after hash verification; their judged frame counts are Era 1 144, Era 2 338,
+  Era 3 220, Era 5 432, Era 6 538, Era 13 174, Era 15 231. The outgoing picker indexes
+  remain at `/srv/sites/valheim/.picker-releases/20260915-judged-first-pass/`. Every new
+  selected photo ID was already published among the rank picks, so no derivative transfer or
+  image deletion was needed. Chronicles release `20260915T054540Z-7551eb970934` is live with
+  the same 5,823/16,111/17 counts; live front-door smoke passed 15/15. The search panel now
+  cancels its pending debounce when Escape dismisses it, and `deploy.py --no-prune` kept *all*
+  older immutable releases (commit `0b0057b`). Deployment receipts are
+  `judged-preview-20260915/deploy-creators.json` and
+  `judged-preview-20260915/deploy-chronicles-escape-fix.json`.
+- **Next useful work is the refused/reshoot round, not another full-era light table.** Exact
+  per-root lists and reason maps are the `judged-candidate/rejects-<era>.json` files. Across
+  eight roots there are **563 builds**: 91 original rank no-survivors, 445 `neither`, and
+  27 single-frame `reshoot` verdicts. Counts by root are Era 1 39, Era 2 82, Era 3 160,
+  Era 5 70, Era 6 59, Era 13 79, Era 15 64, Era 11 reshoot 10. Replan short batches
+  by era, shoot only these builds, then judge the new frames against the existing first-pass
+  keeper or refusal. Keeper-master shuttling is also still pending: the eight judged
+  `worklist-<era>.json` selectors match their host `state.json` source paths and SHA-256s,
+  selecting 2,095 masters / 21.89 GiB and omitting 6,424 completed losers. The slow host-to-OMEN
+  link makes this a separately budgeted, resumable transfer; do not start it as incidental
+  cleanup. All host master images and older webp derivatives are retained;
+  **nothing under `<root>/images/` was deleted**.
+
+## 0. HISTORICAL STATUS UPDATE 2026-09-15 05:00 UTC (superseded by §0.1)
 
 - **Era 17 is repaired and live.** The missing save was outside the canonical intake root,
   not overwritten by Era 4's different Charon identity. Hash-identical copies now live under
