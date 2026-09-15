@@ -143,5 +143,85 @@ class EraIntakeDiffTests(unittest.TestCase):
         self.assertIn("added album is not intake era", result.stdout)
 
 
+class JudgedCaptureDiffTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        root = Path(self.temp.name)
+        self.old, self.new = root / "old", root / "new"
+        (self.old / "threads").mkdir(parents=True); (self.new / "threads").mkdir(parents=True)
+        self.old_manifest, self.new_manifest = root / "old-capture.json", root / "new-capture.json"
+        self.photo1 = {"id": "p1", "thumb": "https://x/p1t", "large": "https://x/p1",
+                       "href": "https://x/#b", "label": "B", "shot": "one"}
+        self.photo2 = {"id": "p2", "thumb": "https://x/p2t", "large": "https://x/p2",
+                       "href": "https://x/#b", "label": "B", "shot": "two"}
+        before_album = album("build", 1, 20, "builder", [self.photo1, self.photo2])
+        after_album = copy.deepcopy(before_album); after_album["photos"] = [self.photo2]
+        self.before = thread("builder", "Builder", [{"era": 1, "albums": [before_album]}])
+        self.after = thread("builder", "Builder", [{"era": 1, "albums": [after_album]}])
+        self.write_projection(self.old, self.before, 2)
+        self.write_projection(self.new, self.after, 1)
+        base = {"schema": "steward-capture-gallery/v1", "era": "era1", "sourceKey": "source",
+                "rejectedBuilds": [], "albums": 1}
+        self.old_capture = {**base, "judged": False, "photographs": 2,
+                            "builds": {"build": [self.photo1, self.photo2]}}
+        self.new_capture = {**base, "judged": True, "photographs": 1,
+                            "builds": {"build": [self.photo2]}}
+        self.write_manifests()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def write_projection(self, root, record, photos):
+        (root / "threads" / "builder.json").write_text(json.dumps(record), encoding="utf-8")
+        directory = {"schema": "steward-creator-directory/v1", "generatedAt": str(photos),
+                     "builders": [row(record)], "eras": [{"era": 1}],
+                     "photography": {"eras": [{"era": 1, "albums": 1,
+                                                "albumsWithPhotos": 1, "photos": photos}],
+                                     "photos": photos, "albumsWithPhotos": 1,
+                                     "buildersWithPhotos": 1},
+                     "unattributedAlbums": 0, "legacyImports": []}
+        (root / "directory.json").write_text(json.dumps(directory), encoding="utf-8")
+
+    def write_manifests(self):
+        self.old_manifest.write_text(json.dumps(self.old_capture), encoding="utf-8")
+        self.new_manifest.write_text(json.dumps(self.new_capture), encoding="utf-8")
+
+    def run_diff(self):
+        return subprocess.run([sys.executable, str(TOOL), str(self.old), str(self.new),
+                               "--capture-transition", str(self.old_manifest), str(self.new_manifest)],
+                              text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    def test_accepts_photo_removal_proved_by_judged_manifest(self):
+        result = self.run_diff()
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertIn("-1 photograph(s)", result.stdout)
+
+    def test_rejects_unjudged_new_manifest(self):
+        self.new_capture["judged"] = False; self.write_manifests()
+        result = self.run_diff()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("not judged", result.stdout)
+
+    def test_rejects_unrelated_album_change(self):
+        self.after["eras"][0]["albums"][0]["label"] = "rewritten"
+        self.write_projection(self.new, self.after, 1)
+        result = self.run_diff()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("non-photo album field changed", result.stdout)
+
+    def test_rejects_unrelated_portrait_change(self):
+        self.after["portrait"] = {"tile": "changed", "take": "s1"}
+        self.write_projection(self.new, self.after, 1)
+        result = self.run_diff()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("non-photo thread field changed", result.stdout)
+
+    def test_rejects_capture_manifest_count_mismatch(self):
+        self.new_capture["photographs"] = 2; self.write_manifests()
+        result = self.run_diff()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("capture photograph count", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

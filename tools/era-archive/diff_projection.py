@@ -31,8 +31,12 @@ from pathlib import Path
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("live", type=Path)
 parser.add_argument("new", type=Path)
-parser.add_argument("--allow-era-intake", type=int, metavar="ERA",
-                    help="admit a new analysis source for exactly this era; photographs may not change")
+mode = parser.add_mutually_exclusive_group()
+mode.add_argument("--allow-era-intake", type=int, metavar="ERA",
+                  help="admit a new analysis source for exactly this era; photographs may not change")
+mode.add_argument("--capture-transition", action="append", nargs=2, type=Path,
+                  metavar=("OLD_MANIFEST", "NEW_MANIFEST"),
+                  help="admit exactly the photo changes proved by a judged manifest; repeat per era")
 args = parser.parse_args()
 live, new = args.live, args.new
 kinds, other = Counter(), []
@@ -199,8 +203,215 @@ def validate_era_intake(old_root, new_root, era):
     return 0
 
 
+def public_photo(photo):
+    return {key: photo.get(key) for key in ("id", "thumb", "large", "href", "label", "shot")}
+
+
+def unique_album_map(threads):
+    result = {}
+    for thread in threads.values():
+        for build_key, value in album_map(thread).items():
+            if build_key in result and result[build_key] != value:
+                raise ValueError(f"album {build_key} differs between contributor threads")
+            result[build_key] = value
+    return result
+
+
+def validate_capture_transitions(old_root, new_root, manifest_pairs):
+    """Admit only projection changes described by complete judged capture manifests."""
+    errors, transitions = [], {}
+    for old_path, new_path in manifest_pairs:
+        before, after = load(old_path), load(new_path)
+        if before.get("schema") != "steward-capture-gallery/v1" or after.get("schema") != before.get("schema"):
+            errors.append(("capture schema", str(old_path), str(new_path)))
+            continue
+        if before.get("era") != after.get("era") or before.get("sourceKey") != after.get("sourceKey"):
+            errors.append(("capture identity changed", str(old_path), str(new_path)))
+            continue
+        if after.get("judged") is not True:
+            errors.append(("new capture manifest is not judged", str(new_path)))
+        malformed = False
+        for label, document in (("old", before), ("new", after)):
+            builds = document.get("builds")
+            rejected = document.get("rejectedBuilds", [])
+            if not isinstance(builds, dict) or not isinstance(rejected, list):
+                errors.append(("malformed capture membership", label, str(old_path), str(new_path)))
+                malformed = True
+                continue
+            if len(rejected) != len(set(rejected)):
+                errors.append(("duplicate rejected build", label, str(old_path), str(new_path)))
+            if set(builds) & set(rejected):
+                errors.append(("build is both published and rejected", label,
+                               sorted(set(builds) & set(rejected))[:3]))
+            if document.get("albums") != len(builds):
+                errors.append(("capture album count", label, document.get("albums"), len(builds)))
+            actual_photos = sum(len(photos) for photos in builds.values())
+            if document.get("photographs") != actual_photos:
+                errors.append(("capture photograph count", label,
+                               document.get("photographs"), actual_photos))
+        if malformed:
+            continue
+        try:
+            era = int(str(after["era"]).removeprefix("era"))
+        except (KeyError, TypeError, ValueError):
+            errors.append(("invalid capture era", after.get("era")))
+            continue
+        old_builds, new_builds = before.get("builds", {}), after.get("builds", {})
+        old_rejected, new_rejected = set(before.get("rejectedBuilds", [])), set(after.get("rejectedBuilds", []))
+        for build_key in sorted(set(old_builds) | set(new_builds) | old_rejected | new_rejected):
+            old_photos = {photo["id"]: public_photo(photo) for photo in old_builds.get(build_key, [])}
+            new_photos = {photo["id"]: public_photo(photo) for photo in new_builds.get(build_key, [])}
+            if len(old_photos) != len(old_builds.get(build_key, [])) or len(new_photos) != len(new_builds.get(build_key, [])):
+                errors.append(("duplicate photo id in capture manifest", build_key))
+            if old_photos == new_photos and (build_key in old_rejected) == (build_key in new_rejected):
+                continue
+            if build_key in transitions:
+                errors.append(("build appears in two capture transitions", build_key))
+                continue
+            transitions[build_key] = {"era": era, "before": old_photos, "after": new_photos,
+                                      "rejectedBefore": build_key in old_rejected,
+                                      "rejectedAfter": build_key in new_rejected}
+
+    old_threads = {p.stem: load(p) for p in (old_root / "threads").glob("*.json")}
+    new_threads = {p.stem: load(p) for p in (new_root / "threads").glob("*.json")}
+    if set(old_threads) != set(new_threads):
+        errors.append(("thread set changed", sorted(set(old_threads) - set(new_threads))[:5],
+                       sorted(set(new_threads) - set(old_threads))[:5]))
+    changed_builds, changed_threads = set(), set()
+    for key in sorted(set(old_threads) & set(new_threads)):
+        before, after = old_threads[key], new_threads[key]
+        am, bm = album_map(before), album_map(after)
+        if set(am) != set(bm):
+            errors.append(("album set changed", key, sorted(set(am) - set(bm))[:3],
+                           sorted(set(bm) - set(am))[:3]))
+        photo_delta = 0
+        for build_key in sorted(set(am) & set(bm)):
+            old_era, old_album = am[build_key]
+            new_era, new_album = bm[build_key]
+            transition = transitions.get(build_key)
+            if transition is None:
+                if old_album != new_album:
+                    errors.append(("album changed without a capture transition", key, build_key))
+                continue
+            changed_builds.add(build_key)
+            if old_era != transition["era"] or new_era != transition["era"]:
+                errors.append(("transition era mismatch", build_key, old_era, new_era, transition["era"]))
+            for field in set(old_album) | set(new_album):
+                if field in ("photos", "photoStatus"):
+                    continue
+                if old_album.get(field) != new_album.get(field):
+                    errors.append(("non-photo album field changed", key, build_key, field))
+            old_photos = {photo["id"]: photo for photo in old_album.get("photos", [])}
+            new_photos = {photo["id"]: photo for photo in new_album.get("photos", [])}
+            removed = set(old_photos) - set(new_photos)
+            added = set(new_photos) - set(old_photos)
+            expected_removed = set(transition["before"]) - set(transition["after"])
+            expected_added = set(transition["after"]) - set(transition["before"])
+            if removed != expected_removed or added != expected_added:
+                errors.append(("projected photo delta differs from manifests", build_key,
+                               sorted(removed), sorted(added), sorted(expected_removed), sorted(expected_added)))
+            for photo_id in set(old_photos) & set(new_photos):
+                if old_photos[photo_id] != new_photos[photo_id]:
+                    errors.append(("retained public photo changed", build_key, photo_id))
+            for photo_id in added:
+                if new_photos[photo_id] != transition["after"].get(photo_id):
+                    errors.append(("new public photo differs from manifest", build_key, photo_id))
+            old_status, new_status = old_album.get("photoStatus"), new_album.get("photoStatus")
+            if old_status != new_status:
+                if new_status not in (None, "rejected"):
+                    errors.append(("unexpected photoStatus", build_key, old_status, new_status))
+                if new_status == "rejected" and not transition["rejectedAfter"]:
+                    errors.append(("rejected status absent from judged manifest", build_key))
+            photo_delta += len(new_photos) - len(old_photos)
+
+        for field in set(before) | set(after):
+            if field in ("eras", "generatedAt"):
+                continue
+            if field == "photos":
+                if after.get(field) != before.get(field) + photo_delta:
+                    errors.append(("thread photo count", key, before.get(field), after.get(field), photo_delta))
+            elif before.get(field) != after.get(field):
+                errors.append(("non-photo thread field changed", key, field))
+        if [e["era"] for e in before["eras"]] != [e["era"] for e in after["eras"]]:
+            errors.append(("thread era list changed", key))
+        if before != after:
+            changed_threads.add(key)
+
+    old_unique, new_unique = unique_album_map(old_threads), unique_album_map(new_threads)
+    for build_key in transitions:
+        if build_key not in old_unique:
+            errors.append(("transition build is not in the live projection", build_key))
+    if changed_builds != set(transitions):
+        errors.append(("manifest/projected changed-build mismatch", sorted(set(transitions) - changed_builds),
+                       sorted(changed_builds - set(transitions))))
+
+    old_directory, new_directory = load(old_root / "directory.json"), load(new_root / "directory.json")
+    old_rows = {row["builderKey"]: row for row in old_directory["builders"]}
+    new_rows = {row["builderKey"]: row for row in new_directory["builders"]}
+    if set(old_rows) != set(new_rows):
+        errors.append(("directory builder set changed",))
+    for key in sorted(set(new_rows)):
+        if new_rows[key] != thread_summary(new_threads[key]):
+            errors.append(("directory/thread row mismatch", key))
+        if key not in changed_threads and old_rows[key] != new_rows[key]:
+            errors.append(("unaffected directory row changed", key))
+
+    old_photo, new_photo = old_directory["photography"], new_directory["photography"]
+    expected_photo_delta = sum(len(v["after"]) - len(v["before"]) for v in transitions.values())
+    old_with = sum(1 for _era, album in old_unique.values() if album.get("photos"))
+    new_with = sum(1 for _era, album in new_unique.values() if album.get("photos"))
+    old_builders_with = sum(1 for thread in old_threads.values() if thread.get("photos"))
+    new_builders_with = sum(1 for thread in new_threads.values() if thread.get("photos"))
+    expected_totals = {"photos": old_photo["photos"] + expected_photo_delta,
+                       "albumsWithPhotos": old_photo["albumsWithPhotos"] + new_with - old_with,
+                       "buildersWithPhotos": old_photo["buildersWithPhotos"] + new_builders_with - old_builders_with}
+    for field, expected in expected_totals.items():
+        if new_photo.get(field) != expected:
+            errors.append(("photography total", field, new_photo.get(field), expected))
+    old_photo_eras = {row["era"]: row for row in old_photo["eras"]}
+    new_photo_eras = {row["era"]: row for row in new_photo["eras"]}
+    if set(old_photo_eras) != set(new_photo_eras):
+        errors.append(("photography era set changed",))
+    transition_eras = {value["era"] for value in transitions.values()}
+    for era in sorted(set(old_photo_eras) & set(new_photo_eras)):
+        if era not in transition_eras and old_photo_eras[era] != new_photo_eras[era]:
+            errors.append(("photography changed outside transitioned eras", era))
+        elif era in transition_eras:
+            before, after = old_photo_eras[era], new_photo_eras[era]
+            delta = sum(len(v["after"]) - len(v["before"]) for v in transitions.values() if v["era"] == era)
+            for field in set(before) | set(after):
+                if field == "photos":
+                    if after.get(field) != before.get(field) + delta:
+                        errors.append(("era photo count", era, before.get(field), after.get(field), delta))
+                elif field == "albumsWithPhotos":
+                    old_count = sum(1 for album_era, album in old_unique.values() if album_era == era and album.get("photos"))
+                    new_count = sum(1 for album_era, album in new_unique.values() if album_era == era and album.get("photos"))
+                    if after.get(field) != before.get(field) + new_count - old_count:
+                        errors.append(("era photographed-album count", era))
+                elif before.get(field) != after.get(field):
+                    errors.append(("era photography field changed", era, field))
+
+    for field in set(old_directory) | set(new_directory):
+        if field in ("generatedAt", "builders", "photography"):
+            continue
+        if old_directory.get(field) != new_directory.get(field):
+            errors.append(("directory field changed", field))
+
+    print(f"judged capture transition: {len(manifest_pairs)} manifest(s), {len(transitions)} changed build(s), "
+          f"{expected_photo_delta:+d} photograph(s)")
+    if errors:
+        print("UNEXPECTED differences:", len(errors))
+        for error in errors[:20]:
+            print("  " + ascii(error))
+        return 1
+    print("VERIFIED: every projection change is exactly described by the judged capture manifests")
+    return 0
+
+
 if args.allow_era_intake is not None:
     sys.exit(validate_era_intake(live, new, args.allow_era_intake))
+if args.capture_transition:
+    sys.exit(validate_capture_transitions(live, new, args.capture_transition))
 
 
 live_threads = {p.name: p for p in (live / "threads").glob("*.json")}

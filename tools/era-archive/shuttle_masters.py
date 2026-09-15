@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Move finished capture masters off the capture host a batch at a time.
+"""Move selected finished capture masters off the capture host a batch at a time.
 
 The capture host's link is slow -- measured 130-290 KB/s, with 83 ms RTT to OMEN and
 75 ms to the web host -- so an 18 GB master set is a multi-hour transfer that cannot be
@@ -18,14 +18,15 @@ is left on the host saying so, and relocation is for finished campaigns only.
 
 Usage:
   MSYS_NO_PATHCONV=1 python shuttle_masters.py --state <state.json> --dest <dir>
-      --remote-root <path> [--ssh-target homebase] [--batch 50] [--stop-after N]
+      --remote-root <path> [--worklist final-keepers.json]
+      [--ssh-target homebase] [--batch 50] [--stop-after N]
       [--dry-run]
 """
 import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shlex
 import subprocess
 import tarfile
@@ -41,7 +42,7 @@ MARKER_FILE = ".masters-relocated.json"
 MARKER = ("cat > " + MARKER_FILE + " <<'STEWARD_MARKER'\n"
           + json.dumps({
               "schema": "steward-masters-relocated/v1",
-              "note": ("masters were moved off this host; the copies and their sha256s are "
+              "note": ("selected masters were moved off this host; the copies and their sha256s are "
                        "in relocation.json at the destination. A relocated campaign cannot "
                        "be resumed, only re-planned.")})
           + "\nSTEWARD_MARKER")
@@ -81,6 +82,9 @@ def parse_args():
                    help="a local copy of the campaign's state.json -- the manifest")
     p.add_argument("--dest", type=Path, required=True)
     p.add_argument("--remote-root", required=True, help="campaign root on the capture host")
+    p.add_argument("--worklist", type=Path,
+                   help="steward-derivative-worklist/v1 selecting final keeper masters; "
+                        "omit only for the legacy all-completed behavior")
     p.add_argument("--ssh-target", default="homebase")
     p.add_argument("--batch", type=int, default=50)
     p.add_argument("--stop-after", type=int, default=0,
@@ -95,6 +99,66 @@ def pending(entries, dest):
     return [(name, entry) for name, entry in entries
             if not ((dest / name).exists()
                     and (dest / name).stat().st_size == entry["metadata"]["bytes"])]
+
+
+def safe_master_path(name, label="master"):
+    """Require one normalized, relative POSIX path suitable for line protocols."""
+    if (not isinstance(name, str) or not name or "\\" in name
+            or any(character in name for character in "\r\n\t")):
+        raise SystemExit(f"unsafe {label} path: {name}")
+    path = PurePosixPath(name)
+    if path.is_absolute() or ".." in path.parts or path.as_posix() != name:
+        raise SystemExit(f"unsafe {label} path: {name}")
+    return name
+
+
+def safe_remote_root(value):
+    """Bind deletion to one named capture campaign, never its parent directory."""
+    path = PurePosixPath(value)
+    parts = path.parts
+    if (not path.is_absolute() or len(parts) != 5
+            or parts[:4] != ("/", "home", "derek", "valheim-capture")
+            or parts[4] in (".", "..")
+            or any(character in parts[4] for character in "\r\n\t")):
+        raise SystemExit("remote root must be /home/derek/valheim-capture/<named-campaign>")
+    return value
+
+
+def select_entries(state, worklist_path=None):
+    """Resolve a keeper worklist against the campaign journal, with no fuzzy paths."""
+    all_entries = sorted(((value["file"], value) for value in state["completed"].values()),
+                         key=lambda item: item[0])
+    by_name = {}
+    for name, entry in all_entries:
+        safe_master_path(name, "campaign master")
+        if name in by_name:
+            raise SystemExit(f"campaign journal contains duplicate master path: {name}")
+        by_name[name] = entry
+    if worklist_path is None:
+        return all_entries, None
+    worklist_path = Path(worklist_path)
+    worklist = read(worklist_path)
+    if worklist.get("schema") != "steward-derivative-worklist/v1":
+        raise SystemExit(f"unsupported keeper worklist schema: {worklist.get('schema')}")
+    selected, seen = [], set()
+    for item in worklist.get("items", []):
+        name = item.get("source")
+        safe_master_path(name, "keeper source")
+        if name in seen:
+            raise SystemExit(f"duplicate keeper source path: {name}")
+        entry = by_name.get(name)
+        if entry is None:
+            raise SystemExit(f"keeper is absent from campaign state: {name}")
+        if item.get("sha256") != entry.get("sha256"):
+            raise SystemExit(f"keeper sha256 disagrees with campaign state: {name}")
+        if item.get("dimensions") != entry.get("metadata", {}).get("dimensions"):
+            raise SystemExit(f"keeper dimensions disagree with campaign state: {name}")
+        seen.add(name); selected.append((name, entry))
+    digest = sha256(worklist_path)
+    selector = {"schema": worklist["schema"], "path": str(worklist_path.resolve()),
+                "sha256": digest, "selected": len(selected),
+                "omitted": len(all_entries) - len(selected)}
+    return sorted(selected, key=lambda item: item[0]), selector
 
 
 def script_with_list(root, command, names, tail=""):
@@ -166,17 +230,41 @@ def record(receipt, receipt_path, verified):
 
 def main():
     args = parse_args()
+    remote_root = safe_remote_root(args.remote_root)
     dest = args.dest.resolve()
     dest.mkdir(parents=True, exist_ok=True)
     state = read(args.state)
-    entries = sorted(((v["file"], v) for v in state["completed"].values()), key=lambda x: x[0])
-    print(f"{len(entries):,} masters in the journal", flush=True)
+    entries, selector = select_entries(state, args.worklist)
+    if selector:
+        print(f"{len(entries):,} keeper masters selected; {selector['omitted']:,} completed losers omitted", flush=True)
+    else:
+        print(f"{len(entries):,} masters in the journal", flush=True)
 
     receipt_path = dest / "relocation.json"
     receipt = read(receipt_path) if receipt_path.exists() else {
         "schema": "steward-master-relocation/v1", "sourceKey": state["sourceKey"],
-        "remoteRoot": args.remote_root, "moved": [], "bytes": 0}
-    moved = {m["file"] for m in receipt["moved"]}
+        "remoteRoot": remote_root, "moved": [], "bytes": 0,
+        **({"selector": selector} if selector else {})}
+    if receipt.get("schema") != "steward-master-relocation/v1":
+        raise SystemExit("unsupported existing relocation receipt")
+    if receipt.get("sourceKey") != state.get("sourceKey") or receipt.get("remoteRoot") != remote_root:
+        raise SystemExit("existing relocation receipt belongs to another campaign")
+    if selector and receipt.get("selector") != selector:
+        raise SystemExit("existing relocation receipt used a different keeper worklist")
+    if not selector and receipt.get("selector"):
+        raise SystemExit("refusing all-master resume of a keeper-selected relocation")
+    expected = dict(entries); moved = set()
+    for item in receipt.get("moved", []):
+        name = safe_master_path(item.get("file"), "relocated master")
+        entry = expected.get(name)
+        if name in moved or entry is None:
+            raise SystemExit(f"existing relocation receipt has duplicate or unselected master: {name}")
+        local = dest / name
+        if (item.get("sha256") != entry.get("sha256")
+                or item.get("bytes") != entry.get("metadata", {}).get("bytes")
+                or not local.is_file() or local.stat().st_size != item["bytes"]):
+            raise SystemExit(f"existing relocated master or receipt failed verification: {name}")
+        moved.add(name)
     todo = [e for e in pending(entries, dest) if e[0] not in moved]
     already = [e for e in entries if e[0] not in moved and e not in todo]
     print(f"{len(todo):,} still to fetch, {len(already):,} already here from an earlier "
@@ -193,7 +281,7 @@ def main():
         freed = [(n, e) for n, e in already
                  if (dest / n).exists() and sha256(dest / n) == e["sha256"]]
         if freed:
-            free, error = release(args.ssh_target, args.remote_root, [n for n, _ in freed])
+            free, error = release(args.ssh_target, remote_root, [n for n, _ in freed])
             if error:
                 print("  reconcile delete failed: " + error)
             else:
@@ -209,7 +297,7 @@ def main():
             break
         chunk = todo[: args.batch]
         started = time.monotonic()
-        if not fetch(args.ssh_target, args.remote_root, [n for n, _ in chunk], dest):
+        if not fetch(args.ssh_target, remote_root, [n for n, _ in chunk], dest):
             print("transfer failed; the host is untouched")
             break
 
@@ -230,7 +318,7 @@ def main():
             print("nothing verified in this batch; stopping rather than looping")
             break
 
-        free, error = release(args.ssh_target, args.remote_root, [n for n, _ in verified])
+        free, error = release(args.ssh_target, remote_root, [n for n, _ in verified])
         if error:
             print("  remote delete failed: " + error)
             break
