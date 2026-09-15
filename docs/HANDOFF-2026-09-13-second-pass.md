@@ -5,7 +5,7 @@ Read this before touching anything; the receipts named here are the ground truth
 ever disagree. The operator is Derek (pronouns unknown — use they/them); the Steam account
 `Zephar410` is shared between OMEN (their gaming PC) and AM4 (the capture host).
 
-## 0. STATUS UPDATE 2026-09-15 03:20 UTC
+## 0. STATUS UPDATE 2026-09-15 04:00 UTC
 
 - **Era 17 is repaired and live.** The missing save was outside the canonical intake root,
   not overwritten by Era 4's different Charon identity. Hash-identical copies now live under
@@ -29,8 +29,11 @@ ever disagree. The operator is Derek (pronouns unknown — use they/them); the S
   Era 13 is also complete at 230/230 (69 first survivor, 68 second survivor, 17 both,
   73 neither, 3 keep-single), with its two part hashes bound by the merged receipt under
   `campaigns\era13\run\era13-20260913b\verdicts\`. Cumulative evidence commit `29e2e3dc`
-  contains 417 verdicts / 254 decided pairs across the three runs. Per-part exports and receipts
-  live under each `<run>\verdicts\` directory.
+  Era 15 is complete at 249/249 (72 first survivor, 77 second survivor, 40 both,
+  56 neither, 2 keep-single, 2 reshoot-single) with all three part hashes bound by
+  `campaigns\era15\run\era15-20260913b\verdicts\pair-verdicts.json`. Cumulative evidence
+  commit `809a34ed` contains 666 verdicts / 403 decided pairs across four runs. Per-part
+  exports and receipts live under each `<run>\verdicts\` directory.
 - **The judged transition was proved on real data without touching live state.** The isolated
   Era 11 candidate is under
   `campaigns\era11-reshoot\run\era11-reshoot-20260913\judged-candidate\`: 18 current-root
@@ -45,7 +48,7 @@ ever disagree. The operator is Derek (pronouns unknown — use they/them); the S
   receipt and cannot execute until every keeper is present locally and SHA-verified by an exact
   matching relocation receipt.
 
-Next: judge Era 15, then continue Era 3, Era 2, Era 5, and Era 6 before
+Next: judge Era 3, then continue Era 2, Era 5, and Era 6 before
 replacing any live rank-pick manifest. Harvest every export with `--require-complete` and merge
 multipart receipts with `light_table.py merge`. A judged import must pass **both** `--rank` and
 `--verdicts`, so original rank no-survivor builds remain on the reshoot list. No master transfer,
