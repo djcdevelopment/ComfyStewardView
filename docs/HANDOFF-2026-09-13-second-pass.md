@@ -1,12 +1,40 @@
 # Handoff — second-pass era intake and compare-and-reshoot photography (2026-09-13)
 
-For the next agent picking this up cold. Section 0.1 is the current state; later dated sections
+For the next agent picking this up cold. Section 0.2 is the current state; later dated sections
 are historical and must not be used as a live-status claim. Receipts are the ground truth if
 this document and the lake ever disagree. The operator is Derek (pronouns unknown — use
 they/them); the Steam account
 `Zephar410` is shared between OMEN (their gaming PC) and AM4 (the capture host).
 
-## 0.1 STATUS UPDATE 2026-09-15 05:47 UTC — FIRST-PASS JUDGED GALLERY LIVE
+## 0.2 STATUS UPDATE 2026-09-15 06:56 UTC - ERA 17 WORLD LINK REPAIRED
+
+- **Charon's Era 17 creator-to-World deep link is live.** The creator identity is
+  `558504476a9953e58d01620fdaf9f616`; its build key is
+  `a3ea156b92e9aa99d569889f64e29a3d1644ddd88a720df9880835e1057ff485`.
+  The old Era 17 public cache had snapshot 107 and terrain, but no `build_membership` table,
+  so the exact-build endpoint failed with HTTP 500. The archived Era 17 membership was at
+  snapshot 1017. The source save SHA-256 was identical across snapshots, and all 4,359,570
+  membership rows joined uniquely to the old public ZDO cache, including Charon's 4,555 pieces.
+  The replacement remaps only membership snapshot 1017 to public snapshot 107; the existing
+  schema-3 terrain manifest remains byte-identical. Validation rejects a wrong source snapshot,
+  duplicate or incomplete membership, and an old-live-cache mismatch.
+- **AM4 World release** `db83bf988120-replace-era17-8d15512a8a29` replaced only Era 17
+  in a hard-link-cloned catalog. The candidate and active probes both confirmed the exact
+  build and 4,555-piece scene before the swap completed; all 17 eras remain ready. The prior
+  live container/release and the outgoing Era 17 files were retained. A first prepared
+  release `727f76a07d47-replace-era17-cdf722d9dd59` stopped before candidate startup due a
+  deployment-script variable collision; it was never live and remains for audit. The fix is
+  ComfyStewardView commit `db83bf9881200486d99ba25ea958c1e7b5831368` (pushed).
+- **User-facing smoke passed.** Charon's supplied Era 17 World link opened the exact selection,
+  validated 3D and exported a PNG; Derek's supplied Era 15 build still opened 657 pieces,
+  validated 3D and exported a PNG. The same browser smoke bootstrapped all 17 eras and checked
+  their terrain/biome contracts. Package, deployment receipt, browser cases and browser smoke
+  results live under `E:\omen\steward-multi-era\world-view-v3\era17-membership-20260915\`.
+  The live API reports `ready`, this release, 17 ready eras, Charon 4,555 and Derek 657 pieces.
+- **Next useful work remains the refused/reshoot round in §0.1.** This repair did not change
+  the judged creator gallery, picker indexes, Chronicles counts, or any host masters/images.
+
+## 0.1 HISTORICAL STATUS UPDATE 2026-09-15 05:47 UTC — FIRST-PASS JUDGED GALLERY LIVE (superseded by §0.2)
 
 - **All eight first-pass light tables are complete.** Era 11 reshoot 33, Era 1 154, Era 2 315,
   Era 3 306, Era 5 363, Era 6 394, Era 13 230, Era 15 249: **2,044 complete human verdicts**
