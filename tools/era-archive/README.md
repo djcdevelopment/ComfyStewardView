@@ -165,6 +165,39 @@ The creator directory and per-era threads exclude raw IDs, inventories, source
 paths, coordinates, seed and private review evidence. Existing photos link to their
 original thumbnail/large URLs. New albums deep-link to `/world/?era=era7&build=…`.
 
+### Creator identity, qualification and profile navigation
+
+A display name is searchable evidence, not an identity key. Creator threads are keyed
+by `builderKey`; equal names in different eras are never merged, and a newer capture can
+never overwrite an older builder merely because both used the same character name. The
+Charon investigation is the concrete regression case: Era 4 and Era 17 are separate
+identities, while the missing Era 17 thread was caused by an absent intake source rather
+than name collision.
+
+The public profile threshold is 20 measured saved pieces from that builder on a build,
+with a 20-piece build minimum. A legacy album whose leading-contributor evidence is
+unmeasured remains eligible; it is not converted into invented piece counts. Use
+`--retain-empty-from <previous-projection>` when projecting a threshold transition so an
+existing identity remains searchable even when none of its albums qualify. Empty pages
+state that no substantial albums meet the cutoff. Global photography counts are archive
+counts and do not shrink merely because a low-credit profile occurrence is omitted.
+
+Profiles disclose scale progressively. The global photo carousel is the opening and is
+not filtered by the controls below it. Era cards lead into a six-build guided shortlist;
+the credited-piece matrix is folded; Find and Order are a compact toolbar; and the full
+50-row paged ledger is opt-in. Desktop era selection belongs to the era guide. Mobile
+retains a compact era selector so a visitor need not cross a long button grid. Kinship on
+the profile is a bounded set of co-builder cards; the complete relationship ledger lives
+on the Kinship page. `?build=` deep-links focus the exact build without removing the photo
+tour, and historical `?kin=` links preserve the tour while directing relationship work to
+Kinship.
+
+The decisions and invariants are recorded in
+[`docs/adr/0001-creator-identity-and-publication-threshold.md`](../../docs/adr/0001-creator-identity-and-publication-threshold.md)
+and [`docs/adr/0002-progressive-creator-profile-navigation.md`](../../docs/adr/0002-progressive-creator-profile-navigation.md).
+The operational follow-up lives in
+[`docs/plans/creator-profile-follow-up.md`](../../docs/plans/creator-profile-follow-up.md).
+
 ### Participation and kinship
 
 There is no backend and no sign-in anywhere in this archive, by design. Claims, photo
@@ -446,10 +479,19 @@ remains intact for rollback.
 python -m unittest discover -s tools/era-archive/tests -v
 python -m unittest discover -s lab/tools/tests -v
 # Run mvnw.cmd test in viewer and lab.
+node --test tools/era-archive/tests/*.test.js
+node tools/era-archive/profile-ux-smoke.mjs <existing-public-projection> [screenshot-dir]
 node tools/era-archive/browser-smoke.mjs <creator-base-url> <world-base-url> <receipt-dir>
 node tools/era-archive/browser-smoke.mjs <creator-base-url> <world-base-url> <receipt-dir> --strict-world
 node tools/era-archive/world-browser-smoke.mjs <world-base-url> <build-cases.json> <receipt-dir>
 ```
+
+For a creator-presentation-only release, build a fresh immutable projection, run
+`gate_creators.py` against live, and run `profile-ux-smoke.mjs` against that projection
+before `deploy_gallery.py`. After the atomic switch, run `browser-smoke.mjs` against live.
+The gate must report identical thread and directory data; a threshold or capture transition
+uses its dedicated semantic gate instead of treating intended data movement as presentation.
+Do not deploy from a dirty worktree: isolate and commit the reviewed files first.
 
 `browser-smoke.mjs` gates the creator release, so its world leg is reported rather than
 fatal: if the spatial lane is down the run writes `"status": "passed-with-spatial-failure"`

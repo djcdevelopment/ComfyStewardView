@@ -1,12 +1,43 @@
 # Handoff — second-pass era intake and compare-and-reshoot photography (2026-09-13)
 
-For the next agent picking this up cold. Section 0.2 is the current state; later dated sections
+For the next agent picking this up cold. Section 0.3 is the current state; later dated sections
 are historical and must not be used as a live-status claim. Receipts are the ground truth if
 this document and the lake ever disagree. The operator is Derek (pronouns unknown — use
 they/them); the Steam account
 `Zephar410` is shared between OMEN (their gaming PC) and AM4 (the capture host).
 
-## 0.2 STATUS UPDATE 2026-09-15 06:56 UTC - ERA 17 WORLD LINK REPAIRED
+## 0.3 STATUS UPDATE 2026-09-16 02:05 UTC - BOUNDED CREATOR PROFILES LIVE
+
+- **The systemic prolific-builder fix is live.** Creator release
+  `e15699254951-6e8c2f02792b` serves 5,823 searchable identities, 56,237 qualifying albums
+  and 16,111 photographs. The publication threshold is 20 measured saved pieces credited
+  to that builder; unmeasured historical leading-contributor albums remain explicit legacy
+  evidence. All 682 identities left with no qualifying albums remain searchable and show a
+  truthful empty-profile message. The transition was proved by the dedicated contribution
+  gate rather than an ad-hoc count comparison.
+- **Large profiles now open with photographs, then guide exploration.** The global carousel
+  remains first and unchanged by later filters. Era cards lead to a six-build guided mix of
+  photographed highlights and substantial unphotographed work; the credited-piece matrix
+  and complete 50-row ledger are opt-in. Find and Order are an adjacent compact toolbar,
+  with the redundant desktop era selector removed and retained as a mobile shortcut.
+  Kinship is a bounded five-card introduction whose full ledger lives on the Kinship page.
+- **Ibocain is the scale fixture.** Their plain profile still exposes all 547 qualifying
+  builds, 40 photographed builds and the photo carousel, but first paint renders six build
+  choices and no full ledger. A direct link to Era 6 build `b90d3cdf…` focuses the exact
+  record. The live smoke also verified a 2,929-build profile, a single-era profile, an empty
+  profile, 390 px layout, the Kinship route and the World route.
+- **Release evidence is durable.** Source release commit `e156992` was deployed from a clean
+  isolated worktree; smoke-harness correction `a8ca539` makes browser evaluation failures
+  explicit and aligns the bound with the intentional six-card guide. The deployment receipt
+  is `E:\omen\steward-multi-era\receipts\deploy-creator-guide-e156992.json`; the passing
+  live smoke is `validation\creator-guide-e156992-rerun5\receipt.json`. The data gate found
+  zero changed, new or removed thread documents and identical directory data.
+- **Next operational work is still the refused/reshoot round in §0.1.** Do not reopen the
+  profile information architecture without observed user evidence. The current guardrails
+  and follow-up questions are in `docs/plans/creator-profile-follow-up.md`; the design
+  decisions are in `docs/adr/`.
+
+## 0.2 HISTORICAL STATUS UPDATE 2026-09-15 06:56 UTC - ERA 17 WORLD LINK REPAIRED (superseded by §0.3)
 
 - **Charon's Era 17 creator-to-World deep link is live.** The creator identity is
   `558504476a9953e58d01620fdaf9f616`; its build key is

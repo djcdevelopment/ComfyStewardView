@@ -6,6 +6,11 @@ The [multi-era archive pipeline](tools/era-archive/README.md) extracts immutable
 saves into Parquet and DuckDB, builds contributor-aware albums and capture queues,
 and publishes creator threads alongside the existing Valheim galleries. Its world
 catalog keeps each era bound to its own terrain, item queries and exact 3D membership.
+The creator-profile publication rules are recorded in the archive
+[ADRs](docs/adr/README.md); the current follow-up work is in the
+[creator-profile plan](docs/plans/creator-profile-follow-up.md), and the sequence that
+led to the current design is in the
+[2026-09-15 retrospective](docs/retrospectives/creator-profile-overhaul-2026-09-15.md).
 
 ## Applications and repository structure
 
