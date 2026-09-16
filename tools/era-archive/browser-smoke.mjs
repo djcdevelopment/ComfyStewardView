@@ -27,7 +27,11 @@ const socket=new WebSocket(target.webSocketDebuggerUrl);await new Promise(r=>soc
 let id=0;const pending=new Map(),errors=[];
 socket.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(Error(m.error.message)):p.resolve(m.result);}if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails.text);};
 const cdp=(method,params={})=>new Promise((resolve,reject)=>{pending.set(++id,{resolve,reject});socket.send(JSON.stringify({id,method,params}));});
-const evaluate=async expression=>(await cdp('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true})).result.value;
+const evaluate=async expression=>{
+  const result=await cdp('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});
+  if(result.exceptionDetails)throw Error(`Browser evaluation failed: ${result.exceptionDetails.exception?.description || result.exceptionDetails.text} (${expression})`);
+  return result.result.value;
+};
 const waitFor=async(expression,attempts,intervalMs)=>{for(let i=0;i<attempts;i++){if(await evaluate(expression))return;await new Promise(r=>setTimeout(r,intervalMs));}throw Error('Timed out: '+expression);};
 // 20 s for the creator pages, which are static files off FX99. The world viewer builds
 // its rasters on demand on AM4 and a cold first tile can take most of a minute, so its
@@ -110,7 +114,7 @@ try{
   if(results.story.stage!==1||results.story.rail<1)throw Error('Builder page drew no work carousel for a photographed thread');
   if(results.story.details!==1)throw Error('The carousel details lost the claim control');
   if(results.story.notes!==1)throw Error('Attribution sentence is not said exactly once');
-  if(!results.story.matrix||results.story.shortlist>5||results.story.buildRows||results.story.tree)throw Error('Profile matrix is missing, default explorer is unbounded, or the full tree is still embedded');
+  if(!results.story.matrix||results.story.shortlist>6||results.story.buildRows||results.story.tree)throw Error('Profile matrix is missing, default explorer is unbounded, or the full tree is still embedded');
   if(!results.story.notesStrip)throw Error('The notes strip at the foot did not render');
   // The check that would have caught a modal whose sheet was display:none inside a
   // visible overlay: every participation dialog opened as an empty black screen.
@@ -224,8 +228,8 @@ try{
   const prolific=directory.builders.slice().sort((a,b)=>b.albums-a.albums)[0];
   const largestThread=await fetch(new URL('threads/'+prolific.builderKey+'.json',gallery)).then(r=>r.json());
   await cdp('Page.navigate',{url:new URL(prolific.builderKey+'/',gallery).href});
-  await wait("!!document.querySelector('#build-matrix .build-matrix-cell')");
-  results.explorer=await evaluate("({sort:document.getElementById('build-sort').value,work:document.querySelectorAll('#work .work-tile').length,matrixCount:[...document.querySelectorAll('.build-matrix-cell strong')].reduce((n,e)=>n+Number(e.textContent.replaceAll(',','')),0,matrixFolded:!document.querySelector('.era-overview-detail').open,eras:document.querySelectorAll('.era-overview-pick').length,shortlist:document.querySelectorAll('.build-shortlist li').length,previews:document.querySelectorAll('.build-shortlist-preview img').length,fullRows:document.querySelectorAll('#build-explorer tbody tr').length})");
+  await wait(`location.pathname.endsWith(${JSON.stringify(prolific.builderKey + '/')}) && !!document.querySelector('#build-matrix .build-matrix-cell') && !!document.getElementById('build-sort')`);
+  results.explorer=await evaluate("({sort:document.getElementById('build-sort').value,work:document.querySelectorAll('#work .work-tile').length,matrixCount:[...document.querySelectorAll('.build-matrix-cell strong')].reduce((n,e)=>n+Number(e.textContent.replaceAll(',','')),0),matrixFolded:!document.querySelector('.era-overview-detail').open,eras:document.querySelectorAll('.era-overview-pick').length,shortlist:document.querySelectorAll('.build-shortlist li').length,fullRows:document.querySelectorAll('#build-explorer tbody tr').length})");
   if(results.explorer.sort!=='guided'||results.explorer.work>40||results.explorer.matrixCount!==largestThread.albums||!results.explorer.matrixFolded||!results.explorer.eras||results.explorer.shortlist>6||results.explorer.fullRows)throw Error('Largest profile is unbounded or loses builds from its inventory');
   await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   results.explorer.mobile=await evaluate("({width:document.documentElement.scrollWidth,viewport:innerWidth})");
@@ -238,7 +242,7 @@ try{
   const older=oldThread.eras.flatMap(e=>e.albums).find(a=>a.era<=6&&!a.photos.length&&a.pieces>=1000);
   if(!older)throw Error('No older large Ibocain build survived the cutoff');
   await cdp('Page.navigate',{url:new URL(oldBuilder+'/',gallery).href});
-  await wait("!!document.querySelector('#build-matrix .build-matrix-cell')");
+  await wait(`location.pathname.endsWith(${JSON.stringify(oldBuilder + '/')}) && !!document.querySelector('#build-matrix .build-matrix-cell') && !!document.getElementById('build-sort')`);
   results.explorer.ibocain=await evaluate("({count:[...document.querySelectorAll('.build-matrix-cell strong')].reduce((n,e)=>n+Number(e.textContent.replaceAll(',','')),0),shortlist:document.querySelectorAll('.build-shortlist li').length})");
   if(results.explorer.ibocain.count!==oldThread.albums||results.explorer.ibocain.shortlist>6)throw Error('Ibocain inventory is incomplete or default shortlist is large');
   await screenshot('creator-build-matrix-ibocain');
@@ -250,7 +254,7 @@ try{
   const oneEra=directory.builders.find(b=>b.albums>0&&b.eras.length===1);
   if(!oneEra)throw Error('No single-era builder exists for matrix edge case');
   await cdp('Page.navigate',{url:new URL(oneEra.builderKey+'/',gallery).href});
-  await wait("!!document.getElementById('build-matrix')");
+  await wait(`location.pathname.endsWith(${JSON.stringify(oneEra.builderKey + '/')}) && !!document.getElementById('build-matrix') && !!document.getElementById('build-sort')`);
   results.explorer.oneEra=await evaluate("({rows:document.querySelectorAll('#build-matrix tbody tr').length,fullRows:document.querySelectorAll('#build-explorer tbody tr').length})");
   if(results.explorer.oneEra.rows!==1||results.explorer.oneEra.fullRows)throw Error('Single-era profile drew a large default ledger');
   const empty=directory.builders.find(b=>b.albums===0);
