@@ -280,6 +280,21 @@ function profileBrowseRows(threadDoc, {era = 'all', band = 'all', query = '', so
   return scored.sort(compare).map((row) => row.album);
 }
 
+// Keep the opening shortlist photographic without hiding the largest recorded work
+// that has not been photographed. Each lane retains the requested piece ranking;
+// explicit sort choices bypass this guide and show a strict top-N instead.
+function profileGuidedPicks(albums, limit = 6) {
+  const pictured = albums.filter((album) => album.photos?.length);
+  const unpictured = albums.filter((album) => !album.photos?.length);
+  const picks = [...pictured.slice(0, Math.ceil(limit / 2)), ...unpictured.slice(0, Math.floor(limit / 2))];
+  const chosen = new Set(picks.map((album) => album.buildKey));
+  for (const album of albums) {
+    if (picks.length >= limit) break;
+    if (!chosen.has(album.buildKey)) { picks.push(album); chosen.add(album.buildKey); }
+  }
+  return picks;
+}
+
 function profileBrowsePage(albums, page, size = 40) {
   const pages = Math.max(1, Math.ceil(albums.length / size));
   const current = Math.max(0, Math.min(Number.isInteger(page) ? page : 0, pages - 1));
@@ -880,7 +895,7 @@ if (typeof module !== 'undefined') {
     PLACEHOLDER_NAME, AUTO_ALBUM_LABEL, searchTerms, matchScore, compareBuilders,
     SORT_MODES, filterBuilders, computeHeroStats, pickSignatureAlbums, computeTopEight, hasMinimumCredit, qualifyingSharedCredit,
     portraitIndex, eraBounds, heroAliases, pickMosaicAlbums, profileBrowseRows, profileBrowsePage, profileEraAtlas, profileCoBuilderSummary, distinctAttributions,
-    PROFILE_PIECE_BANDS, profilePieceBand, profileBuildInventory,
+    PROFILE_PIECE_BANDS, profilePieceBand, profileBuildInventory, profileGuidedPicks,
     nowISOString, randomId, normalizeHandle, submitPayload,
     KINSHIP_TAGS, KINSHIP_TAG_IDS, majorityOwner, tagCandidates, leadingBuilderNote, buildKinshipTree, mergeKinshipTags,
     kinshipTagRecord, StewardParticipation,
@@ -944,7 +959,7 @@ const initCreatorsPage = async () => {
   const state = StewardParticipation.load();
   let directory = null;
   let thread = null;
-  const profileBrowse = {era: 'all', band: 'all', query: '', sort: 'mine', workPage: 0, buildPage: 0, ledgerOpen: false};
+  const profileBrowse = {era: 'all', band: 'all', query: '', sort: 'guided', workPage: 0, buildPage: 0, ledgerOpen: false};
   let browseAlbums = [];
   let selectedBuildKey = null;
   let eraAtlas = [];
@@ -1632,7 +1647,7 @@ const initCreatorsPage = async () => {
   // reason -- the thread paints before 818 KB of directory.json lands -- even though most of
   // them never find a name: a sleeper with no saved pieces has no directory record.
   function hydrateCredits() {
-    for (const anchor of document.querySelectorAll('a.credit[data-builder-key], a.resident[data-builder-key], .top8-chip .top8-name[data-builder-key], .kin-tree .kin-node-name[data-builder-key]')) {
+    for (const anchor of document.querySelectorAll('a.credit[data-builder-key], a.resident[data-builder-key], .top8-chip .top8-name[data-builder-key], .kin-tree .kin-node-name[data-builder-key], .kin-profile-card h3[data-builder-key]')) {
       const name = buildersByKey.get(anchor.dataset.builderKey)?.displayName;
       if (name) anchor.textContent = name;
     }
@@ -1746,36 +1761,27 @@ const initCreatorsPage = async () => {
     compact.setAttribute('aria-labelledby', 'kin-beside-h2');
     const title = node('h2', 'Who they built beside');
     title.id = 'kin-beside-h2';
-    compact.append(title, node('p', `${plural(summary.total, 'co-builder')} share qualifying construction credits on this profile. Open a relationship to see when and what they built together.`, 'kin-beside-sub muted'));
+    compact.append(title, node('p', `${plural(summary.total, 'co-builder')} have qualifying saved-piece credits on some of the same builds. That is a recorded overlap, not an inferred friendship. Start with one person to see the shared builds.`, 'kin-beside-sub muted'));
     if (summary.ranked.length) {
-      const table = node('table', null, 'kin-profile-summary');
-      table.append(node('caption', `Leading co-builders${initialPair.kin ? ', with the linked relationship first' : ''}; all ${summary.total.toLocaleString()} are searchable in Kinship.`));
-      const head = node('thead');
-      const tr = node('tr');
-      for (const label of ['Co-builder', 'Shared builds', 'Shared pieces', 'Explore']) {
-        const th = node('th', label);
-        th.scope = 'col';
-        tr.append(th);
-      }
-      head.append(tr);
-      table.append(head);
-      const body = node('tbody');
       const linked = initialPair.kin && summary.ranked.find((entry) => entry.builderKey === initialPair.kin);
-      const featured = [...(linked ? [linked] : []), ...summary.ranked.filter((entry) => entry.builderKey !== initialPair.kin).slice(0, 5)];
+      const featured = [...(linked ? [linked] : []), ...summary.ranked.filter((entry) => entry.builderKey !== initialPair.kin)].slice(0, 5);
+      const cards = node('div', null, 'kin-profile-cards');
       for (const entry of featured) {
-        const row = node('tr');
-        if (entry.builderKey === initialPair.kin) row.className = 'kin-profile-linked';
-        const name = node('td', buildersByKey.get(entry.builderKey)?.displayName || placeholderName(entry.builderKey));
+        const card = node('article', null, entry.builderKey === initialPair.kin ? 'kin-profile-card kin-profile-linked' : 'kin-profile-card');
+        card.append(ribbonPortrait(entry.builderKey));
+        const text = node('div', null, 'kin-profile-card-copy');
+        const name = node('h3', buildersByKey.get(entry.builderKey)?.displayName || placeholderName(entry.builderKey));
         name.dataset.builderKey = entry.builderKey;
+        text.append(name);
+        const eras = thread.eras.filter((block) => block.albums.some((album) => qualifyingSharedCredit(album, thread.builderKey, entry.builderKey))).map((block) => block.era).sort((a, b) => a - b);
+        const eraLabel = eras.length === 1 ? `era ${eras[0]}` : `${eras.length} eras (${eras[0]}–${eras.at(-1)})`;
+        text.append(node('p', `${plural(entry.sharedAlbums, 'shared build')} · ${entry.sharedPieces.toLocaleString()} overlapping credited pieces · ${eraLabel}`, 'kin-profile-card-facts'));
         const href = new URL(`kinship/?builder=${thread.builderKey}&kin=${entry.builderKey}`, base);
-        row.append(name, node('td', entry.sharedAlbums.toLocaleString()), node('td', entry.sharedPieces.toLocaleString()));
-        const action = node('td');
-        action.append(link('Explore relationship', href));
-        row.append(action);
-        body.append(row);
+        text.append(link('Explore shared builds', href));
+        card.append(text);
+        cards.append(card);
       }
-      table.append(body);
-      compact.append(table);
+      compact.append(cards);
     }
     if (initialPair.kin && !summary.ranked.some((entry) => entry.builderKey === initialPair.kin)) {
       compact.append(node('p', 'This linked co-builder has no qualifying shared credits on this profile. Search the full Kinship list or check the original link.', 'muted'));
@@ -2067,6 +2073,7 @@ const initCreatorsPage = async () => {
     const heading = node('h2', 'The work');
     heading.id = 'work-h2';
     section.append(heading);
+    section.append(node('p', 'A photo tour of the builds recorded on this profile. Browse the images here; era and build filters below do not change this tour.', 'work-orientation muted'));
     // The attribution sentence, once for the page: every credit line below reads under it.
     const attributions = distinctAttributions(thread);
     if (attributions.length) section.append(node('p', attributions.join(' '), 'albums-note muted'));
@@ -2083,6 +2090,7 @@ const initCreatorsPage = async () => {
     section.append(pages);
     const shot = workAlbums.length;
     section.append(node('p', `${plural(shot, 'photographed build')} on this profile`, 'mosaic-foot muted'));
+    section.append(link('Explore your work era by era', '#era-overview'));
     return section;
   }
 
@@ -2481,6 +2489,22 @@ const initCreatorsPage = async () => {
     if (eyebrow) eyebrow.hidden = true;
     const ordered = [$('title'), $('hero-aliases'), $('intro')].filter(Boolean);
     text.append(...ordered);
+    let orientation = $('hero-orientation');
+    if (!orientation) {
+      orientation = node('p', 'This page follows the pieces credited to you in saved builds. Photographs show whole builds; some recorded work has not been photographed yet.', 'hero-orientation');
+      orientation.id = 'hero-orientation';
+    }
+    let journey = $('hero-journey');
+    if (!journey) {
+      journey = node('nav', null, 'hero-journey');
+      journey.id = 'hero-journey';
+      journey.setAttribute('aria-label', 'Explore this builder profile');
+      if (thread.eras.some((block) => block.albums.some((album) => album.photos?.length))) {
+        journey.append(link('See photographs', '#work'));
+      }
+      if (thread.albums) journey.append(link('Explore eras', '#era-overview'), link('Find a build', '#build-browse'));
+    }
+    text.append(orientation, journey);
     renderHeroDoor();
     hero.hidden = false;
     if ($('look-out')) $('look-out').hidden = false;
@@ -2555,16 +2579,68 @@ const initCreatorsPage = async () => {
     return StewardPair.select(key);
   }
 
+  function renderEraOverview() {
+    const section = node('section', null, 'era-overview');
+    section.id = 'era-overview';
+    section.setAttribute('aria-labelledby', 'era-overview-h2');
+    const heading = node('h2', 'Your work across the eras');
+    heading.id = 'era-overview-h2';
+    section.append(heading, node('p', workAlbums.length
+      ? 'Start with an era, then browse its builds below. Counts follow your saved construction credits; photographed builds have at least one image in the tour above.'
+      : 'Start with an era, then browse its saved builds below. The archive has no published photographs for this profile yet.', 'muted'));
+    const choices = node('div', null, 'era-overview-choices');
+    choices.setAttribute('role', 'group');
+    choices.setAttribute('aria-label', 'Choose an era of this builder\'s work');
+    const all = node('button', null, 'era-overview-pick');
+    all.type = 'button';
+    all.dataset.era = 'all';
+    all.append(node('strong', 'All eras'), node('span', `${thread.albums.toLocaleString()} builds · ${workAlbums.length.toLocaleString()} photographed`));
+    choices.append(all);
+    for (const record of [...eraAtlas].reverse()) {
+      if (!record.albums) continue;
+      const pick = node('button', null, 'era-overview-pick');
+      pick.type = 'button';
+      pick.dataset.era = String(record.era);
+      pick.append(node('strong', `Era ${record.era}`), node('span', `${record.albums.toLocaleString()} builds · ${record.photographed.toLocaleString()} photographed`));
+      choices.append(pick);
+    }
+    for (const pick of choices.querySelectorAll('button')) {
+      pick.setAttribute('aria-pressed', String(pick.dataset.era === profileBrowse.era));
+      pick.onclick = () => {
+        profileBrowse.era = pick.dataset.era;
+        profileBrowse.band = 'all';
+        profileBrowse.ledgerOpen = false;
+        profileBrowse.buildPage = 0;
+        selectedBuildKey = null;
+        $('build-era').value = profileBrowse.era;
+        refreshBrowse();
+        $('build-browse')?.scrollIntoView({block: 'start'});
+      };
+    }
+    section.append(choices);
+    const detail = node('details', null, 'era-overview-detail');
+    detail.append(node('summary', 'Compare credited-piece ranges'), renderBuildMatrix());
+    section.append(detail);
+    return section;
+  }
+
+  function paintEraSelection() {
+    for (const pick of document.querySelectorAll('.era-overview-pick')) {
+      pick.setAttribute('aria-pressed', String(pick.dataset.era === profileBrowse.era));
+    }
+  }
+
   function renderBrowseToolbar() {
-    const section = node('section', null, 'build-browse');
+    // The era guide above owns navigation. Keep only the tools that help a visitor
+    // find a particular build or change the shortlist order, adjacent to results.
+    const section = node('div', null, 'build-browse');
     section.id = 'build-browse';
-    const heading = node('h2', 'Browse builds');
-    heading.id = 'build-browse-h2';
-    section.setAttribute('aria-labelledby', heading.id);
-    section.append(heading);
+    section.setAttribute('role', 'group');
+    section.setAttribute('aria-label', 'Find and order builds');
     const controls = node('div', null, 'build-browse-controls');
-    const field = (caption, control) => {
+    const field = (caption, control, kind) => {
       const label = node('label', null, 'build-browse-field');
+      if (kind) label.classList.add(kind);
       label.append(node('span', caption), control);
       return label;
     };
@@ -2584,7 +2660,8 @@ const initCreatorsPage = async () => {
       profileBrowse.buildPage = 0;
       refreshBrowse();
     };
-    controls.append(field('Era', era));
+    const mobileEra = field('Era', era);
+    mobileEra.classList.add('build-browse-mobile-era');
 
     const search = node('input');
     search.id = 'build-search';
@@ -2601,11 +2678,11 @@ const initCreatorsPage = async () => {
         refreshBrowse();
       }, 120);
     };
-    controls.append(field('Find', search));
+    controls.append(field('Find', search, 'build-browse-search'));
 
     const sort = node('select');
     sort.id = 'build-sort';
-    for (const [value, text] of [['mine', 'My pieces first'], ['size', 'Largest build first'], ['newest', 'Newest era first']]) {
+    for (const [value, text] of [['guided', 'Guided mix'], ['mine', 'My pieces first'], ['size', 'Largest build first'], ['newest', 'Newest era first']]) {
       const option = node('option', text);
       option.value = value;
       sort.append(option);
@@ -2616,19 +2693,75 @@ const initCreatorsPage = async () => {
       profileBrowse.buildPage = 0;
       refreshBrowse();
     };
-    controls.append(field('Order', sort));
+    controls.append(field('Order', sort, 'build-browse-sort'));
+    controls.append(mobileEra);
     controls.hidden = thread.albums === 0;
     section.append(controls);
     const summary = node('p', null, 'build-browse-summary muted');
     summary.id = 'build-browse-summary';
     summary.setAttribute('aria-live', 'polite');
     section.append(summary);
+    const filters = node('div', null, 'build-active-filters');
+    filters.id = 'build-active-filters';
+    filters.setAttribute('role', 'group');
+    filters.setAttribute('aria-label', 'Active build filters');
+    filters.hidden = thread.albums === 0;
+    section.append(filters);
     const notice = node('p', null, 'build-browse-notice');
     notice.id = 'build-browse-notice';
     notice.setAttribute('role', 'status');
     notice.hidden = true;
     section.append(notice);
     return section;
+  }
+
+  function paintBrowseFilters() {
+    const host = $('build-active-filters');
+    if (!host) return;
+    host.replaceChildren();
+    const add = (label, aria, clear) => {
+      const button = node('button', `${label} ×`, 'build-filter-chip');
+      button.type = 'button';
+      button.setAttribute('aria-label', aria);
+      button.onclick = () => {
+        clear();
+        profileBrowse.buildPage = 0;
+        profileBrowse.ledgerOpen = false;
+        selectedBuildKey = null;
+        refreshBrowse();
+      };
+      host.append(button);
+    };
+    if (profileBrowse.era !== 'all') add(`Era ${profileBrowse.era}`, 'Remove era filter', () => {
+      profileBrowse.era = 'all';
+      $('build-era').value = 'all';
+    });
+    if (profileBrowse.band !== 'all') {
+      const band = PROFILE_PIECE_BANDS.find((item) => item.key === profileBrowse.band);
+      add(`${band?.label || profileBrowse.band} your pieces`, 'Remove credited-piece range filter', () => { profileBrowse.band = 'all'; });
+    }
+    if (profileBrowse.query) add(`Find: ${profileBrowse.query}`, 'Remove build search', () => {
+      profileBrowse.query = '';
+      $('build-search').value = '';
+    });
+    if (host.childElementCount) {
+      const clearAll = node('button', 'Clear filters', 'build-filter-clear');
+      clearAll.type = 'button';
+      clearAll.onclick = () => {
+        profileBrowse.era = 'all';
+        profileBrowse.band = 'all';
+        profileBrowse.query = '';
+        profileBrowse.buildPage = 0;
+        profileBrowse.ledgerOpen = false;
+        selectedBuildKey = null;
+        $('build-era').value = 'all';
+        $('build-search').value = '';
+        refreshBrowse();
+      };
+      host.append(clearAll);
+    } else {
+      host.append(node('span', 'All eras and piece ranges', 'build-filter-default muted'));
+    }
   }
 
   function paintAtlasSelection() {
@@ -2640,8 +2773,8 @@ const initCreatorsPage = async () => {
   function renderBuildMatrix() {
     const section = node('section', null, 'build-matrix');
     section.id = 'build-matrix';
-    const heading = node('h2', 'Your work across the eras');
-    heading.id = 'build-matrix-h2';
+    const heading = node('h3', 'Build counts by your credited pieces');
+    heading.id = 'build-matrix-h3';
     section.setAttribute('aria-labelledby', heading.id);
     section.append(heading, node('p', 'Columns group builds by pieces credited to this builder. Select a cell for its largest builds. Photographs above remain global; these counts cover the full profile.', 'muted'));
     const wrap = node('div', null, 'build-matrix-wrap');
@@ -2688,7 +2821,7 @@ const initCreatorsPage = async () => {
             $('build-era').value = String(era);
             $('build-search').value = '';
             refreshBrowse();
-            $('build-explorer')?.scrollIntoView({block: 'nearest'});
+            $('build-browse')?.scrollIntoView({block: 'start'});
           };
           td.append(tile);
         } else {
@@ -2760,6 +2893,39 @@ const initCreatorsPage = async () => {
     return holder.querySelector('article.album');
   }
 
+  function renderShortlistPick(album) {
+    const pick = node('button', null, 'build-shortlist-pick');
+    pick.type = 'button';
+    pick.dataset.buildKey = album.buildKey;
+    pick.setAttribute('aria-pressed', String(album.buildKey === selectedBuildKey));
+    const photo = album.photos?.[0];
+    if (photo?.thumb) {
+      const preview = node('span', null, 'build-shortlist-preview');
+      const img = document.createElement('img');
+      img.src = photo.thumb;
+      img.alt = `Photograph of ${album.label}, era ${album.era}`;
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.onerror = () => {
+        img.remove();
+        preview.classList.add('is-unavailable');
+        preview.append(node('span', 'Photograph unavailable'));
+      };
+      preview.append(img);
+      pick.append(preview);
+    } else {
+      pick.append(node('span', photo ? 'Photograph unavailable' : album.photoStatus === 'rejected' ? 'Photographed; reshoot planned' : 'Not yet photographed', 'build-shortlist-record'));
+    }
+    const mine = (album.contributors || []).find((entry) => entry?.builderKey === thread.builderKey)?.pieces;
+    const copy = node('span', null, 'build-shortlist-copy');
+    copy.append(node('strong', album.label),
+      node('span', `Era ${album.era} · ${mine == null ? 'unmeasured credit' : `${mine.toLocaleString()} your pieces`} · ${album.pieces.toLocaleString()} total`),
+      node('span', photo ? plural(album.photos.length, 'photograph') : album.photoStatus === 'rejected' ? 'Reshoot planned' : 'No photographs yet', 'build-shortlist-status'));
+    pick.append(copy);
+    pick.onclick = () => focusBuild(album.buildKey, {scroll: true});
+    return pick;
+  }
+
   function renderBuildExplorer() {
     const section = node('section', null, 'build-explorer');
     section.id = 'build-explorer';
@@ -2769,7 +2935,7 @@ const initCreatorsPage = async () => {
     heading.tabIndex = -1;
     section.append(heading);
     if (!browseAlbums.length) {
-      section.append(node('p', 'No builds match this era and search. Try another era or clear the search.', 'muted'));
+      section.append(node('p', 'No builds match these filters. Remove a filter above or choose another era.', 'muted'));
       const empty = node('div');
       empty.id = 'build-focus-host';
       empty.hidden = true;
@@ -2784,24 +2950,18 @@ const initCreatorsPage = async () => {
       const context = profileBrowse.band !== 'all'
         ? `Era ${profileBrowse.era}, ${bandLabel} credited pieces`
         : profileBrowse.era === 'all' ? 'across this profile' : `in era ${profileBrowse.era}`;
-      const limit = profileBrowse.era === 'all' && profileBrowse.band === 'all' && !profileBrowse.query ? 5 : 10;
-      const picks = browseAlbums.slice(0, limit);
+      const limit = profileBrowse.era === 'all' && profileBrowse.band === 'all' && !profileBrowse.query ? 6 : 10;
+      const picks = profileBrowse.sort === 'guided' ? profileGuidedPicks(browseAlbums, limit) : browseAlbums.slice(0, limit);
       if (selectedBuildKey && !picks.some((album) => album.buildKey === selectedBuildKey)) {
         const selected = browseAlbums.find((album) => album.buildKey === selectedBuildKey);
         if (selected) picks.push(selected);
       }
-      section.append(node('p', `${plural(browseAlbums.length, 'build')} match ${context}. Showing ${plural(picks.length, 'largest build')}; use search above or the complete ledger for a particular key.`, 'muted'));
+      const selection = profileBrowse.sort === 'guided' ? 'a mix of photographed highlights and substantial work awaiting photographs' : 'the first builds in your chosen order';
+      section.append(node('p', `${plural(browseAlbums.length, 'build')} match ${context}. Showing ${plural(picks.length, 'build')}: ${selection}; use search above or the complete ledger for a particular key.`, 'muted'));
       const list = node('ul', null, 'build-shortlist');
       for (const album of picks) {
         const item = node('li');
-        const pick = node('button', null, 'build-shortlist-pick');
-        pick.type = 'button';
-        pick.dataset.buildKey = album.buildKey;
-        pick.setAttribute('aria-pressed', String(album.buildKey === selectedBuildKey));
-        const mine = (album.contributors || []).find((entry) => entry?.builderKey === thread.builderKey)?.pieces;
-        pick.append(node('strong', album.label), node('span', `Era ${album.era} · ${mine == null ? 'unmeasured credit' : `${mine.toLocaleString()} your pieces`} · ${album.pieces.toLocaleString()} total · ${album.photos?.length ? `${album.photos.length} photographs` : 'not photographed'}`));
-        pick.onclick = () => focusBuild(album.buildKey, {scroll: true});
-        item.append(pick);
+        item.append(renderShortlistPick(album));
         list.append(item);
       }
       section.append(list);
@@ -2924,6 +3084,8 @@ const initCreatorsPage = async () => {
       : `${plural(browseAlbums.length, 'build')} of ${plural(thread.albums, 'build')} match · ${plural(shot, 'photographed build')} · ${plural(unshot, 'unphotographed build')}.`;
     if (selectedBuildKey && !browseAlbums.some((album) => album.buildKey === selectedBuildKey)) selectedBuildKey = null;
     paintAtlasSelection();
+    paintEraSelection();
+    paintBrowseFilters();
     $('build-explorer').replaceWith(renderBuildExplorer());
     $('kin-beside').replaceWith(renderKinshipEmbed());
     // Pair filters belong to the relationship, not to the build inventory's era facet.
@@ -2980,12 +3142,18 @@ const initCreatorsPage = async () => {
       notice.append(link('Explore this relationship', destination));
       $('content').append(notice);
     }
-    if (thread.albums !== 0) {
+    const hasPhotographs = thread.eras.some((block) => block.albums.some((album) => album.photos?.length));
+    if (hasPhotographs) {
       $('content').append(renderWorkCarousel());
       renderWorkRail();
       paintWorkStage();
+    } else {
+      workAlbums = [];
+      if (thread.albums) $('content').append(node('p', 'No photographs have been published for these builds yet. The saved-piece record is ready to explore below.', 'work-empty muted'));
     }
+    if (thread.albums) $('content').append(renderEraOverview());
     $('content').append(renderBrowseToolbar());
+    if (thread.albums) paintBrowseFilters();
     $('build-browse-summary').textContent = thread.albums === 0
       ? 'No substantial build albums meet the 20-piece saved-credit cutoff yet. This creator remains searchable; smaller credits and historical context are still in the archive.'
       : `${plural(browseAlbums.length, 'build')} of ${plural(thread.albums, 'build')} match · ${plural(shotCount, 'photographed build')} · ${plural(unshotCount, 'unphotographed build')}.`;
@@ -2995,9 +3163,9 @@ const initCreatorsPage = async () => {
       return;
     }
 
-    // The work remains the global photographic opening; atlas selection focuses only
-    // the explorer and co-builder summary below it.
-    $('content').append(renderBuildMatrix(), renderBuildExplorer());
+    // The work remains the global photographic opening; the compact era guide and
+    // adjacent browser focus only the explorer below it.
+    $('content').append(renderBuildExplorer());
 
     $('content').append(renderKinshipEmbed());
     renderThreadNotes();

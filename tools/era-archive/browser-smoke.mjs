@@ -196,7 +196,7 @@ try{
   await wait("!document.getElementById('photo-viewer-modal').classList.contains('open')");
   if(await evaluate(`document.activeElement.id!==${JSON.stringify(triggerId)}`))throw Error('Closing the photo viewer did not return focus to the trigger thumbnail');
   // Profiles show a short co-builder summary; the detailed relationship lives on Kinship.
-  results.pair=await evaluate("({summary:document.querySelectorAll('#kin-beside .kin-profile-summary tbody tr').length,links:document.querySelectorAll('#kin-beside a').length,panel:!!document.getElementById('pair-view')})");
+  results.pair=await evaluate("({summary:document.querySelectorAll('#kin-beside .kin-profile-card').length,links:document.querySelectorAll('#kin-beside a').length,panel:!!document.getElementById('pair-view')})");
   if(results.pair.panel)throw Error('Old inline pair ledger is still mounted on the profile');
   if(results.pair.summary&&!results.pair.links)throw Error('Co-builder summary has no path to Kinship');
 
@@ -225,8 +225,8 @@ try{
   const largestThread=await fetch(new URL('threads/'+prolific.builderKey+'.json',gallery)).then(r=>r.json());
   await cdp('Page.navigate',{url:new URL(prolific.builderKey+'/',gallery).href});
   await wait("!!document.querySelector('#build-matrix .build-matrix-cell')");
-  results.explorer=await evaluate("({sort:document.getElementById('build-sort').value,work:document.querySelectorAll('#work .work-tile').length,matrixCount:[...document.querySelectorAll('.build-matrix-cell strong')].reduce((n,e)=>n+Number(e.textContent.replaceAll(',','')),0),shortlist:document.querySelectorAll('.build-shortlist li').length,fullRows:document.querySelectorAll('#build-explorer tbody tr').length})");
-  if(results.explorer.sort!=='mine'||results.explorer.work>40||results.explorer.matrixCount!==largestThread.albums||results.explorer.shortlist>5||results.explorer.fullRows)throw Error('Largest profile is unbounded or loses builds from its inventory');
+  results.explorer=await evaluate("({sort:document.getElementById('build-sort').value,work:document.querySelectorAll('#work .work-tile').length,matrixCount:[...document.querySelectorAll('.build-matrix-cell strong')].reduce((n,e)=>n+Number(e.textContent.replaceAll(',','')),0,matrixFolded:!document.querySelector('.era-overview-detail').open,eras:document.querySelectorAll('.era-overview-pick').length,shortlist:document.querySelectorAll('.build-shortlist li').length,previews:document.querySelectorAll('.build-shortlist-preview img').length,fullRows:document.querySelectorAll('#build-explorer tbody tr').length})");
+  if(results.explorer.sort!=='guided'||results.explorer.work>40||results.explorer.matrixCount!==largestThread.albums||!results.explorer.matrixFolded||!results.explorer.eras||results.explorer.shortlist>6||results.explorer.fullRows)throw Error('Largest profile is unbounded or loses builds from its inventory');
   await cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   results.explorer.mobile=await evaluate("({width:document.documentElement.scrollWidth,viewport:innerWidth})");
   if(results.explorer.mobile.width>results.explorer.mobile.viewport+2)throw Error('Mobile profile has horizontal overflow');
@@ -240,7 +240,7 @@ try{
   await cdp('Page.navigate',{url:new URL(oldBuilder+'/',gallery).href});
   await wait("!!document.querySelector('#build-matrix .build-matrix-cell')");
   results.explorer.ibocain=await evaluate("({count:[...document.querySelectorAll('.build-matrix-cell strong')].reduce((n,e)=>n+Number(e.textContent.replaceAll(',','')),0),shortlist:document.querySelectorAll('.build-shortlist li').length})");
-  if(results.explorer.ibocain.count!==oldThread.albums||results.explorer.ibocain.shortlist>5)throw Error('Ibocain inventory is incomplete or default shortlist is large');
+  if(results.explorer.ibocain.count!==oldThread.albums||results.explorer.ibocain.shortlist>6)throw Error('Ibocain inventory is incomplete or default shortlist is large');
   await screenshot('creator-build-matrix-ibocain');
   await cdp('Page.navigate',{url:new URL(oldBuilder+'/?build='+older.buildKey,gallery).href});
   await wait("!!document.querySelector('#build-focus-host article.album[data-build-key=\""+older.buildKey+"\"]')");

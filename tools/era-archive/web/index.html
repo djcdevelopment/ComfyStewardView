@@ -14,8 +14,8 @@
     <meta property="og:description" content="Search the community archive for your own builds across every era.">
     <meta name="twitter:card" content="summary">
     <!-- /per-thread head -->
-    <link rel="stylesheet" href="./creators.css?v=15">
-    <script src="./creators.js" defer></script>
+    <link rel="stylesheet" href="./creators.css?v=16">
+    <script src="./creators.js?v=16" defer></script>
     <script src="./portraits.js" defer></script>
     <script src="./kin-tree.js" defer></script>
     <script src="./pair.js" defer></script>
@@ -121,6 +121,7 @@
            no tooltip -- the aria-label is the only name the link has. -->
       <nav id="look-out" class="paths" hidden aria-label="Where to go next">
         <h2 class="look-out-h2">Where to go next</h2>
+        <p class="look-out-intro">Keep exploring: find another builder, study the archive, or walk an era's photographs.</p>
         <a class="path" href="/valheim/creators/" aria-label="Find the builds you made" data-path="find">
           <img alt="" src="/chronicles/img/cutouts/find.webp" srcset="/chronicles/img/cutouts/find.256.webp 256w, /chronicles/img/cutouts/find.webp 512w" sizes="(max-width:640px) 45vw, 180px" width="512" height="512" loading="lazy" decoding="async">
           <span class="ember" aria-hidden="true"></span>
@@ -136,16 +137,21 @@
           <span class="ember" aria-hidden="true"></span>
           <span class="path-line">Walk the eras</span>
         </a>
-        <a class="path" href="/valheim/creators/#participation-details" aria-label="Ask for new photographs of a build" data-path="request">
-          <img alt="" src="/chronicles/img/cutouts/request.webp" srcset="/chronicles/img/cutouts/request.256.webp 256w, /chronicles/img/cutouts/request.webp 512w" sizes="(max-width:640px) 45vw, 180px" width="512" height="512" loading="lazy" decoding="async">
-          <span class="ember" aria-hidden="true"></span>
-          <span class="path-line">Ask for photographs</span>
-        </a>
-        <a class="path" href="/valheim/creators/stats/" aria-label="Open the statistics and the raw data" data-path="data">
-          <img alt="" src="/chronicles/img/cutouts/data.webp" srcset="/chronicles/img/cutouts/data.256.webp 256w, /chronicles/img/cutouts/data.webp 512w" sizes="(max-width:640px) 45vw, 180px" width="512" height="512" loading="lazy" decoding="async">
-          <span class="ember" aria-hidden="true"></span>
-          <span class="path-line">Read the data</span>
-        </a>
+        <details class="path-more">
+          <summary>More ways to participate and read the archive</summary>
+          <div class="path-more-grid">
+            <a class="path" href="/valheim/creators/#participation-details" aria-label="Ask for new photographs of a build" data-path="request">
+              <img alt="" src="/chronicles/img/cutouts/request.webp" srcset="/chronicles/img/cutouts/request.256.webp 256w, /chronicles/img/cutouts/request.webp 512w" sizes="(max-width:640px) 45vw, 180px" width="512" height="512" loading="lazy" decoding="async">
+              <span class="ember" aria-hidden="true"></span>
+              <span class="path-line">Ask for photographs</span>
+            </a>
+            <a class="path" href="/valheim/creators/stats/" aria-label="Open the statistics and the raw data" data-path="data">
+              <img alt="" src="/chronicles/img/cutouts/data.webp" srcset="/chronicles/img/cutouts/data.256.webp 256w, /chronicles/img/cutouts/data.webp 512w" sizes="(max-width:640px) 45vw, 180px" width="512" height="512" loading="lazy" decoding="async">
+              <span class="ember" aria-hidden="true"></span>
+              <span class="path-line">Read the data</span>
+            </a>
+          </div>
+        </details>
       </nav>
 
       <details id="participation-details" class="participation-block">

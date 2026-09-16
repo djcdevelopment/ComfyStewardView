@@ -11,7 +11,7 @@ const {
   computeTopEight, portraitIndex, eraBounds, heroAliases,
   majorityOwner, tagCandidates, leadingBuilderNote, buildKinshipTree, mergeKinshipTags, kinshipTagRecord, StewardParticipation,
   KINSHIP_TAG_IDS, pickMosaicAlbums, profileBrowseRows, profileBrowsePage, profileEraAtlas, profileCoBuilderSummary, hasMinimumCredit, qualifyingSharedCredit, distinctAttributions,
-  profilePieceBand, profileBuildInventory,
+  profilePieceBand, profileBuildInventory, profileGuidedPicks,
 } = require(path.join(__dirname, '..', 'web', 'creators.js'));
 
 function builder(overrides) {
@@ -800,6 +800,21 @@ test('a prolific profile can filter every era and page without losing older larg
   assert.deepEqual(profileBrowseRows(thread, {query: old.buildKey.slice(-12)}).map((a) => a.buildKey), [old.buildKey]);
   assert.equal(profileBrowseRows(thread, {sort: 'size'})[0].buildKey, old.buildKey);
   assert.equal(profileBrowseRows(thread, {sort: 'newest'})[0].era, 16);
+});
+
+test('the guided opening balances actual photographs with important unpictured records', () => {
+  const albums = Array.from({length: 12}, (_, index) => ({
+    buildKey: index.toString(16).padStart(64, '0'),
+    photos: [1, 3, 5, 7].includes(index) ? [{thumb: `/photo/${index}.webp`}] : [],
+  }));
+  const picks = profileGuidedPicks(albums);
+  assert.equal(picks.length, 6);
+  assert.equal(picks.filter((album) => album.photos.length).length, 3);
+  assert.equal(picks.filter((album) => !album.photos.length).length, 3);
+  assert.deepEqual(picks.map((album) => Number.parseInt(album.buildKey, 16)), [1, 3, 5, 0, 2, 4]);
+  assert.deepEqual(profileGuidedPicks(albums.filter((album) => !album.photos.length)).map((album) => album.buildKey),
+    albums.filter((album) => !album.photos.length).slice(0, 6).map((album) => album.buildKey));
+  assert.deepEqual(profileGuidedPicks([], 6), []);
 });
 
 test('the contribution inventory counts every build, including crowded and historical cells', () => {

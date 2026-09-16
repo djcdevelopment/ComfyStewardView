@@ -458,8 +458,8 @@ class ArchiveTest(unittest.TestCase):
             # The directory keeps the shared identity, and still loads its own assets.
             root=(Path(temp)/'index.html').read_text(encoding='utf-8')
             self.assertIn('<title>Comfy builders',root)
-            self.assertIn('"./creators.js"',root)
-            self.assertIn('"../creators.js"',page)
+            self.assertIn('"./creators.js?v=16"',root)
+            self.assertIn('"../creators.js?v=16"',page)
             directory=archive.load(Path(temp)/'directory.json')
             self.assertEqual([{'era':14,'albums':1,'albumsWithPhotos':1,'photos':1}],directory['photography']['eras'])
             self.assertEqual(1,directory['photography']['buildersWithPhotos'])

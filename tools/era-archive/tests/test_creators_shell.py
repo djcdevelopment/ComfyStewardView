@@ -303,11 +303,11 @@ class ChroniclerStyleTests(unittest.TestCase):
             self.assertNotIn(banned, self.index.casefold(), f"index.html says '{banned}'")
 
     def test_stylesheet_href_is_cache_busted_and_still_rewritable(self):
-        for name, content in (("index.html", self.index), ("stats.html", self.stats)):
-            self.assertIn('href="./creators.css?v=15"', content, name)
-        self.assertIn('src="./creators.js"', self.index)
-        # pair.js and kin-tree.js ride beside creators.js and wear the same cache policy it
-        # does: unversioned here, where the stylesheet carries the bust for the whole shell.
+        self.assertIn('href="./creators.css?v=16"', self.index)
+        self.assertIn('href="./creators.css?v=15"', self.stats)
+        self.assertIn('src="./creators.js?v=16"', self.index)
+        # pair.js and kin-tree.js are unchanged and remain unversioned; the changed
+        # creator profile script and stylesheet carry the release query together.
         self.assertIn('src="./pair.js"', self.index)
         self.assertIn('src="./kin-tree.js"', self.index)
         # portraits.js resolves every face and portrait-picker.js is the profile's picker
@@ -353,8 +353,8 @@ class ChroniclerStyleTests(unittest.TestCase):
             dest = Path(temp) / "projection"
             receipt = project(document, dest, "https://example.invalid/world")
             thread = (dest / key / "index.html").read_text(encoding="utf-8")
-            self.assertIn('href="../creators.css?v=15"', thread)
-            self.assertIn('src="../creators.js"', thread)
+            self.assertIn('href="../creators.css?v=16"', thread)
+            self.assertIn('src="../creators.js?v=16"', thread)
             # The pair view's script and the tree's get the same climb. A thread page is
             # one directory down, so a surviving "./pair.js would 404 on every profile.
             self.assertIn('src="../pair.js"', thread)

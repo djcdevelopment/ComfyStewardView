@@ -103,11 +103,11 @@ class HeroShellTests(unittest.TestCase):
             self.assertNotIn(target, directory, f"the directory renderer reaches for #{target}")
 
     def test_the_builder_page_tells_one_story_in_order(self):
-        # Photographs stay global; the inventory matrix and bounded build explorer follow,
-        # with the compact co-builder summary last.
+        # Photographs stay global; the compact era guide, adjacent browser and bounded
+        # explorer follow, with the co-builder discovery step last.
         thread = self.js[self.js.index("function renderThread()"):]
         order = [thread.index(marker) for marker in
-                 ("renderWorkCarousel()", "renderBrowseToolbar()", "renderBuildMatrix()", "renderBuildExplorer()", "renderKinshipEmbed()")]
+                 ("renderWorkCarousel()", "renderEraOverview()", "renderBrowseToolbar()", "renderBuildExplorer()", "renderKinshipEmbed()")]
         order.append(thread.rindex("renderThreadNotes()"))  # the empty-profile path ends early
         self.assertEqual(order, sorted(order), "the builder page lost its order")
         # The attribution sentence is said once for the page, not once per album.
@@ -119,6 +119,9 @@ class HeroShellTests(unittest.TestCase):
         # All qualifying builds stay in the inventory; the complete ledger is opt-in and paged.
         for marker in ("PAGE_SIZE_EXPLORER = 50", "'build-explorer-table'", "'build-focus-host'", "'rest-feedback'", "'radiogroup'"):
             self.assertIn(marker, self.js, f"the build explorer lost {marker}")
+        self.assertIn("detail.append(node('summary', 'Compare credited-piece ranges'), renderBuildMatrix())", self.js)
+        self.assertIn("profileGuidedPicks(browseAlbums, limit)", self.js)
+        self.assertIn("'build-shortlist-preview'", self.js)
         # Feedback rides the participation rails like a claim: stored locally, exported.
         self.assertIn("priorities: Object.values(state.priorities || {})", self.js)
         self.assertIn("state.priorities = fresh.priorities", self.js)
@@ -130,7 +133,7 @@ class HeroShellTests(unittest.TestCase):
         # A historical ?kin profile link must leave the photographic opening intact.
         self.assertNotIn("location.replace(destination.href)", self.js)
         self.assertIn("'legacy-kin-notice'", self.js)
-        self.assertIn("'kin-profile-linked'", self.js)
+        self.assertIn("'kin-profile-card kin-profile-linked'", self.js)
 
     def test_five_wordless_figures_in_order_with_the_published_strings(self):
         cards = path_cards(self.index)
@@ -185,8 +188,8 @@ class HeroProjectionTests(unittest.TestCase):
             destination = Path(temp) / "projection"
             project(document, destination, "https://example.invalid/world")
             thread = (destination / key / "index.html").read_text(encoding="utf-8")
-        self.assertIn('href="../creators.css?v=15"', thread)
-        self.assertIn('src="../creators.js"', thread)
+        self.assertIn('href="../creators.css?v=16"', thread)
+        self.assertIn('src="../creators.js?v=16"', thread)
         self.assertIn('src="../kin-tree.js"', thread)
         self.assertNotIn('"./kin-tree.js', thread)
         self.assertIn('<section id="builder-hero" class="builder-hero" hidden', thread)
