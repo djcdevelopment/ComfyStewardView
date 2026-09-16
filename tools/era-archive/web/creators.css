@@ -4267,6 +4267,10 @@ html.pp-open body {
 #kinship .kin-extra { margin-top: 1rem; border: 1px solid var(--outline-variant); border-radius: 6px; padding: .7rem; }
 #kinship .kin-extra > summary { color: var(--primary); cursor: pointer; }
 #kinship .kin-extra .kin-aside { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: .8rem; margin-top: .8rem; }
+.legacy-kin-notice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; margin: .7rem 0 1rem; padding: .7rem .9rem; border: 1px solid var(--outline-variant); border-left: 3px solid var(--bronze); border-radius: 5px; background: var(--surface-container-low); }
+.legacy-kin-notice a { white-space: nowrap; }
+.kin-profile-summary tr.kin-profile-linked { background: var(--surface-container-high); }
+.kin-profile-summary tr.kin-profile-linked td:first-child { font-weight: 700; color: var(--primary); }
 @media (max-width: 850px) {
   #kinship #kin-metrics button { flex: 1 1 30%; min-width: 92px; width: auto; padding: .5rem .3rem; font-size: .72rem; line-height: 1.25; }
   #kinship #kin-mobile-pick-label { display: flex; flex-direction: column; gap: .25rem; margin: .7rem 0; }

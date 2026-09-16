@@ -73,6 +73,16 @@ try {
   await evaluate("[...document.querySelectorAll('#build-explorer button')].find(b=>b.textContent.includes('View complete ledger')).click()");
   results.ledger = await evaluate("({rows:document.querySelectorAll('#build-explorer tbody tr').length,pages:document.querySelector('.build-page-jump input')?.max})");
   if (results.ledger.rows > 50 || results.ledger.pages !== '4') throw Error(`Complete ledger lacks bounded paging: ${JSON.stringify(results.ledger)}`);
+  await cdp('Page.navigate', {url: new URL(`${builderKey}/?kin=${allyKey}`, base).href});
+  await waitFor("!!document.querySelector('#work .work-stage') && !!document.querySelector('.legacy-kin-notice')");
+  results.legacyPair = await evaluate("({path:location.pathname,photos:document.querySelectorAll('#work .work-tile').length,notice:!!document.querySelector('.legacy-kin-notice a[href*=kinship]'),linked:document.querySelector('.kin-profile-linked td')?.dataset.builderKey})");
+  if (!results.legacyPair.path.includes(builderKey) || results.legacyPair.photos === 0 || !results.legacyPair.notice || results.legacyPair.linked !== allyKey) throw Error(`Legacy profile pairing lost the carousel: ${JSON.stringify(results.legacyPair)}`);
+  const profileDoc = await fetch(new URL(`threads/${builderKey}.json`, base)).then((response) => response.json());
+  const photographedBuild = profileDoc.eras.flatMap((era) => era.albums).find((album) => album.photos?.length);
+  await cdp('Page.navigate', {url: new URL(`${builderKey}/?build=${photographedBuild.buildKey}`, base).href});
+  await waitFor("!!document.querySelector('#work .work-details') && document.querySelector('#work .work-details')?.dataset.buildKey === '" + photographedBuild.buildKey + "'");
+  results.photoDeepLink = await evaluate("({workTop:Math.round(document.getElementById('work').getBoundingClientRect().top),viewport:innerHeight,photoCount:document.querySelectorAll('#work .work-tile').length})");
+  if (results.photoDeepLink.workTop < -20 || results.photoDeepLink.workTop > results.photoDeepLink.viewport || !results.photoDeepLink.photoCount) throw Error(`Photographed build link did not open on the carousel: ${JSON.stringify(results.photoDeepLink)}`);
   await cdp('Page.navigate', {url: new URL(`kinship/?builder=${builderKey}&kin=${allyKey}&era=4`, base).href});
   await waitFor("document.querySelector('#kin-map-table tbody tr') && document.querySelector('#kin-ledger tbody tr')");
   results.kinship = await evaluate("({mapRows:document.querySelectorAll('#kin-map-table tbody tr').length,metrics:document.querySelectorAll('[data-kin-metric]').length,pairVisible:!document.querySelector('#kin-pair-panel').hidden,pairEra:document.querySelector('.kin-pair-era select')?.value,pairOptions:[...document.querySelectorAll('.kin-pair-era select option')].map(o=>o.value),coRows:document.querySelectorAll('#kin-ledger tbody tr').length})");

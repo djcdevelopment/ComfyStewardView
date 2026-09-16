@@ -1124,6 +1124,7 @@ const initKinshipPage = async () => {
     const name = $('kin-anchor-name');
     name.textContent = thread.displayName || nameFor(anchor);
     name.href = builderHref(anchor);
+    $('kin-anchor-photos').href = `${builderHref(anchor)}#work`;
     const bounds = eraBounds(thread);
     const span = bounds.first == null ? 'no recorded era' : `eras ${bounds.first}–${bounds.latest}`;
     $('kin-anchor-meta').textContent = `${kinPlural(tree?.coBuilderCount || 0, 'co-builder')} · ${span}`;

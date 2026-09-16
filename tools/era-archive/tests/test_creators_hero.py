@@ -127,6 +127,10 @@ class HeroShellTests(unittest.TestCase):
         self.assertNotIn("drawKinshipTree(", compact)
         self.assertNotIn("'Top 8 · Shield-wall fellows'", self.js)
         self.assertIn("top8-kinship-link", self.js)
+        # A historical ?kin profile link must leave the photographic opening intact.
+        self.assertNotIn("location.replace(destination.href)", self.js)
+        self.assertIn("'legacy-kin-notice'", self.js)
+        self.assertIn("'kin-profile-linked'", self.js)
 
     def test_five_wordless_figures_in_order_with_the_published_strings(self):
         cards = path_cards(self.index)

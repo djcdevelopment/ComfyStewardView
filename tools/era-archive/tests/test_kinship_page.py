@@ -164,6 +164,8 @@ class KinshipShellTests(unittest.TestCase):
         self.assertIn("kin-pair-link", self.script)
         self.assertIn('id="kin-pair-panel"', self.page)
         self.assertIn('data-kin-metric="photos"', self.page)
+        self.assertIn('id="kin-anchor-photos"', self.page)
+        self.assertIn("$('kin-anchor-photos').href = `${builderHref(anchor)}#work`", self.script)
 
     def test_creators_js_stands_down_here_but_still_lends_its_store(self):
         self.assertIn("!['kinship', 'profile'].includes(document.documentElement.dataset.stewardPage)", self.creators,

@@ -311,7 +311,7 @@ function profileCoBuilderSummary(threadDoc, era = 'all') {
   const blocks = era === 'all' ? threadDoc.eras : threadDoc.eras.filter((block) => block.era === Number(era));
   const scoped = {...threadDoc, eras: blocks};
   const ranked = computeTopEight(scoped, Infinity);
-  return {total: ranked.length, ranked: ranked.slice(0, 8)};
+  return {total: ranked.length, ranked};
 }
 
 // Every album carries its attribution sentence in the data, and forty cards saying the
@@ -927,7 +927,7 @@ const initCreatorsPage = async () => {
   // Validated here, once, against the same hex shapes the rest of the page uses, so a
   // hand-edited or truncated key never reaches a selector or a fetch. Anything that does
   // not match is dropped rather than corrected -- a half-read link should open the plain
-  // profile, not somebody else's pairing. pair.js owns the URL from mount onwards.
+  // profile, not somebody else's pairing. The Kinship page owns the detailed ledger.
   const pairQuery = new URLSearchParams(location.search);
   const hexParam = (name, pattern) => {
     const value = String(pairQuery.get(name) || '');
@@ -937,14 +937,9 @@ const initCreatorsPage = async () => {
     kin: hexParam('kin', /^[a-f0-9]{32}$/),
     build: hexParam('build', /^[a-f0-9]{64}$/),
   };
-  if (isThread && initialPair.kin) {
-    const destination = new URL('kinship/', base);
-    destination.searchParams.set('builder', builderKey);
-    destination.searchParams.set('kin', initialPair.kin);
-    if (initialPair.build) destination.searchParams.set('build', initialPair.build);
-    location.replace(destination.href);
-    return;
-  }
+  // Historical profile pair links still open the photographic builder page. The
+  // relationship ledger has moved to Kinship, but following its old URL must not
+  // remove the carousel from the visitor's path.
   const endpoint = document.querySelector('meta[name="creator-participation-endpoint"]')?.content?.trim() || '';
   const state = StewardParticipation.load();
   let directory = null;
@@ -1754,7 +1749,7 @@ const initCreatorsPage = async () => {
     compact.append(title, node('p', `${plural(summary.total, 'co-builder')} share qualifying construction credits on this profile. Open a relationship to see when and what they built together.`, 'kin-beside-sub muted'));
     if (summary.ranked.length) {
       const table = node('table', null, 'kin-profile-summary');
-      table.append(node('caption', `Leading co-builders; all ${summary.total.toLocaleString()} are searchable in Kinship.`));
+      table.append(node('caption', `Leading co-builders${initialPair.kin ? ', with the linked relationship first' : ''}; all ${summary.total.toLocaleString()} are searchable in Kinship.`));
       const head = node('thead');
       const tr = node('tr');
       for (const label of ['Co-builder', 'Shared builds', 'Shared pieces', 'Explore']) {
@@ -1765,8 +1760,11 @@ const initCreatorsPage = async () => {
       head.append(tr);
       table.append(head);
       const body = node('tbody');
-      for (const entry of summary.ranked.slice(0, 5)) {
+      const linked = initialPair.kin && summary.ranked.find((entry) => entry.builderKey === initialPair.kin);
+      const featured = [...(linked ? [linked] : []), ...summary.ranked.filter((entry) => entry.builderKey !== initialPair.kin).slice(0, 5)];
+      for (const entry of featured) {
         const row = node('tr');
+        if (entry.builderKey === initialPair.kin) row.className = 'kin-profile-linked';
         const name = node('td', buildersByKey.get(entry.builderKey)?.displayName || placeholderName(entry.builderKey));
         name.dataset.builderKey = entry.builderKey;
         const href = new URL(`kinship/?builder=${thread.builderKey}&kin=${entry.builderKey}`, base);
@@ -1778,6 +1776,9 @@ const initCreatorsPage = async () => {
       }
       table.append(body);
       compact.append(table);
+    }
+    if (initialPair.kin && !summary.ranked.some((entry) => entry.builderKey === initialPair.kin)) {
+      compact.append(node('p', 'This linked co-builder has no qualifying shared credits on this profile. Search the full Kinship list or check the original link.', 'muted'));
     }
     compact.append(link(`Explore all ${summary.total.toLocaleString()} co-builders`, new URL(`kinship/?builder=${thread.builderKey}`, base)));
     return compact;
@@ -2970,6 +2971,15 @@ const initCreatorsPage = async () => {
     const shotCount = browseAlbums.filter((album) => album.photos?.length).length;
     const unshotCount = browseAlbums.length - shotCount;
     selectedBuildKey = initialPair.build || null;
+    if (initialPair.kin) {
+      const notice = node('aside', null, 'legacy-kin-notice');
+      notice.setAttribute('aria-label', 'Shared-build link');
+      notice.append(node('span', 'You followed a shared-build link. The photographs are still here; the relationship details are in Kinship.'));
+      const destination = new URL(`kinship/?builder=${thread.builderKey}&kin=${initialPair.kin}`, base);
+      if (initialPair.build) destination.searchParams.set('build', initialPair.build);
+      notice.append(link('Explore this relationship', destination));
+      $('content').append(notice);
+    }
     if (thread.albums !== 0) {
       $('content').append(renderWorkCarousel());
       renderWorkRail();
@@ -2997,7 +3007,11 @@ const initCreatorsPage = async () => {
     // A shared pair link lands under the work and the tree now; bring the pair up unless
     // a #hash has already claimed the scroll.
     if (initialPair.build && !location.hash) {
-      requestAnimationFrame(() => revealAlbum(initialPair.build, {scroll: !initialPair.kin}));
+      requestAnimationFrame(() => {
+        const linkedAlbum = thread.eras.flatMap((block) => block.albums).find((album) => album.buildKey === initialPair.build);
+        revealAlbum(initialPair.build, {scroll: !initialPair.kin && !linkedAlbum?.photos?.length});
+        if (!initialPair.kin && linkedAlbum?.photos?.length) $('work')?.scrollIntoView({block: 'start'});
+      });
     }
   }
 
