@@ -89,9 +89,9 @@ are supplied locally by the user; results stay local.
 ## Candidate boundary and verification
 
 Build the UI with `python tools/package_capture_composer.py --out <new-artifact.zip>`.
-Studio's importer takes that ZIP and its pin explicitly. The manifest records every
-asset's bytes/hash plus the base source revision and `candidate: true`; local candidate
-bytes include working changes and are not a claim of a published clean revision.
+Studio's importer takes that ZIP and its pin explicitly. The staged manifest records
+every asset's bytes/hash plus the pushed source revision and `candidate: true`; the
+stage is reviewable local release evidence, not a public deployment.
 The raw browser assets are pinned to LF checkout in `.gitattributes`, including the
 existing scene renderer. Verify the package from a fresh Windows checkout before
 promoting its hash.
@@ -102,8 +102,10 @@ tests, and the two browser tools in `lab/tools/`. Browser tools take an explicit
 `--gallery` and `--studio` URLs and checks identical download bytes plus Studio's token
 boundary. It uses installed Chrome with WebGPU.
 
-See `docs/evidence/gallery-capture-20260915.json` for candidate hashes and measured
-evidence. These are prepared local candidates; the public deployment was not changed.
+See `docs/evidence/gallery-capture-20260915.json` for the historical candidate index
+and the [Baseline stage evidence](https://github.com/djcdevelopment/baseline/blob/main/docs/evidence/gallery-capture-stage-20260915.json)
+for the pushed-source artifact pins, fresh host proofs and integration receipt. Public
+deployment was not changed.
 
 ## Why this boundary and what follows
 
@@ -114,9 +116,10 @@ targeting; the archive is read-only photographic context. SelfieStick owns Valhe
 real camera and save lifecycle, so Steward accepts only measured runner proof rather
 than treating its browser estimate as a finished picture.
 
-After the source landing, rebuild the composer from a pushed revision, pin that
-release in Studio and stage the exact runner plus real OMEN/AM4 PNG and restoration
-receipts before public downloads are enabled. The cross-repository
+The pushed-source rebuild, Studio pin, exact runner, and real OMEN/AM4 PNG and
+restoration receipts are complete in the local stage. Before public downloads are
+enabled, promote only those reviewed artifacts and recheck the deployed proof gate.
+The cross-repository
 [program plan](https://github.com/djcdevelopment/baseline/blob/main/docs/gallery-capture-program-plan.md)
 tracks that cut. Moving-camera capture needs a time-sampled contract and game proof;
 video, panorama, fisheye, aperture simulation and applying shots to unrelated worlds

@@ -13,8 +13,10 @@ model and deterministic download service; Studio consumes a pinned JavaScript/CS
 artifact, and SelfieStick renders the PNG locally. Start with the
 [user and maintainer guide](docs/gallery-capture-composer.md) and the
 [local proof index](docs/evidence/gallery-capture-20260915.json). The current
-implementation is a verified candidate; public downloads await a release cut from
-pushed source and the exact proof-gated archive deployment.
+implementation is staged from pushed source with an exact proof-gated archive
+deployment. The [stage evidence](https://github.com/djcdevelopment/baseline/blob/main/docs/evidence/gallery-capture-stage-20260915.json)
+records the artifact pins and restoration receipts; public downloads still await
+promotion of that reviewed stage.
 
 ## Applications and repository structure
 

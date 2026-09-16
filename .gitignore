@@ -32,3 +32,11 @@ __pycache__/
 /artifacts/capture-*.json
 /artifacts/capture-*.log
 /artifacts/gallery-capture-*/
+
+# Pushed-source gallery stage bundles are local review artifacts. Their exact
+# paths, byte counts and hashes live in the Baseline stage evidence; do not
+# commit the 476 MB cache, PNGs, browser dependencies or generated ZIPs here.
+/artifacts/gallery-stage-*/
+/artifacts/capture-browser-pushed-*/
+/artifacts/capture-composer-pushed-*/
+/artifacts/browser-deps/
